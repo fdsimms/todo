@@ -31,6 +31,7 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
   const toggleFocus = useTaskStore(s => s.toggleFocus);
 
   const [showDeferModal, setShowDeferModal] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const swipeableRef = useRef<Swipeable>(null);
@@ -46,12 +47,16 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
 
   const handleComplete = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    setCompleting(true);
     Animated.sequence([
       Animated.timing(circleScale, { toValue: 1.35, duration: 80, useNativeDriver: true }),
       Animated.timing(circleScale, { toValue: 1, duration: 80, useNativeDriver: true }),
-      Animated.delay(120),
-      Animated.timing(rowOpacity, { toValue: 0, duration: 230, useNativeDriver: true }),
-    ]).start(() => completeTask(task.id));
+      Animated.delay(140),
+      Animated.timing(rowOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+    ]).start(() => {
+      setCompleting(false);
+      completeTask(task.id);
+    });
   };
 
   const handleDelete = async () => {
@@ -84,9 +89,10 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
 
   return (
     <>
-      <Animated.View style={{ opacity: rowOpacity }}>
+      <Animated.View style={[styles.itemWrapper, { opacity: rowOpacity }]}>
         <Swipeable
           ref={swipeableRef}
+          containerStyle={styles.swipeContainer}
           renderRightActions={renderRightActions}
           renderLeftActions={renderLeftActions}
           overshootRight={false}
@@ -99,7 +105,11 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
             )}
 
             <TouchableOpacity onPress={handleComplete} hitSlop={10} style={styles.circleWrapper}>
-              <Animated.View style={[styles.circle, { transform: [{ scale: circleScale }] }]} />
+              <Animated.View style={[
+                styles.circle,
+                completing && styles.circleCompleting,
+                { transform: [{ scale: circleScale }] },
+              ]} />
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.content} onPress={onPress} activeOpacity={0.7}>
@@ -184,16 +194,27 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
 }
 
 const styles = StyleSheet.create({
+  itemWrapper: {
+    marginHorizontal: spacing.md,
+    marginVertical: 3,
+    borderRadius: radius.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  swipeContainer: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
-    paddingVertical: 12,
+    paddingVertical: 13,
     paddingRight: spacing.md,
     gap: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-    overflow: 'hidden',
   },
   priorityBar: {
     position: 'absolute',
@@ -211,7 +232,11 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.bgQuaternary,
+    borderColor: '#545458',
+  },
+  circleCompleting: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
   },
   content: {
     flex: 1,
@@ -286,18 +311,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
-    gap: 4,
+    gap: 5,
   },
   deferAction: {
     backgroundColor: colors.orange,
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
-    gap: 4,
+    gap: 5,
   },
   actionLabel: {
     color: colors.text,
     fontSize: font.xs,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.3,
   },
 });

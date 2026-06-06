@@ -174,7 +174,7 @@ export function TodayScreen() {
           item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
         }
         renderItem={renderItem}
-        contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -227,13 +227,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.sm,
   },
-  dateLabel: { color: colors.textTertiary, fontSize: font.sm, fontWeight: '500' },
+  dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: '500', letterSpacing: 0.3, marginBottom: 2 },
   title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
-  headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+  headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
   iconBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.bgSecondary,
     alignItems: 'center', justifyContent: 'center',
   },
@@ -246,22 +246,23 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: colors.text, fontSize: 9, fontWeight: '700' },
   sectionHeader: {
-    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
   },
   sectionHeaderText: {
-    color: colors.textSecondary, fontSize: font.sm, fontWeight: '600',
-    textTransform: 'uppercase', letterSpacing: 0.5,
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
   },
   emptyContainer: { flex: 1 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: spacing.sm },
-  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.sm },
-  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl },
+  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.md },
+  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
+    shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
 });

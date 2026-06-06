@@ -26,7 +26,8 @@ export default function AppNavigator() {
           },
           tabBarActiveTintColor: colors.accent,
           tabBarInactiveTintColor: colors.textTertiary,
-          tabBarLabelStyle: { fontSize: font.xs, fontWeight: '500' },
+          tabBarLabelStyle: { fontSize: font.xs, fontWeight: '600', letterSpacing: 0.2 },
+          tabBarItemStyle: { paddingVertical: 3 },
         }}
       >
         <Tab.Screen
