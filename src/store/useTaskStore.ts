@@ -32,6 +32,7 @@ interface TaskStore {
   completeTask: (id: string) => void;
   uncompleteTask: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
+  skipNextRecurrence: (id: string) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
   reorderTasks: (orderedIds: string[]) => void;
@@ -209,6 +210,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   deferTask(id, until) {
     get().updateTask(id, { deferUntil: until.toISOString() });
+  },
+
+  skipNextRecurrence(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.recurrenceType === 'none') return;
+    const { dayResetTime } = useSettingsStore.getState();
+    const nextDue = getNextDueDate(task, dayResetTime);
+    let nextReminderTime: string | null = task.reminderTime;
+    if (task.reminderTime) {
+      const original = new Date(task.reminderTime);
+      const next = new Date(nextDue);
+      next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+      nextReminderTime = next.toISOString();
+    }
+    const nextCycleIndex =
+      task.cycleEnabled && task.cycleItems.length > 0
+        ? (task.cycleIndex + 1) % task.cycleItems.length
+        : task.cycleIndex;
+    get().updateTask(id, {
+      dueDate: nextDue.toISOString(),
+      deferUntil: null,
+      reminderTime: nextReminderTime,
+      cycleIndex: nextCycleIndex,
+    });
   },
 
   toggleFocus(id) {
