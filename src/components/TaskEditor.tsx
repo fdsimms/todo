@@ -21,6 +21,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
+import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 
 interface Props {
@@ -72,6 +73,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
   const [pickerDate, setPickerDate] = useState(new Date());
+  const [nlText, setNlText] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
 
@@ -149,7 +151,14 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       defaultDate.setHours(9, 0, 0, 0);
       setPickerDate(reminderTime ?? defaultDate);
     }
+    setNlText('');
     setPickerMode(mode);
+  };
+
+  const onNlChange = (text: string) => {
+    setNlText(text);
+    const parsed = parseNaturalDate(text);
+    if (parsed) setPickerDate(parsed);
   };
 
   const confirmPicker = () => {
@@ -623,6 +632,19 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                 <Text style={[styles.pickerBtn, { color: colors.accent }]}>Done</Text>
               </TouchableOpacity>
             </View>
+            {pickerMode !== 'showAfterTime' && (
+              <TextInput
+                style={styles.nlInput}
+                value={nlText}
+                onChangeText={onNlChange}
+                onSubmitEditing={confirmPicker}
+                placeholder='Type a date — "next monday 9am", "in 3 days"…'
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            )}
             <DateTimePicker
               value={pickerDate}
               mode={pickerMode === 'showAfterTime' ? 'time' : 'datetime'}
@@ -882,4 +904,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pickerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   pickerBtn: { color: colors.textSecondary, fontSize: font.md },
   picker: { height: 200 },
+  nlInput: {
+    color: colors.text,
+    fontSize: font.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+  },
 });
