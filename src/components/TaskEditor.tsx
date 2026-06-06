@@ -13,7 +13,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import type { Task, Priority, Effort, RecurrenceType } from '../types';
+import type { Task, Priority, Effort, RecurrenceType, CycleItem } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
@@ -21,6 +21,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
+import { generateId } from '../utils/id';
 
 interface Props {
   visible: boolean;
@@ -74,6 +75,12 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
 
+  const [cycleEnabled, setCycleEnabled] = useState(false);
+  const [cycleItems, setCycleItems] = useState<CycleItem[]>([]);
+  const [cycleIndex, setCycleIndex] = useState(0);
+  const [newCycleItemTitle, setNewCycleItemTitle] = useState('');
+  const [addingCycleItem, setAddingCycleItem] = useState(false);
+
   const titleRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -88,15 +95,19 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
       setSomeday(task.someday);
+      setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
+      setCycleIndex(task.cycleIndex);
     } else {
       setTitle(initialTitle ?? ''); setNotes(''); setTags([]);
       setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
       setSomeday(initialSomeday ?? false);
+      setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
     }
     setPickerMode('none'); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
+    setNewCycleItemTitle(''); setAddingCycleItem(false);
     setTimeout(() => titleRef.current?.focus(), 100);
   }, [visible, task]);
 
@@ -113,6 +124,9 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       focused, someday, priority, effort,
+      cycleEnabled: cycleEnabled && cycleItems.length > 0,
+      cycleItems,
+      cycleIndex,
     };
     if (task) { updateTask(task.id, data); }
     else { addTask(data); }
@@ -373,6 +387,99 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
               </View>
             );
           })()}
+
+          {/* Cycle items */}
+          <View style={styles.section}>
+            <View style={styles.cycleHeader}>
+              <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
+              <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
+              <TouchableOpacity
+                style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
+                onPress={() => setCycleEnabled(v => !v)}
+              >
+                <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
+              </TouchableOpacity>
+            </View>
+            {!cycleEnabled && (
+              <Text style={styles.cycleHint}>
+                Rotate through different versions of this task on each recurrence.
+              </Text>
+            )}
+            {cycleEnabled && (
+              <>
+                {cycleItems.map((item, i) => (
+                  <View key={item.id} style={styles.cycleItemRow}>
+                    <TouchableOpacity
+                      onPress={() => setCycleIndex(i)}
+                      hitSlop={6}
+                      style={styles.cycleItemIndexBtn}
+                    >
+                      <View style={[styles.cycleItemDot, i === cycleIndex && styles.cycleItemDotActive]}>
+                        <Text style={[styles.cycleItemDotText, i === cycleIndex && styles.cycleItemDotTextActive]}>
+                          {i + 1}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                    <Text style={[styles.cycleItemTitle, i === cycleIndex && styles.cycleItemTitleActive]}>
+                      {item.title}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const next = cycleItems.filter((_, idx) => idx !== i);
+                        setCycleItems(next);
+                        if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                      }}
+                      hitSlop={8}
+                      style={styles.cycleItemDelete}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {addingCycleItem ? (
+                  <View style={styles.cycleInputRow}>
+                    <View style={styles.cycleItemDot}>
+                      <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
+                    </View>
+                    <TextInput
+                      autoFocus
+                      style={styles.cycleInput}
+                      value={newCycleItemTitle}
+                      onChangeText={setNewCycleItemTitle}
+                      placeholder="Item title"
+                      placeholderTextColor={colors.textTertiary}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        const t = newCycleItemTitle.trim();
+                        if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                        setNewCycleItemTitle('');
+                        setAddingCycleItem(false);
+                      }}
+                      onBlur={() => {
+                        const t = newCycleItemTitle.trim();
+                        if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                        setNewCycleItemTitle('');
+                        setAddingCycleItem(false);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.addCycleItemBtn}
+                    onPress={() => setAddingCycleItem(true)}
+                  >
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addCycleItemText}>Add item</Text>
+                  </TouchableOpacity>
+                )}
+                {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
+                  <Text style={styles.cycleCurrentHint}>
+                    Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
+                  </Text>
+                )}
+              </>
+            )}
+          </View>
 
           {/* Options */}
           <View style={styles.optionsCard}>
@@ -706,6 +813,63 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   addSubtaskText: { color: colors.accent, fontSize: font.sm },
+  cycleHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  cycleToggle: {
+    width: 42, height: 25, borderRadius: 13,
+    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
+  },
+  cycleToggleOn: { backgroundColor: colors.accent },
+  cycleToggleKnob: {
+    width: 19, height: 19, borderRadius: 10,
+    backgroundColor: colors.textSecondary,
+  },
+  cycleToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
+  cycleHint: {
+    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
+  },
+  cycleItemRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  cycleItemIndexBtn: { padding: 2 },
+  cycleItemDot: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center', justifyContent: 'center',
+    flexShrink: 0,
+  },
+  cycleItemDotActive: { backgroundColor: colors.accent },
+  cycleItemDotText: {
+    color: colors.textSecondary, fontSize: 11, fontWeight: '700',
+  },
+  cycleItemDotTextActive: { color: colors.bg },
+  cycleItemTitle: {
+    flex: 1, color: colors.text, fontSize: font.md,
+  },
+  cycleItemTitleActive: { color: colors.accent, fontWeight: '600' },
+  cycleItemDelete: { padding: 4 },
+  cycleInputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+  },
+  cycleInput: {
+    flex: 1, color: colors.text, fontSize: font.md,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 2,
+  },
+  addCycleItemBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.sm,
+  },
+  addCycleItemText: { color: colors.accent, fontSize: font.sm },
+  cycleCurrentHint: {
+    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
+    marginTop: spacing.xs,
+  },
   pickerSheet: {
     backgroundColor: colors.bgSecondary,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,

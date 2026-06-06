@@ -80,6 +80,11 @@ export function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const effortLabel = task.effort > 0 ? EFFORT_LABELS[task.effort] : null;
 
+  const activeCycleItem =
+    task.cycleEnabled && task.cycleItems.length > 0
+      ? task.cycleItems[task.cycleIndex % task.cycleItems.length]
+      : null;
+
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
 
@@ -154,6 +159,11 @@ export function TaskItem({
 
             <TouchableOpacity style={styles.content} onPress={onPress} activeOpacity={0.7}>
               <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+              {activeCycleItem && (
+                <Text style={styles.cycleSubtitle} numberOfLines={1}>
+                  {activeCycleItem.title}
+                </Text>
+              )}
 
               <View style={styles.meta}>
                 {task.tags.slice(0, 3).map(tag => (
@@ -179,6 +189,14 @@ export function TaskItem({
                   <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
                     {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
                   </Text>
+                )}
+                {activeCycleItem && task.cycleItems.length > 1 && (
+                  <View style={styles.cycleBadge}>
+                    <Ionicons name="sync" size={9} color={colors.accent} />
+                    <Text style={styles.cycleBadgeText}>
+                      {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}
+                    </Text>
+                  </View>
                 )}
                 {subtaskCount > 0 && (
                   <View style={[
@@ -262,6 +280,29 @@ export function TaskItem({
                 {task.streakCount > 0 && (
                   <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
                 )}
+              </View>
+            )}
+
+            {activeCycleItem && task.cycleItems.length > 0 && (
+              <View style={[
+                styles.recurrenceRow,
+                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+              ]}>
+                <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                <Text style={styles.expandMeta}>
+                  Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
+                </Text>
+                {task.cycleItems.map((item, i) => (
+                  <Text
+                    key={item.id}
+                    style={[
+                      styles.expandMeta,
+                      i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
+                    ]}
+                  >
+                    {i > 0 ? ' → ' : ' '}{item.title}
+                  </Text>
+                ))}
               </View>
             )}
 
@@ -493,6 +534,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   expandMeta: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  expandMetaActive: {
+    color: colors.accent,
+    fontWeight: '600',
+  },
+  cycleSubtitle: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: '500',
+  },
+  cycleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.accent + '22',
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  cycleBadgeText: {
+    color: colors.accent,
+    fontSize: 11,
+    fontWeight: '600',
   },
   editSection: {
     paddingTop: spacing.sm,
