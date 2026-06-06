@@ -26,6 +26,7 @@ interface Props {
   visible: boolean;
   task?: Task | null;
   initialSomeday?: boolean;
+  initialTitle?: string;
   onClose: () => void;
 }
 
@@ -39,7 +40,7 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, initialSomeday, onClose }: Props) {
+export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const addSubtask = useTaskStore(s => s.addSubtask);
@@ -88,7 +89,7 @@ export function TaskEditor({ visible, task, initialSomeday, onClose }: Props) {
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
       setSomeday(task.someday);
     } else {
-      setTitle(''); setNotes(''); setTags([]);
+      setTitle(initialTitle ?? ''); setNotes(''); setTags([]);
       setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
