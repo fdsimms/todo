@@ -13,6 +13,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { colors, spacing, font, radius } from '../theme';
 import type { Task } from '../types';
 
@@ -22,9 +23,10 @@ export function SomedayScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const initialize = useTaskStore(s => s.initialize);
 
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [newTaskSomeday, setNewTaskSomeday] = useState(false);
+  const [editorInitialTitle, setEditorInitialTitle] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
   const handleRefresh = useCallback(() => {
@@ -35,7 +37,14 @@ export function SomedayScreen() {
 
   const openEditor = (task?: Task) => {
     setEditingTask(task ?? null);
-    setNewTaskSomeday(!task);
+    setEditorInitialTitle('');
+    setEditorVisible(true);
+  };
+
+  const handleQuickAddOpenFull = (title: string) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialTitle(title);
     setEditorVisible(true);
   };
 
@@ -83,16 +92,24 @@ export function SomedayScreen() {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
-        onPress={() => openEditor()}
+        onPress={() => setQuickAddVisible(true)}
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={28} color={colors.text} />
       </TouchableOpacity>
 
+      <QuickAddModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={handleQuickAddOpenFull}
+        initialSomeday
+      />
+
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
-        initialSomeday={newTaskSomeday}
+        initialSomeday={!editingTask}
+        initialTitle={editorInitialTitle}
         onClose={() => setEditorVisible(false)}
       />
     </View>

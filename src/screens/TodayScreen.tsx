@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { TagFilterBar } from '../components/TagFilterBar';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -34,8 +35,10 @@ export function TodayScreen() {
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [groupByTag, setGroupByTag] = useState(false);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editorInitialTitle, setEditorInitialTitle] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
@@ -56,6 +59,14 @@ export function TodayScreen() {
 
   const openEditor = (task?: Task) => {
     setEditingTask(task ?? null);
+    setEditorInitialTitle('');
+    setEditorVisible(true);
+  };
+
+  const handleQuickAddOpenFull = (title: string) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialTitle(title);
     setEditorVisible(true);
   };
 
@@ -240,13 +251,24 @@ export function TodayScreen() {
 
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
-        onPress={() => openEditor()}
+        onPress={() => setQuickAddVisible(true)}
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={28} color={colors.text} />
       </TouchableOpacity>
 
-      <TaskEditor visible={editorVisible} task={editingTask} onClose={() => setEditorVisible(false)} />
+      <QuickAddModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={handleQuickAddOpenFull}
+      />
+
+      <TaskEditor
+        visible={editorVisible}
+        task={editingTask}
+        initialTitle={editorInitialTitle}
+        onClose={() => setEditorVisible(false)}
+      />
 
       <SortFilterSheet
         visible={filterVisible}
