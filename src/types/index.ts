@@ -19,6 +19,7 @@ export interface Task {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceEndDate: string | null;
+  recurrenceFromCompletion: boolean;
 
   tags: string[];
   sortOrder: number;

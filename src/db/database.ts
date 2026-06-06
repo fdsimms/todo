@@ -21,6 +21,7 @@ export function initDatabase(): void {
       recurrence_interval INTEGER NOT NULL DEFAULT 1,
       recurrence_days TEXT NOT NULL DEFAULT '[]',
       recurrence_end_date TEXT,
+      recurrence_from_completion INTEGER NOT NULL DEFAULT 0,
       tags TEXT NOT NULL DEFAULT '[]',
       sort_order REAL NOT NULL DEFAULT 0,
       focused INTEGER NOT NULL DEFAULT 0,
@@ -43,6 +44,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN effort INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN streak_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN streak_date TEXT',
+    'ALTER TABLE tasks ADD COLUMN recurrence_from_completion INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -76,6 +78,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
+    recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     sortOrder: row.sort_order as number,
     focused: Boolean(row.focused),
@@ -98,14 +101,15 @@ export function dbInsertTask(task: Task): void {
     `INSERT INTO tasks (
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, show_after_time,
-      recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date,
+      recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
       tags, sort_order, focused, priority, effort, streak_count, streak_date
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
       task.showAfterTime, task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
+      task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate,
@@ -118,7 +122,7 @@ export function dbUpdateTask(task: Task): void {
     `UPDATE tasks SET
       title=?, notes=?, completed=?, completed_at=?,
       due_date=?, defer_until=?, show_after_time=?,
-      recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?,
+      recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?
     WHERE id=?`,
@@ -127,6 +131,7 @@ export function dbUpdateTask(task: Task): void {
       task.dueDate, task.deferUntil, task.showAfterTime,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
+      task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate,

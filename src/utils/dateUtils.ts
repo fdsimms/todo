@@ -68,7 +68,12 @@ export function formatGroupHeader(iso: string): string {
 }
 
 export function getNextDueDate(task: Task, dayResetTime?: string): Date {
-  const base = getDayStart(new Date(), dayResetTime);
+  // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
+  // After completion: anchor to today (the completion day) so it's always relative to when you finished.
+  const base =
+    !task.recurrenceFromCompletion && task.dueDate
+      ? getDayStart(new Date(task.dueDate), dayResetTime)
+      : getDayStart(new Date(), dayResetTime);
   switch (task.recurrenceType) {
     case 'daily':
       return addDays(base, task.recurrenceInterval);

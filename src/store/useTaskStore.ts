@@ -60,6 +60,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: draft.recurrenceInterval ?? 1,
       recurrenceDays: draft.recurrenceDays ?? [],
       recurrenceEndDate: draft.recurrenceEndDate ?? null,
+      recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
       tags: draft.tags ?? [],
       sortOrder: maxOrder + 1,
       focused: draft.focused ?? false,
