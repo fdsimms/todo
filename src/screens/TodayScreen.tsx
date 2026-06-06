@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { TagFilterBar } from '../components/TagFilterBar';
 import { SortFilterSheet } from '../components/SortFilterSheet';
-import { colors, spacing, font, radius } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, radius, type Colors } from '../theme';
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
@@ -25,6 +26,8 @@ export function TodayScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(s => s.allTags());
   const initialize = useTaskStore(s => s.initialize);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [groupByTag, setGroupByTag] = useState(false);
@@ -223,7 +226,7 @@ export function TodayScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',

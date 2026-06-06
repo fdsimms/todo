@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -11,17 +11,28 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
+import type { ThemeMode } from '../theme';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
 }
 
+const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
+  { mode: 'light', label: 'Light', icon: 'sunny' },
+  { mode: 'dark', label: 'Dark', icon: 'moon' },
+  { mode: 'system', label: 'System', icon: 'phone-portrait' },
+];
+
 export function SettingsScreen({ visible, onClose }: Props) {
-  const { dayResetTime, setDayResetTime } = useSettingsStore();
+  const { dayResetTime, setDayResetTime, themeMode, setThemeMode } = useSettingsStore();
   const [showPicker, setShowPicker] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useEffect(() => {
     if (visible) {
@@ -63,6 +74,39 @@ export function SettingsScreen({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
+        {/* Appearance */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Appearance</Text>
+          <View style={styles.card}>
+            <View style={styles.themeRow}>
+              {THEME_OPTIONS.map(opt => (
+                <TouchableOpacity
+                  key={opt.mode}
+                  style={[
+                    styles.themeBtn,
+                    themeMode === opt.mode && styles.themeBtnActive,
+                  ]}
+                  onPress={() => setThemeMode(opt.mode)}
+                >
+                  <Ionicons
+                    name={opt.icon as never}
+                    size={18}
+                    color={themeMode === opt.mode ? colors.accent : colors.textSecondary}
+                  />
+                  <Text
+                    style={[
+                      styles.themeBtnText,
+                      themeMode === opt.mode && styles.themeBtnTextActive,
+                    ]}
+                  >
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
         {/* Day reset time */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Day reset</Text>
@@ -89,7 +133,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
                   mode="time"
                   display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                   onChange={(_e, d) => d && setPickerDate(d)}
-                  themeVariant="dark"
+                  themeVariant={isDark ? 'dark' : 'light'}
                   style={styles.picker}
                 />
                 <View style={styles.pickerButtons}>
@@ -118,7 +162,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -136,6 +180,23 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
+  },
+  themeRow: {
+    flexDirection: 'row', padding: spacing.sm, gap: spacing.sm,
+  },
+  themeBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
+  },
+  themeBtnActive: {
+    backgroundColor: colors.accent + '22',
+  },
+  themeBtnText: {
+    color: colors.textSecondary, fontSize: font.sm, fontWeight: '500',
+  },
+  themeBtnTextActive: {
+    color: colors.accent, fontWeight: '600',
   },
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,

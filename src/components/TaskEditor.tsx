@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -9,14 +9,14 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
@@ -45,6 +45,9 @@ export function TaskEditor({ visible, task, onClose }: Props) {
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(s => s.allTags());
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -373,6 +376,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
               onPress={() => openPicker('dueDate')}
               onClear={dueDate ? () => setDueDate(null) : undefined}
+              colors={colors}
+              styles={styles}
             />
             <View style={styles.sep} />
             <OptionRow
@@ -382,6 +387,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               value={showAfterTime ? formatShowAfterTime(showAfterTime) : undefined}
               onPress={() => openPicker('showAfterTime')}
               onClear={showAfterTime ? () => setShowAfterTime(null) : undefined}
+              colors={colors}
+              styles={styles}
             />
             <View style={styles.sep} />
             <OptionRow
@@ -391,6 +398,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               value={deferUntil ? format(deferUntil, "MMM d 'at' h:mm a") : undefined}
               onPress={() => openPicker('deferUntil')}
               onClear={deferUntil ? () => setDeferUntil(null) : undefined}
+              colors={colors}
+              styles={styles}
             />
             <View style={styles.sep} />
             <OptionRow
@@ -400,6 +409,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               value={reminderTime ? format(reminderTime, "MMM d 'at' h:mm a") : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => setReminderTime(null) : undefined}
+              colors={colors}
+              styles={styles}
             />
             <View style={styles.sep} />
             <OptionRow
@@ -408,6 +419,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               value={recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : undefined}
               onPress={cycleRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
+              colors={colors}
+              styles={styles}
             />
             {recurrenceType !== 'none' && (
               <>
@@ -487,7 +500,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               mode={pickerMode === 'showAfterTime' ? 'time' : 'datetime'}
               display="spinner"
               onChange={(_e, d) => d && setPickerDate(d)}
-              themeVariant="dark"
+              themeVariant={isDark ? 'dark' : 'light'}
               style={styles.picker}
             />
           </View>
@@ -498,10 +511,11 @@ export function TaskEditor({ visible, task, onClose }: Props) {
 }
 
 function OptionRow({
-  icon, label, value, hint, onPress, onClear,
+  icon, label, value, hint, onPress, onClear, colors, styles,
 }: {
   icon: string; label: string; value?: string; hint?: string;
   onPress: () => void; onClear?: () => void;
+  colors: Colors; styles: ReturnType<typeof makeStyles>;
 }) {
   return (
     <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={0.7}>
@@ -526,7 +540,7 @@ function OptionRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -633,7 +647,7 @@ const styles = StyleSheet.create({
   toggleOn: { backgroundColor: colors.orange },
   toggleKnob: {
     width: 21, height: 21, borderRadius: 11,
-    backgroundColor: '#8E8E93',
+    backgroundColor: colors.textSecondary,
   },
   toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
   subtaskHeader: {

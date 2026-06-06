@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Modal,
   View,
@@ -10,7 +10,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 
 interface Props {
   visible: boolean;
@@ -39,6 +40,9 @@ function toggle<T>(arr: T[], item: T): T[] {
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
 }: Props) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const activeCount =
     (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length;
 
@@ -149,7 +153,7 @@ export function SortFilterSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
   sheet: {
     backgroundColor: colors.bgSecondary,

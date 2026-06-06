@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { FocusSelector } from '../components/FocusSelector';
-import { colors, spacing, font, radius } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, radius, type Colors } from '../theme';
 import type { Task } from '../types';
 
 export function FocusScreen() {
@@ -20,6 +21,8 @@ export function FocusScreen() {
   const focusedTasks = useTaskStore(s => s.focusedTasks());
   const allTasks = useTaskStore(s => s.tasks);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -102,7 +105,7 @@ export function FocusScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',

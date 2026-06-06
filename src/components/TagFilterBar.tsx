@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   ScrollView,
   TouchableOpacity,
@@ -6,7 +6,8 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 
 interface Props {
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export function TagFilterBar({ tags, selected, onSelect }: Props) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   if (tags.length === 0) return null;
 
   return (
@@ -24,7 +28,7 @@ export function TagFilterBar({ tags, selected, onSelect }: Props) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      <Chip label="All" active={selected === null} color={colors.accent} onPress={() => onSelect(null)} />
+      <Chip label="All" active={selected === null} color={colors.accent} onPress={() => onSelect(null)} styles={styles} />
       {tags.map(tag => (
         <Chip
           key={tag}
@@ -32,6 +36,7 @@ export function TagFilterBar({ tags, selected, onSelect }: Props) {
           active={selected === tag}
           color={tagColor(tag)}
           onPress={() => onSelect(selected === tag ? null : tag)}
+          styles={styles}
         />
       ))}
     </ScrollView>
@@ -43,11 +48,13 @@ function Chip({
   active,
   color,
   onPress,
+  styles,
 }: {
   label: string;
   active: boolean;
   color: string;
   onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
 }) {
   return (
     <TouchableOpacity
@@ -61,7 +68,7 @@ function Chip({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     paddingHorizontal: spacing.md,

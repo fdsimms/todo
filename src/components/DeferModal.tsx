@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { addHours, setHours, setMinutes, addDays, startOfDay } from 'date-fns';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 
 interface Props {
   visible: boolean;
@@ -41,6 +42,10 @@ function quickOptions(): { label: string; date: Date }[] {
 }
 
 export function DeferModal({ visible, onConfirm, onCancel }: Props) {
+  const colors = useColors();
+  const { isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
   const [mode, setMode] = useState<'quick' | 'custom'>('quick');
   const [customDate, setCustomDate] = useState(addHours(new Date(), 2));
 
@@ -83,7 +88,7 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
               mode="datetime"
               display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={(_e, date) => date && setCustomDate(date)}
-              themeVariant="dark"
+              themeVariant={isDark ? 'dark' : 'light'}
               style={styles.picker}
             />
             <View style={styles.customButtons}>
@@ -108,7 +113,7 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

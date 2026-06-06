@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,8 @@ import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
@@ -29,6 +30,8 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [showDeferModal, setShowDeferModal] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -193,7 +196,7 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
     marginVertical: 3,
@@ -232,7 +235,7 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#545458',
+    borderColor: colors.bgQuaternary,
   },
   circleCompleting: {
     backgroundColor: colors.green,

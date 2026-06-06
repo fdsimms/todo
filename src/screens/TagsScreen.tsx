@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
-import { colors, spacing, font, radius } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, radius, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
 
@@ -20,6 +21,8 @@ export function TagsScreen() {
   const insets = useSafeAreaInsets();
   const allTags = useTaskStore(s => s.allTags());
   const tasksByTag = useTaskStore(s => s.tasksByTag);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -118,7 +121,7 @@ export function TagsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

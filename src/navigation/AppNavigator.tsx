@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,29 +8,31 @@ import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { useTaskStore } from '../store/useTaskStore';
-import { colors, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { font } from '../theme';
 
 const Tab = createBottomTabNavigator();
 
 export default function AppNavigator() {
   const focusedCount = useTaskStore(s => s.focusedTasks().length);
+  const colors = useColors();
+
+  const screenOptions = useMemo(() => ({
+    headerShown: false,
+    tabBarStyle: {
+      backgroundColor: colors.bgSecondary,
+      borderTopColor: colors.separator,
+      borderTopWidth: 0.5,
+    },
+    tabBarActiveTintColor: colors.accent,
+    tabBarInactiveTintColor: colors.textTertiary,
+    tabBarLabelStyle: { fontSize: font.xs, fontWeight: '600' as const, letterSpacing: 0.2 },
+    tabBarItemStyle: { paddingVertical: 3 },
+  }), [colors]);
 
   return (
     <NavigationContainer>
-      <Tab.Navigator
-        screenOptions={{
-          headerShown: false,
-          tabBarStyle: {
-            backgroundColor: colors.bgSecondary,
-            borderTopColor: colors.separator,
-            borderTopWidth: 0.5,
-          },
-          tabBarActiveTintColor: colors.accent,
-          tabBarInactiveTintColor: colors.textTertiary,
-          tabBarLabelStyle: { fontSize: font.xs, fontWeight: '600', letterSpacing: 0.2 },
-          tabBarItemStyle: { paddingVertical: 3 },
-        }}
-      >
+      <Tab.Navigator screenOptions={screenOptions}>
         <Tab.Screen
           name="Today"
           options={{

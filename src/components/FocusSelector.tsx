@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -9,7 +9,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
-import { colors, spacing, radius, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 
@@ -22,6 +23,8 @@ export function FocusSelector({ visible, onClose }: Props) {
   const visibleTasks = useTaskStore(s => s.visibleTasks());
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   // Local selection mirrors the store so changes are instant
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -88,6 +91,8 @@ export function FocusSelector({ visible, onClose }: Props) {
               task={item}
               selected={selected.has(item.id)}
               onToggle={() => toggle(item.id)}
+              colors={colors}
+              styles={styles}
             />
           )}
           ListEmptyComponent={
@@ -108,8 +113,14 @@ export function FocusSelector({ visible, onClose }: Props) {
 }
 
 function TaskSelectRow({
-  task, selected, onToggle,
-}: { task: Task; selected: boolean; onToggle: () => void }) {
+  task, selected, onToggle, colors, styles,
+}: {
+  task: Task;
+  selected: boolean;
+  onToggle: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
   return (
     <TouchableOpacity
       style={[styles.row, selected && styles.rowSelected]}
@@ -134,7 +145,7 @@ function TaskSelectRow({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
