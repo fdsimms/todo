@@ -67,28 +67,36 @@ export function formatGroupHeader(iso: string): string {
   return format(d, 'MMMM d');
 }
 
-export function getNextDueDate(task: Task, dayResetTime?: string): Date {
+export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
   const base =
     !task.recurrenceFromCompletion && task.dueDate
       ? getDayStart(new Date(task.dueDate), dayResetTime)
       : getDayStart(new Date(), dayResetTime);
+  let next: Date;
   switch (task.recurrenceType) {
     case 'daily':
-      return addDays(base, task.recurrenceInterval);
+      next = addDays(base, task.recurrenceInterval);
+      break;
     case 'weekly':
-      if (task.recurrenceDays.length > 0) {
-        return getNextWeekdayOccurrence(task.recurrenceDays, base);
-      }
-      return addWeeks(base, task.recurrenceInterval);
+      next = task.recurrenceDays.length > 0
+        ? getNextWeekdayOccurrence(task.recurrenceDays, base)
+        : addWeeks(base, task.recurrenceInterval);
+      break;
     case 'monthly':
-      return addMonths(base, task.recurrenceInterval);
+      next = addMonths(base, task.recurrenceInterval);
+      break;
     case 'yearly':
-      return addYears(base, task.recurrenceInterval);
+      next = addYears(base, task.recurrenceInterval);
+      break;
     default:
-      return addDays(base, 1);
+      next = addDays(base, 1);
   }
+  if (task.recurrenceEndDate && next > new Date(task.recurrenceEndDate)) {
+    return null;
+  }
+  return next;
 }
 
 function getNextWeekdayOccurrence(days: number[], from: Date): Date {

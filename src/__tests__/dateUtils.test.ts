@@ -192,7 +192,7 @@ describe('getNextDueDate', () => {
 
   it('daily interval=1 adds 1 day from today\'s logical start', () => {
     const task: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1 };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     const expected = new Date(2025, 5, 11, 0, 0, 0);
     expect(result.getFullYear()).toBe(expected.getFullYear());
     expect(result.getMonth()).toBe(expected.getMonth());
@@ -201,13 +201,13 @@ describe('getNextDueDate', () => {
 
   it('daily interval=3 adds 3 days', () => {
     const task: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 3 };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getDate()).toBe(13);
   });
 
   it('weekly without specific days adds N weeks', () => {
     const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 2 };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     const expected = new Date(2025, 5, 24, 0, 0, 0); // June 10 + 14 days
     expect(result.getDate()).toBe(expected.getDate());
     expect(result.getMonth()).toBe(expected.getMonth());
@@ -215,14 +215,14 @@ describe('getNextDueDate', () => {
 
   it('monthly interval=1 adds 1 month', () => {
     const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1 };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getMonth()).toBe(6); // July
     expect(result.getDate()).toBe(10);
   });
 
   it('yearly interval=1 adds 1 year', () => {
     const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1 };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getFullYear()).toBe(2026);
     expect(result.getMonth()).toBe(5);
     expect(result.getDate()).toBe(10);
@@ -237,7 +237,7 @@ describe('getNextDueDate', () => {
       recurrenceInterval: 1,
       recurrenceDays: [4],
     };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getDate()).toBe(12); // Thursday June 12
     expect(result.getDay()).toBe(4);
   });
@@ -251,7 +251,7 @@ describe('getNextDueDate', () => {
       recurrenceInterval: 1,
       recurrenceDays: [1],
     };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getDate()).toBe(16); // Monday June 16
     expect(result.getDay()).toBe(1);
   });
@@ -265,7 +265,7 @@ describe('getNextDueDate', () => {
       recurrenceInterval: 1,
       recurrenceDays: [2, 5],
     };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getDate()).toBe(13); // Friday June 13
     expect(result.getDay()).toBe(5);
   });
@@ -273,8 +273,43 @@ describe('getNextDueDate', () => {
   it('falls back to +1 day for unknown recurrence type', () => {
     // @ts-expect-error — testing the default branch
     const task: Task = { ...baseTask, recurrenceType: 'unknown' };
-    const result = getNextDueDate(task, '00:00');
+    const result = getNextDueDate(task, '00:00')!;
     expect(result.getDate()).toBe(11);
+  });
+
+  it('returns null when next date is after recurrenceEndDate', () => {
+    // NOW is June 10 2025. Next daily occurrence = June 11. End date = June 10 → null.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceEndDate: new Date(2025, 5, 10, 23, 59, 59).toISOString(),
+    };
+    expect(getNextDueDate(task, '00:00')).toBeNull();
+  });
+
+  it('returns a date when next date is on the same day as recurrenceEndDate', () => {
+    // Next occurrence is June 11; end date is end of June 11 → still valid.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceEndDate: new Date(2025, 5, 11, 23, 59, 59).toISOString(),
+    };
+    expect(getNextDueDate(task, '00:00')).not.toBeNull();
+  });
+
+  it('returns null when weekly next date exceeds recurrenceEndDate', () => {
+    // NOW is Tuesday June 10. Weekly recurrenceDays=[4] → next = June 12 (Thu).
+    // End date = June 11 → next (June 12) is after end date → null.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      recurrenceDays: [4],
+      recurrenceEndDate: new Date(2025, 5, 11, 23, 59, 59).toISOString(),
+    };
+    expect(getNextDueDate(task, '00:00')).toBeNull();
   });
 });
 

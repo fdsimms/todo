@@ -162,33 +162,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     let nextTask: Task | null = null;
     if (task.recurrenceType !== 'none') {
       const nextDue = getNextDueDate(task, dayResetTime);
-      let nextReminderTime: string | null = null;
-      if (task.reminderTime) {
-        const original = new Date(task.reminderTime);
-        const next = new Date(nextDue);
-        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-        nextReminderTime = next.toISOString();
+      if (nextDue !== null) {
+        let nextReminderTime: string | null = null;
+        if (task.reminderTime) {
+          const original = new Date(task.reminderTime);
+          const next = new Date(nextDue);
+          next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+          nextReminderTime = next.toISOString();
+        }
+        const nextCycleIndex =
+          task.cycleEnabled && task.cycleItems.length > 0
+            ? (task.cycleIndex + 1) % task.cycleItems.length
+            : task.cycleIndex;
+        nextTask = {
+          ...task,
+          id: generateId(),
+          completed: false,
+          completedAt: null,
+          createdAt: now.toISOString(),
+          dueDate: nextDue.toISOString(),
+          deferUntil: null,
+          focused: false, // focus resets on new occurrence
+          streakCount: newStreakCount,
+          streakDate: getCurrentDayStart().toISOString(),
+          reminderTime: nextReminderTime,
+          cycleIndex: nextCycleIndex,
+        };
+        dbInsertTask(nextTask);
+        scheduleTaskReminder(nextTask);
       }
-      const nextCycleIndex =
-        task.cycleEnabled && task.cycleItems.length > 0
-          ? (task.cycleIndex + 1) % task.cycleItems.length
-          : task.cycleIndex;
-      nextTask = {
-        ...task,
-        id: generateId(),
-        completed: false,
-        completedAt: null,
-        createdAt: now.toISOString(),
-        dueDate: nextDue.toISOString(),
-        deferUntil: null,
-        focused: false, // focus resets on new occurrence
-        streakCount: newStreakCount,
-        streakDate: getCurrentDayStart().toISOString(),
-        reminderTime: nextReminderTime,
-        cycleIndex: nextCycleIndex,
-      };
-      dbInsertTask(nextTask);
-      scheduleTaskReminder(nextTask);
     }
 
     set(s => ({
