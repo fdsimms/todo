@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
+import { requestNotificationPermissions } from './src/utils/notifications';
 
 export default function App() {
   const initTasks = useTaskStore(s => s.initialize);
@@ -15,6 +16,8 @@ export default function App() {
     initTasks();
     // Then load settings from the now-initialized DB
     initSettings();
+    // Request notification permissions
+    requestNotificationPermissions();
   }, [initTasks, initSettings]);
 
   return (

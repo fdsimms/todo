@@ -28,6 +28,9 @@ const baseTask: Task = {
   effort: 0,
   streakCount: 0,
   streakDate: null,
+  recurrenceFromCompletion: false,
+  reminderTime: null,
+  parentId: null,
 };
 
 // June 10, 2025 at 10:00 AM

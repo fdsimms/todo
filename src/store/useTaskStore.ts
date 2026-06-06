@@ -14,6 +14,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred } from '../utils/visibilityUtils';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface TaskStore {
   tasks: Task[];
@@ -46,7 +47,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   initialize() {
     initDatabase();
-    set({ tasks: dbGetAllTasks(), initialized: true });
+    const tasks = dbGetAllTasks();
+    set({ tasks, initialized: true });
+    rescheduleAllReminders(tasks);
   },
 
   addTask(draft) {
@@ -75,9 +78,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakCount: 0,
       streakDate: null,
       parentId: draft.parentId ?? null,
+      reminderTime: draft.reminderTime ?? null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
+    scheduleTaskReminder(task);
     return task;
   },
 
@@ -86,6 +91,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (t.id !== id) return t;
       const updated = { ...t, ...updates };
       dbUpdateTask(updated);
+      cancelTaskReminder(id);
+      scheduleTaskReminder(updated);
       return updated;
     });
     set({ tasks });
@@ -94,6 +101,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteTask(id) {
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
+    cancelTaskReminder(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
   },
 
@@ -130,9 +138,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbUpdateTask(completed);
 
+    cancelTaskReminder(id);
+
     let nextTask: Task | null = null;
     if (task.recurrenceType !== 'none') {
       const nextDue = getNextDueDate(task, dayResetTime);
+      let nextReminderTime: string | null = null;
+      if (task.reminderTime) {
+        const original = new Date(task.reminderTime);
+        const next = new Date(nextDue);
+        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        nextReminderTime = next.toISOString();
+      }
       nextTask = {
         ...task,
         id: generateId(),
@@ -144,8 +161,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         focused: false, // focus resets on new occurrence
         streakCount: newStreakCount,
         streakDate: getCurrentDayStart().toISOString(),
+        reminderTime: nextReminderTime,
       };
       dbInsertTask(nextTask);
+      scheduleTaskReminder(nextTask);
     }
 
     set(s => ({
@@ -200,6 +219,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakCount: 0,
       streakDate: null,
       parentId,
+      reminderTime: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));

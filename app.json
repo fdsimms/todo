@@ -21,7 +21,13 @@
       "package": "com.personal.todo"
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "iosDisplayInForeground": true
+        }
+      ]
     ]
   }
 }
