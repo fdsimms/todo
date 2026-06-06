@@ -9,6 +9,7 @@ import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SomedayScreen } from '../screens/SomedayScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
+import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { font } from '../theme';
@@ -64,6 +65,13 @@ export default function AppNavigator() {
             tabBarIcon: ({ color, size }) => <Ionicons name="moon" size={size} color={color} />,
           }}
           component={SomedayScreen}
+        />
+        <Tab.Screen
+          name="Projects"
+          options={{
+            tabBarIcon: ({ color, size }) => <Ionicons name="folder" size={size} color={color} />,
+          }}
+          component={ProjectsScreen}
         />
         <Tab.Screen
           name="Tags"

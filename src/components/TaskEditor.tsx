@@ -19,6 +19,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
@@ -50,6 +51,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allProjects = useProjectStore(useShallow(s => s.projects));
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -83,6 +85,9 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [newCycleItemTitle, setNewCycleItemTitle] = useState('');
   const [addingCycleItem, setAddingCycleItem] = useState(false);
 
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [projectPickerVisible, setProjectPickerVisible] = useState(false);
+
   const titleRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -99,6 +104,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setSomeday(task.someday);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
+      setProjectId(task.projectId ?? null);
     } else {
       setTitle(initialTitle ?? ''); setNotes(''); setTags([]);
       setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
@@ -106,10 +112,12 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setPriority(0); setEffort(0); setFocused(false);
       setSomeday(initialSomeday ?? false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
+      setProjectId(null);
     }
     setPickerMode('none'); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
+    setProjectPickerVisible(false);
     setTimeout(() => titleRef.current?.focus(), 100);
   }, [visible, task]);
 
@@ -129,6 +137,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       cycleEnabled: cycleEnabled && cycleItems.length > 0,
       cycleItems,
       cycleIndex,
+      projectId,
     };
     if (task) { updateTask(task.id, data); }
     else { addTask(data); }
@@ -613,6 +622,42 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                 <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            {allProjects.length > 0 && (
+              <>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => setProjectPickerVisible(true)}
+                  activeOpacity={0.7}
+                >
+                  {(() => {
+                    const proj = allProjects.find(p => p.id === projectId);
+                    return (
+                      <>
+                        <Ionicons
+                          name="folder"
+                          size={18}
+                          color={proj ? proj.color : colors.textSecondary}
+                        />
+                        <View style={styles.optionContent}>
+                          <Text style={styles.optionLabel}>Project</Text>
+                        </View>
+                        {proj ? (
+                          <View style={styles.optionValueRow}>
+                            <Text style={[styles.optionValue, { color: proj.color }]}>{proj.name}</Text>
+                            <TouchableOpacity onPress={() => setProjectId(null)} hitSlop={8}>
+                              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                        )}
+                      </>
+                    );
+                  })()}
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </ScrollView>
 
@@ -656,6 +701,41 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           </View>
         )}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={projectPickerVisible}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setProjectPickerVisible(false)}
+      >
+        <View style={[styles.projectPickerRoot, { paddingTop: 20 }]}>
+          <View style={styles.projectPickerHeader}>
+            <Text style={styles.projectPickerTitle}>Project</Text>
+            <TouchableOpacity onPress={() => setProjectPickerVisible(false)} hitSlop={8}>
+              <Ionicons name="close" size={22} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+          <TouchableOpacity
+            style={styles.projectPickerItem}
+            onPress={() => { setProjectId(null); setProjectPickerVisible(false); }}
+          >
+            <Ionicons name="folder-outline" size={20} color={colors.textTertiary} />
+            <Text style={styles.projectPickerItemText}>No Project</Text>
+            {projectId === null && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+          </TouchableOpacity>
+          {allProjects.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={styles.projectPickerItem}
+              onPress={() => { setProjectId(p.id); setProjectPickerVisible(false); }}
+            >
+              <Ionicons name="folder" size={20} color={p.color} />
+              <Text style={[styles.projectPickerItemText, { flex: 1 }]}>{p.name}</Text>
+              {projectId === p.id && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -914,4 +994,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginBottom: spacing.xs,
   },
+  projectPickerRoot: { flex: 1, backgroundColor: colors.bg },
+  projectPickerHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  projectPickerTitle: { color: colors.text, fontSize: font.lg, fontWeight: '600' },
+  projectPickerItem: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  projectPickerItemText: { color: colors.text, fontSize: font.md },
 });

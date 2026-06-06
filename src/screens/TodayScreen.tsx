@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
@@ -15,6 +16,7 @@ import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { TaskItem } from '../components/TaskItem';
@@ -32,6 +34,7 @@ export function TodayScreen() {
   const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allProjects = useProjectStore(useShallow(s => s.projects));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
@@ -44,6 +47,7 @@ export function TodayScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [groupByTag, setGroupByTag] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -110,6 +114,7 @@ export function TodayScreen() {
 
   const applyFiltersAndSort = (tasks: Task[]): Task[] => {
     let result = tasks;
+    if (selectedProject) result = result.filter(t => t.projectId === selectedProject);
     if (selectedTag) result = result.filter(t => t.tags.includes(selectedTag));
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
@@ -133,7 +138,7 @@ export function TodayScreen() {
   const overdueTasks = filtered.filter(isTaskOverdue);
   const todayTasks = filtered.filter(t => !isTaskOverdue(t));
   const suggestions = somedayTasks.slice(0, 3);
-  const showSomeday = activeFilterCount === 0 && !selectedTag && suggestions.length > 0;
+  const showSomeday = activeFilterCount === 0 && !selectedTag && !selectedProject && suggestions.length > 0;
 
   type ListItem =
     | { type: 'header'; label: string; isOverdue?: boolean }
@@ -326,6 +331,36 @@ export function TodayScreen() {
         </View>
       </View>
 
+      {allProjects.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.projectFilterBar}
+        >
+          <TouchableOpacity
+            style={[styles.projectChip, selectedProject === null && styles.projectChipActive]}
+            onPress={() => setSelectedProject(null)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.projectChipText, selectedProject === null && styles.projectChipTextActive]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          {allProjects.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={[styles.projectChip, selectedProject === p.id && { backgroundColor: p.color }]}
+              onPress={() => setSelectedProject(prev => prev === p.id ? null : p.id)}
+              activeOpacity={0.7}
+            >
+              {selectedProject !== p.id && <View style={[styles.projectChipDot, { backgroundColor: p.color }]} />}
+              <Text style={[styles.projectChipText, selectedProject === p.id && styles.projectChipTextActive]}>
+                {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
       <TagFilterBar tags={allTags} selected={selectedTag} onSelect={setSelectedTag} />
 
       {isDragMode ? (
@@ -504,4 +539,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
+  projectFilterBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.sm,
+  },
+  projectChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: spacing.md, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  projectChipActive: { backgroundColor: colors.accent },
+  projectChipDot: { width: 6, height: 6, borderRadius: 3 },
+  projectChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  projectChipTextActive: { color: colors.text, fontWeight: '700', letterSpacing: 0.1 },
 });
