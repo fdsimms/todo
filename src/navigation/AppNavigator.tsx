@@ -8,6 +8,7 @@ import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SomedayScreen } from '../screens/SomedayScreen';
+import { LogbookScreen } from '../screens/LogbookScreen';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { font } from '../theme';
@@ -77,6 +78,13 @@ export default function AppNavigator() {
             tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
           }}
           component={SearchScreen}
+        />
+        <Tab.Screen
+          name="Logbook"
+          options={{
+            tabBarIcon: ({ color, size }) => <Ionicons name="book" size={size} color={color} />,
+          }}
+          component={LogbookScreen}
         />
       </Tab.Navigator>
     </NavigationContainer>

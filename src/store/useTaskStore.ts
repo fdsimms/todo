@@ -25,6 +25,7 @@ interface TaskStore {
   updateTask: (id: string, updates: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
+  uncompleteTask: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
@@ -37,6 +38,7 @@ interface TaskStore {
   deferredTasks: () => Task[];
   focusedTasks: () => Task[];
   somedayTasks: () => Task[];
+  completedTasks: () => Task[];
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
@@ -177,6 +179,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  uncompleteTask(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    const updated = { ...task, completed: false, completedAt: null };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
   deferTask(id, until) {
     get().updateTask(id, { deferUntil: until.toISOString() });
   },
@@ -260,6 +270,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   somedayTasks() {
     return get().tasks.filter(t => !t.parentId && t.someday && !t.completed);
+  },
+
+  completedTasks() {
+    return get().tasks.filter(t => !t.parentId && t.completed && t.completedAt);
   },
 
   subtasksOf(parentId) {
