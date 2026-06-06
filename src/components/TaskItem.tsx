@@ -14,7 +14,7 @@ import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
-import { formatDueDate, formatDeferUntil, getStreakDisplay } from '../utils/dateUtils';
+import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { DeferModal } from './DeferModal';
 
@@ -88,8 +88,7 @@ export function TaskItem({
 
   const isOverdue =
     task.dueDate &&
-    new Date(task.dueDate) < new Date() &&
-    new Date(task.dueDate).toDateString() !== new Date().toDateString();
+    getDayStart(new Date(task.dueDate)) < getCurrentDayStart();
 
   const streak = getStreakDisplay(task);
   const priorityColor = PRIORITY_COLORS[task.priority];

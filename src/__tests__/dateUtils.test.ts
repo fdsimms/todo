@@ -31,6 +31,7 @@ const baseTask: Task = {
   tags: [],
   sortOrder: 0,
   focused: false,
+  someday: false,
   priority: 0,
   effort: 0,
   streakCount: 0,
@@ -38,6 +39,10 @@ const baseTask: Task = {
   recurrenceFromCompletion: false,
   reminderTime: null,
   parentId: null,
+  projectId: null,
+  cycleEnabled: false,
+  cycleIndex: 0,
+  cycleItems: [],
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)
