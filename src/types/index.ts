@@ -3,6 +3,12 @@ export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 
+export interface CycleItem {
+  id: string;
+  title: string;
+  notes: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -36,6 +42,11 @@ export interface Task {
   streakDate: string | null; // logical-day ISO string of last completion
 
   parentId: string | null;   // null = root task; set = subtask of that id
+
+  // Cyclical recurrence — rotates through items on each recurrence
+  cycleEnabled: boolean;
+  cycleIndex: number;        // index of the currently active CycleItem
+  cycleItems: CycleItem[];
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;

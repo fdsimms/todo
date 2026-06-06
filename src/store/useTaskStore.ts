@@ -83,6 +83,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: null,
       parentId: draft.parentId ?? null,
       reminderTime: draft.reminderTime ?? null,
+      cycleEnabled: draft.cycleEnabled ?? false,
+      cycleIndex: draft.cycleIndex ?? 0,
+      cycleItems: draft.cycleItems ?? [],
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -154,6 +157,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         next.setHours(original.getHours(), original.getMinutes(), 0, 0);
         nextReminderTime = next.toISOString();
       }
+      const nextCycleIndex =
+        task.cycleEnabled && task.cycleItems.length > 0
+          ? (task.cycleIndex + 1) % task.cycleItems.length
+          : task.cycleIndex;
       nextTask = {
         ...task,
         id: generateId(),
@@ -166,6 +173,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         streakCount: newStreakCount,
         streakDate: getCurrentDayStart().toISOString(),
         reminderTime: nextReminderTime,
+        cycleIndex: nextCycleIndex,
       };
       dbInsertTask(nextTask);
       scheduleTaskReminder(nextTask);
@@ -233,6 +241,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: null,
       parentId,
       reminderTime: null,
+      cycleEnabled: false,
+      cycleIndex: 0,
+      cycleItems: [],
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
