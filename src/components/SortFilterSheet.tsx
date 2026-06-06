@@ -177,17 +177,17 @@ const styles = StyleSheet.create({
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm,
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   sortRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingVertical: 11, paddingHorizontal: spacing.sm,
-    borderRadius: radius.sm, marginBottom: 2,
+    paddingVertical: 12, paddingHorizontal: spacing.sm,
+    borderRadius: radius.md, marginBottom: 2,
   },
   sortRowActive: { backgroundColor: colors.bgTertiary },
   sortLabel: { flex: 1, color: colors.textSecondary, fontSize: font.md },
-  sortLabelActive: { color: colors.text },
+  sortLabelActive: { color: colors.text, fontWeight: '500' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     paddingHorizontal: 12, paddingVertical: 7,

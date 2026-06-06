@@ -53,6 +53,7 @@ export function LaterScreen() {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
+        contentContainerStyle={sections.length === 0 ? undefined : styles.listContent}
         renderItem={({ item }) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
@@ -111,6 +112,7 @@ const styles = StyleSheet.create({
     fontSize: font.sm,
     marginTop: 2,
   },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
@@ -118,11 +120,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bg,
   },
   sectionTitle: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: '600',
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: '700',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
   empty: {
     alignItems: 'center',

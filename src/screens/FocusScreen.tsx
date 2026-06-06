@@ -58,6 +58,7 @@ export function FocusScreen() {
       <FlatList
         data={focusedTasks}
         keyExtractor={t => t.id}
+        contentContainerStyle={focusedTasks.length === 0 ? undefined : styles.listContent}
         renderItem={({ item }) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
@@ -133,8 +134,11 @@ const styles = StyleSheet.create({
     color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', lineHeight: 21,
   },
   emptyBtn: {
-    marginTop: spacing.md, paddingHorizontal: spacing.xl, paddingVertical: 12,
+    marginTop: spacing.lg, paddingHorizontal: spacing.xl, paddingVertical: 13,
     borderRadius: radius.full, backgroundColor: colors.accent,
+    shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
   },
   emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
 });

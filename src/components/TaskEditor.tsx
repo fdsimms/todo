@@ -541,15 +541,17 @@ const styles = StyleSheet.create({
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.sm, minHeight: 60,
+    letterSpacing: -0.3,
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md, minHeight: 50,
+    lineHeight: 22,
   },
   section: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
   sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
-    textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: spacing.sm,
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
@@ -578,14 +580,14 @@ const styles = StyleSheet.create({
   tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
-    paddingHorizontal: 12, paddingVertical: 6,
+    paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  pillTextActive: { color: colors.text },
-  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 1 },
+  pillTextActive: { color: colors.text, fontWeight: '600' },
+  pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
@@ -625,13 +627,13 @@ const styles = StyleSheet.create({
     minWidth: 24, textAlign: 'center',
   },
   toggle: {
-    width: 44, height: 26, borderRadius: 13,
+    width: 46, height: 27, borderRadius: 14,
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
   },
   toggleOn: { backgroundColor: colors.orange },
   toggleKnob: {
-    width: 20, height: 20, borderRadius: 10,
-    backgroundColor: colors.textSecondary,
+    width: 21, height: 21, borderRadius: 11,
+    backgroundColor: '#8E8E93',
   },
   toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
   subtaskHeader: {

@@ -73,13 +73,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: 7,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
   dot: {
-    width: 7,
-    height: 7,
+    width: 6,
+    height: 6,
     borderRadius: radius.full,
   },
   chipText: {
@@ -89,6 +89,7 @@ const styles = StyleSheet.create({
   },
   chipTextActive: {
     color: colors.text,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
 });
