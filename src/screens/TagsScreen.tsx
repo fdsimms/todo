@@ -28,6 +28,8 @@ export function TagsScreen() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const allTasks = useTaskStore(s => s.tasks);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -101,9 +103,20 @@ export function TagsScreen() {
           <FlatList
             data={tagTasks}
             keyExtractor={t => t.id}
-            renderItem={({ item }) => (
-              <TaskItem task={item} onPress={() => openEditor(item)} />
-            )}
+            renderItem={({ item }) => {
+              const subs = allTasks.filter(t => t.parentId === item.id);
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  expanded={expandedTaskId === item.id}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                />
+              );
+            }}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptySubtext}>No active tasks with this tag</Text>
