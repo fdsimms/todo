@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,7 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
-import { colors, spacing, font } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, type Colors } from '../theme';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import { formatGroupHeader } from '../utils/dateUtils';
 import type { Task } from '../types';
@@ -19,6 +20,8 @@ export function LaterScreen() {
   const insets = useSafeAreaInsets();
   const deferredTasks = useTaskStore(s => s.deferredTasks());
   const allTasks = useTaskStore(s => s.tasks);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -91,7 +94,7 @@ export function LaterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,

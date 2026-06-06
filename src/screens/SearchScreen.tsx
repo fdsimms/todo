@@ -16,7 +16,8 @@ import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
-import { colors, spacing, font, radius } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, radius, type Colors } from '../theme';
 import { format } from 'date-fns';
 
 function HighlightedText({
@@ -36,7 +37,6 @@ function HighlightedText({
     return <Text style={style} numberOfLines={numberOfLines}>{text}</Text>;
   }
 
-  // Merge and sort ranges
   const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
   const segments: { text: string; highlight: boolean }[] = [];
   let cursor = 0;
@@ -59,7 +59,12 @@ function HighlightedText({
   );
 }
 
-function SearchResultItem({ result, onPress }: { result: SearchResult; onPress: () => void }) {
+function SearchResultItem({ result, onPress, styles, colors }: {
+  result: SearchResult;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
   const { task, titleMatches } = result;
   const isCompleted = task.completed;
 
@@ -110,6 +115,8 @@ function SearchResultItem({ result, onPress }: { result: SearchResult; onPress: 
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const tasks = useTaskStore(s => s.tasks);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [query, setQuery] = useState('');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -159,6 +166,8 @@ export function SearchScreen() {
       <SearchResultItem
         result={item.result}
         onPress={() => openTask(item.result.task)}
+        styles={styles}
+        colors={colors}
       />
     );
   };
@@ -225,7 +234,7 @@ export function SearchScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     paddingHorizontal: spacing.md,
