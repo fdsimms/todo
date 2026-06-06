@@ -7,6 +7,7 @@ import {
   dbInsertTask,
   dbUpdateTask,
   dbDeleteTask,
+  dbDeleteSubtasks,
   dbClearAllFocus,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
@@ -27,9 +28,14 @@ interface TaskStore {
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
 
+  addSubtask: (parentId: string, title: string) => Task;
+  toggleSubtask: (id: string) => void;
+  deleteSubtask: (id: string) => void;
+
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
   focusedTasks: () => Task[];
+  subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
 }
@@ -68,6 +74,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       effort: draft.effort ?? 0,
       streakCount: 0,
       streakDate: null,
+      parentId: draft.parentId ?? null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -85,8 +92,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteTask(id) {
+    dbDeleteSubtasks(id);
     dbDeleteTask(id);
-    set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+    set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
   },
 
   completeTask(id) {
@@ -165,16 +173,70 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  addSubtask(parentId, title) {
+    const now = new Date().toISOString();
+    const siblings = get().tasks.filter(t => t.parentId === parentId);
+    const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    const subtask: Task = {
+      id: generateId(),
+      title,
+      notes: '',
+      completed: false,
+      completedAt: null,
+      createdAt: now,
+      dueDate: null,
+      deferUntil: null,
+      showAfterTime: null,
+      recurrenceType: 'none',
+      recurrenceInterval: 1,
+      recurrenceDays: [],
+      recurrenceEndDate: null,
+      recurrenceFromCompletion: false,
+      tags: [],
+      sortOrder: maxOrder + 1,
+      focused: false,
+      priority: 0,
+      effort: 0,
+      streakCount: 0,
+      streakDate: null,
+      parentId,
+    };
+    dbInsertTask(subtask);
+    set(s => ({ tasks: [...s.tasks, subtask] }));
+    return subtask;
+  },
+
+  toggleSubtask(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    const updated = {
+      ...task,
+      completed: !task.completed,
+      completedAt: !task.completed ? new Date().toISOString() : null,
+    };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  deleteSubtask(id) {
+    dbDeleteTask(id);
+    set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+  },
+
   visibleTasks() {
-    return get().tasks.filter(isTaskVisible);
+    return get().tasks.filter(t => !t.parentId && isTaskVisible(t));
   },
 
   deferredTasks() {
-    return get().tasks.filter(isTaskDeferred);
+    return get().tasks.filter(t => !t.parentId && isTaskDeferred(t));
   },
 
   focusedTasks() {
-    return get().tasks.filter(t => t.focused && !t.completed);
+    return get().tasks.filter(t => !t.parentId && t.focused && !t.completed);
+  },
+
+  subtasksOf(parentId) {
+    return get().tasks.filter(t => t.parentId === parentId);
   },
 
   allTags() {

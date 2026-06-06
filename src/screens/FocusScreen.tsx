@@ -18,6 +18,7 @@ import type { Task } from '../types';
 export function FocusScreen() {
   const insets = useSafeAreaInsets();
   const focusedTasks = useTaskStore(s => s.focusedTasks());
+  const allTasks = useTaskStore(s => s.tasks);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
 
   const [editorVisible, setEditorVisible] = useState(false);
@@ -57,9 +58,17 @@ export function FocusScreen() {
       <FlatList
         data={focusedTasks}
         keyExtractor={t => t.id}
-        renderItem={({ item }) => (
-          <TaskItem task={item} onPress={() => openEditor(item)} />
-        )}
+        renderItem={({ item }) => {
+          const subs = allTasks.filter(t => t.parentId === item.id);
+          return (
+            <TaskItem
+              task={item}
+              onPress={() => openEditor(item)}
+              subtaskCount={subs.length}
+              subtaskDoneCount={subs.filter(t => t.completed).length}
+            />
+          );
+        }}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="star" size={52} color={colors.bgQuaternary} />

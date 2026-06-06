@@ -31,6 +31,8 @@ export interface Task {
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
+
+  parentId: string | null;   // null = root task; set = subtask of that id
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;

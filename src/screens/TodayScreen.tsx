@@ -22,6 +22,7 @@ import { colors, spacing, font, radius } from '../theme';
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(s => s.visibleTasks());
+  const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(s => s.allTags());
   const initialize = useTaskStore(s => s.initialize);
 
@@ -117,7 +118,15 @@ export function TodayScreen() {
         </View>
       );
     }
-    return <TaskItem task={item.task} onPress={() => openEditor(item.task)} />;
+    const subs = allTasks.filter(t => t.parentId === item.task.id);
+    return (
+      <TaskItem
+        task={item.task}
+        onPress={() => openEditor(item.task)}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+      />
+    );
   };
 
   const today = format(new Date(), 'EEEE, MMMM d');
