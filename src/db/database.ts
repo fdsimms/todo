@@ -164,6 +164,14 @@ export function dbUpdateTask(task: Task): void {
   );
 }
 
+export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE tasks SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
 export function dbDeleteTask(id: string): void {
   db.runSync('DELETE FROM tasks WHERE id = ?', [id]);
 }

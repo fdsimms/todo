@@ -26,6 +26,9 @@ interface Props {
   subtaskCount?: number;
   subtaskDoneCount?: number;
   subtasks?: Task[];
+  drag?: () => void;
+  isActive?: boolean;
+  showDragHandle?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -56,6 +59,9 @@ export function TaskItem({
   subtaskCount = 0,
   subtaskDoneCount = 0,
   subtasks = [],
+  drag,
+  isActive = false,
+  showDragHandle = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -132,7 +138,7 @@ export function TaskItem({
 
   return (
     <>
-      <Animated.View style={[styles.itemWrapper, { opacity: rowOpacity }]}>
+      <Animated.View style={[styles.itemWrapper, { opacity: isActive ? 0.85 : rowOpacity }]}>
         <Swipeable
           ref={swipeableRef}
           containerStyle={[
@@ -233,6 +239,17 @@ export function TaskItem({
                 color={task.focused ? colors.orange : colors.textTertiary}
               />
             </TouchableOpacity>
+
+            {showDragHandle && (
+              <TouchableOpacity
+                onLongPress={drag}
+                delayLongPress={150}
+                hitSlop={8}
+                style={styles.dragHandle}
+              >
+                <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
           </View>
         </Swipeable>
 
@@ -433,6 +450,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   starBtn: {
     padding: 4,
+  },
+  dragHandle: {
+    padding: 4,
+    marginLeft: 2,
   },
   subtaskBadge: {
     flexDirection: 'row',

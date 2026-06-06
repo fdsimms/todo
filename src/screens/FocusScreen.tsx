@@ -2,10 +2,10 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -22,6 +22,7 @@ export function FocusScreen() {
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
+  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -60,22 +61,28 @@ export function FocusScreen() {
         </View>
       </View>
 
-      <FlatList
+      <DraggableFlatList
         data={focusedTasks}
         keyExtractor={t => t.id}
+        onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
         contentContainerStyle={focusedTasks.length === 0 ? undefined : styles.listContent}
-        renderItem={({ item }) => {
+        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
-            <TaskItem
-              task={item}
-              onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
-              expanded={expandedTaskId === item.id}
-              onEdit={() => openEditor(item)}
-              subtaskCount={subs.length}
-              subtaskDoneCount={subs.filter(t => t.completed).length}
-              subtasks={subs}
-            />
+            <ScaleDecorator>
+              <TaskItem
+                task={item}
+                onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                expanded={expandedTaskId === item.id}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                drag={drag}
+                isActive={isActive}
+                showDragHandle
+              />
+            </ScaleDecorator>
           );
         }}
         ListEmptyComponent={

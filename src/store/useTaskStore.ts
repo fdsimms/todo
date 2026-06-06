@@ -9,6 +9,7 @@ import {
   dbDeleteTask,
   dbDeleteSubtasks,
   dbClearAllFocus,
+  dbBatchUpdateSortOrders,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -29,6 +30,7 @@ interface TaskStore {
   deferTask: (id: string, until: Date) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
+  reorderTasks: (orderedIds: string[]) => void;
 
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
@@ -212,6 +214,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  reorderTasks(orderedIds) {
+    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
+    dbBatchUpdateSortOrders(updates);
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, sortOrder: u.sortOrder } : t;
+      }),
+    }));
+  },
+
   addSubtask(parentId, title) {
     const now = new Date().toISOString();
     const siblings = get().tasks.filter(t => t.parentId === parentId);
@@ -268,7 +281,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   visibleTasks() {
-    return get().tasks.filter(t => !t.parentId && isTaskVisible(t));
+    return get().tasks
+      .filter(t => !t.parentId && isTaskVisible(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   deferredTasks() {
@@ -276,11 +291,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   focusedTasks() {
-    return get().tasks.filter(t => !t.parentId && t.focused && !t.completed);
+    return get().tasks
+      .filter(t => !t.parentId && t.focused && !t.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   somedayTasks() {
-    return get().tasks.filter(t => !t.parentId && t.someday && !t.completed);
+    return get().tasks
+      .filter(t => !t.parentId && t.someday && !t.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   completedTasks() {
