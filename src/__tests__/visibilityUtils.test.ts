@@ -32,6 +32,10 @@ const baseTask: Task = {
   recurrenceFromCompletion: false,
   reminderTime: null,
   parentId: null,
+  projectId: null,
+  cycleEnabled: false,
+  cycleIndex: 0,
+  cycleItems: [],
 };
 
 // June 10, 2025 at 10:00 AM

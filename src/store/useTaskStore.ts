@@ -221,6 +221,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || task.recurrenceType === 'none') return;
     const { dayResetTime } = useSettingsStore.getState();
     const nextDue = getNextDueDate(task, dayResetTime);
+    if (!nextDue) return;
     let nextReminderTime: string | null = task.reminderTime;
     if (task.reminderTime) {
       const original = new Date(task.reminderTime);
