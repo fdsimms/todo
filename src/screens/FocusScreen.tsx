@@ -9,6 +9,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { FocusSelector } from '../components/FocusSelector';
@@ -18,7 +19,7 @@ import type { Task } from '../types';
 
 export function FocusScreen() {
   const insets = useSafeAreaInsets();
-  const focusedTasks = useTaskStore(s => s.focusedTasks());
+  const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const colors = useColors();

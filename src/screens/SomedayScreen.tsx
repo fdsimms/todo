@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { colors, spacing, font, radius } from '../theme';
@@ -17,7 +18,7 @@ import type { Task } from '../types';
 
 export function SomedayScreen() {
   const insets = useSafeAreaInsets();
-  const somedayTasks = useTaskStore(s => s.somedayTasks());
+  const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const initialize = useTaskStore(s => s.initialize);
 

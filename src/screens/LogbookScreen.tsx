@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 import type { Task } from '../types';
@@ -27,7 +28,7 @@ function formatTime(iso: string): string {
 
 export function LogbookScreen() {
   const insets = useSafeAreaInsets();
-  const completedTasks = useTaskStore(s => s.completedTasks());
+  const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);

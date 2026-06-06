@@ -13,6 +13,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 
 interface Props {
   visible: boolean;
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export function FocusSelector({ visible, onClose }: Props) {
-  const visibleTasks = useTaskStore(s => s.visibleTasks());
+  const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const colors = useColors();
