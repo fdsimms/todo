@@ -1,0 +1,120 @@
+import {
+  addDays,
+  addWeeks,
+  addMonths,
+  addYears,
+  format,
+  isToday,
+  isTomorrow,
+  isThisWeek,
+  differenceInCalendarDays,
+} from 'date-fns';
+import type { Task } from '../types';
+import { useSettingsStore } from '../store/useSettingsStore';
+
+/**
+ * Returns the start of the logical "day" for a given datetime.
+ * If dayResetTime is "02:00" and it's 1:30 AM, we're still in the previous logical day.
+ */
+export function getDayStart(date: Date = new Date(), dayResetTime?: string): Date {
+  const rt = dayResetTime ?? useSettingsStore.getState().dayResetTime;
+  const [h, m] = rt.split(':').map(Number);
+
+  const resetOnDate = new Date(date);
+  resetOnDate.setHours(h, m, 0, 0);
+
+  // Before the reset hour → still belongs to the previous logical day
+  if (date < resetOnDate) {
+    resetOnDate.setDate(resetOnDate.getDate() - 1);
+  }
+
+  return resetOnDate;
+}
+
+export function getCurrentDayStart(): Date {
+  return getDayStart(new Date());
+}
+
+export function formatDueDate(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return 'Today';
+  if (isTomorrow(d)) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, new Date());
+  if (diff < 0) return `${Math.abs(diff)}d overdue`;
+  if (isThisWeek(d)) return format(d, 'EEEE');
+  return format(d, 'MMM d');
+}
+
+export function formatShowAfterTime(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return format(d, 'h:mm a');
+}
+
+export function formatDeferUntil(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return `Today at ${format(d, 'h:mm a')}`;
+  if (isTomorrow(d)) return `Tomorrow at ${format(d, 'h:mm a')}`;
+  return format(d, "MMM d 'at' h:mm a");
+}
+
+export function formatGroupHeader(iso: string): string {
+  const d = new Date(iso);
+  if (isToday(d)) return 'Today, later';
+  if (isTomorrow(d)) return 'Tomorrow';
+  if (isThisWeek(d)) return format(d, 'EEEE');
+  return format(d, 'MMMM d');
+}
+
+export function getNextDueDate(task: Task, dayResetTime?: string): Date {
+  const base = getDayStart(new Date(), dayResetTime);
+  switch (task.recurrenceType) {
+    case 'daily':
+      return addDays(base, task.recurrenceInterval);
+    case 'weekly':
+      if (task.recurrenceDays.length > 0) {
+        return getNextWeekdayOccurrence(task.recurrenceDays, base);
+      }
+      return addWeeks(base, task.recurrenceInterval);
+    case 'monthly':
+      return addMonths(base, task.recurrenceInterval);
+    case 'yearly':
+      return addYears(base, task.recurrenceInterval);
+    default:
+      return addDays(base, 1);
+  }
+}
+
+function getNextWeekdayOccurrence(days: number[], from: Date): Date {
+  const dow = from.getDay();
+  const sorted = [...days].sort((a, b) => a - b);
+  for (const day of sorted) {
+    if (day > dow) return addDays(from, day - dow);
+  }
+  return addDays(from, 7 - dow + sorted[0]);
+}
+
+/**
+ * Returns the current streak display for a recurring task:
+ *   positive → { sign: '+', count: N }   (N consecutive completions)
+ *   negative → { sign: '-', count: N }   (N days missed)
+ *   null     → not a recurring task or no history
+ */
+export function getStreakDisplay(
+  task: Task
+): { sign: '+' | '-'; count: number } | null {
+  if (task.recurrenceType === 'none' || !task.streakDate) return null;
+
+  const dayResetTime = useSettingsStore.getState().dayResetTime;
+  const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
+  const today = getCurrentDayStart();
+  const daysMissed = differenceInCalendarDays(today, lastDay);
+
+  if (daysMissed <= 1) {
+    // Streak is current (completed today or yesterday)
+    return task.streakCount > 1 ? { sign: '+', count: task.streakCount } : null;
+  }
+  // daysMissed - 1 because "1 day missed" means you skipped one window
+  return { sign: '-', count: daysMissed - 1 };
+}

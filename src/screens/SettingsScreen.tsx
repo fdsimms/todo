@@ -1,0 +1,164 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { Ionicons } from '@expo/vector-icons';
+import { format } from 'date-fns';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { colors, spacing, radius, font } from '../theme';
+
+interface Props {
+  visible: boolean;
+  onClose: () => void;
+}
+
+export function SettingsScreen({ visible, onClose }: Props) {
+  const { dayResetTime, setDayResetTime } = useSettingsStore();
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerDate, setPickerDate] = useState<Date>(new Date());
+
+  useEffect(() => {
+    if (visible) {
+      const [h, m] = dayResetTime.split(':').map(Number);
+      const d = new Date();
+      d.setHours(h, m, 0, 0);
+      setPickerDate(d);
+      setShowPicker(false);
+    }
+  }, [visible, dayResetTime]);
+
+  const confirmResetTime = () => {
+    const h = pickerDate.getHours().toString().padStart(2, '0');
+    const m = pickerDate.getMinutes().toString().padStart(2, '0');
+    setDayResetTime(`${h}:${m}`);
+    setShowPicker(false);
+  };
+
+  const resetTimeDisplay = (() => {
+    const [h, m] = dayResetTime.split(':').map(Number);
+    const d = new Date();
+    d.setHours(h, m, 0, 0);
+    return format(d, 'h:mm a');
+  })();
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="pageSheet"
+      onRequestClose={onClose}
+    >
+      <View style={styles.root}>
+        <View style={styles.header}>
+          <View style={{ width: 44 }} />
+          <Text style={styles.title}>Settings</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.doneBtn}>
+            <Text style={styles.done}>Done</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Day reset time */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Day reset</Text>
+          <View style={styles.card}>
+            <TouchableOpacity
+              style={styles.row}
+              onPress={() => setShowPicker(p => !p)}
+            >
+              <Ionicons name="moon" size={18} color={colors.accent} />
+              <View style={styles.rowContent}>
+                <Text style={styles.rowLabel}>New day starts at</Text>
+                <Text style={styles.rowHint}>
+                  "Today" flips and streaks reset at this time
+                </Text>
+              </View>
+              <Text style={styles.rowValue}>{resetTimeDisplay}</Text>
+            </TouchableOpacity>
+
+            {showPicker && (
+              <>
+                <View style={styles.sep} />
+                <DateTimePicker
+                  value={pickerDate}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_e, d) => d && setPickerDate(d)}
+                  themeVariant="dark"
+                  style={styles.picker}
+                />
+                <View style={styles.pickerButtons}>
+                  <TouchableOpacity
+                    style={styles.pickerBtn}
+                    onPress={() => setShowPicker(false)}
+                  >
+                    <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.pickerBtn, styles.pickerBtnPrimary]}
+                    onPress={confirmResetTime}
+                  >
+                    <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+          <Text style={styles.sectionFooter}>
+            Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
+          </Text>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  title: { color: colors.text, fontSize: font.md, fontWeight: '600' },
+  doneBtn: { width: 44, alignItems: 'flex-end' },
+  done: { color: colors.accent, fontSize: font.md, fontWeight: '600' },
+  section: { paddingHorizontal: spacing.md, marginTop: spacing.xl },
+  sectionLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
+  },
+  card: {
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
+  },
+  row: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  rowContent: { flex: 1 },
+  rowLabel: { color: colors.text, fontSize: font.md },
+  rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  rowValue: { color: colors.accent, fontSize: font.md, fontWeight: '500' },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
+  picker: { height: 180 },
+  pickerButtons: {
+    flexDirection: 'row', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  pickerBtn: {
+    flex: 1, paddingVertical: 11, borderRadius: radius.md,
+    alignItems: 'center', backgroundColor: colors.bgTertiary,
+  },
+  pickerBtnPrimary: { backgroundColor: colors.accent },
+  pickerBtnText: { fontSize: font.md, fontWeight: '600' },
+  sectionFooter: {
+    color: colors.textTertiary, fontSize: font.sm,
+    paddingHorizontal: spacing.sm, marginTop: spacing.sm, lineHeight: 19,
+  },
+});
