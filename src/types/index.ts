@@ -25,6 +25,7 @@ export interface Task {
   sortOrder: number;
 
   focused: boolean;
+  someday: boolean;
   priority: Priority;
   effort: Effort;
 

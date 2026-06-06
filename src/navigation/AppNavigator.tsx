@@ -7,6 +7,7 @@ import { FocusScreen } from '../screens/FocusScreen';
 import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
+import { SomedayScreen } from '../screens/SomedayScreen';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { font } from '../theme';
@@ -55,6 +56,13 @@ export default function AppNavigator() {
             tabBarIcon: ({ color, size }) => <Ionicons name="time" size={size} color={color} />,
           }}
           component={LaterScreen}
+        />
+        <Tab.Screen
+          name="Someday"
+          options={{
+            tabBarIcon: ({ color, size }) => <Ionicons name="moon" size={size} color={color} />,
+          }}
+          component={SomedayScreen}
         />
         <Tab.Screen
           name="Tags"

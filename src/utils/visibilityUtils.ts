@@ -4,6 +4,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
+  if (task.someday) return false;
 
   const now = new Date();
 
@@ -29,6 +30,7 @@ export function isTaskVisible(task: Task): boolean {
 
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
+  if (task.someday) return false;
   return !isTaskVisible(task);
 }
 

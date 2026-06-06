@@ -24,6 +24,7 @@ const baseTask: Task = {
   tags: [],
   sortOrder: 0,
   focused: false,
+  someday: false,
   priority: 0,
   effort: 0,
   streakCount: 0,
@@ -99,6 +100,10 @@ describe('isTaskVisible', () => {
     };
     expect(isTaskVisible(task)).toBe(false);
   });
+
+  it('hides someday tasks', () => {
+    expect(isTaskVisible({ ...baseTask, someday: true })).toBe(false);
+  });
 });
 
 // ─── isTaskDeferred ───────────────────────────────────────────────────────────
@@ -138,6 +143,10 @@ describe('isTaskDeferred', () => {
   it('returns false (not deferred) for overdue tasks', () => {
     const dueDate = new Date(2025, 5, 5, 0, 0, 0).toISOString();
     expect(isTaskDeferred({ ...baseTask, dueDate })).toBe(false);
+  });
+
+  it('returns false for someday tasks (not deferred, just parked)', () => {
+    expect(isTaskDeferred({ ...baseTask, someday: true })).toBe(false);
   });
 });
 
