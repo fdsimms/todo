@@ -10,9 +10,10 @@ import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
+import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
 import { colors, spacing, radius, font } from '../theme';
 import { tagColor } from '../utils/tagColor';
-import { formatDueDate, formatShowAfterTime, formatDeferUntil } from '../utils/dateUtils';
+import { formatDueDate, formatDeferUntil, getStreakDisplay } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { DeferModal } from './DeferModal';
 
@@ -25,6 +26,7 @@ export function TaskItem({ task, onPress }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
+  const toggleFocus = useTaskStore(s => s.toggleFocus);
 
   const [showDeferModal, setShowDeferModal] = useState(false);
   const circleScale = useRef(new Animated.Value(1)).current;
@@ -32,16 +34,21 @@ export function TaskItem({ task, onPress }: Props) {
   const swipeableRef = useRef<Swipeable>(null);
 
   const isOverdue =
-    task.dueDate && new Date(task.dueDate) < new Date() &&
+    task.dueDate &&
+    new Date(task.dueDate) < new Date() &&
     new Date(task.dueDate).toDateString() !== new Date().toDateString();
+
+  const streak = getStreakDisplay(task);
+  const priorityColor = PRIORITY_COLORS[task.priority];
+  const effortLabel = task.effort > 0 ? EFFORT_LABELS[task.effort] : null;
 
   const handleComplete = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     Animated.sequence([
-      Animated.timing(circleScale, { toValue: 1.3, duration: 80, useNativeDriver: true }),
+      Animated.timing(circleScale, { toValue: 1.35, duration: 80, useNativeDriver: true }),
       Animated.timing(circleScale, { toValue: 1, duration: 80, useNativeDriver: true }),
-      Animated.delay(100),
-      Animated.timing(rowOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.delay(120),
+      Animated.timing(rowOpacity, { toValue: 0, duration: 230, useNativeDriver: true }),
     ]).start(() => completeTask(task.id));
   };
 
@@ -53,14 +60,14 @@ export function TaskItem({ task, onPress }: Props) {
     );
   };
 
-  const renderRightActions = (_progress: Animated.AnimatedInterpolation<number>) => (
+  const renderRightActions = () => (
     <TouchableOpacity style={styles.deleteAction} onPress={handleDelete}>
       <Ionicons name="trash" size={20} color={colors.text} />
       <Text style={styles.actionLabel}>Delete</Text>
     </TouchableOpacity>
   );
 
-  const renderLeftActions = (_progress: Animated.AnimatedInterpolation<number>) => (
+  const renderLeftActions = () => (
     <TouchableOpacity
       style={styles.deferAction}
       onPress={() => {
@@ -83,23 +90,21 @@ export function TaskItem({ task, onPress }: Props) {
           overshootRight={false}
           overshootLeft={false}
         >
-          <TouchableOpacity
-            style={styles.row}
-            onPress={onPress}
-            activeOpacity={0.85}
-          >
+          <View style={styles.row}>
+            {/* Priority indicator — colored left border */}
+            {task.priority > 0 && (
+              <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
+            )}
+
             <TouchableOpacity onPress={handleComplete} hitSlop={10} style={styles.circleWrapper}>
-              <Animated.View style={[styles.circle, { transform: [{ scale: circleScale }] }]}>
-                {task.completed && (
-                  <Ionicons name="checkmark" size={13} color={colors.text} />
-                )}
-              </Animated.View>
+              <Animated.View style={[styles.circle, { transform: [{ scale: circleScale }] }]} />
             </TouchableOpacity>
 
-            <View style={styles.content}>
+            <TouchableOpacity style={styles.content} onPress={onPress} activeOpacity={0.7}>
               <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
 
               <View style={styles.meta}>
+                {/* Tag color dots */}
                 {task.tags.slice(0, 3).map(tag => (
                   <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 ))}
@@ -111,21 +116,38 @@ export function TaskItem({ task, onPress }: Props) {
                     {formatDueDate(task.dueDate)}
                   </Text>
                 )}
-                {task.showAfterTime && (
-                  <Text style={styles.metaTextDim}>
-                    after {formatShowAfterTime(task.showAfterTime)}
-                  </Text>
-                )}
                 {task.deferUntil && new Date(task.deferUntil) > new Date() && (
-                  <Text style={styles.metaTextDim}>
-                    deferred · {formatDeferUntil(task.deferUntil)}
+                  <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
+                )}
+                {effortLabel && (
+                  <View style={styles.effortBadge}>
+                    <Text style={styles.effortText}>{effortLabel}</Text>
+                  </View>
+                )}
+                {streak && (
+                  <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
+                    {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
                   </Text>
                 )}
               </View>
-            </View>
+            </TouchableOpacity>
 
-            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
+            {/* Focus star */}
+            <TouchableOpacity
+              onPress={() => {
+                Haptics.selectionAsync();
+                toggleFocus(task.id);
+              }}
+              hitSlop={8}
+              style={styles.starBtn}
+            >
+              <Ionicons
+                name={task.focused ? 'star' : 'star-outline'}
+                size={16}
+                color={task.focused ? colors.orange : colors.textTertiary}
+              />
+            </TouchableOpacity>
+          </View>
         </Swipeable>
       </Animated.View>
 
@@ -146,13 +168,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
-    paddingVertical: 13,
-    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    paddingRight: spacing.md,
     gap: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
+    overflow: 'hidden',
+  },
+  priorityBar: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
   },
   circleWrapper: {
+    marginLeft: spacing.md,
     padding: 2,
   },
   circle: {
@@ -161,8 +192,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.bgQuaternary,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -171,7 +200,6 @@ const styles = StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: font.md,
-    fontWeight: '400',
     lineHeight: 21,
   },
   meta: {
@@ -189,12 +217,29 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
   },
-  metaTextDim: {
+  metaDim: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },
   overdue: {
     color: colors.red,
+  },
+  streakNeg: {
+    color: colors.textTertiary,
+  },
+  effortBadge: {
+    backgroundColor: colors.bgQuaternary,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  effortText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  starBtn: {
+    padding: 4,
   },
   deleteAction: {
     backgroundColor: colors.red,

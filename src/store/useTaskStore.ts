@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { differenceInCalendarDays } from 'date-fns';
 import type { Task, TaskDraft } from '../types';
 import {
   initDatabase,
@@ -6,9 +7,11 @@ import {
   dbInsertTask,
   dbUpdateTask,
   dbDeleteTask,
+  dbClearAllFocus,
 } from '../db/database';
+import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
-import { getNextDueDate } from '../utils/dateUtils';
+import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred } from '../utils/visibilityUtils';
 
 interface TaskStore {
@@ -21,10 +24,12 @@ interface TaskStore {
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
+  toggleFocus: (id: string) => void;
+  clearAllFocus: () => void;
 
-  // Derived selectors
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
+  focusedTasks: () => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
 }
@@ -35,8 +40,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   initialize() {
     initDatabase();
-    const tasks = dbGetAllTasks();
-    set({ tasks, initialized: true });
+    set({ tasks: dbGetAllTasks(), initialized: true });
   },
 
   addTask(draft) {
@@ -58,6 +62,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: draft.recurrenceEndDate ?? null,
       tags: draft.tags ?? [],
       sortOrder: maxOrder + 1,
+      focused: draft.focused ?? false,
+      priority: draft.priority ?? 0,
+      effort: draft.effort ?? 0,
+      streakCount: 0,
+      streakDate: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -83,21 +92,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
 
-    const now = new Date().toISOString();
-    const completed = { ...task, completed: true, completedAt: now };
+    const now = new Date();
+    const { dayResetTime } = useSettingsStore.getState();
+
+    // Calculate streak
+    let newStreakCount = 1;
+    if (task.recurrenceType !== 'none' && task.streakDate) {
+      const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
+      const todayDay = getCurrentDayStart();
+      const daysBetween = differenceInCalendarDays(todayDay, lastDay);
+
+      if (daysBetween === 0) {
+        // Already completed this logical day — don't increment
+        newStreakCount = task.streakCount;
+      } else if (daysBetween === 1) {
+        // Consecutive — increment
+        newStreakCount = task.streakCount + 1;
+      }
+      // else: missed days → reset to 1 (already set above)
+    }
+
+    const completed: Task = {
+      ...task,
+      completed: true,
+      completedAt: now.toISOString(),
+      streakCount: task.recurrenceType !== 'none' ? newStreakCount : task.streakCount,
+      streakDate: task.recurrenceType !== 'none' ? getCurrentDayStart().toISOString() : task.streakDate,
+    };
     dbUpdateTask(completed);
 
     let nextTask: Task | null = null;
     if (task.recurrenceType !== 'none') {
-      const nextDue = getNextDueDate(task);
+      const nextDue = getNextDueDate(task, dayResetTime);
       nextTask = {
         ...task,
         id: generateId(),
         completed: false,
         completedAt: null,
-        createdAt: now,
+        createdAt: now.toISOString(),
         dueDate: nextDue.toISOString(),
-        deferUntil: null, // reset one-time snooze on new occurrence
+        deferUntil: null,
+        focused: false, // focus resets on new occurrence
+        streakCount: newStreakCount,
+        streakDate: getCurrentDayStart().toISOString(),
       };
       dbInsertTask(nextTask);
     }
@@ -114,12 +151,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { deferUntil: until.toISOString() });
   },
 
+  toggleFocus(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    get().updateTask(id, { focused: !task.focused });
+  },
+
+  clearAllFocus() {
+    dbClearAllFocus();
+    set(s => ({
+      tasks: s.tasks.map(t => (t.focused ? { ...t, focused: false } : t)),
+    }));
+  },
+
   visibleTasks() {
     return get().tasks.filter(isTaskVisible);
   },
 
   deferredTasks() {
     return get().tasks.filter(isTaskDeferred);
+  },
+
+  focusedTasks() {
+    return get().tasks.filter(t => t.focused && !t.completed);
   },
 
   allTags() {

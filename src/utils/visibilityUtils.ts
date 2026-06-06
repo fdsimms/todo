@@ -1,7 +1,7 @@
-import { startOfDay } from 'date-fns';
 import type { Task } from '../types';
+import { getDayStart, getCurrentDayStart } from './dateUtils';
+import { useSettingsStore } from '../store/useSettingsStore';
 
-/** True if the task should appear in the Today list right now. */
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
 
@@ -16,26 +16,22 @@ export function isTaskVisible(task: Task): boolean {
     if (now < threshold) return false;
   }
 
-  // Future-dated tasks belong in Later, not Today
+  // Use the configurable day-reset time so "today" doesn't flip at midnight
   if (task.dueDate) {
-    const due = startOfDay(new Date(task.dueDate));
-    const today = startOfDay(now);
-    if (due > today) return false;
+    const { dayResetTime } = useSettingsStore.getState();
+    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const todayStart = getCurrentDayStart();
+    if (taskDayStart > todayStart) return false;
   }
 
   return true;
 }
 
-/** True if the task should appear in the Later list. */
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
   return !isTaskVisible(task);
 }
 
-/**
- * Returns the datetime when the task will next become visible,
- * used to sort and group the Later list.
- */
 export function getVisibleAt(task: Task): Date {
   const now = new Date();
   const candidates: Date[] = [];
@@ -53,10 +49,10 @@ export function getVisibleAt(task: Task): Date {
   }
 
   if (task.dueDate) {
-    const d = new Date(task.dueDate);
-    const todayEnd = new Date();
-    todayEnd.setHours(23, 59, 59, 999);
-    if (d > todayEnd) candidates.push(startOfDay(d));
+    const { dayResetTime } = useSettingsStore.getState();
+    const taskStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const todayStart = getCurrentDayStart();
+    if (taskStart > todayStart) candidates.push(taskStart);
   }
 
   if (candidates.length === 0) return now;

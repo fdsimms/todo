@@ -4,13 +4,18 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { useTaskStore } from './src/store/useTaskStore';
+import { useSettingsStore } from './src/store/useSettingsStore';
 
 export default function App() {
-  const initialize = useTaskStore(s => s.initialize);
+  const initTasks = useTaskStore(s => s.initialize);
+  const initSettings = useSettingsStore(s => s.initialize);
 
   useEffect(() => {
-    initialize();
-  }, [initialize]);
+    // initTasks calls initDatabase() which creates all tables first
+    initTasks();
+    // Then load settings from the now-initialized DB
+    initSettings();
+  }, [initTasks, initSettings]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
