@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "Todo",
+    "slug": "personal-todo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "todo",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.personal.todo"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#000000"
+      },
+      "package": "com.personal.todo"
+    },
+    "plugins": [
+      "expo-sqlite"
+    ]
+  }
+}
