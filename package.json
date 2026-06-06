@@ -28,6 +28,8 @@
     "@react-navigation/native-stack": "^6.11.0",
     "date-fns": "^3.6.0",
     "expo": "~54.0.0",
+    "react-native-draggable-flatlist": "^4.0.1",
+    "react-native-reanimated": "~3.17.4",
     "expo-haptics": "~14.1.4",
     "expo-notifications": "~0.31.5",
     "expo-sqlite": "~15.2.14",

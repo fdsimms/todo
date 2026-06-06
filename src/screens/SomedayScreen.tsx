@@ -2,11 +2,11 @@ import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -22,6 +22,7 @@ export function SomedayScreen() {
   const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const initialize = useTaskStore(s => s.initialize);
+  const reorderTasks = useTaskStore(s => s.reorderTasks);
 
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -58,24 +59,30 @@ export function SomedayScreen() {
         <Text style={styles.subtitle}>{somedayTasks.length} parked</Text>
       </View>
 
-      <FlatList
+      <DraggableFlatList
         data={somedayTasks}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => {
+        onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
+        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
-            <TaskItem
-              task={item}
-              onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
-              expanded={expandedTaskId === item.id}
-              onEdit={() => openEditor(item)}
-              subtaskCount={subs.length}
-              subtaskDoneCount={subs.filter(t => t.completed).length}
-              subtasks={subs}
-            />
+            <ScaleDecorator>
+              <TaskItem
+                task={item}
+                onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                expanded={expandedTaskId === item.id}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                drag={drag}
+                isActive={isActive}
+                showDragHandle
+              />
+            </ScaleDecorator>
           );
         }}
-        contentContainerStyle={somedayTasks.length === 0 ? styles.emptyContainer : undefined}
+        contentContainerStyle={somedayTasks.length === 0 ? styles.emptyContainer : styles.listContent}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -128,6 +135,7 @@ const styles = StyleSheet.create({
   },
   title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
   subtitle: { color: colors.textTertiary, fontSize: font.sm, paddingBottom: 4 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
   emptyContainer: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.sm },

@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -30,6 +31,7 @@ export function TodayScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
+  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -126,6 +128,8 @@ export function TodayScreen() {
     return items;
   };
 
+  const isDragMode = sort === 'default' && !groupByTag;
+
   const data: ListItem[] = groupByTag
     ? buildGroupedData()
     : filtered.map(task => ({ type: 'task' as const, task }));
@@ -151,6 +155,74 @@ export function TodayScreen() {
       />
     );
   };
+
+  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<Task>) => {
+    const subs = allTasks.filter(t => t.parentId === item.id);
+    return (
+      <ScaleDecorator>
+        <TaskItem
+          task={item}
+          onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+          expanded={expandedTaskId === item.id}
+          onEdit={() => openEditor(item)}
+          subtaskCount={subs.length}
+          subtaskDoneCount={subs.filter(t => t.completed).length}
+          subtasks={subs}
+          drag={drag}
+          isActive={isActive}
+          showDragHandle
+        />
+      </ScaleDecorator>
+    );
+  };
+
+  const emptyComponent = showSomeday ? (
+    <View>
+      <View style={styles.empty}>
+        <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
+        <Text style={styles.emptyText}>All clear</Text>
+        <Text style={styles.emptySubtext}>Nothing scheduled for today</Text>
+      </View>
+      <View style={styles.suggestions}>
+        <Text style={styles.suggestionsLabel}>How about one of these?</Text>
+        {suggestions.map(task => {
+          const subs = allTasks.filter(t => t.parentId === task.id);
+          return (
+            <View key={task.id}>
+              <TaskItem
+                task={task}
+                onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
+                expanded={expandedTaskId === task.id}
+                onEdit={() => openEditor(task)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+              />
+              <TouchableOpacity
+                style={styles.doTodayBtn}
+                onPress={() => updateTask(task.id, { someday: false })}
+              >
+                <Ionicons name="arrow-up-circle-outline" size={14} color={colors.accent} />
+                <Text style={styles.doTodayText}>Move to today</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  ) : (
+    <View style={styles.empty}>
+      <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
+      <Text style={styles.emptyText}>All clear</Text>
+      <Text style={styles.emptySubtext}>
+        {activeFilterCount > 0
+          ? 'No tasks match these filters'
+          : selectedTag
+            ? `No visible tasks tagged "${selectedTag}"`
+            : 'Nothing to do right now'}
+      </Text>
+    </View>
+  );
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
@@ -191,70 +263,40 @@ export function TodayScreen() {
 
       <TagFilterBar tags={allTags} selected={selectedTag} onSelect={setSelectedTag} />
 
-      <FlatList
-        data={data}
-        keyExtractor={(item, i) =>
-          item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
-        }
-        renderItem={renderItem}
-        contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.textSecondary}
-          />
-        }
-        ListEmptyComponent={
-          showSomeday ? (
-            <View>
-              <View style={styles.empty}>
-                <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
-                <Text style={styles.emptyText}>All clear</Text>
-                <Text style={styles.emptySubtext}>Nothing scheduled for today</Text>
-              </View>
-              <View style={styles.suggestions}>
-                <Text style={styles.suggestionsLabel}>How about one of these?</Text>
-                {suggestions.map(task => {
-                  const subs = allTasks.filter(t => t.parentId === task.id);
-                  return (
-                    <View key={task.id}>
-                      <TaskItem
-                        task={task}
-                        onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                        expanded={expandedTaskId === task.id}
-                        onEdit={() => openEditor(task)}
-                        subtaskCount={subs.length}
-                        subtaskDoneCount={subs.filter(t => t.completed).length}
-                        subtasks={subs}
-                      />
-                      <TouchableOpacity
-                        style={styles.doTodayBtn}
-                        onPress={() => updateTask(task.id, { someday: false })}
-                      >
-                        <Ionicons name="arrow-up-circle-outline" size={14} color={colors.accent} />
-                        <Text style={styles.doTodayText}>Move to today</Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          ) : (
-            <View style={styles.empty}>
-              <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
-              <Text style={styles.emptyText}>All clear</Text>
-              <Text style={styles.emptySubtext}>
-                {activeFilterCount > 0
-                  ? 'No tasks match these filters'
-                  : selectedTag
-                    ? `No visible tasks tagged "${selectedTag}"`
-                    : 'Nothing to do right now'}
-              </Text>
-            </View>
-          )
-        }
-      />
+      {isDragMode ? (
+        <DraggableFlatList
+          data={filtered}
+          keyExtractor={item => item.id}
+          onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
+          renderItem={renderDraggableItem}
+          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.textSecondary}
+            />
+          }
+          ListEmptyComponent={emptyComponent}
+        />
+      ) : (
+        <FlatList
+          data={data}
+          keyExtractor={(item, i) =>
+            item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
+          }
+          renderItem={renderItem}
+          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.textSecondary}
+            />
+          }
+          ListEmptyComponent={emptyComponent}
+        />
+      )}
 
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
