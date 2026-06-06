@@ -28,6 +28,7 @@ export function SomedayScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialTitle, setEditorInitialTitle] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -65,9 +66,12 @@ export function SomedayScreen() {
           return (
             <TaskItem
               task={item}
-              onPress={() => openEditor(item)}
+              onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+              expanded={expandedTaskId === item.id}
+              onEdit={() => openEditor(item)}
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
+              subtasks={subs}
             />
           );
         }}

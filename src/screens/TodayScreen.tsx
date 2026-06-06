@@ -42,6 +42,7 @@ export function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   // Sort & filter state
   const [sort, setSort] = useState<SortOption>('default');
@@ -141,9 +142,12 @@ export function TodayScreen() {
     return (
       <TaskItem
         task={item.task}
-        onPress={() => openEditor(item.task)}
+        onPress={() => setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id)}
+        expanded={expandedTaskId === item.task.id}
+        onEdit={() => openEditor(item.task)}
         subtaskCount={subs.length}
         subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
       />
     );
   };
@@ -217,9 +221,12 @@ export function TodayScreen() {
                     <View key={task.id}>
                       <TaskItem
                         task={task}
-                        onPress={() => openEditor(task)}
+                        onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
+                        expanded={expandedTaskId === task.id}
+                        onEdit={() => openEditor(task)}
                         subtaskCount={subs.length}
                         subtaskDoneCount={subs.filter(t => t.completed).length}
+                        subtasks={subs}
                       />
                       <TouchableOpacity
                         style={styles.doTodayBtn}

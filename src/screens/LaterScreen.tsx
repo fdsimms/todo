@@ -26,6 +26,7 @@ export function LaterScreen() {
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -63,9 +64,12 @@ export function LaterScreen() {
           return (
             <TaskItem
               task={item}
-              onPress={() => openEditor(item)}
+              onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+              expanded={expandedTaskId === item.id}
+              onEdit={() => openEditor(item)}
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
+              subtasks={subs}
             />
           );
         }}

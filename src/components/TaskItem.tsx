@@ -21,15 +21,47 @@ import { DeferModal } from './DeferModal';
 interface Props {
   task: Task;
   onPress: () => void;
+  onEdit?: () => void;
+  expanded?: boolean;
   subtaskCount?: number;
   subtaskDoneCount?: number;
+  subtasks?: Task[];
 }
 
-export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0 }: Props) {
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function describeRecurrence(task: Task): string {
+  const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
+  let text = '';
+  if (recurrenceType === 'daily') {
+    text = recurrenceInterval === 1 ? 'Repeats daily' : `Repeats every ${recurrenceInterval} days`;
+  } else if (recurrenceType === 'weekly') {
+    const dayStr = recurrenceDays.map(d => DAY_NAMES[d]).join(', ');
+    const base = recurrenceInterval === 1 ? 'Repeats weekly' : `Every ${recurrenceInterval} weeks`;
+    text = dayStr ? `${base} on ${dayStr}` : base;
+  } else if (recurrenceType === 'monthly') {
+    text = recurrenceInterval === 1 ? 'Repeats monthly' : `Every ${recurrenceInterval} months`;
+  } else if (recurrenceType === 'yearly') {
+    text = recurrenceInterval === 1 ? 'Repeats yearly' : `Every ${recurrenceInterval} years`;
+  }
+  if (recurrenceFromCompletion) text += ' · from completion';
+  return text;
+}
+
+export function TaskItem({
+  task,
+  onPress,
+  onEdit,
+  expanded = false,
+  subtaskCount = 0,
+  subtaskDoneCount = 0,
+  subtasks = [],
+}: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
+  const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -47,6 +79,9 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
   const streak = getStreakDisplay(task);
   const priorityColor = PRIORITY_COLORS[task.priority];
   const effortLabel = task.effort > 0 ? EFFORT_LABELS[task.effort] : null;
+
+  const hasExpandContent =
+    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
 
   const handleComplete = async () => {
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -95,14 +130,16 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
       <Animated.View style={[styles.itemWrapper, { opacity: rowOpacity }]}>
         <Swipeable
           ref={swipeableRef}
-          containerStyle={styles.swipeContainer}
+          containerStyle={[
+            styles.swipeContainer,
+            expanded && styles.swipeContainerExpanded,
+          ]}
           renderRightActions={renderRightActions}
           renderLeftActions={renderLeftActions}
           overshootRight={false}
           overshootLeft={false}
         >
           <View style={styles.row}>
-            {/* Priority indicator — colored left border */}
             {task.priority > 0 && (
               <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
             )}
@@ -119,7 +156,6 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
               <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
 
               <View style={styles.meta}>
-                {/* Tag color dots */}
                 {task.tags.slice(0, 3).map(tag => (
                   <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                 ))}
@@ -165,7 +201,6 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
               </View>
             </TouchableOpacity>
 
-            {/* Focus star */}
             <TouchableOpacity
               onPress={() => {
                 Haptics.selectionAsync();
@@ -182,6 +217,71 @@ export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0
             </TouchableOpacity>
           </View>
         </Swipeable>
+
+        {expanded && (
+          <View style={styles.expandedPanel}>
+            {task.notes.length > 0 && (
+              <Text style={styles.expandNotes}>{task.notes}</Text>
+            )}
+
+            {subtasks.length > 0 && (
+              <View style={[
+                styles.expandSection,
+                task.notes.length > 0 && styles.sectionDivider,
+              ]}>
+                {subtasks.map(sub => (
+                  <TouchableOpacity
+                    key={sub.id}
+                    style={styles.subtaskRow}
+                    onPress={() => toggleSubtask(sub.id)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                      {sub.completed && (
+                        <Ionicons name="checkmark" size={9} color={colors.bg} />
+                      )}
+                    </View>
+                    <Text style={[
+                      styles.subtaskTitle,
+                      sub.completed && styles.subtaskTitleDone,
+                    ]} numberOfLines={2}>
+                      {sub.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            {task.recurrenceType !== 'none' && (
+              <View style={[
+                styles.recurrenceRow,
+                (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
+              ]}>
+                <Ionicons name="repeat" size={12} color={colors.textTertiary} />
+                <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
+                {task.streakCount > 0 && (
+                  <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+                )}
+              </View>
+            )}
+
+            {onEdit && (
+              <View style={[
+                styles.editSection,
+                hasExpandContent && styles.sectionDivider,
+              ]}>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={onEdit}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="pencil-outline" size={13} color={colors.accent} />
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
       </Animated.View>
 
       <DeferModal
@@ -210,6 +310,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   swipeContainer: {
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  swipeContainerExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   row: {
     flexDirection: 'row',
@@ -328,5 +432,81 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: '700',
     letterSpacing: 0.3,
+  },
+  expandedPanel: {
+    backgroundColor: colors.bgSecondary,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  expandNotes: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: 19,
+    paddingVertical: spacing.xs,
+  },
+  expandSection: {
+    gap: 6,
+    paddingVertical: spacing.xs,
+  },
+  sectionDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+    marginTop: 2,
+  },
+  subtaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  subtaskCheck: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1.5,
+    borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  subtaskCheckDone: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
+  subtaskTitle: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  subtaskTitleDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
+  },
+  recurrenceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: spacing.xs,
+  },
+  expandMeta: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  editSection: {
+    paddingTop: spacing.sm,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  editBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  editBtnText: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: '500',
   },
 });
