@@ -71,6 +71,7 @@ function Chip({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
