@@ -74,6 +74,7 @@ export function TaskItem({
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
+  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const colors = useColors();
@@ -362,7 +363,21 @@ export function TaskItem({
               <View style={[
                 styles.editSection,
                 hasExpandContent && styles.sectionDivider,
+                task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
               ]}>
+                {task.recurrenceType !== 'none' && (
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      skipNextRecurrence(task.id);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
+                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity
                   style={styles.editBtn}
                   onPress={onEdit}
@@ -636,5 +651,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: '500',
+  },
+  skipBtnText: {
+    color: colors.textSecondary,
   },
 });
