@@ -35,6 +35,9 @@ const baseTask: Task = {
   effort: 0,
   streakCount: 0,
   streakDate: null,
+  recurrenceFromCompletion: false,
+  reminderTime: null,
+  parentId: null,
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

@@ -29,7 +29,8 @@ export function initDatabase(): void {
       effort INTEGER NOT NULL DEFAULT 0,
       streak_count INTEGER NOT NULL DEFAULT 0,
       streak_date TEXT,
-      parent_id TEXT
+      parent_id TEXT,
+      reminder_time TEXT
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -47,6 +48,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN streak_date TEXT',
     'ALTER TABLE tasks ADD COLUMN recurrence_from_completion INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN parent_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN reminder_time TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -89,6 +91,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     streakCount: (row.streak_count as number) ?? 0,
     streakDate: (row.streak_date as string) ?? null,
     parentId: (row.parent_id as string) ?? null,
+    reminderTime: (row.reminder_time as string) ?? null,
   };
 }
 
@@ -105,8 +108,8 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, show_after_time,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
-      tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -115,7 +118,7 @@ export function dbInsertTask(task: Task): void {
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
-      task.streakCount, task.streakDate, task.parentId ?? null,
+      task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
     ]
   );
 }
@@ -127,7 +130,7 @@ export function dbUpdateTask(task: Task): void {
       due_date=?, defer_until=?, show_after_time=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, sort_order=?, focused=?, priority=?, effort=?,
-      streak_count=?, streak_date=?, parent_id=?
+      streak_count=?, streak_date=?, parent_id=?, reminder_time=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -137,7 +140,7 @@ export function dbUpdateTask(task: Task): void {
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
-      task.streakCount, task.streakDate, task.parentId ?? null,
+      task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.id,
     ]
   );

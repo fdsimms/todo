@@ -27,7 +27,7 @@ interface Props {
   onClose: () => void;
 }
 
-type PickerMode = 'none' | 'dueDate' | 'showAfterTime' | 'deferUntil';
+type PickerMode = 'none' | 'dueDate' | 'showAfterTime' | 'deferUntil' | 'reminder';
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -52,6 +52,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [showAfterTime, setShowAfterTime] = useState<string | null>(null);
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
+  const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
@@ -75,12 +76,13 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       setShowAfterTime(task.showAfterTime);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
+      setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
     } else {
       setTitle(''); setNotes(''); setTags([]);
-      setDueDate(null); setShowAfterTime(null); setDeferUntil(null);
+      setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
     }
@@ -95,6 +97,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       title: title.trim(), notes, tags,
       dueDate: dueDate?.toISOString() ?? null,
       showAfterTime, deferUntil: deferUntil?.toISOString() ?? null,
+      reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: task?.recurrenceDays ?? [],
       recurrenceEndDate: null,
@@ -118,6 +121,11 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setPickerDate(d);
     }
     if (mode === 'deferUntil') setPickerDate(deferUntil ?? new Date());
+    if (mode === 'reminder') {
+      const defaultDate = dueDate ?? new Date();
+      defaultDate.setHours(9, 0, 0, 0);
+      setPickerDate(reminderTime ?? defaultDate);
+    }
     setPickerMode(mode);
   };
 
@@ -129,6 +137,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setShowAfterTime(`${h}:${m}`);
     }
     if (pickerMode === 'deferUntil') setDeferUntil(pickerDate);
+    if (pickerMode === 'reminder') setReminderTime(pickerDate);
     setPickerMode('none');
   };
 
@@ -385,6 +394,15 @@ export function TaskEditor({ visible, task, onClose }: Props) {
             />
             <View style={styles.sep} />
             <OptionRow
+              icon="notifications"
+              label="Remind me"
+              hint="Send a notification at this time"
+              value={reminderTime ? format(reminderTime, "MMM d 'at' h:mm a") : undefined}
+              onPress={() => openPicker('reminder')}
+              onClear={reminderTime ? () => setReminderTime(null) : undefined}
+            />
+            <View style={styles.sep} />
+            <OptionRow
               icon="repeat"
               label="Repeat"
               value={recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : undefined}
@@ -455,7 +473,10 @@ export function TaskEditor({ visible, task, onClose }: Props) {
                 <Text style={styles.pickerBtn}>Cancel</Text>
               </TouchableOpacity>
               <Text style={styles.pickerTitle}>
-                {pickerMode === 'dueDate' ? 'Due Date' : pickerMode === 'showAfterTime' ? 'Show After' : 'Defer Until'}
+                {pickerMode === 'dueDate' ? 'Due Date'
+                  : pickerMode === 'showAfterTime' ? 'Show After'
+                  : pickerMode === 'reminder' ? 'Remind Me'
+                  : 'Defer Until'}
               </Text>
               <TouchableOpacity onPress={confirmPicker}>
                 <Text style={[styles.pickerBtn, { color: colors.accent }]}>Done</Text>

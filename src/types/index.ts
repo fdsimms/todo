@@ -28,6 +28,8 @@ export interface Task {
   priority: Priority;
   effort: Effort;
 
+  reminderTime: string | null; // ISO datetime for scheduled notification
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
