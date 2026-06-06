@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
@@ -25,7 +24,6 @@ interface Props {
 export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
   const [title, setTitle] = useState('');
@@ -50,7 +48,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
       onRequestClose={onClose}
     >
@@ -59,7 +57,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.md }]}>
+        <View style={styles.sheet}>
           <View style={styles.handle} />
           <View style={styles.row}>
             <TextInput
@@ -98,8 +96,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
     borderTopRightRadius: radius.lg,
+    borderBottomLeftRadius: radius.lg,
+    borderBottomRightRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+    marginHorizontal: spacing.xs,
+    marginBottom: spacing.xs,
   },
   handle: {
     width: 36,
