@@ -9,6 +9,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,10 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
 export function TaskEditor({ visible, task, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const addSubtask = useTaskStore(s => s.addSubtask);
+  const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(s => s.allTags());
 
   const [title, setTitle] = useState('');
@@ -58,6 +63,8 @@ export function TaskEditor({ visible, task, onClose }: Props) {
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
   const [pickerDate, setPickerDate] = useState(new Date());
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [addingSubtask, setAddingSubtask] = useState(false);
 
   const titleRef = useRef<TextInput>(null);
 
@@ -78,6 +85,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setPriority(0); setEffort(0); setFocused(false);
     }
     setPickerMode('none'); setNewTag(''); setAddingTag(false);
+    setNewSubtaskTitle(''); setAddingSubtask(false);
     setTimeout(() => titleRef.current?.focus(), 100);
   }, [visible, task]);
 
@@ -272,6 +280,81 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               ))}
             </View>
           </View>
+
+          {/* Subtasks — only shown when editing an existing task */}
+          {task && (() => {
+            const subtasks = subtasksOf(task.id);
+            const doneCount = subtasks.filter(s => s.completed).length;
+            return (
+              <View style={styles.section}>
+                <View style={styles.subtaskHeader}>
+                  <Text style={styles.sectionLabel}>Subtasks</Text>
+                  {subtasks.length > 0 && (
+                    <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
+                  )}
+                </View>
+                {subtasks.map(sub => (
+                  <View key={sub.id} style={styles.subtaskRow}>
+                    <TouchableOpacity
+                      onPress={() => toggleSubtask(sub.id)}
+                      hitSlop={6}
+                      style={styles.subtaskCheck}
+                    >
+                      <Ionicons
+                        name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={20}
+                        color={sub.completed ? colors.green : colors.bgQuaternary}
+                      />
+                    </TouchableOpacity>
+                    <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                      {sub.title}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => deleteSubtask(sub.id)}
+                      hitSlop={8}
+                      style={styles.subtaskDelete}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {addingSubtask ? (
+                  <View style={styles.subtaskInputRow}>
+                    <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
+                    <TextInput
+                      autoFocus
+                      style={styles.subtaskInput}
+                      value={newSubtaskTitle}
+                      onChangeText={setNewSubtaskTitle}
+                      placeholder="Subtask title"
+                      placeholderTextColor={colors.textTertiary}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        const t = newSubtaskTitle.trim();
+                        if (t) addSubtask(task.id, t);
+                        setNewSubtaskTitle('');
+                        setAddingSubtask(false);
+                      }}
+                      onBlur={() => {
+                        const t = newSubtaskTitle.trim();
+                        if (t) addSubtask(task.id, t);
+                        setNewSubtaskTitle('');
+                        setAddingSubtask(false);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.addSubtaskBtn}
+                    onPress={() => setAddingSubtask(true)}
+                  >
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addSubtaskText}>Add subtask</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })()}
 
           {/* Options */}
           <View style={styles.optionsCard}>
@@ -530,6 +613,40 @@ const styles = StyleSheet.create({
     backgroundColor: colors.textSecondary,
   },
   toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
+  subtaskHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  subtaskProgress: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
+  },
+  subtaskRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  subtaskCheck: { padding: 2 },
+  subtaskTitle: {
+    flex: 1, color: colors.text, fontSize: font.md,
+  },
+  subtaskDone: {
+    color: colors.textTertiary, textDecorationLine: 'line-through',
+  },
+  subtaskDelete: { padding: 4 },
+  subtaskInputRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+  },
+  subtaskInput: {
+    flex: 1, color: colors.text, fontSize: font.md,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 2,
+  },
+  addSubtaskBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingVertical: spacing.sm,
+  },
+  addSubtaskText: { color: colors.accent, fontSize: font.sm },
   pickerSheet: {
     backgroundColor: colors.bgSecondary,
     borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,

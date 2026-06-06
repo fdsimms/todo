@@ -18,6 +18,7 @@ import type { Task } from '../types';
 export function LaterScreen() {
   const insets = useSafeAreaInsets();
   const deferredTasks = useTaskStore(s => s.deferredTasks());
+  const allTasks = useTaskStore(s => s.tasks);
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -52,9 +53,17 @@ export function LaterScreen() {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => (
-          <TaskItem task={item} onPress={() => openEditor(item)} />
-        )}
+        renderItem={({ item }) => {
+          const subs = allTasks.filter(t => t.parentId === item.id);
+          return (
+            <TaskItem
+              task={item}
+              onPress={() => openEditor(item)}
+              subtaskCount={subs.length}
+              subtaskDoneCount={subs.filter(t => t.completed).length}
+            />
+          );
+        }}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{section.title}</Text>

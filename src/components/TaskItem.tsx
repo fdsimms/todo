@@ -20,9 +20,11 @@ import { DeferModal } from './DeferModal';
 interface Props {
   task: Task;
   onPress: () => void;
+  subtaskCount?: number;
+  subtaskDoneCount?: number;
 }
 
-export function TaskItem({ task, onPress }: Props) {
+export function TaskItem({ task, onPress, subtaskCount = 0, subtaskDoneCount = 0 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
@@ -128,6 +130,24 @@ export function TaskItem({ task, onPress }: Props) {
                   <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
                     {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
                   </Text>
+                )}
+                {subtaskCount > 0 && (
+                  <View style={[
+                    styles.subtaskBadge,
+                    subtaskDoneCount === subtaskCount && styles.subtaskBadgeDone,
+                  ]}>
+                    <Ionicons
+                      name="list"
+                      size={10}
+                      color={subtaskDoneCount === subtaskCount ? colors.green : colors.textSecondary}
+                    />
+                    <Text style={[
+                      styles.subtaskBadgeText,
+                      subtaskDoneCount === subtaskCount && styles.subtaskBadgeTextDone,
+                    ]}>
+                      {subtaskDoneCount}/{subtaskCount}
+                    </Text>
+                  </View>
                 )}
               </View>
             </TouchableOpacity>
@@ -240,6 +260,26 @@ const styles = StyleSheet.create({
   },
   starBtn: {
     padding: 4,
+  },
+  subtaskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  subtaskBadgeDone: {
+    backgroundColor: colors.green + '22',
+  },
+  subtaskBadgeText: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  subtaskBadgeTextDone: {
+    color: colors.green,
   },
   deleteAction: {
     backgroundColor: colors.red,
