@@ -23,9 +23,11 @@ import { spacing, font, radius, type Colors } from '../theme';
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(s => s.visibleTasks());
+  const somedayTasks = useTaskStore(s => s.somedayTasks());
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(s => s.allTags());
   const initialize = useTaskStore(s => s.initialize);
+  const updateTask = useTaskStore(s => s.updateTask);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -78,6 +80,8 @@ export function TodayScreen() {
   };
 
   const filtered = applyFiltersAndSort(visibleTasks);
+  const suggestions = somedayTasks.slice(0, 3);
+  const showSomeday = activeFilterCount === 0 && !selectedTag && suggestions.length > 0;
 
   type ListItem =
     | { type: 'header'; label: string }
@@ -186,17 +190,50 @@ export function TodayScreen() {
           />
         }
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
-            <Text style={styles.emptyText}>All clear</Text>
-            <Text style={styles.emptySubtext}>
-              {activeFilterCount > 0
-                ? 'No tasks match these filters'
-                : selectedTag
-                  ? `No visible tasks tagged "${selectedTag}"`
-                  : 'Nothing to do right now'}
-            </Text>
-          </View>
+          showSomeday ? (
+            <View>
+              <View style={styles.empty}>
+                <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
+                <Text style={styles.emptyText}>All clear</Text>
+                <Text style={styles.emptySubtext}>Nothing scheduled for today</Text>
+              </View>
+              <View style={styles.suggestions}>
+                <Text style={styles.suggestionsLabel}>How about one of these?</Text>
+                {suggestions.map(task => {
+                  const subs = allTasks.filter(t => t.parentId === task.id);
+                  return (
+                    <View key={task.id}>
+                      <TaskItem
+                        task={task}
+                        onPress={() => openEditor(task)}
+                        subtaskCount={subs.length}
+                        subtaskDoneCount={subs.filter(t => t.completed).length}
+                      />
+                      <TouchableOpacity
+                        style={styles.doTodayBtn}
+                        onPress={() => updateTask(task.id, { someday: false })}
+                      >
+                        <Ionicons name="arrow-up-circle-outline" size={14} color={colors.accent} />
+                        <Text style={styles.doTodayText}>Move to today</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.empty}>
+              <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
+              <Text style={styles.emptyText}>All clear</Text>
+              <Text style={styles.emptySubtext}>
+                {activeFilterCount > 0
+                  ? 'No tasks match these filters'
+                  : selectedTag
+                    ? `No visible tasks tagged "${selectedTag}"`
+                    : 'Nothing to do right now'}
+              </Text>
+            </View>
+          )
         }
       />
 
@@ -261,6 +298,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.md },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },
+  suggestions: { paddingTop: spacing.lg },
+  suggestionsLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  doTodayBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: 2,
+  },
+  doTodayText: { color: colors.accent, fontSize: font.xs, fontWeight: '500' },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,

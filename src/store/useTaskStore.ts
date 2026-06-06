@@ -36,6 +36,7 @@ interface TaskStore {
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
   focusedTasks: () => Task[];
+  somedayTasks: () => Task[];
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
@@ -73,6 +74,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tags: draft.tags ?? [],
       sortOrder: maxOrder + 1,
       focused: draft.focused ?? false,
+      someday: draft.someday ?? false,
       priority: draft.priority ?? 0,
       effort: draft.effort ?? 0,
       streakCount: 0,
@@ -214,6 +216,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tags: [],
       sortOrder: maxOrder + 1,
       focused: false,
+      someday: false,
       priority: 0,
       effort: 0,
       streakCount: 0,
@@ -253,6 +256,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   focusedTasks() {
     return get().tasks.filter(t => !t.parentId && t.focused && !t.completed);
+  },
+
+  somedayTasks() {
+    return get().tasks.filter(t => !t.parentId && t.someday && !t.completed);
   },
 
   subtasksOf(parentId) {

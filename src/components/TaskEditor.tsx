@@ -24,6 +24,7 @@ import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
 interface Props {
   visible: boolean;
   task?: Task | null;
+  initialSomeday?: boolean;
   onClose: () => void;
 }
 
@@ -37,7 +38,7 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, onClose }: Props) {
+export function TaskEditor({ visible, task, initialSomeday, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const addSubtask = useTaskStore(s => s.addSubtask);
@@ -62,6 +63,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [focused, setFocused] = useState(false);
+  const [someday, setSomeday] = useState(false);
 
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
@@ -83,11 +85,13 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
+      setSomeday(task.someday);
     } else {
       setTitle(''); setNotes(''); setTags([]);
       setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
+      setSomeday(initialSomeday ?? false);
     }
     setPickerMode('none'); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
@@ -106,7 +110,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       recurrenceEndDate: null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      focused, priority, effort,
+      focused, someday, priority, effort,
     };
     if (task) { updateTask(task.id, data); }
     else { addTask(data); }
@@ -370,6 +374,21 @@ export function TaskEditor({ visible, task, onClose }: Props) {
 
           {/* Options */}
           <View style={styles.optionsCard}>
+            <TouchableOpacity style={styles.optionRow} onPress={() => setSomeday(s => !s)}>
+              <Ionicons
+                name={someday ? 'moon' : 'moon-outline'}
+                size={18}
+                color={someday ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Someday</Text>
+                <Text style={styles.optionHint}>Park in Someday, not Today</Text>
+              </View>
+              <View style={[styles.toggle, someday && styles.toggleOnSomeday]}>
+                <View style={[styles.toggleKnob, someday && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
             <OptionRow
               icon="calendar"
               label="Due date"
@@ -645,6 +664,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
   },
   toggleOn: { backgroundColor: colors.orange },
+  toggleOnSomeday: { backgroundColor: colors.accent },
   toggleKnob: {
     width: 21, height: 21, borderRadius: 11,
     backgroundColor: colors.textSecondary,
