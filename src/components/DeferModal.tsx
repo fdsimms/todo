@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -11,6 +12,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { addHours, setHours, setMinutes, addDays, startOfDay } from 'date-fns';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
+import { parseNaturalDate } from '../utils/parseNaturalDate';
+import { formatDeferUntil } from '../utils/dateUtils';
 
 interface Props {
   visible: boolean;
@@ -48,10 +51,25 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
 
   const [mode, setMode] = useState<'quick' | 'custom'>('quick');
   const [customDate, setCustomDate] = useState(addHours(new Date(), 2));
+  const [nlText, setNlText] = useState('');
+
+  const parsed = useMemo(() => parseNaturalDate(nlText), [nlText]);
+  const showNlHint = nlText.trim().length > 0 && !parsed;
 
   const handleQuickSelect = (date: Date) => {
     onConfirm(date);
+    setNlText('');
     setMode('quick');
+  };
+
+  const submitNl = () => {
+    if (parsed) handleQuickSelect(parsed);
+  };
+
+  const handleCancel = () => {
+    setNlText('');
+    setMode('quick');
+    onCancel();
   };
 
   return (
@@ -59,15 +77,36 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={onCancel}
+      onRequestClose={handleCancel}
     >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel} />
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleCancel} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>Defer until…</Text>
 
         {mode === 'quick' ? (
           <>
+            <View style={styles.nlWrap}>
+              <TextInput
+                style={styles.nlInput}
+                value={nlText}
+                onChangeText={setNlText}
+                onSubmitEditing={submitNl}
+                placeholder='Type a time — "tomorrow at 3pm", "in 2 weeks"…'
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+              {parsed && (
+                <TouchableOpacity style={styles.nlConfirm} onPress={submitNl} hitSlop={6}>
+                  <Text style={styles.nlConfirmText}>{formatDeferUntil(parsed.toISOString())}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {showNlHint && (
+              <Text style={styles.nlError}>Couldn't read that — pick a time below.</Text>
+            )}
             {quickOptions().map(opt => (
               <TouchableOpacity
                 key={opt.label}
@@ -105,7 +144,7 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
           </>
         )}
 
-        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={onCancel}>
+        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={handleCancel}>
           <Text style={[styles.optionText, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
       </View>
@@ -142,6 +181,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
+  },
+  nlWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  nlInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: 13,
+  },
+  nlConfirm: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  nlConfirmText: {
+    color: '#FFFFFF',
+    fontSize: font.sm,
+    fontWeight: '600',
+  },
+  nlError: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.sm,
+    marginBottom: spacing.sm,
   },
   option: {
     paddingVertical: 15,
