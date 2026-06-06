@@ -49,6 +49,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [focused, setFocused] = useState(false);
@@ -68,11 +69,12 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       setShowAfterTime(task.showAfterTime);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
+      setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
     } else {
       setTitle(''); setNotes(''); setTags([]);
       setDueDate(null); setShowAfterTime(null); setDeferUntil(null);
-      setRecurrenceType('none'); setRecurrenceInterval(1);
+      setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
     }
     setPickerMode('none'); setNewTag(''); setAddingTag(false);
@@ -88,6 +90,7 @@ export function TaskEditor({ visible, task, onClose }: Props) {
       recurrenceType, recurrenceInterval,
       recurrenceDays: task?.recurrenceDays ?? [],
       recurrenceEndDate: null,
+      recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       focused, priority, effort,
     };
@@ -306,23 +309,43 @@ export function TaskEditor({ visible, task, onClose }: Props) {
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
             />
             {recurrenceType !== 'none' && (
-              <View style={styles.intervalRow}>
-                <Text style={styles.intervalLabel}>Every</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setRecurrenceInterval(Math.max(1, recurrenceInterval - 1))}
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setRecurrenceInterval(recurrenceInterval + 1)}
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalLabel}>{RECURRENCE_LABELS[recurrenceType].toLowerCase()}</Text>
-              </View>
+              <>
+                <View style={styles.intervalRow}>
+                  <Text style={styles.intervalLabel}>Every</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setRecurrenceInterval(Math.max(1, recurrenceInterval - 1))}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setRecurrenceInterval(recurrenceInterval + 1)}
+                  >
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalLabel}>{RECURRENCE_LABELS[recurrenceType].toLowerCase()}</Text>
+                </View>
+                <View style={styles.scheduleRow}>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceFromCompletion(false)}
+                  >
+                    <Text style={[styles.schedulePillText, !recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      On schedule
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceFromCompletion(true)}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      After completion
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
             )}
             <View style={styles.sep} />
             <TouchableOpacity style={styles.optionRow} onPress={() => setFocused(f => !f)}>
@@ -478,6 +501,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   intervalLabel: { color: colors.textSecondary, fontSize: font.sm },
+  scheduleRow: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  schedulePill: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  schedulePillActive: { backgroundColor: colors.accent },
+  schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  schedulePillTextActive: { color: colors.bg },
   intervalBtn: {
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
