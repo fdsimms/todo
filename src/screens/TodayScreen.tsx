@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
+import { getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
@@ -102,6 +103,11 @@ export function TodayScreen() {
     setEditorVisible(true);
   };
 
+  const isTaskOverdue = (task: Task): boolean => {
+    if (!task.dueDate) return false;
+    return getDayStart(new Date(task.dueDate)) < getCurrentDayStart();
+  };
+
   const applyFiltersAndSort = (tasks: Task[]): Task[] => {
     let result = tasks;
     if (selectedTag) result = result.filter(t => t.tags.includes(selectedTag));
@@ -124,18 +130,38 @@ export function TodayScreen() {
   };
 
   const filtered = applyFiltersAndSort(visibleTasks);
+  const overdueTasks = filtered.filter(isTaskOverdue);
+  const todayTasks = filtered.filter(t => !isTaskOverdue(t));
   const suggestions = somedayTasks.slice(0, 3);
   const showSomeday = activeFilterCount === 0 && !selectedTag && suggestions.length > 0;
 
   type ListItem =
-    | { type: 'header'; label: string }
+    | { type: 'header'; label: string; isOverdue?: boolean }
     | { type: 'task'; task: Task };
 
+  const buildOverdueSection = (tasks: Task[]): ListItem[] => {
+    if (tasks.length === 0) return [];
+    return [
+      { type: 'header', label: 'Overdue', isOverdue: true },
+      ...tasks.map(task => ({ type: 'task' as const, task })),
+    ];
+  };
+
+  const buildFlatData = (): ListItem[] => {
+    const overdueItems = buildOverdueSection(overdueTasks);
+    const todayItems = todayTasks.map(t => ({ type: 'task' as const, task: t }));
+    if (overdueItems.length > 0 && todayItems.length > 0) {
+      return [...overdueItems, { type: 'header', label: 'Today' }, ...todayItems];
+    }
+    return [...overdueItems, ...todayItems];
+  };
+
   const buildGroupedData = (): ListItem[] => {
+    const overdueItems = buildOverdueSection(overdueTasks);
     const byTag: Record<string, Task[]> = {};
     const untagged: Task[] = [];
 
-    filtered.forEach(task => {
+    todayTasks.forEach(task => {
       if (task.tags.length === 0) {
         untagged.push(task);
       } else {
@@ -145,29 +171,31 @@ export function TodayScreen() {
       }
     });
 
-    const items: ListItem[] = [];
+    const groupedItems: ListItem[] = [];
     Object.entries(byTag).forEach(([tag, tasks]) => {
-      items.push({ type: 'header', label: tag });
-      tasks.forEach(task => items.push({ type: 'task', task }));
+      groupedItems.push({ type: 'header', label: tag });
+      tasks.forEach(task => groupedItems.push({ type: 'task', task }));
     });
     if (untagged.length > 0) {
-      items.push({ type: 'header', label: 'Other' });
-      untagged.forEach(task => items.push({ type: 'task', task }));
+      groupedItems.push({ type: 'header', label: 'Other' });
+      untagged.forEach(task => groupedItems.push({ type: 'task', task }));
     }
-    return items;
+    return [...overdueItems, ...groupedItems];
   };
 
   const isDragMode = sort === 'default' && !groupByTag;
 
   const data: ListItem[] = groupByTag
     ? buildGroupedData()
-    : filtered.map(task => ({ type: 'task' as const, task }));
+    : buildFlatData();
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'header') {
       return (
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionHeaderText}>{item.label}</Text>
+          <Text style={[styles.sectionHeaderText, item.isOverdue && styles.sectionHeaderOverdue]}>
+            {item.label}
+          </Text>
         </View>
       );
     }
@@ -302,7 +330,7 @@ export function TodayScreen() {
 
       {isDragMode ? (
         <DraggableFlatList
-          data={filtered}
+          data={todayTasks}
           keyExtractor={item => item.id}
           onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
           renderItem={renderDraggableItem}
@@ -314,7 +342,38 @@ export function TodayScreen() {
               tintColor={colors.textSecondary}
             />
           }
-          ListEmptyComponent={emptyComponent}
+          ListHeaderComponent={overdueTasks.length > 0 ? (
+            <View>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionHeaderText, styles.sectionHeaderOverdue]}>Overdue</Text>
+              </View>
+              {overdueTasks.map(task => {
+                const subs = allTasks.filter(t => t.parentId === task.id);
+                return (
+                  <TaskItem
+                    key={task.id}
+                    task={task}
+                    onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
+                    expanded={expandedTaskId === task.id}
+                    onEdit={() => openEditor(task)}
+                    subtaskCount={subs.length}
+                    subtaskDoneCount={subs.filter(t => t.completed).length}
+                    subtasks={subs}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(task.id)}
+                    onLongPress={() => enterSelection(task.id)}
+                    onSelect={() => toggleSelection(task.id)}
+                  />
+                );
+              })}
+              {todayTasks.length > 0 && (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>Today</Text>
+                </View>
+              )}
+            </View>
+          ) : undefined}
+          ListEmptyComponent={overdueTasks.length > 0 ? undefined : emptyComponent}
         />
       ) : (
         <FlatList
@@ -418,6 +477,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  sectionHeaderOverdue: {
+    color: colors.red,
   },
   emptyContainer: { flex: 1 },
   listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
