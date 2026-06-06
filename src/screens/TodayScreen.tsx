@@ -10,6 +10,7 @@ import {
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
@@ -20,6 +21,7 @@ import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TagFilterBar } from '../components/TagFilterBar';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 
@@ -32,6 +34,11 @@ export function TodayScreen() {
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkDefer = useTaskStore(s => s.bulkDefer);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -45,6 +52,28 @@ export function TodayScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const enterSelection = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+    setExpandedTaskId(null);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
 
   // Sort & filter state
   const [sort, setSort] = useState<SortOption>('default');
@@ -152,6 +181,10 @@ export function TodayScreen() {
         subtaskCount={subs.length}
         subtaskDoneCount={subs.filter(t => t.completed).length}
         subtasks={subs}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(item.task.id)}
+        onLongPress={() => enterSelection(item.task.id)}
+        onSelect={() => toggleSelection(item.task.id)}
       />
     );
   };
@@ -168,9 +201,13 @@ export function TodayScreen() {
           subtaskCount={subs.length}
           subtaskDoneCount={subs.filter(t => t.completed).length}
           subtasks={subs}
-          drag={drag}
+          drag={selectionMode ? undefined : drag}
           isActive={isActive}
-          showDragHandle
+          showDragHandle={!selectionMode}
+          selectionMode={selectionMode}
+          selected={selectedIds.has(item.id)}
+          onLongPress={() => enterSelection(item.id)}
+          onSelect={() => toggleSelection(item.id)}
         />
       </ScaleDecorator>
     );
@@ -331,6 +368,23 @@ export function TodayScreen() {
       />
 
       <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={filtered.length}
+          existingTags={allTags}
+          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onSelectAll={() => setSelectedIds(new Set(filtered.map(t => t.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns';
-import type { Task, TaskDraft } from '../types';
+import type { Task, TaskDraft, Priority } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -10,6 +10,10 @@ import {
   dbDeleteSubtasks,
   dbClearAllFocus,
   dbBatchUpdateSortOrders,
+  dbBulkDeleteTasks,
+  dbBulkSetPriority,
+  dbBulkSetDefer,
+  dbBulkAddTags,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -35,6 +39,12 @@ interface TaskStore {
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
   deleteSubtask: (id: string) => void;
+
+  bulkCompleteTasks: (ids: string[]) => void;
+  bulkDeleteTasks: (ids: string[]) => void;
+  bulkSetPriority: (ids: string[], priority: Priority) => void;
+  bulkDefer: (ids: string[], until: Date) => void;
+  bulkAddTags: (ids: string[], tags: string[]) => void;
 
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
@@ -278,6 +288,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deleteSubtask(id) {
     dbDeleteTask(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+  },
+
+  bulkCompleteTasks(ids) {
+    if (ids.length === 0) return;
+    ids.forEach(id => get().completeTask(id));
+  },
+
+  bulkDeleteTasks(ids) {
+    if (ids.length === 0) return;
+    dbBulkDeleteTasks(ids);
+    ids.forEach(id => cancelTaskReminder(id));
+    set(s => ({
+      tasks: s.tasks.filter(t => !ids.includes(t.id) && (t.parentId === null || !ids.includes(t.parentId))),
+    }));
+  },
+
+  bulkSetPriority(ids, priority) {
+    if (ids.length === 0) return;
+    dbBulkSetPriority(ids, priority);
+    set(s => ({
+      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, priority } : t),
+    }));
+  },
+
+  bulkDefer(ids, until) {
+    if (ids.length === 0) return;
+    const deferUntil = until.toISOString();
+    dbBulkSetDefer(ids, deferUntil);
+    set(s => ({
+      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, deferUntil } : t),
+    }));
+  },
+
+  bulkAddTags(ids, tags) {
+    if (ids.length === 0 || tags.length === 0) return;
+    dbBulkAddTags(ids, tags);
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        if (!ids.includes(t.id)) return t;
+        return { ...t, tags: Array.from(new Set([...t.tags, ...tags])) };
+      }),
+    }));
   },
 
   visibleTasks() {

@@ -8,11 +8,13 @@ import {
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { FocusSelector } from '../components/FocusSelector';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 import type { Task } from '../types';
@@ -21,8 +23,14 @@ export function FocusScreen() {
   const insets = useSafeAreaInsets();
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const allTasks = useTaskStore(s => s.tasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkDefer = useTaskStore(s => s.bulkDefer);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -30,10 +38,32 @@ export function FocusScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectorVisible, setSelectorVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
+  };
+
+  const enterSelection = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+    setExpandedTaskId(null);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
   };
 
   return (
@@ -78,9 +108,13 @@ export function FocusScreen() {
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
-                drag={drag}
+                drag={selectionMode ? undefined : drag}
                 isActive={isActive}
-                showDragHandle
+                showDragHandle={!selectionMode}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onLongPress={() => enterSelection(item.id)}
+                onSelect={() => toggleSelection(item.id)}
               />
             </ScaleDecorator>
           );
@@ -113,6 +147,23 @@ export function FocusScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={focusedTasks.length}
+          existingTags={allTags}
+          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onSelectAll={() => setSelectedIds(new Set(focusedTasks.map(t => t.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 }
