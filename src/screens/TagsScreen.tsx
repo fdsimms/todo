@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { useColors } from '../theme/ThemeContext';
@@ -19,7 +20,7 @@ import type { Task } from '../types';
 
 export function TagsScreen() {
   const insets = useSafeAreaInsets();
-  const allTags = useTaskStore(s => s.allTags());
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const tasksByTag = useTaskStore(s => s.tasksByTag);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);

@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
@@ -22,10 +23,10 @@ import { spacing, font, radius, type Colors } from '../theme';
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
-  const visibleTasks = useTaskStore(s => s.visibleTasks());
-  const somedayTasks = useTaskStore(s => s.somedayTasks());
+  const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
+  const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
-  const allTags = useTaskStore(s => s.allTags());
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const colors = useColors();

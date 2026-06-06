@@ -19,6 +19,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
 
 interface Props {
@@ -45,7 +46,7 @@ export function TaskEditor({ visible, task, initialSomeday, onClose }: Props) {
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
-  const allTags = useTaskStore(s => s.allTags());
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);

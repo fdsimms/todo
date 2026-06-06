@@ -8,6 +8,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { useColors } from '../theme/ThemeContext';
@@ -18,7 +19,7 @@ import type { Task } from '../types';
 
 export function LaterScreen() {
   const insets = useSafeAreaInsets();
-  const deferredTasks = useTaskStore(s => s.deferredTasks());
+  const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
