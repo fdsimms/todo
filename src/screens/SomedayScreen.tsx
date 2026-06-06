@@ -2,6 +2,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
@@ -11,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
@@ -22,7 +24,8 @@ import type { Task } from '../types';
 
 export function SomedayScreen() {
   const insets = useSafeAreaInsets();
-  const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
+  const allSomedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
+  const allProjects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
@@ -35,6 +38,7 @@ export function SomedayScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -83,14 +87,49 @@ export function SomedayScreen() {
     setEditorVisible(true);
   };
 
+  const somedayTasks = selectedProject
+    ? allSomedayTasks.filter(t => t.projectId === selectedProject)
+    : allSomedayTasks;
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Someday</Text>
         </View>
-        <Text style={styles.subtitle}>{somedayTasks.length} parked</Text>
+        <Text style={styles.subtitle}>{allSomedayTasks.length} parked</Text>
       </View>
+
+      {allProjects.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.projectFilterBar}
+        >
+          <TouchableOpacity
+            style={[styles.projectChip, selectedProject === null && styles.projectChipActive]}
+            onPress={() => setSelectedProject(null)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.projectChipText, selectedProject === null && styles.projectChipTextActive]}>
+              All
+            </Text>
+          </TouchableOpacity>
+          {allProjects.map(p => (
+            <TouchableOpacity
+              key={p.id}
+              style={[styles.projectChip, selectedProject === p.id && { backgroundColor: p.color }]}
+              onPress={() => setSelectedProject(prev => prev === p.id ? null : p.id)}
+              activeOpacity={0.7}
+            >
+              {selectedProject !== p.id && <View style={[styles.projectChipDot, { backgroundColor: p.color }]} />}
+              <Text style={[styles.projectChipText, selectedProject === p.id && styles.projectChipTextActive]}>
+                {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       <DraggableFlatList
         data={somedayTasks}
@@ -201,4 +240,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4, shadowRadius: 8, elevation: 8,
   },
+  projectFilterBar: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.sm,
+  },
+  projectChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingHorizontal: spacing.md, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  projectChipActive: { backgroundColor: colors.accent },
+  projectChipDot: { width: 6, height: 6, borderRadius: 3 },
+  projectChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  projectChipTextActive: { color: colors.text, fontWeight: '700', letterSpacing: 0.1 },
 });
