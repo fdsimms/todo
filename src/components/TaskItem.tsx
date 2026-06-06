@@ -29,6 +29,10 @@ interface Props {
   drag?: () => void;
   isActive?: boolean;
   showDragHandle?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onLongPress?: () => void;
+  onSelect?: () => void;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -62,6 +66,10 @@ export function TaskItem({
   drag,
   isActive = false,
   showDragHandle = false,
+  selectionMode = false,
+  selected = false,
+  onLongPress,
+  onSelect,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -136,124 +144,151 @@ export function TaskItem({
     </TouchableOpacity>
   );
 
+  const rowBody = (
+    <View style={styles.row}>
+      {task.priority > 0 && (
+        <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
+      )}
+
+      <TouchableOpacity
+        onPress={selectionMode ? onSelect : handleComplete}
+        hitSlop={10}
+        style={styles.circleWrapper}
+      >
+        <Animated.View style={[
+          styles.circle,
+          !selectionMode && completing && styles.circleCompleting,
+          selectionMode && selected && styles.circleSelected,
+          { transform: selectionMode ? [] : [{ scale: circleScale }] },
+        ]}>
+          {selectionMode && selected && (
+            <Ionicons name="checkmark" size={14} color={colors.bg} />
+          )}
+        </Animated.View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.content}
+        onPress={selectionMode ? onSelect : onPress}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+        {activeCycleItem && (
+          <Text style={styles.cycleSubtitle} numberOfLines={1}>
+            {activeCycleItem.title}
+          </Text>
+        )}
+
+        <View style={styles.meta}>
+          {task.tags.slice(0, 3).map(tag => (
+            <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+          ))}
+          {task.tags.length > 0 && (
+            <Text style={styles.metaText}>{task.tags.slice(0, 2).join(', ')}</Text>
+          )}
+          {task.dueDate && (
+            <Text style={[styles.metaText, isOverdue && styles.overdue]}>
+              {formatDueDate(task.dueDate)}
+            </Text>
+          )}
+          {task.deferUntil && new Date(task.deferUntil) > new Date() && (
+            <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
+          )}
+          {effortLabel && (
+            <View style={styles.effortBadge}>
+              <Text style={styles.effortText}>{effortLabel}</Text>
+            </View>
+          )}
+          {streak && (
+            <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
+              {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
+            </Text>
+          )}
+          {activeCycleItem && task.cycleItems.length > 1 && (
+            <View style={styles.cycleBadge}>
+              <Ionicons name="sync" size={9} color={colors.accent} />
+              <Text style={styles.cycleBadgeText}>
+                {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}
+              </Text>
+            </View>
+          )}
+          {subtaskCount > 0 && (
+            <View style={[
+              styles.subtaskBadge,
+              subtaskDoneCount === subtaskCount && styles.subtaskBadgeDone,
+            ]}>
+              <Ionicons
+                name="list"
+                size={10}
+                color={subtaskDoneCount === subtaskCount ? colors.green : colors.textSecondary}
+              />
+              <Text style={[
+                styles.subtaskBadgeText,
+                subtaskDoneCount === subtaskCount && styles.subtaskBadgeTextDone,
+              ]}>
+                {subtaskDoneCount}/{subtaskCount}
+              </Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+
+      {!selectionMode && (
+        <TouchableOpacity
+          onPress={() => {
+            Haptics.selectionAsync();
+            toggleFocus(task.id);
+          }}
+          hitSlop={8}
+          style={styles.starBtn}
+        >
+          <Ionicons
+            name={task.focused ? 'star' : 'star-outline'}
+            size={16}
+            color={task.focused ? colors.orange : colors.textTertiary}
+          />
+        </TouchableOpacity>
+      )}
+
+      {!selectionMode && showDragHandle && (
+        <TouchableOpacity
+          onLongPress={drag}
+          delayLongPress={150}
+          hitSlop={8}
+          style={styles.dragHandle}
+        >
+          <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+    </View>
+  );
+
   return (
     <>
       <Animated.View style={[styles.itemWrapper, { opacity: isActive ? 0.85 : rowOpacity }]}>
-        <Swipeable
-          ref={swipeableRef}
-          containerStyle={[
-            styles.swipeContainer,
-            expanded && styles.swipeContainerExpanded,
-          ]}
-          renderRightActions={renderRightActions}
-          renderLeftActions={renderLeftActions}
-          overshootRight={false}
-          overshootLeft={false}
-        >
-          <View style={styles.row}>
-            {task.priority > 0 && (
-              <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
-            )}
-
-            <TouchableOpacity onPress={handleComplete} hitSlop={10} style={styles.circleWrapper}>
-              <Animated.View style={[
-                styles.circle,
-                completing && styles.circleCompleting,
-                { transform: [{ scale: circleScale }] },
-              ]} />
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.content} onPress={onPress} activeOpacity={0.7}>
-              <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
-              {activeCycleItem && (
-                <Text style={styles.cycleSubtitle} numberOfLines={1}>
-                  {activeCycleItem.title}
-                </Text>
-              )}
-
-              <View style={styles.meta}>
-                {task.tags.slice(0, 3).map(tag => (
-                  <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                ))}
-                {task.tags.length > 0 && (
-                  <Text style={styles.metaText}>{task.tags.slice(0, 2).join(', ')}</Text>
-                )}
-                {task.dueDate && (
-                  <Text style={[styles.metaText, isOverdue && styles.overdue]}>
-                    {formatDueDate(task.dueDate)}
-                  </Text>
-                )}
-                {task.deferUntil && new Date(task.deferUntil) > new Date() && (
-                  <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
-                )}
-                {effortLabel && (
-                  <View style={styles.effortBadge}>
-                    <Text style={styles.effortText}>{effortLabel}</Text>
-                  </View>
-                )}
-                {streak && (
-                  <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
-                    {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
-                  </Text>
-                )}
-                {activeCycleItem && task.cycleItems.length > 1 && (
-                  <View style={styles.cycleBadge}>
-                    <Ionicons name="sync" size={9} color={colors.accent} />
-                    <Text style={styles.cycleBadgeText}>
-                      {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}
-                    </Text>
-                  </View>
-                )}
-                {subtaskCount > 0 && (
-                  <View style={[
-                    styles.subtaskBadge,
-                    subtaskDoneCount === subtaskCount && styles.subtaskBadgeDone,
-                  ]}>
-                    <Ionicons
-                      name="list"
-                      size={10}
-                      color={subtaskDoneCount === subtaskCount ? colors.green : colors.textSecondary}
-                    />
-                    <Text style={[
-                      styles.subtaskBadgeText,
-                      subtaskDoneCount === subtaskCount && styles.subtaskBadgeTextDone,
-                    ]}>
-                      {subtaskDoneCount}/{subtaskCount}
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => {
-                Haptics.selectionAsync();
-                toggleFocus(task.id);
-              }}
-              hitSlop={8}
-              style={styles.starBtn}
-            >
-              <Ionicons
-                name={task.focused ? 'star' : 'star-outline'}
-                size={16}
-                color={task.focused ? colors.orange : colors.textTertiary}
-              />
-            </TouchableOpacity>
-
-            {showDragHandle && (
-              <TouchableOpacity
-                onLongPress={drag}
-                delayLongPress={150}
-                hitSlop={8}
-                style={styles.dragHandle}
-              >
-                <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
+        {selectionMode ? (
+          <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
+            {rowBody}
           </View>
-        </Swipeable>
+        ) : (
+          <Swipeable
+            ref={swipeableRef}
+            containerStyle={[
+              styles.swipeContainer,
+              expanded && styles.swipeContainerExpanded,
+            ]}
+            renderRightActions={renderRightActions}
+            renderLeftActions={renderLeftActions}
+            overshootRight={false}
+            overshootLeft={false}
+          >
+            {rowBody}
+          </Swipeable>
+        )}
 
-        {expanded && (
+        {expanded && !selectionMode && (
           <View style={styles.expandedPanel}>
             {task.notes.length > 0 && (
               <Text style={styles.expandNotes}>{task.notes}</Text>
@@ -342,14 +377,16 @@ export function TaskItem({
         )}
       </Animated.View>
 
-      <DeferModal
-        visible={showDeferModal}
-        onConfirm={date => {
-          deferTask(task.id, date);
-          setShowDeferModal(false);
-        }}
-        onCancel={() => setShowDeferModal(false)}
-      />
+      {!selectionMode && (
+        <DeferModal
+          visible={showDeferModal}
+          onConfirm={date => {
+            deferTask(task.id, date);
+            setShowDeferModal(false);
+          }}
+          onCancel={() => setShowDeferModal(false)}
+        />
+      )}
     </>
   );
 }
@@ -402,6 +439,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleCompleting: {
     backgroundColor: colors.green,
     borderColor: colors.green,
+  },
+  circleSelected: {
+    backgroundColor: colors.accent,
+    borderColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     flex: 1,

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,20 +9,31 @@ import {
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
-import { colors, spacing, font, radius } from '../theme';
+import { BulkActionBar } from '../components/BulkActionBar';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, radius, type Colors } from '../theme';
 import type { Task } from '../types';
 
 export function SomedayScreen() {
   const insets = useSafeAreaInsets();
   const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkDefer = useTaskStore(s => s.bulkDefer);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -30,6 +41,28 @@ export function SomedayScreen() {
   const [editorInitialTitle, setEditorInitialTitle] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const enterSelection = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+    setExpandedTaskId(null);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+  };
 
   const handleRefresh = useCallback(() => {
     setRefreshing(true);
@@ -75,9 +108,13 @@ export function SomedayScreen() {
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
-                drag={drag}
+                drag={selectionMode ? undefined : drag}
                 isActive={isActive}
-                showDragHandle
+                showDragHandle={!selectionMode}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onLongPress={() => enterSelection(item.id)}
+                onSelect={() => toggleSelection(item.id)}
               />
             </ScaleDecorator>
           );
@@ -123,11 +160,28 @@ export function SomedayScreen() {
         initialTitle={editorInitialTitle}
         onClose={() => setEditorVisible(false)}
       />
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={somedayTasks.length}
+          existingTags={allTags}
+          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onSelectAll={() => setSelectedIds(new Set(somedayTasks.map(t => t.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',

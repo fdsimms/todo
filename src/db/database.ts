@@ -183,3 +183,44 @@ export function dbDeleteSubtasks(parentId: string): void {
 export function dbClearAllFocus(): void {
   db.runSync('UPDATE tasks SET focused = 0 WHERE focused = 1');
 }
+
+export function dbBulkDeleteTasks(ids: string[]): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('DELETE FROM tasks WHERE parent_id = ?', [id]);
+      db.runSync('DELETE FROM tasks WHERE id = ?', [id]);
+    }
+  });
+}
+
+export function dbBulkSetPriority(ids: string[], priority: number): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET priority = ? WHERE id = ?', [priority, id]);
+    }
+  });
+}
+
+export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET defer_until = ? WHERE id = ?', [deferUntil, id]);
+    }
+  });
+}
+
+export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {
+  if (ids.length === 0 || tagsToAdd.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      const row = db.getFirstSync<{ tags: string }>('SELECT tags FROM tasks WHERE id = ?', [id]);
+      if (!row) continue;
+      const existing: string[] = JSON.parse(row.tags ?? '[]');
+      const merged = Array.from(new Set([...existing, ...tagsToAdd]));
+      db.runSync('UPDATE tasks SET tags = ? WHERE id = ?', [JSON.stringify(merged), id]);
+    }
+  });
+}

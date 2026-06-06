@@ -7,10 +7,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, type Colors } from '../theme';
 import { getVisibleAt } from '../utils/visibilityUtils';
@@ -21,16 +23,44 @@ export function LaterScreen() {
   const insets = useSafeAreaInsets();
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkDefer = useTaskStore(s => s.bulkDefer);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
+  };
+
+  const enterSelection = (id: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectionMode(true);
+    setSelectedIds(new Set([id]));
+    setExpandedTaskId(null);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
   };
 
   // Group by the date they'll become visible
@@ -70,6 +100,10 @@ export function LaterScreen() {
               subtaskCount={subs.length}
               subtaskDoneCount={subs.filter(t => t.completed).length}
               subtasks={subs}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(item.id)}
+              onLongPress={() => enterSelection(item.id)}
+              onSelect={() => toggleSelection(item.id)}
             />
           );
         }}
@@ -95,6 +129,23 @@ export function LaterScreen() {
         task={editingTask}
         onClose={() => setEditorVisible(false)}
       />
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={deferredTasks.length}
+          existingTags={allTags}
+          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onSelectAll={() => setSelectedIds(new Set(deferredTasks.map(t => t.id)))}
+          onDeselectAll={() => setSelectedIds(new Set())}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 }
