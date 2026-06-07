@@ -27,7 +27,10 @@
           "iosDisplayInForeground": true
         }
       ],
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-asset",
+      "expo-font",
+      "expo-sqlite"
     ]
   }
 }
