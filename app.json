@@ -21,7 +21,6 @@
       "package": "com.personal.todo"
     },
     "plugins": [
-      "expo-sqlite",
       [
         "expo-notifications",
         {
