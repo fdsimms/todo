@@ -159,6 +159,7 @@ export function SomedayScreen() {
           );
         }}
         contentContainerStyle={somedayTasks.length === 0 ? styles.emptyContainer : styles.listContent}
+        onScrollBeginDrag={() => setExpandedTaskId(null)}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

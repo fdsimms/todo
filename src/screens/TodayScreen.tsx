@@ -409,6 +409,7 @@ export function TodayScreen() {
             </View>
           ) : undefined}
           ListEmptyComponent={overdueTasks.length > 0 ? undefined : emptyComponent}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       ) : (
         <FlatList
@@ -426,6 +427,7 @@ export function TodayScreen() {
             />
           }
           ListEmptyComponent={emptyComponent}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
 

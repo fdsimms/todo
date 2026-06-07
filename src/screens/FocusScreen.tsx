@@ -96,6 +96,7 @@ export function FocusScreen() {
         keyExtractor={t => t.id}
         onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
         contentContainerStyle={focusedTasks.length === 0 ? styles.emptyContainer : styles.listContent}
+        onScrollBeginDrag={() => setExpandedTaskId(null)}
         renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (

@@ -66,20 +66,17 @@ export function LogbookScreen() {
         )}
         renderItem={({ item }) => (
           <View style={styles.row}>
-            <View style={styles.checkCircle}>
+            <TouchableOpacity
+              style={styles.checkCircle}
+              onPress={() => uncompleteTask(item.id)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <Ionicons name="checkmark" size={14} color={colors.green} />
-            </View>
+            </TouchableOpacity>
             <View style={styles.rowContent}>
               <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
             </View>
-            <TouchableOpacity
-              style={styles.undoBtn}
-              onPress={() => uncompleteTask(item.id)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="arrow-undo" size={16} color={colors.textSecondary} />
-            </TouchableOpacity>
           </View>
         )}
         ListEmptyComponent={
@@ -170,14 +167,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     marginTop: 2,
-  },
-  undoBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: radius.sm,
-    backgroundColor: colors.bgSecondary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
   },
 });

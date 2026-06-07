@@ -123,6 +123,7 @@ export function LaterScreen() {
           </View>
         )}
         stickySectionHeadersEnabled={false}
+        onScrollBeginDrag={() => setExpandedTaskId(null)}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="moon" size={48} color={colors.bgQuaternary} />

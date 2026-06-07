@@ -2,9 +2,11 @@ import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Animated,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -74,6 +76,7 @@ export function TaskItem({
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
+  const updateTask = useTaskStore(s => s.updateTask);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -82,10 +85,13 @@ export function TaskItem({
 
   const [showDeferModal, setShowDeferModal] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleEdit, setTitleEdit] = useState('');
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const swipeableRef = useRef<Swipeable>(null);
+  const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     Animated.timing(expansionAnim, {
@@ -125,16 +131,43 @@ export function TaskItem({
     });
   };
 
-  const handleDelete = async () => {
-    swipeableRef.current?.close();
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
-      () => deleteTask(task.id)
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Task',
+      `Delete "${task.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => swipeableRef.current?.close() },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+              () => deleteTask(task.id)
+            );
+          },
+        },
+      ]
     );
   };
 
+  const handleTitleTap = () => {
+    if (selectionMode) { onSelect?.(); return; }
+    setTitleEdit(task.title);
+    setIsEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.focus(), 50);
+  };
+
+  const saveTitle = () => {
+    setIsEditingTitle(false);
+    const trimmed = titleEdit.trim();
+    if (trimmed && trimmed !== task.title) {
+      updateTask(task.id, { title: trimmed });
+    }
+  };
+
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={handleDelete}>
+    <TouchableOpacity style={styles.deleteAction} onPress={confirmDelete}>
       <Ionicons name="trash" size={20} color={colors.text} />
       <Text style={styles.actionLabel}>Delete</Text>
     </TouchableOpacity>
@@ -170,7 +203,7 @@ export function TaskItem({
           selectionMode && selected && styles.circleSelected,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
-          {selectionMode && selected && (
+          {((selectionMode && selected) || (!selectionMode && completing)) && (
             <Ionicons name="checkmark" size={14} color={colors.bg} />
           )}
         </Animated.View>
@@ -183,7 +216,23 @@ export function TaskItem({
         delayLongPress={400}
         activeOpacity={0.7}
       >
-        <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+        {isEditingTitle ? (
+          <TextInput
+            ref={titleInputRef}
+            style={styles.titleInput}
+            value={titleEdit}
+            onChangeText={setTitleEdit}
+            onBlur={saveTitle}
+            onSubmitEditing={saveTitle}
+            returnKeyType="done"
+            blurOnSubmit
+            autoFocus
+          />
+        ) : (
+          <TouchableOpacity onPress={handleTitleTap} activeOpacity={0.6}>
+            <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+          </TouchableOpacity>
+        )}
         {activeCycleItem && (
           <Text style={styles.cycleSubtitle} numberOfLines={1}>
             {activeCycleItem.title}
@@ -304,6 +353,14 @@ export function TaskItem({
             renderLeftActions={renderLeftActions}
             overshootRight={false}
             overshootLeft={false}
+            onSwipeableOpen={(direction) => {
+              if (direction === 'right') {
+                confirmDelete();
+              } else {
+                swipeableRef.current?.close();
+                setShowDeferModal(true);
+              }
+            }}
           >
             {rowBody}
           </Swipeable>
@@ -479,6 +536,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circleCompleting: {
     backgroundColor: colors.green,
@@ -487,8 +546,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleSelected: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -498,6 +555,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: 21,
+  },
+  titleInput: {
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: 21,
+    padding: 0,
+    margin: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
   },
   meta: {
     flexDirection: 'row',
