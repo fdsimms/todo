@@ -196,6 +196,18 @@ export function TaskItem({
           {task.deferUntil && new Date(task.deferUntil) > new Date() && (
             <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
           )}
+          {task.timeOfDay && (
+            <View style={styles.timeBadge}>
+              <Ionicons
+                name={task.timeOfDay === 'morning' ? 'sunny-outline' : task.timeOfDay === 'afternoon' ? 'sunny' : 'moon-outline'}
+                size={9}
+                color={colors.textTertiary}
+              />
+              <Text style={styles.timeBadgeText}>
+                {task.timeOfDay.charAt(0).toUpperCase() + task.timeOfDay.slice(1)}
+              </Text>
+            </View>
+          )}
           {effortLabel && (
             <View style={styles.effortBadge}>
               <Text style={styles.effortText}>{effortLabel}</Text>
@@ -635,6 +647,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: 11,
     fontWeight: '600',
+  },
+  timeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  timeBadgeText: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    fontWeight: '500',
   },
   editSection: {
     paddingTop: spacing.sm,

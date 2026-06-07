@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Project } from '../types';
+import type { Task, Project, TimeOfDay } from '../types';
 
 const db = SQLite.openDatabaseSync('todo.db');
 
@@ -16,7 +16,7 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL,
       due_date TEXT,
       defer_until TEXT,
-      show_after_time TEXT,
+      time_of_day TEXT,
       recurrence_type TEXT NOT NULL DEFAULT 'none',
       recurrence_interval INTEGER NOT NULL DEFAULT 1,
       recurrence_days TEXT NOT NULL DEFAULT '[]',
@@ -68,6 +68,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN cycle_index INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE tasks ADD COLUMN cycle_items TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -96,7 +97,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     createdAt: row.created_at as string,
     dueDate: (row.due_date as string) ?? null,
     deferUntil: (row.defer_until as string) ?? null,
-    showAfterTime: (row.show_after_time as string) ?? null,
+    timeOfDay: ((row.time_of_day as string) ?? null) as TimeOfDay | null,
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
@@ -130,7 +131,7 @@ export function dbInsertTask(task: Task): void {
   db.runSync(
     `INSERT INTO tasks (
       id, title, notes, completed, completed_at, created_at,
-      due_date, defer_until, show_after_time,
+      due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
       tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time, someday,
       cycle_enabled, cycle_index, cycle_items, project_id
@@ -138,7 +139,7 @@ export function dbInsertTask(task: Task): void {
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
-      task.showAfterTime, task.recurrenceType, task.recurrenceInterval,
+      task.timeOfDay ?? null, task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.sortOrder,
@@ -155,7 +156,7 @@ export function dbUpdateTask(task: Task): void {
   db.runSync(
     `UPDATE tasks SET
       title=?, notes=?, completed=?, completed_at=?,
-      due_date=?, defer_until=?, show_after_time=?,
+      due_date=?, defer_until=?, time_of_day=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?, someday=?,
@@ -163,7 +164,7 @@ export function dbUpdateTask(task: Task): void {
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
-      task.dueDate, task.deferUntil, task.showAfterTime,
+      task.dueDate, task.deferUntil, task.timeOfDay ?? null,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,

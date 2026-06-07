@@ -2,6 +2,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
+export type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 
 export interface Project {
   id: string;
@@ -31,7 +32,7 @@ export interface Task {
 
   dueDate: string | null;
   deferUntil: string | null;
-  showAfterTime: string | null;
+  timeOfDay: TimeOfDay | null;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;

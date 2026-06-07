@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  ScrollView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -26,9 +27,29 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
+type ActivePicker = 'dayReset' | 'morning' | 'afternoon' | 'evening' | null;
+
+function hhmmToDate(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date();
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function dateToHhmm(d: Date): string {
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
 export function SettingsScreen({ visible, onClose }: Props) {
-  const { dayResetTime, setDayResetTime, themeMode, setThemeMode } = useSettingsStore();
-  const [showPicker, setShowPicker] = useState(false);
+  const {
+    dayResetTime, setDayResetTime,
+    morningStart, setMorningStart,
+    afternoonStart, setAfternoonStart,
+    eveningStart, setEveningStart,
+    themeMode, setThemeMode,
+  } = useSettingsStore();
+
+  const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const colors = useColors();
   const { isDark } = useTheme();
@@ -36,27 +57,36 @@ export function SettingsScreen({ visible, onClose }: Props) {
 
   useEffect(() => {
     if (visible) {
-      const [h, m] = dayResetTime.split(':').map(Number);
-      const d = new Date();
-      d.setHours(h, m, 0, 0);
-      setPickerDate(d);
-      setShowPicker(false);
+      setActivePicker(null);
     }
-  }, [visible, dayResetTime]);
+  }, [visible]);
 
-  const confirmResetTime = () => {
-    const h = pickerDate.getHours().toString().padStart(2, '0');
-    const m = pickerDate.getMinutes().toString().padStart(2, '0');
-    setDayResetTime(`${h}:${m}`);
-    setShowPicker(false);
+  const openPicker = (which: ActivePicker) => {
+    if (activePicker === which) { setActivePicker(null); return; }
+    const current = which === 'dayReset' ? dayResetTime
+      : which === 'morning' ? morningStart
+      : which === 'afternoon' ? afternoonStart
+      : eveningStart;
+    setPickerDate(hhmmToDate(current!));
+    setActivePicker(which);
   };
 
-  const resetTimeDisplay = (() => {
-    const [h, m] = dayResetTime.split(':').map(Number);
-    const d = new Date();
-    d.setHours(h, m, 0, 0);
-    return format(d, 'h:mm a');
-  })();
+  const confirmPicker = () => {
+    const hhmm = dateToHhmm(pickerDate);
+    if (activePicker === 'dayReset') setDayResetTime(hhmm);
+    else if (activePicker === 'morning') setMorningStart(hhmm);
+    else if (activePicker === 'afternoon') setAfternoonStart(hhmm);
+    else if (activePicker === 'evening') setEveningStart(hhmm);
+    setActivePicker(null);
+  };
+
+  const formatTime = (hhmm: string) => format(hhmmToDate(hhmm), 'h:mm a');
+
+  const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string }[] = [
+    { key: 'morning', label: 'Morning starts', icon: 'sunny-outline', value: formatTime(morningStart) },
+    { key: 'afternoon', label: 'Afternoon starts', icon: 'sunny', value: formatTime(afternoonStart) },
+    { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatTime(eveningStart) },
+  ];
 
   return (
     <Modal
@@ -74,89 +104,135 @@ export function SettingsScreen({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        {/* Appearance */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Appearance</Text>
-          <View style={styles.card}>
-            <View style={styles.themeRow}>
-              {THEME_OPTIONS.map(opt => (
-                <TouchableOpacity
-                  key={opt.mode}
-                  style={[
-                    styles.themeBtn,
-                    themeMode === opt.mode && styles.themeBtnActive,
-                  ]}
-                  onPress={() => setThemeMode(opt.mode)}
-                >
-                  <Ionicons
-                    name={opt.icon as never}
-                    size={18}
-                    color={themeMode === opt.mode ? colors.accent : colors.textSecondary}
-                  />
-                  <Text
+        <ScrollView>
+          {/* Appearance */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Appearance</Text>
+            <View style={styles.card}>
+              <View style={styles.themeRow}>
+                {THEME_OPTIONS.map(opt => (
+                  <TouchableOpacity
+                    key={opt.mode}
                     style={[
-                      styles.themeBtnText,
-                      themeMode === opt.mode && styles.themeBtnTextActive,
+                      styles.themeBtn,
+                      themeMode === opt.mode && styles.themeBtnActive,
                     ]}
+                    onPress={() => setThemeMode(opt.mode)}
                   >
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+                    <Ionicons
+                      name={opt.icon as never}
+                      size={18}
+                      color={themeMode === opt.mode ? colors.accent : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.themeBtnText,
+                        themeMode === opt.mode && styles.themeBtnTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           </View>
-        </View>
 
-        {/* Day reset time */}
-        <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Day reset</Text>
-          <View style={styles.card}>
-            <TouchableOpacity
-              style={styles.row}
-              onPress={() => setShowPicker(p => !p)}
-            >
-              <Ionicons name="moon" size={18} color={colors.accent} />
-              <View style={styles.rowContent}>
-                <Text style={styles.rowLabel}>New day starts at</Text>
-                <Text style={styles.rowHint}>
-                  "Today" flips and streaks reset at this time
-                </Text>
-              </View>
-              <Text style={styles.rowValue}>{resetTimeDisplay}</Text>
-            </TouchableOpacity>
-
-            {showPicker && (
-              <>
-                <View style={styles.sep} />
-                <DateTimePicker
-                  value={pickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setPickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  style={styles.picker}
-                />
-                <View style={styles.pickerButtons}>
+          {/* Day segments */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Day segments</Text>
+            <View style={styles.card}>
+              {segmentRows.map((row, i) => (
+                <React.Fragment key={row.key}>
+                  {i > 0 && <View style={styles.sep} />}
                   <TouchableOpacity
-                    style={styles.pickerBtn}
-                    onPress={() => setShowPicker(false)}
+                    style={styles.row}
+                    onPress={() => openPicker(row.key as ActivePicker)}
                   >
-                    <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                    <Ionicons name={row.icon as never} size={18} color={colors.accent} />
+                    <Text style={styles.rowLabel}>{row.label}</Text>
+                    <Text style={styles.rowValue}>{row.value}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.pickerBtn, styles.pickerBtnPrimary]}
-                    onPress={confirmResetTime}
-                  >
-                    <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+                  {activePicker === row.key && (
+                    <>
+                      <View style={styles.sep} />
+                      <DateTimePicker
+                        value={pickerDate}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_e, d) => d && setPickerDate(d)}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        style={styles.picker}
+                      />
+                      <View style={styles.pickerButtons}>
+                        <TouchableOpacity style={styles.pickerBtn} onPress={() => setActivePicker(null)}>
+                          <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmPicker}>
+                          <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </React.Fragment>
+              ))}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Tasks with a time category only appear in your list after that part of the day begins.
+            </Text>
           </View>
-          <Text style={styles.sectionFooter}>
-            Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
-          </Text>
-        </View>
+
+          {/* Day reset time */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Day reset</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => openPicker('dayReset')}
+              >
+                <Ionicons name="moon" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>New day starts at</Text>
+                  <Text style={styles.rowHint}>
+                    "Today" flips and streaks reset at this time
+                  </Text>
+                </View>
+                <Text style={styles.rowValue}>{formatTime(dayResetTime)}</Text>
+              </TouchableOpacity>
+
+              {activePicker === 'dayReset' && (
+                <>
+                  <View style={styles.sep} />
+                  <DateTimePicker
+                    value={pickerDate}
+                    mode="time"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={(_e, d) => d && setPickerDate(d)}
+                    themeVariant={isDark ? 'dark' : 'light'}
+                    style={styles.picker}
+                  />
+                  <View style={styles.pickerButtons}>
+                    <TouchableOpacity
+                      style={styles.pickerBtn}
+                      onPress={() => setActivePicker(null)}
+                    >
+                      <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.pickerBtn, styles.pickerBtnPrimary]}
+                      onPress={confirmPicker}
+                    >
+                      <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
+            </Text>
+          </View>
+        </ScrollView>
       </View>
     </Modal>
   );
@@ -203,7 +279,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   rowContent: { flex: 1 },
-  rowLabel: { color: colors.text, fontSize: font.md },
+  rowLabel: { color: colors.text, fontSize: font.md, flex: 1 },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
   rowValue: { color: colors.accent, fontSize: font.md, fontWeight: '500' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
@@ -221,5 +297,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionFooter: {
     color: colors.textTertiary, fontSize: font.sm,
     paddingHorizontal: spacing.sm, marginTop: spacing.sm, lineHeight: 19,
+    marginBottom: spacing.sm,
   },
 });

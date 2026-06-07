@@ -23,7 +23,7 @@ const baseTask: Task = {
   createdAt: new Date(2025, 0, 1).toISOString(),
   dueDate: null,
   deferUntil: null,
-  showAfterTime: null,
+  timeOfDay: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -137,19 +137,24 @@ describe('formatDeferUntil', () => {
     jest.useRealTimers();
   });
 
-  it('prefixes with "Today at" for today', () => {
+  it('returns "Today" for today', () => {
     const result = formatDeferUntil(new Date(2025, 5, 10, 15, 30, 0).toISOString());
-    expect(result).toBe('Today at 3:30 PM');
+    expect(result).toBe('Today');
   });
 
-  it('prefixes with "Tomorrow at" for tomorrow', () => {
+  it('returns "Tomorrow" for tomorrow', () => {
     const result = formatDeferUntil(new Date(2025, 5, 11, 9, 0, 0).toISOString());
-    expect(result).toBe('Tomorrow at 9:00 AM');
+    expect(result).toBe('Tomorrow');
   });
 
-  it('returns "MMM d at h:mm a" for other dates', () => {
+  it('returns a day name within this week', () => {
+    const result = formatDeferUntil(new Date(2025, 5, 14, 14, 45, 0).toISOString());
+    expect(result).toBe('Saturday');
+  });
+
+  it('returns "MMM d" for dates beyond this week', () => {
     const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
-    expect(result).toBe('Jul 20 at 2:45 PM');
+    expect(result).toBe('Jul 20');
   });
 });
 
@@ -165,8 +170,8 @@ describe('formatGroupHeader', () => {
     jest.useRealTimers();
   });
 
-  it('returns "Today, later" for today', () => {
-    expect(formatGroupHeader(new Date(2025, 5, 10, 20, 0, 0).toISOString())).toBe('Today, later');
+  it('returns "Today" for today', () => {
+    expect(formatGroupHeader(new Date(2025, 5, 10, 20, 0, 0).toISOString())).toBe('Today');
   });
 
   it('returns "Tomorrow" for tomorrow', () => {
