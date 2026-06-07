@@ -8,12 +8,18 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
+import type { Priority, Effort } from '../types';
+import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
+import { tagColor } from '../utils/tagColor';
+import { format, addDays, startOfDay } from 'date-fns';
 
 interface Props {
   visible: boolean;
@@ -22,30 +28,93 @@ interface Props {
   initialSomeday?: boolean;
 }
 
+type ActivePanel = 'date' | 'priority' | 'effort' | 'tags' | null;
+
+const DATE_PRESETS = [
+  { label: 'Today', days: 0 },
+  { label: 'Tomorrow', days: 1 },
+  { label: '+7 days', days: 7 },
+];
+
 export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: Props) {
   const addTask = useTaskStore(s => s.addTask);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
+  const tagInputRef = useRef<TextInput>(null);
+
   const [title, setTitle] = useState('');
+  const [priority, setPriority] = useState<Priority>(0);
+  const [effort, setEffort] = useState<Effort>(0);
+  const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [activePanel, setActivePanel] = useState<ActivePanel>(null);
 
   useEffect(() => {
     if (visible) {
       setTitle('');
+      setPriority(0);
+      setEffort(0);
+      setDueDate(null);
+      setTags([]);
+      setTagInput('');
+      setActivePanel(null);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
 
   const handleAdd = () => {
     if (!title.trim()) return;
-    addTask({ title: title.trim(), someday: initialSomeday ?? false });
+    addTask({
+      title: title.trim(),
+      someday: initialSomeday ?? false,
+      priority,
+      effort,
+      dueDate: dueDate?.toISOString() ?? null,
+      tags,
+    });
     onClose();
   };
 
   const handleOpenFull = () => {
     onOpenFull(title);
   };
+
+  const togglePanel = (panel: ActivePanel) => {
+    setActivePanel(prev => prev === panel ? null : panel);
+    if (panel === 'tags') {
+      setTimeout(() => tagInputRef.current?.focus(), 100);
+    }
+  };
+
+  const addTag = (tag: string) => {
+    const t = tag.trim().toLowerCase();
+    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    setTags(prev => prev.filter(t => t !== tag));
+  };
+
+  const toggleExistingTag = (tag: string) => {
+    setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
+
+  const formatDate = (d: Date) => {
+    const today = startOfDay(new Date());
+    const tomorrow = addDays(today, 1);
+    if (d.toDateString() === today.toDateString()) return 'Today';
+    if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
+    return format(d, 'MMM d');
+  };
+
+  const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
 
   return (
     <Modal
@@ -59,8 +128,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.md }]}>
+        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm }]}>
           <View style={styles.handle} />
+
+          {/* Title input row */}
           <View style={styles.row}>
             <TextInput
               ref={inputRef}
@@ -81,6 +152,214 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
               <Ionicons name="arrow-up" size={18} color={colors.text} />
             </TouchableOpacity>
           </View>
+
+          {/* Attribute toolbar */}
+          <View style={styles.toolbar}>
+            {/* Due date chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'date' && styles.toolChipActive, dueDate != null && styles.toolChipSet]}
+              onPress={() => togglePanel('date')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={13}
+                color={dueDate ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, dueDate != null && styles.toolChipTextSet]}>
+                {dueDate ? formatDate(dueDate) : 'Date'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Priority chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
+              onPress={() => togglePanel('priority')}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
+              <Text style={[styles.toolChipText, priority > 0 && styles.toolChipTextSet]}>
+                {priority > 0 ? PRIORITY_LABELS_SHORT[priority] : 'Priority'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Effort chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
+              onPress={() => togglePanel('effort')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="flash-outline"
+                size={13}
+                color={effort > 0 ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, effort > 0 && styles.toolChipTextSet]}>
+                {effort > 0 ? EFFORT_LABELS[effort] : 'Effort'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Tags chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
+              onPress={() => togglePanel('tags')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="pricetag-outline"
+                size={13}
+                color={tags.length > 0 ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, tags.length > 0 && styles.toolChipTextSet]}>
+                {tags.length > 0 ? tags.slice(0, 2).join(', ') : 'Tags'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Inline panels */}
+          {activePanel === 'date' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {DATE_PRESETS.map(({ label, days }) => {
+                  const d = startOfDay(addDays(new Date(), days));
+                  const selected = dueDate?.toDateString() === d.toDateString();
+                  return (
+                    <TouchableOpacity
+                      key={label}
+                      style={[styles.presetChip, selected && styles.presetChipActive]}
+                      onPress={() => {
+                        setDueDate(selected ? null : d);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[styles.presetChipText, selected && styles.presetChipTextActive]}>
+                        {label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                {dueDate && (
+                  <TouchableOpacity
+                    style={styles.clearChip}
+                    onPress={() => setDueDate(null)}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="close" size={12} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'priority' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[
+                      styles.priorityChip,
+                      priority === p && styles.priorityChipActive,
+                      priority === p && p > 0 && { borderColor: PRIORITY_COLORS[p], backgroundColor: PRIORITY_COLORS[p] + '22' },
+                    ]}
+                    onPress={() => setPriority(p)}
+                    activeOpacity={0.7}
+                  >
+                    {p > 0 && <View style={[styles.priorityChipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />}
+                    <Text style={[
+                      styles.presetChipText,
+                      priority === p && styles.presetChipTextActive,
+                      priority === p && p > 0 && { color: PRIORITY_COLORS[p] },
+                    ]}>
+                      {PRIORITY_LABELS_SHORT[p]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'effort' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {([1, 2, 3, 4, 5] as Effort[]).map(e => (
+                  <TouchableOpacity
+                    key={e}
+                    style={[styles.presetChip, effort === e && styles.presetChipActive]}
+                    onPress={() => setEffort(prev => prev === e ? 0 : e)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.presetChipText, effort === e && styles.presetChipTextActive]}>
+                      {EFFORT_LABELS[e]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'tags' && (
+            <View style={styles.panel}>
+              {/* Currently selected tags */}
+              {tags.length > 0 && (
+                <View style={styles.selectedTagsRow}>
+                  {tags.map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[styles.selectedTagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                      onPress={() => removeTag(tag)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                      <Text style={[styles.selectedTagText, { color: tagColor(tag) }]}>{tag}</Text>
+                      <Ionicons name="close" size={10} color={tagColor(tag)} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {/* Tag input */}
+              <View style={styles.tagInputRow}>
+                <TextInput
+                  ref={tagInputRef}
+                  style={styles.tagInput}
+                  placeholder="Add tag…"
+                  placeholderTextColor={colors.textTertiary}
+                  value={tagInput}
+                  onChangeText={setTagInput}
+                  onSubmitEditing={() => { if (tagInput.trim()) addTag(tagInput); }}
+                  returnKeyType="done"
+                  blurOnSubmit={false}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                {tagInput.trim().length > 0 && (
+                  <TouchableOpacity onPress={() => addTag(tagInput)} hitSlop={8}>
+                    <Ionicons name="add-circle" size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {/* Existing tag suggestions */}
+              {suggestedTags.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
+                  <View style={styles.suggestionsRow}>
+                    {suggestedTags.map(tag => (
+                      <TouchableOpacity
+                        key={tag}
+                        style={styles.suggestionChip}
+                        onPress={() => toggleExistingTag(tag)}
+                        activeOpacity={0.7}
+                      >
+                        <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                        <Text style={styles.suggestionText}>{tag}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              )}
+            </View>
+          )}
+
+          {/* More details */}
           <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull}>
             <Ionicons name="expand-outline" size={13} color={colors.textSecondary} />
             <Text style={styles.moreBtnText}>More details</Text>
@@ -131,6 +410,153 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addBtnDisabled: {
     backgroundColor: colors.bgTertiary,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+    flexWrap: 'wrap',
+  },
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  toolChipActive: {
+    backgroundColor: colors.bgQuaternary,
+  },
+  toolChipSet: {
+    backgroundColor: colors.accent + '22',
+  },
+  toolChipText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: '500',
+  },
+  toolChipTextSet: {
+    color: colors.accent,
+  },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  panel: {
+    marginBottom: spacing.sm,
+    paddingTop: spacing.xs,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  presetChipActive: {
+    backgroundColor: colors.accent,
+  },
+  presetChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: '500',
+  },
+  presetChipTextActive: {
+    color: colors.text,
+    fontWeight: '600',
+  },
+  clearChip: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  priorityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  priorityChipActive: {
+    backgroundColor: colors.bgQuaternary,
+  },
+  priorityChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  selectedTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  selectedTagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  tagDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  selectedTagText: {
+    fontSize: font.xs,
+    fontWeight: '500',
+  },
+  tagInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  tagInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgQuaternary,
+    paddingVertical: 4,
+  },
+  suggestionsScroll: {
+    marginTop: 2,
+  },
+  suggestionsRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingBottom: 2,
+  },
+  suggestionChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  suggestionText: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
   },
   moreBtn: {
     flexDirection: 'row',

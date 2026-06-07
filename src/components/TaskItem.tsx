@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -84,7 +84,16 @@ export function TaskItem({
   const [completing, setCompleting] = useState(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const swipeableRef = useRef<Swipeable>(null);
+
+  useEffect(() => {
+    Animated.timing(expansionAnim, {
+      toValue: expanded ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [expanded]);
 
   const isOverdue =
     task.dueDate &&
@@ -300,107 +309,116 @@ export function TaskItem({
           </Swipeable>
         )}
 
-        {expanded && !selectionMode && (
-          <View style={styles.expandedPanel}>
-            {task.notes.length > 0 && (
-              <Text style={styles.expandNotes}>{task.notes}</Text>
-            )}
+        <Animated.View style={[
+          styles.expandedPanel,
+          {
+            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }),
+            opacity: expansionAnim,
+            overflow: 'hidden',
+          },
+        ]}>
+          {!selectionMode && (
+            <>
+              {task.notes.length > 0 && (
+                <Text style={styles.expandNotes}>{task.notes}</Text>
+              )}
 
-            {subtasks.length > 0 && (
-              <View style={[
-                styles.expandSection,
-                task.notes.length > 0 && styles.sectionDivider,
-              ]}>
-                {subtasks.map(sub => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={styles.subtaskRow}
-                    onPress={() => toggleSubtask(sub.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                      {sub.completed && (
-                        <Ionicons name="checkmark" size={9} color={colors.bg} />
-                      )}
-                    </View>
-                    <Text style={[
-                      styles.subtaskTitle,
-                      sub.completed && styles.subtaskTitleDone,
-                    ]} numberOfLines={2}>
-                      {sub.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+              {subtasks.length > 0 && (
+                <View style={[
+                  styles.expandSection,
+                  task.notes.length > 0 && styles.sectionDivider,
+                ]}>
+                  {subtasks.map(sub => (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={styles.subtaskRow}
+                      onPress={() => toggleSubtask(sub.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                        {sub.completed && (
+                          <Ionicons name="checkmark" size={9} color={colors.bg} />
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.subtaskTitle,
+                        sub.completed && styles.subtaskTitleDone,
+                      ]} numberOfLines={2}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            {task.recurrenceType !== 'none' && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
-              ]}>
-                <Ionicons name="repeat" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
-                {task.streakCount > 0 && (
-                  <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
-                )}
-              </View>
-            )}
+              {task.recurrenceType !== 'none' && (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="repeat" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
+                  {task.streakCount > 0 && (
+                    <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+                  )}
+                </View>
+              )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-              ]}>
-                <Ionicons name="sync" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>
-                  Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
-                </Text>
-                {task.cycleItems.map((item, i) => (
-                  <Text
-                    key={item.id}
-                    style={[
-                      styles.expandMeta,
-                      i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
-                    ]}
-                  >
-                    {i > 0 ? ' → ' : ' '}{item.title}
+              {activeCycleItem && task.cycleItems.length > 0 && (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta}>
+                    Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
                   </Text>
-                ))}
-              </View>
-            )}
+                  {task.cycleItems.map((item, i) => (
+                    <Text
+                      key={item.id}
+                      style={[
+                        styles.expandMeta,
+                        i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
+                      ]}
+                    >
+                      {i > 0 ? ' → ' : ' '}{item.title}
+                    </Text>
+                  ))}
+                </View>
+              )}
 
-            {onEdit && (
-              <View style={[
-                styles.editSection,
-                hasExpandContent && styles.sectionDivider,
-                task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
-              ]}>
-                {task.recurrenceType !== 'none' && (
+              {onEdit && (
+                <View style={[
+                  styles.editSection,
+                  hasExpandContent && styles.sectionDivider,
+                  task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
+                ]}>
+                  {task.recurrenceType !== 'none' && (
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={async () => {
+                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        skipNextRecurrence(task.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
+                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.editBtn}
-                    onPress={async () => {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      skipNextRecurrence(task.id);
-                    }}
+                    onPress={onEdit}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                    <Ionicons name="pencil-outline" size={13} color={colors.accent} />
+                    <Text style={styles.editBtnText}>Edit</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={onEdit}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
+                </View>
+              )}
+            </>
+          )}
+        </Animated.View>
       </Animated.View>
 
       {!selectionMode && (

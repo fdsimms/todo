@@ -125,14 +125,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 80,
     gap: spacing.sm,
   },
   emptyText: {
     color: colors.textSecondary,
     fontSize: font.lg,
     fontWeight: '600',
-    marginTop: spacing.md,
   },
   emptySubtext: {
     color: colors.textTertiary,

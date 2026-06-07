@@ -217,7 +217,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
           <TextInput
             ref={titleRef}
             style={styles.titleInput}
@@ -792,6 +792,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerSave: { fontWeight: '600' },
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
+  scrollContent: { paddingBottom: 320 },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.sm, minHeight: 60,

@@ -428,10 +428,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md + 40 + spacing.md,
   },
   empty: {
-    alignItems: 'center', paddingTop: 100, gap: spacing.sm, paddingHorizontal: spacing.xl,
+    flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl,
   },
   emptyText: {
-    color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.sm,
+    color: colors.textSecondary, fontSize: font.lg, fontWeight: '600',
   },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center' },
   emptyAction: {

@@ -518,8 +518,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flex: 1 },
   listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80, gap: spacing.sm },
-  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600', marginTop: spacing.md },
+  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
+  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600' },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },
   suggestions: { paddingTop: spacing.lg },
   suggestionsLabel: {

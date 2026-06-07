@@ -95,7 +95,7 @@ export function FocusScreen() {
         data={focusedTasks}
         keyExtractor={t => t.id}
         onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
-        contentContainerStyle={focusedTasks.length === 0 ? undefined : styles.listContent}
+        contentContainerStyle={focusedTasks.length === 0 ? styles.emptyContainer : styles.listContent}
         renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
@@ -188,13 +188,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: '600' },
+  emptyContainer: { flex: 1 },
   empty: {
-    alignItems: 'center', paddingTop: 100, paddingHorizontal: spacing.xl,
+    flex: 1,
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl,
     gap: spacing.sm,
   },
   emptyTitle: {
     color: colors.textSecondary, fontSize: font.lg, fontWeight: '600',
-    marginTop: spacing.md,
   },
   emptyText: {
     color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', lineHeight: 21,
