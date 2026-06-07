@@ -17,6 +17,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { DeferModal } from './DeferModal';
+import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 
 interface Props {
   task: Task;
@@ -77,8 +78,13 @@ export function TaskItem({
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const allTasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const snoozeSuggestion = useMemo(
+    () => computeSnoozeSuggestion(task, allTasks),
+    [task, allTasks]
+  );
 
   const [showDeferModal, setShowDeferModal] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -411,6 +417,7 @@ export function TaskItem({
             setShowDeferModal(false);
           }}
           onCancel={() => setShowDeferModal(false)}
+          snoozeSuggestion={snoozeSuggestion}
         />
       )}
     </>
