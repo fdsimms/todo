@@ -63,12 +63,22 @@ export function LaterScreen() {
     setSelectedIds(new Set());
   };
 
-  // Group by the date they'll become visible
+  const getGroupKey = (task: Task): string => {
+    const visibleAt = getVisibleAt(task);
+    const dayLabel = formatGroupHeader(visibleAt.toISOString());
+    if (task.timeOfDay) {
+      const label = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }[task.timeOfDay];
+      return `${dayLabel} — ${label}`;
+    }
+    return dayLabel;
+  };
+
+  // Group by the date (and time of day) they'll become visible
   const grouped = new Map<string, Task[]>();
   [...deferredTasks]
     .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
     .forEach(task => {
-      const key = formatGroupHeader(getVisibleAt(task).toISOString());
+      const key = getGroupKey(task);
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(task);
     });
@@ -118,7 +128,7 @@ export function LaterScreen() {
             <Ionicons name="moon" size={48} color={colors.bgQuaternary} />
             <Text style={styles.emptyText}>Nothing deferred</Text>
             <Text style={styles.emptySubtext}>
-              Swipe right on a task or set a "Show after" time to stash things here
+              Swipe left on a task to defer it, or set a time of day in the task editor
             </Text>
           </View>
         }

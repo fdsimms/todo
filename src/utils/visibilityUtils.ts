@@ -2,24 +2,38 @@ import type { Task } from '../types';
 import { getDayStart, getCurrentDayStart } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 
+function getTimeOfDayThreshold(timeOfDay: NonNullable<Task['timeOfDay']>): Date {
+  const { morningStart, afternoonStart, eveningStart } = useSettingsStore.getState();
+  const hhmm = timeOfDay === 'morning' ? morningStart
+    : timeOfDay === 'afternoon' ? afternoonStart
+    : eveningStart;
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = new Date();
+  t.setHours(h, m, 0, 0);
+  return t;
+}
+
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
   if (task.someday) return false;
 
   const now = new Date();
+  const { dayResetTime } = useSettingsStore.getState();
 
-  if (task.deferUntil && new Date(task.deferUntil) > now) return false;
+  // deferUntil is day-level: hidden until that logical day arrives
+  if (task.deferUntil) {
+    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const todayStart = getCurrentDayStart();
+    if (deferDayStart > todayStart) return false;
+  }
 
-  if (task.showAfterTime) {
-    const [h, m] = task.showAfterTime.split(':').map(Number);
-    const threshold = new Date();
-    threshold.setHours(h, m, 0, 0);
+  // timeOfDay: hidden until that time segment starts each day
+  if (task.timeOfDay) {
+    const threshold = getTimeOfDayThreshold(task.timeOfDay);
     if (now < threshold) return false;
   }
 
-  // Use the configurable day-reset time so "today" doesn't flip at midnight
   if (task.dueDate) {
-    const { dayResetTime } = useSettingsStore.getState();
     const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
     const todayStart = getCurrentDayStart();
     if (taskDayStart > todayStart) return false;
@@ -36,25 +50,42 @@ export function isTaskDeferred(task: Task): boolean {
 
 export function getVisibleAt(task: Task): Date {
   const now = new Date();
+  const { dayResetTime } = useSettingsStore.getState();
   const candidates: Date[] = [];
+  const todayStart = getCurrentDayStart();
 
+  const applyTimeOfDay = (base: Date): Date => {
+    if (!task.timeOfDay) return base;
+    const threshold = getTimeOfDayThreshold(task.timeOfDay);
+    const result = new Date(base);
+    result.setHours(threshold.getHours(), threshold.getMinutes(), 0, 0);
+    return result;
+  };
+
+  // deferUntil - day-level block
   if (task.deferUntil) {
-    const d = new Date(task.deferUntil);
-    if (d > now) candidates.push(d);
+    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    if (deferDayStart > todayStart) {
+      candidates.push(applyTimeOfDay(deferDayStart));
+    }
   }
 
-  if (task.showAfterTime) {
-    const [h, m] = task.showAfterTime.split(':').map(Number);
-    const t = new Date();
-    t.setHours(h, m, 0, 0);
-    if (t > now) candidates.push(t);
+  // timeOfDay - time-level block within today (only when not already pushed to future day)
+  if (task.timeOfDay && candidates.length === 0) {
+    const threshold = getTimeOfDayThreshold(task.timeOfDay);
+    if (threshold > now) candidates.push(threshold);
   }
 
+  // dueDate - day-level block
   if (task.dueDate) {
-    const { dayResetTime } = useSettingsStore.getState();
     const taskStart = getDayStart(new Date(task.dueDate), dayResetTime);
-    const todayStart = getCurrentDayStart();
-    if (taskStart > todayStart) candidates.push(taskStart);
+    if (taskStart > todayStart) {
+      const candidate = applyTimeOfDay(taskStart);
+      // Only add if later than any existing candidate
+      if (candidates.length === 0 || candidate > candidates[candidates.length - 1]) {
+        candidates.push(candidate);
+      }
+    }
   }
 
   if (candidates.length === 0) return now;

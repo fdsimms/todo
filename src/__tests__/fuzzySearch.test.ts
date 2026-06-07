@@ -10,7 +10,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   dueDate: null,
   deferUntil: null,
-  showAfterTime: null,
+  timeOfDay: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],

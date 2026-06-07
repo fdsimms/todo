@@ -45,23 +45,18 @@ export function formatDueDate(iso: string): string {
   return format(d, 'MMM d');
 }
 
-export function formatShowAfterTime(hhmm: string): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return format(d, 'h:mm a');
-}
-
 export function formatDeferUntil(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return `Today at ${format(d, 'h:mm a')}`;
-  if (isTomorrow(d)) return `Tomorrow at ${format(d, 'h:mm a')}`;
-  return format(d, "MMM d 'at' h:mm a");
+  if (isToday(d)) return 'Today';
+  if (isTomorrow(d)) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, new Date());
+  if (diff < 7) return format(d, 'EEEE');
+  return format(d, 'MMM d');
 }
 
 export function formatGroupHeader(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return 'Today, later';
+  if (isToday(d)) return 'Today';
   if (isTomorrow(d)) return 'Tomorrow';
   if (isThisWeek(d)) return format(d, 'EEEE');
   return format(d, 'MMMM d');

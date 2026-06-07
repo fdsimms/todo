@@ -1,19 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
-  Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
-import { addHours, setHours, setMinutes, addDays, startOfDay } from 'date-fns';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
-import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { formatDeferUntil } from '../utils/dateUtils';
 
 interface Props {
   visible: boolean;
@@ -21,130 +16,72 @@ interface Props {
   onCancel: () => void;
 }
 
-function quickOptions(): { label: string; date: Date }[] {
+function dayOptions(): { label: string; sublabel: string; date: Date }[] {
   const now = new Date();
-  const todayAt = (h: number, m = 0) => {
-    const d = new Date();
-    d.setHours(h, m, 0, 0);
-    return d;
+  const noonOf = (d: Date) => {
+    const result = startOfDay(d);
+    result.setHours(12, 0, 0, 0);
+    return result;
   };
-  const options = [];
 
-  const tonight = todayAt(20, 0);
-  if (now < tonight) options.push({ label: 'Tonight (8 PM)', date: tonight });
-
-  const lateNight = todayAt(22, 0);
-  if (now < lateNight) options.push({ label: 'Late night (10 PM)', date: lateNight });
-
-  options.push({ label: 'Tomorrow morning (8 AM)', date: setMinutes(setHours(addDays(startOfDay(now), 1), 8), 0) });
-  options.push({ label: 'Tomorrow evening (6 PM)', date: setMinutes(setHours(addDays(startOfDay(now), 1), 18), 0) });
-  options.push({ label: 'In 1 hour', date: addHours(now, 1) });
-  options.push({ label: 'In 3 hours', date: addHours(now, 3) });
-
-  return options;
+  return [
+    {
+      label: 'Tomorrow',
+      sublabel: addDays(now, 1).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      date: noonOf(addDays(now, 1)),
+    },
+    {
+      label: 'In 2 days',
+      sublabel: addDays(now, 2).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      date: noonOf(addDays(now, 2)),
+    },
+    {
+      label: 'Next week',
+      sublabel: addWeeks(now, 1).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      date: noonOf(addWeeks(now, 1)),
+    },
+    {
+      label: 'In 2 weeks',
+      sublabel: addWeeks(now, 2).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }),
+      date: noonOf(addWeeks(now, 2)),
+    },
+    {
+      label: 'Next month',
+      sublabel: addMonths(now, 1).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }),
+      date: noonOf(addMonths(now, 1)),
+    },
+  ];
 }
 
 export function DeferModal({ visible, onConfirm, onCancel }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-
-  const [mode, setMode] = useState<'quick' | 'custom'>('quick');
-  const [customDate, setCustomDate] = useState(addHours(new Date(), 2));
-  const [nlText, setNlText] = useState('');
-
-  const parsed = useMemo(() => parseNaturalDate(nlText), [nlText]);
-  const showNlHint = nlText.trim().length > 0 && !parsed;
-
-  const handleQuickSelect = (date: Date) => {
-    onConfirm(date);
-    setNlText('');
-    setMode('quick');
-  };
-
-  const submitNl = () => {
-    if (parsed) handleQuickSelect(parsed);
-  };
-
-  const handleCancel = () => {
-    setNlText('');
-    setMode('quick');
-    onCancel();
-  };
+  const options = useMemo(() => dayOptions(), []);
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       transparent
-      onRequestClose={handleCancel}
+      onRequestClose={onCancel}
     >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={handleCancel} />
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel} />
       <View style={styles.sheet}>
         <View style={styles.handle} />
-        <Text style={styles.title}>Defer until…</Text>
+        <Text style={styles.title}>Defer to…</Text>
 
-        {mode === 'quick' ? (
-          <>
-            <View style={styles.nlWrap}>
-              <TextInput
-                style={styles.nlInput}
-                value={nlText}
-                onChangeText={setNlText}
-                onSubmitEditing={submitNl}
-                placeholder='Type a time — "tomorrow at 3pm", "in 2 weeks"…'
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-              {parsed && (
-                <TouchableOpacity style={styles.nlConfirm} onPress={submitNl} hitSlop={6}>
-                  <Text style={styles.nlConfirmText}>{formatDeferUntil(parsed.toISOString())}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {showNlHint && (
-              <Text style={styles.nlError}>Couldn't read that — pick a time below.</Text>
-            )}
-            {quickOptions().map(opt => (
-              <TouchableOpacity
-                key={opt.label}
-                style={styles.option}
-                onPress={() => handleQuickSelect(opt.date)}
-              >
-                <Text style={styles.optionText}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity style={[styles.option, styles.customOption]} onPress={() => setMode('custom')}>
-              <Text style={[styles.optionText, { color: colors.accent }]}>Pick a custom time…</Text>
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            <DateTimePicker
-              value={customDate}
-              mode="datetime"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-              onChange={(_e, date) => date && setCustomDate(date)}
-              themeVariant={isDark ? 'dark' : 'light'}
-              style={styles.picker}
-            />
-            <View style={styles.customButtons}>
-              <TouchableOpacity onPress={() => setMode('quick')} style={styles.btn}>
-                <Text style={[styles.btnText, { color: colors.textSecondary }]}>Back</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => { onConfirm(customDate); setMode('quick'); }}
-                style={[styles.btn, styles.btnPrimary]}
-              >
-                <Text style={[styles.btnText, { color: colors.text }]}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
+        {options.map(opt => (
+          <TouchableOpacity
+            key={opt.label}
+            style={styles.option}
+            onPress={() => onConfirm(opt.date)}
+          >
+            <Text style={styles.optionText}>{opt.label}</Text>
+            <Text style={styles.optionSub}>{opt.sublabel}</Text>
+          </TouchableOpacity>
+        ))}
 
-        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={handleCancel}>
+        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={onCancel}>
           <Text style={[styles.optionText, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
       </View>
@@ -182,39 +119,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
-  nlWrap: {
+  option: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  nlInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    paddingVertical: 13,
-  },
-  nlConfirm: {
-    backgroundColor: colors.accent,
-    borderRadius: radius.full,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  nlConfirmText: {
-    color: '#FFFFFF',
-    fontSize: font.sm,
-    fontWeight: '600',
-  },
-  nlError: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  option: {
+    justifyContent: 'space-between',
     paddingVertical: 15,
     paddingHorizontal: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -224,34 +132,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
   },
-  customOption: {
-    borderBottomWidth: 0,
+  optionSub: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
   },
   cancelOption: {
     marginTop: spacing.sm,
     borderBottomWidth: 0,
-    alignItems: 'center',
-  },
-  picker: {
-    height: 200,
-  },
-  customButtons: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  btn: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    backgroundColor: colors.bgTertiary,
-  },
-  btnPrimary: {
-    backgroundColor: colors.accent,
-  },
-  btnText: {
-    fontSize: font.md,
-    fontWeight: '600',
+    justifyContent: 'center',
   },
 });

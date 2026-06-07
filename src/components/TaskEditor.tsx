@@ -13,7 +13,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
-import type { Task, Priority, Effort, RecurrenceType, CycleItem } from '../types';
+import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
@@ -21,7 +21,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatShowAfterTime } from '../utils/dateUtils';
+import { formatDueDate, formatDeferUntil } from '../utils/dateUtils';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 
@@ -33,7 +33,7 @@ interface Props {
   onClose: () => void;
 }
 
-type PickerMode = 'none' | 'dueDate' | 'showAfterTime' | 'deferUntil' | 'reminder';
+type PickerMode = 'none' | 'dueDate' | 'deferUntil' | 'reminder';
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -60,7 +60,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [notes, setNotes] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [showAfterTime, setShowAfterTime] = useState<string | null>(null);
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -95,7 +95,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     if (task) {
       setTitle(task.title); setNotes(task.notes); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
-      setShowAfterTime(task.showAfterTime);
+      setTimeOfDay(task.timeOfDay ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
@@ -107,7 +107,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setProjectId(task.projectId ?? null);
     } else {
       setTitle(initialTitle ?? ''); setNotes(''); setTags([]);
-      setDueDate(null); setShowAfterTime(null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(null); setTimeOfDay(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
       setSomeday(initialSomeday ?? false);
@@ -126,7 +126,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     const data = {
       title: title.trim(), notes, tags,
       dueDate: dueDate?.toISOString() ?? null,
-      showAfterTime, deferUntil: deferUntil?.toISOString() ?? null,
+      timeOfDay, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: task?.recurrenceDays ?? [],
@@ -146,15 +146,11 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'dueDate') setPickerDate(dueDate ?? new Date());
-    if (mode === 'showAfterTime') {
-      const d = new Date();
-      if (showAfterTime) {
-        const [h, m] = showAfterTime.split(':').map(Number);
-        d.setHours(h, m, 0, 0);
-      } else { d.setHours(20, 0, 0, 0); }
-      setPickerDate(d);
+    if (mode === 'deferUntil') {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      setPickerDate(deferUntil ?? tomorrow);
     }
-    if (mode === 'deferUntil') setPickerDate(deferUntil ?? new Date());
     if (mode === 'reminder') {
       const defaultDate = dueDate ?? new Date();
       defaultDate.setHours(9, 0, 0, 0);
@@ -172,12 +168,12 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
 
   const confirmPicker = () => {
     if (pickerMode === 'dueDate') setDueDate(pickerDate);
-    if (pickerMode === 'showAfterTime') {
-      const h = pickerDate.getHours().toString().padStart(2, '0');
-      const m = pickerDate.getMinutes().toString().padStart(2, '0');
-      setShowAfterTime(`${h}:${m}`);
+    if (pickerMode === 'deferUntil') {
+      // Store noon of the selected day to ensure day-level comparison works
+      const noon = new Date(pickerDate);
+      noon.setHours(12, 0, 0, 0);
+      setDeferUntil(noon);
     }
-    if (pickerMode === 'deferUntil') setDeferUntil(pickerDate);
     if (pickerMode === 'reminder') setReminderTime(pickerDate);
     setPickerMode('none');
   };
@@ -526,22 +522,32 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
               styles={styles}
             />
             <View style={styles.sep} />
-            <OptionRow
-              icon="eye"
-              label="Show after"
-              hint="Hidden until this time every day"
-              value={showAfterTime ? formatShowAfterTime(showAfterTime) : undefined}
-              onPress={() => openPicker('showAfterTime')}
-              onClear={showAfterTime ? () => setShowAfterTime(null) : undefined}
-              colors={colors}
-              styles={styles}
-            />
+            <View style={styles.optionRow}>
+              <Ionicons name="time-outline" size={18} color={timeOfDay ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Time of day</Text>
+                {!timeOfDay && <Text style={styles.optionHint}>Show from a specific part of the day</Text>}
+              </View>
+            </View>
+            <View style={styles.timePillRow}>
+              {([null, 'morning', 'afternoon', 'evening'] as (TimeOfDay | null)[]).map(tod => (
+                <TouchableOpacity
+                  key={tod ?? 'any'}
+                  style={[styles.timePill, timeOfDay === tod && styles.timePillActive]}
+                  onPress={() => setTimeOfDay(tod)}
+                >
+                  <Text style={[styles.timePillText, timeOfDay === tod && styles.timePillTextActive]}>
+                    {tod === null ? 'Any' : tod.charAt(0).toUpperCase() + tod.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <View style={styles.sep} />
             <OptionRow
               icon="time"
               label="Defer until"
-              hint="One-time snooze"
-              value={deferUntil ? format(deferUntil, "MMM d 'at' h:mm a") : undefined}
+              hint="Hide until this day"
+              value={deferUntil ? formatDeferUntil(deferUntil.toISOString()) : undefined}
               onPress={() => openPicker('deferUntil')}
               onClear={deferUntil ? () => setDeferUntil(null) : undefined}
               colors={colors}
@@ -669,7 +675,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
               </TouchableOpacity>
               <Text style={styles.pickerTitle}>
                 {pickerMode === 'dueDate' ? 'Due Date'
-                  : pickerMode === 'showAfterTime' ? 'Show After'
                   : pickerMode === 'reminder' ? 'Remind Me'
                   : 'Defer Until'}
               </Text>
@@ -677,7 +682,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                 <Text style={[styles.pickerBtn, { color: colors.accent }]}>Done</Text>
               </TouchableOpacity>
             </View>
-            {pickerMode !== 'showAfterTime' && (
+            {pickerMode !== 'deferUntil' && (
               <TextInput
                 style={styles.nlInput}
                 value={nlText}
@@ -692,7 +697,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
             )}
             <DateTimePicker
               value={pickerDate}
-              mode={pickerMode === 'showAfterTime' ? 'time' : 'datetime'}
+              mode={pickerMode === 'deferUntil' ? 'date' : 'datetime'}
               display="spinner"
               onChange={(_e, d) => d && setPickerDate(d)}
               themeVariant={isDark ? 'dark' : 'light'}
@@ -832,6 +837,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  timePillRow: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  timePill: {
+    flex: 1, paddingVertical: 7, borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary, alignItems: 'center',
+  },
+  timePillActive: { backgroundColor: colors.accent },
+  timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  timePillTextActive: { color: colors.bg, fontWeight: '600' },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
