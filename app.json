@@ -28,7 +28,8 @@
         {
           "iosDisplayInForeground": true
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ]
   }
 }
