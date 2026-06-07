@@ -98,7 +98,7 @@ export function LaterScreen() {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
-        contentContainerStyle={sections.length === 0 ? undefined : styles.listContent}
+        contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
         renderItem={({ item }) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
@@ -123,6 +123,7 @@ export function LaterScreen() {
           </View>
         )}
         stickySectionHeadersEnabled={false}
+        onScrollBeginDrag={() => setExpandedTaskId(null)}
         ListEmptyComponent={
           <View style={styles.empty}>
             <Ionicons name="moon" size={48} color={colors.bgQuaternary} />
@@ -182,6 +183,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: 2,
   },
   listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
+  emptyContainer: { flex: 1 },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
@@ -196,9 +198,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
   },
   empty: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 100,
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
   },

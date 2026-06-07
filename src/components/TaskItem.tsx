@@ -1,10 +1,12 @@
-import React, { useRef, useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   Animated,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -75,6 +77,7 @@ export function TaskItem({
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const deferTask = useTaskStore(s => s.deferTask);
+  const updateTask = useTaskStore(s => s.updateTask);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -88,9 +91,21 @@ export function TaskItem({
 
   const [showDeferModal, setShowDeferModal] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleEdit, setTitleEdit] = useState('');
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const swipeableRef = useRef<Swipeable>(null);
+  const titleInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    Animated.timing(expansionAnim, {
+      toValue: expanded ? 1 : 0,
+      duration: 200,
+      useNativeDriver: false,
+    }).start();
+  }, [expanded]);
 
   const isOverdue =
     task.dueDate &&
@@ -122,16 +137,43 @@ export function TaskItem({
     });
   };
 
-  const handleDelete = async () => {
-    swipeableRef.current?.close();
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
-      () => deleteTask(task.id)
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Task',
+      `Delete "${task.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel', onPress: () => swipeableRef.current?.close() },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
+              () => deleteTask(task.id)
+            );
+          },
+        },
+      ]
     );
   };
 
+  const handleTitleTap = () => {
+    if (selectionMode) { onSelect?.(); return; }
+    setTitleEdit(task.title);
+    setIsEditingTitle(true);
+    setTimeout(() => titleInputRef.current?.focus(), 50);
+  };
+
+  const saveTitle = () => {
+    setIsEditingTitle(false);
+    const trimmed = titleEdit.trim();
+    if (trimmed && trimmed !== task.title) {
+      updateTask(task.id, { title: trimmed });
+    }
+  };
+
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={handleDelete}>
+    <TouchableOpacity style={styles.deleteAction} onPress={confirmDelete}>
       <Ionicons name="trash" size={20} color={colors.text} />
       <Text style={styles.actionLabel}>Delete</Text>
     </TouchableOpacity>
@@ -167,7 +209,7 @@ export function TaskItem({
           selectionMode && selected && styles.circleSelected,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
-          {selectionMode && selected && (
+          {((selectionMode && selected) || (!selectionMode && completing)) && (
             <Ionicons name="checkmark" size={14} color={colors.bg} />
           )}
         </Animated.View>
@@ -180,7 +222,23 @@ export function TaskItem({
         delayLongPress={400}
         activeOpacity={0.7}
       >
-        <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+        {isEditingTitle ? (
+          <TextInput
+            ref={titleInputRef}
+            style={styles.titleInput}
+            value={titleEdit}
+            onChangeText={setTitleEdit}
+            onBlur={saveTitle}
+            onSubmitEditing={saveTitle}
+            returnKeyType="done"
+            blurOnSubmit
+            autoFocus
+          />
+        ) : (
+          <TouchableOpacity onPress={handleTitleTap} activeOpacity={0.6}>
+            <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+          </TouchableOpacity>
+        )}
         {activeCycleItem && (
           <Text style={styles.cycleSubtitle} numberOfLines={1}>
             {activeCycleItem.title}
@@ -301,112 +359,129 @@ export function TaskItem({
             renderLeftActions={renderLeftActions}
             overshootRight={false}
             overshootLeft={false}
+            onSwipeableOpen={(direction) => {
+              if (direction === 'right') {
+                confirmDelete();
+              } else {
+                swipeableRef.current?.close();
+                setShowDeferModal(true);
+              }
+            }}
           >
             {rowBody}
           </Swipeable>
         )}
 
-        {expanded && !selectionMode && (
-          <View style={styles.expandedPanel}>
-            {task.notes.length > 0 && (
-              <Text style={styles.expandNotes}>{task.notes}</Text>
-            )}
+        <Animated.View style={[
+          styles.expandedPanel,
+          {
+            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }),
+            opacity: expansionAnim,
+            overflow: 'hidden',
+          },
+        ]}>
+          {!selectionMode && (
+            <>
+              {task.notes.length > 0 && (
+                <Text style={styles.expandNotes}>{task.notes}</Text>
+              )}
 
-            {subtasks.length > 0 && (
-              <View style={[
-                styles.expandSection,
-                task.notes.length > 0 && styles.sectionDivider,
-              ]}>
-                {subtasks.map(sub => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={styles.subtaskRow}
-                    onPress={() => toggleSubtask(sub.id)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                      {sub.completed && (
-                        <Ionicons name="checkmark" size={9} color={colors.bg} />
-                      )}
-                    </View>
-                    <Text style={[
-                      styles.subtaskTitle,
-                      sub.completed && styles.subtaskTitleDone,
-                    ]} numberOfLines={2}>
-                      {sub.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+              {subtasks.length > 0 && (
+                <View style={[
+                  styles.expandSection,
+                  task.notes.length > 0 && styles.sectionDivider,
+                ]}>
+                  {subtasks.map(sub => (
+                    <TouchableOpacity
+                      key={sub.id}
+                      style={styles.subtaskRow}
+                      onPress={() => toggleSubtask(sub.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                        {sub.completed && (
+                          <Ionicons name="checkmark" size={9} color={colors.bg} />
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.subtaskTitle,
+                        sub.completed && styles.subtaskTitleDone,
+                      ]} numberOfLines={2}>
+                        {sub.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
 
-            {task.recurrenceType !== 'none' && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
-              ]}>
-                <Ionicons name="repeat" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
-                {task.streakCount > 0 && (
-                  <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
-                )}
-              </View>
-            )}
+              {task.recurrenceType !== 'none' && (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="repeat" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
+                  {task.streakCount > 0 && (
+                    <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+                  )}
+                </View>
+              )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-              ]}>
-                <Ionicons name="sync" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>
-                  Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
-                </Text>
-                {task.cycleItems.map((item, i) => (
-                  <Text
-                    key={item.id}
-                    style={[
-                      styles.expandMeta,
-                      i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
-                    ]}
-                  >
-                    {i > 0 ? ' → ' : ' '}{item.title}
+              {activeCycleItem && task.cycleItems.length > 0 && (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta}>
+                    Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
                   </Text>
-                ))}
-              </View>
-            )}
+                  {task.cycleItems.map((item, i) => (
+                    <Text
+                      key={item.id}
+                      style={[
+                        styles.expandMeta,
+                        i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
+                      ]}
+                    >
+                      {i > 0 ? ' → ' : ' '}{item.title}
+                    </Text>
+                  ))}
+                </View>
+              )}
 
-            {onEdit && (
-              <View style={[
-                styles.editSection,
-                hasExpandContent && styles.sectionDivider,
-                task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
-              ]}>
-                {task.recurrenceType !== 'none' && (
+              {onEdit && (
+                <View style={[
+                  styles.editSection,
+                  hasExpandContent && styles.sectionDivider,
+                  task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
+                ]}>
+                  {task.recurrenceType !== 'none' && (
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={async () => {
+                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        skipNextRecurrence(task.id);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
+                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                    </TouchableOpacity>
+                  )}
                   <TouchableOpacity
                     style={styles.editBtn}
-                    onPress={async () => {
-                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                      skipNextRecurrence(task.id);
-                    }}
+                    onPress={onEdit}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                    <Ionicons name="pencil-outline" size={13} color={colors.accent} />
+                    <Text style={styles.editBtnText}>Edit</Text>
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.editBtn}
-                  onPress={onEdit}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                  <Text style={styles.editBtnText}>Edit</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        )}
+                </View>
+              )}
+            </>
+          )}
+        </Animated.View>
       </Animated.View>
 
       {!selectionMode && (
@@ -468,6 +543,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 12,
     borderWidth: 2,
     borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circleCompleting: {
     backgroundColor: colors.green,
@@ -476,8 +553,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleSelected: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   content: {
     flex: 1,
@@ -487,6 +562,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: 21,
+  },
+  titleInput: {
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: 21,
+    padding: 0,
+    margin: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
   },
   meta: {
     flexDirection: 'row',

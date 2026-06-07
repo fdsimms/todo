@@ -185,8 +185,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md + 36 + spacing.md,
   },
   empty: {
+    flex: 1,
     alignItems: 'center',
-    paddingTop: 100,
+    justifyContent: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.xl,
   },
@@ -194,7 +195,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.lg,
     fontWeight: '600',
-    marginTop: spacing.sm,
   },
   emptySubtext: {
     color: colors.textTertiary,
