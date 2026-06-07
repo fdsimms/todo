@@ -14,7 +14,7 @@
       "^.+\\.[jt]sx?$": "babel-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(date-fns)/)"
+      "node_modules/(?!(expo-sqlite|expo-haptics|expo-notifications|expo-status-bar|expo|@expo|date-fns)/)"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
