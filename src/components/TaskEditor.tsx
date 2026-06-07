@@ -46,6 +46,7 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
 export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
@@ -139,8 +140,12 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       cycleIndex,
       projectId,
     };
-    if (task) { updateTask(task.id, data); }
-    else { addTask(data); }
+    if (task) {
+      setLastEditSnapshot({ id: task.id, snapshot: { ...task } });
+      updateTask(task.id, data);
+    } else {
+      addTask(data);
+    }
     onClose();
   };
 

@@ -24,10 +24,13 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from
 interface TaskStore {
   tasks: Task[];
   initialized: boolean;
+  lastEditSnapshot: { id: string; snapshot: Task } | null;
 
   initialize: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   updateTask: (id: string, updates: Partial<Task>) => void;
+  setLastEditSnapshot: (snap: { id: string; snapshot: Task } | null) => void;
+  undoTaskEdit: () => void;
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
   uncompleteTask: (id: string) => void;
@@ -61,6 +64,7 @@ interface TaskStore {
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   initialized: false,
+  lastEditSnapshot: null,
 
   initialize() {
     initDatabase();
@@ -118,6 +122,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return updated;
     });
     set({ tasks });
+  },
+
+  setLastEditSnapshot(snap) {
+    set({ lastEditSnapshot: snap });
+  },
+
+  undoTaskEdit() {
+    const snap = get().lastEditSnapshot;
+    if (!snap) return;
+    const tasks = get().tasks.map(t => {
+      if (t.id !== snap.id) return t;
+      dbUpdateTask(snap.snapshot);
+      cancelTaskReminder(snap.id);
+      scheduleTaskReminder(snap.snapshot);
+      return snap.snapshot;
+    });
+    set({ tasks, lastEditSnapshot: null });
   },
 
   deleteTask(id) {
