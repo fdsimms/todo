@@ -9,11 +9,13 @@ import {
 import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
+import type { SnoozeSuggestion } from '../utils/snoozeEngine';
 
 interface Props {
   visible: boolean;
   onConfirm: (date: Date) => void;
   onCancel: () => void;
+  snoozeSuggestion?: SnoozeSuggestion | null;
 }
 
 function dayOptions(): { label: string; sublabel: string; date: Date }[] {
@@ -53,7 +55,7 @@ function dayOptions(): { label: string; sublabel: string; date: Date }[] {
   ];
 }
 
-export function DeferModal({ visible, onConfirm, onCancel }: Props) {
+export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const options = useMemo(() => dayOptions(), []);
@@ -69,6 +71,24 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
       <View style={styles.sheet}>
         <View style={styles.handle} />
         <Text style={styles.title}>Defer to…</Text>
+
+        {snoozeSuggestion != null && (
+          <>
+            <TouchableOpacity
+              style={[styles.option, styles.snoozeOption]}
+              onPress={() => onConfirm(snoozeSuggestion.date)}
+            >
+              <View style={styles.snoozeLeft}>
+                <Text style={[styles.optionText, { color: colors.accent }]}>
+                  {snoozeSuggestion.dayLabel}
+                </Text>
+                <Text style={styles.snoozeReason}>{snoozeSuggestion.reason}</Text>
+              </View>
+              <Text style={[styles.optionSub, { color: colors.accent, opacity: 0.7 }]}>Snooze</Text>
+            </TouchableOpacity>
+            <View style={styles.divider} />
+          </>
+        )}
 
         {options.map(opt => (
           <TouchableOpacity
@@ -140,5 +160,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     borderBottomWidth: 0,
     justifyContent: 'center',
+  },
+  snoozeOption: {
+    borderBottomWidth: 0,
+  },
+  snoozeLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  snoozeReason: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginHorizontal: spacing.sm,
+    marginBottom: spacing.xs,
   },
 });
