@@ -29,8 +29,7 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-asset",
-      "expo-font",
-      "expo-sqlite"
+      "expo-font"
     ]
   }
 }
