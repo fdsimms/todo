@@ -18,6 +18,10 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
+  dbGetCategoryRegistry,
+  dbAddToCategoryRegistry,
+  dbRemoveFromCategoryRegistry,
+  dbRemoveCategoryFromAllTasks,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -28,6 +32,7 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from
 interface TaskStore {
   tasks: Task[];
   tagRegistry: string[];
+  categoryRegistry: string[];
   initialized: boolean;
   lastEditSnapshot: { id: string; snapshot: Task } | null;
 
@@ -57,6 +62,10 @@ interface TaskStore {
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
   deleteTag: (tag: string) => void;
+  allCategories: () => string[];
+  addCategory: (name: string) => void;
+  deleteCategory: (name: string) => void;
+  tasksByCategory: (category: string) => Task[];
 
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
@@ -71,6 +80,7 @@ interface TaskStore {
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
+  categoryRegistry: [],
   initialized: false,
   lastEditSnapshot: null,
 
@@ -78,7 +88,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     initDatabase();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
-    set({ tasks, tagRegistry, initialized: true });
+    const categoryRegistry = dbGetCategoryRegistry();
+    set({ tasks, tagRegistry, categoryRegistry, initialized: true });
     rescheduleAllReminders(tasks);
   },
 
@@ -101,6 +112,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: draft.recurrenceEndDate ?? null,
       recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
       tags: draft.tags ?? [],
+      category: draft.category ?? null,
       sortOrder: maxOrder + 1,
       focused: draft.focused ?? false,
       priority: draft.priority ?? 0,
@@ -314,6 +326,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: null,
       recurrenceFromCompletion: false,
       tags: [],
+      category: null,
       sortOrder: maxOrder + 1,
       focused: false,
       priority: 0,
@@ -451,8 +464,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  allCategories() {
+    const catSet = new Set<string>(get().categoryRegistry);
+    get().tasks.forEach(t => { if (t.category) catSet.add(t.category); });
+    return Array.from(catSet).sort();
+  },
+
+  addCategory(name) {
+    const n = name.trim();
+    if (!n) return;
+    if (get().categoryRegistry.includes(n)) return;
+    dbAddToCategoryRegistry(n);
+    set(s => ({ categoryRegistry: [...s.categoryRegistry, n] }));
+  },
+
+  deleteCategory(name) {
+    dbRemoveCategoryFromAllTasks(name);
+    dbRemoveFromCategoryRegistry(name);
+    set(s => ({
+      tasks: s.tasks.map(t => t.category === name ? { ...t, category: null } : t),
+      categoryRegistry: s.categoryRegistry.filter(c => c !== name),
+    }));
+  },
+
   tasksByTag(tag) {
     return get().tasks.filter(t => !t.completed && t.tags.includes(tag));
+  },
+
+  tasksByCategory(category) {
+    return get().tasks.filter(t => !t.completed && !t.parentId && t.category === category);
   },
 
   tasksByProject(projectId) {

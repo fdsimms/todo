@@ -280,6 +280,11 @@ export function TaskItem({
         )}
 
         <View style={styles.meta}>
+          {task.category && (
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryBadgeText}>{task.category}</Text>
+            </View>
+          )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
           ))}
@@ -670,6 +675,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   streakNeg: {
     color: colors.textTertiary,
+  },
+  categoryBadge: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  categoryBadgeText: {
+    color: colors.textTertiary,
+    fontSize: 10,
+    fontWeight: fontWeight.medium,
   },
   effortBadge: {
     backgroundColor: colors.accentSubtle,

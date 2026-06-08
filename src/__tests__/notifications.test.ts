@@ -53,6 +53,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleIndex: 0,
   cycleItems: [],
   projectId: null,
+  category: null,
   ...overrides,
 });
 
