@@ -124,6 +124,7 @@ export function LaterScreen() {
                   setExpandedTaskId(prev => prev === item.id ? null : item.id);
                 }}
                 expanded={expandedTaskId === item.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                 onEdit={() => openEditor(item)}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -202,7 +203,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginTop: 2,
   },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
   emptyContainer: { flex: 1 },
   listWrapper: { flex: 1 },

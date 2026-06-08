@@ -258,6 +258,7 @@ export function ProjectsScreen() {
                       task={item}
                       onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
                       expanded={expandedTaskId === item.id}
+                      spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                       onEdit={() => { setEditingTask(item); setEditorVisible(true); }}
                       subtaskCount={subs.length}
                       subtaskDoneCount={subs.filter(t => t.completed).length}

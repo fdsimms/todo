@@ -202,6 +202,7 @@ export function TagsScreen() {
                       setExpandedTaskId(prev => prev === item.id ? null : item.id);
                     }}
                     expanded={expandedTaskId === item.id}
+                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                     onEdit={() => openEditor(item)}
                     subtaskCount={subs.length}
                     subtaskDoneCount={subs.filter(t => t.completed).length}

@@ -183,6 +183,7 @@ export function TodayScreen() {
             setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
           }}
           expanded={expandedTaskId === item.task.id}
+          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
           onEdit={() => openEditor(item.task)}
           subtaskCount={subs.length}
           subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -344,6 +345,7 @@ export function TodayScreen() {
                     setExpandedTaskId(prev => prev === item.id ? null : item.id);
                   }}
                   expanded={expandedTaskId === item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                   onEdit={() => openEditor(item)}
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -379,6 +381,7 @@ export function TodayScreen() {
                   setExpandedTaskId(prev => prev === item.id ? null : item.id);
                 }}
                 expanded={expandedTaskId === item.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                 onEdit={() => openEditor(item)}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -577,7 +580,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   emptyContainer: { flex: 1 },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
