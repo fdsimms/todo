@@ -539,16 +539,16 @@ export function TaskItem({
       {!selectionMode && (
         <WhenPicker
           visible={showWhenPicker}
-          value={task.deferUntil ? new Date(task.deferUntil) : null}
-          onConfirm={(deferUntil, timeOfDay) => {
+          value={task.dueDate ? new Date(task.dueDate) : null}
+          onConfirm={(date, timeOfDay) => {
             updateTask(task.id, {
-              deferUntil: deferUntil ? deferUntil.toISOString() : null,
+              dueDate: date ? date.toISOString() : null,
               timeOfDay: timeOfDay,
             });
             setShowWhenPicker(false);
           }}
           onClear={() => {
-            updateTask(task.id, { deferUntil: null, timeOfDay: null });
+            updateTask(task.id, { dueDate: null, timeOfDay: null });
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}
