@@ -13,7 +13,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
@@ -184,7 +184,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
       onRequestClose={dismiss}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <BlurView
+        <SafeBlurView
           intensity={isDark ? 20 : 15}
           tint="dark"
           style={StyleSheet.absoluteFill}
