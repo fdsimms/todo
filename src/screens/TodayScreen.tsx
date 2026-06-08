@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
-import { getDayStart, getCurrentDayStart, formatGroupHeader } from '../utils/dateUtils';
+import { formatGroupHeader } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -109,11 +109,6 @@ export function TodayScreen() {
     setEditorVisible(true);
   };
 
-  const isTaskOverdue = (task: Task): boolean => {
-    if (!task.dueDate) return false;
-    return getDayStart(new Date(task.dueDate)) < getCurrentDayStart();
-  };
-
   const applyFiltersAndSort = (tasks: Task[]): Task[] => {
     let result = tasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
@@ -135,27 +130,16 @@ export function TodayScreen() {
   };
 
   const filtered = applyFiltersAndSort(visibleTasks);
-  const overdueTasks = filtered.filter(isTaskOverdue);
-  const todayTasks = filtered.filter(t => !isTaskOverdue(t));
 
   type ListItem =
-    | { type: 'header'; label: string; isOverdue?: boolean }
+    | { type: 'header'; label: string }
     | { type: 'task'; task: Task };
 
-  const buildOverdueSection = (tasks: Task[]): ListItem[] => {
-    if (tasks.length === 0) return [];
-    return [
-      { type: 'header', label: 'Overdue', isOverdue: true },
-      ...tasks.map(task => ({ type: 'task' as const, task })),
-    ];
-  };
-
-  const buildGroupedData = (): ListItem[] => {
-    const overdueItems = buildOverdueSection(overdueTasks);
+  const data: ListItem[] = useMemo(() => {
     const byCategory: Record<string, Task[]> = {};
     const uncategorized: Task[] = [];
 
-    todayTasks.forEach(task => {
+    filtered.forEach(task => {
       if (!task.category) {
         uncategorized.push(task);
       } else {
@@ -175,18 +159,14 @@ export function TodayScreen() {
       }
       uncategorized.forEach(task => groupedItems.push({ type: 'task', task }));
     }
-    return [...overdueItems, ...groupedItems];
-  };
-
-  const data: ListItem[] = buildGroupedData();
+    return groupedItems;
+  }, [filtered]);
 
   const renderItem = ({ item, drag, isActive }: RenderItemParams<ListItem>) => {
     if (item.type === 'header') {
       return (
         <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionHeaderText, item.isOverdue && styles.sectionHeaderOverdue]}>
-            {item.label}
-          </Text>
+          <Text style={styles.sectionHeaderText}>{item.label}</Text>
         </View>
       );
     }
@@ -422,25 +402,24 @@ export function TodayScreen() {
       {viewMode === 'today' && (
         <DraggableFlatList
           data={data}
-          keyExtractor={(item, i) =>
-            item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
+          keyExtractor={item =>
+            item.type === 'header' ? `h-${item.label}` : item.task.id
           }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={renderItem}
+          onDragBegin={() => setExpandedTaskId(null)}
           onDragEnd={({ data: reordered }) => {
             const taskIds: string[] = [];
-            let currentSection: string | null | 'overdue' = 'overdue';
+            let currentSection: string | null = null;
             const categoryUpdates: Array<{ id: string; category: string | null }> = [];
 
             for (const item of reordered) {
               if (item.type === 'header') {
-                if (item.isOverdue) currentSection = 'overdue';
-                else if (item.label === 'Other') currentSection = null;
-                else currentSection = item.label;
+                currentSection = item.label === 'Other' ? null : item.label;
               } else {
                 taskIds.push(item.task.id);
-                if (currentSection !== 'overdue' && item.task.category !== currentSection) {
+                if (item.task.category !== currentSection) {
                   categoryUpdates.push({ id: item.task.id, category: currentSection });
                 }
               }
@@ -594,9 +573,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
-  },
-  sectionHeaderOverdue: {
-    color: colors.red,
   },
   emptyContainer: { flex: 1 },
   listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
