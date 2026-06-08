@@ -529,7 +529,7 @@ export function TodayScreen() {
 
       {viewMode === 'today' && (
         <TouchableOpacity
-          style={[styles.fab, { bottom: insets.bottom + 20 }]}
+          style={[styles.fab, { bottom: insets.bottom + 64 }]}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setQuickAddVisible(true);
@@ -603,7 +603,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs,
   },
   dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium, letterSpacing: 0.3, marginBottom: 2 },
   title: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, lineHeight: lineHeight.xxl, letterSpacing: -0.5 },
@@ -621,7 +621,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   viewModePills: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: 4,
   },
   viewModePill: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
@@ -644,7 +644,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   badgeText: { color: colors.text, fontSize: 9, fontWeight: '700' },
   sectionHeader: {
-    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
   },
   sectionHeaderText: {
@@ -680,7 +680,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   filterBar: {
     flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: 2, gap: spacing.sm,
   },
   filterChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
