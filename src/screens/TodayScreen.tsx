@@ -381,7 +381,7 @@ export function TodayScreen() {
 
       {isDragMode ? (
         <DraggableFlatList
-          style={{ flex: 1 }}
+          containerStyle={{ flex: 1 }}
           data={todayTasks}
           keyExtractor={item => item.id}
           onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
