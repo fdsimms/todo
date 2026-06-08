@@ -20,7 +20,7 @@ import type { TimeOfDay } from '../types';
 interface Props {
   visible: boolean;
   value?: Date | null;
-  onConfirm: (deferUntil: Date | null, timeOfDay: TimeOfDay | null) => void;
+  onConfirm: (date: Date | null, timeOfDay: TimeOfDay | null) => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -42,6 +42,10 @@ function buildCalendarGrid(displayMonth: Date): Date[] {
   while (cur <= gridEnd) {
     days.push(cur);
     cur = addDays(cur, 1);
+  }
+  // Always pad to 42 cells (6 rows) so the grid height never shifts
+  while (days.length < 42) {
+    days.push(addDays(days[days.length - 1], 1));
   }
   return days;
 }
@@ -354,6 +358,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    height: CELL_SIZE * 6,
   },
   dayCell: {
     width: CELL_SIZE,

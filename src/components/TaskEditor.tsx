@@ -15,6 +15,7 @@ import {
 import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
 import { CalendarPicker } from './CalendarPicker';
+import { WhenPicker } from './WhenPicker';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
@@ -36,7 +37,7 @@ interface Props {
   onClose: () => void;
 }
 
-type PickerMode = 'none' | 'dueDate' | 'reminder';
+type PickerMode = 'none' | 'reminder';
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -85,6 +86,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
+  const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [pickerDate, setPickerDate] = useState(new Date());
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
@@ -122,7 +124,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       setPriority(0); setEffort(0); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
     }
-    setPickerMode('none'); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setShowWhenPicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false); setAiSuggestions(null);
@@ -176,7 +178,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   };
 
   const openPicker = (mode: PickerMode) => {
-    if (mode === 'dueDate') setPickerDate(dueDate ?? new Date());
     if (mode === 'reminder') {
       const defaultDate = dueDate ?? new Date();
       defaultDate.setHours(9, 0, 0, 0);
@@ -186,12 +187,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   };
 
   const confirmPicker = (confirmed: Date) => {
-    if (pickerMode === 'dueDate') {
-      // Store noon of the selected day to ensure day-level comparison works
-      const noon = new Date(confirmed);
-      noon.setHours(12, 0, 0, 0);
-      setDueDate(noon);
-    }
     if (pickerMode === 'reminder') setReminderTime(confirmed);
     setPickerMode('none');
   };
@@ -715,8 +710,8 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
               icon="calendar"
               label="Date"
               value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
-              onPress={() => openPicker('dueDate')}
-              onClear={dueDate ? () => setDueDate(null) : undefined}
+              onPress={() => setShowWhenPicker(true)}
+              onClear={dueDate ? () => { setDueDate(null); setTimeOfDay(null); } : undefined}
               colors={colors}
               styles={styles}
             />
@@ -822,11 +817,32 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
         <CalendarPicker
           visible={pickerMode !== 'none'}
           value={pickerDate}
-          mode={pickerMode === 'reminder' ? 'datetime' : 'date'}
-          title={pickerMode === 'dueDate' ? 'Date' : 'Remind Me'}
+          mode="datetime"
+          title="Remind Me"
           nlEnabled
           onConfirm={confirmPicker}
           onCancel={() => setPickerMode('none')}
+        />
+        <WhenPicker
+          visible={showWhenPicker}
+          value={dueDate}
+          onConfirm={(date, tod) => {
+            if (date) {
+              const noon = new Date(date);
+              noon.setHours(12, 0, 0, 0);
+              setDueDate(noon);
+            } else {
+              setDueDate(null);
+            }
+            setTimeOfDay(tod);
+            setShowWhenPicker(false);
+          }}
+          onClear={() => {
+            setDueDate(null);
+            setTimeOfDay(null);
+            setShowWhenPicker(false);
+          }}
+          onCancel={() => setShowWhenPicker(false)}
         />
       </KeyboardAvoidingView>
 
