@@ -18,14 +18,5 @@
         "buildConfiguration": "Release"
       }
     }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "fdsimms@gmail.com",
-        "ascAppId": "",
-        "appleTeamId": ""
-      }
-    }
   }
 }
