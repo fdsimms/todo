@@ -8,10 +8,13 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
+import * as Haptics from 'expo-haptics';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, lineHeight, border, type Colors } from '../theme';
 import type { SnoozeSuggestion } from '../utils/snoozeEngine';
 import { CalendarPicker } from './CalendarPicker';
 
@@ -61,39 +64,58 @@ function dayOptions(): { label: string; sublabel: string; date: Date }[] {
 
 export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const options = useMemo(() => dayOptions(), []);
   const [showCalendar, setShowCalendar] = useState(false);
 
   const translateY = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
       translateY.setValue(600);
-      Animated.spring(translateY, {
-        toValue: 0,
-        tension: 65,
-        friction: 11,
-        useNativeDriver: true,
-      }).start();
+      backdropOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          damping: 26,
+          stiffness: 220,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
     }
   }, [visible]);
 
   const dismiss = () => {
-    Animated.timing(translateY, {
-      toValue: 600,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => {
+    Animated.parallel([
+      Animated.spring(translateY, {
+        toValue: 700,
+        damping: 28,
+        stiffness: 320,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
       translateY.setValue(600);
       onCancel();
     });
   };
 
   const openCalendar = () => {
-    Animated.timing(translateY, {
-      toValue: 600,
-      duration: 180,
+    Animated.spring(translateY, {
+      toValue: 700,
+      damping: 28,
+      stiffness: 320,
       useNativeDriver: true,
     }).start(() => {
       setShowCalendar(true);
@@ -108,20 +130,28 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
         if (dy > 0) translateY.setValue(dy);
       },
       onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: 600,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => {
+        if (dy > 80 || vy > 1.2) {
+          Animated.parallel([
+            Animated.spring(translateY, {
+              toValue: 700,
+              damping: 28,
+              stiffness: 320,
+              useNativeDriver: true,
+            }),
+            Animated.timing(backdropOpacity, {
+              toValue: 0,
+              duration: 150,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
             translateY.setValue(600);
             onCancel();
           });
         } else {
           Animated.spring(translateY, {
             toValue: 0,
-            tension: 65,
-            friction: 11,
+            damping: 22,
+            stiffness: 300,
             useNativeDriver: true,
           }).start();
         }
@@ -136,52 +166,77 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
       transparent
       onRequestClose={dismiss}
     >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={dismiss} />
-      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+      {/* Blur backdrop */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+        <BlurView
+          intensity={isDark ? 20 : 15}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+      </Animated.View>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+
+      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+        {/* Handle for drag */}
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
-        <Text style={styles.title}>Defer to…</Text>
 
-        {snoozeSuggestion != null && (
-          <>
-            <TouchableOpacity
-              style={[styles.option, styles.snoozeOption]}
-              onPress={() => onConfirm(snoozeSuggestion.date)}
-            >
-              <View style={styles.snoozeLeft}>
-                <Text style={[styles.optionText, { color: colors.accent }]}>
-                  {snoozeSuggestion.dayLabel}
-                </Text>
-                <Text style={styles.snoozeReason}>{snoozeSuggestion.reason}</Text>
-              </View>
-              <Text style={[styles.optionSub, { color: colors.accent, opacity: 0.7 }]}>Snooze</Text>
-            </TouchableOpacity>
-            <View style={styles.divider} />
-          </>
-        )}
+        {/* Options card — iOS action sheet style */}
+        <View style={styles.optionsCard}>
+          {snoozeSuggestion != null && (
+            <>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  onConfirm(snoozeSuggestion.date);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.optionLeft}>
+                  <Text style={[styles.optionLabel, { color: colors.accent }]}>
+                    {snoozeSuggestion.dayLabel}
+                  </Text>
+                  <Text style={styles.snoozeReason}>{snoozeSuggestion.reason}</Text>
+                </View>
+                <Text style={[styles.optionSub, { color: colors.accent, opacity: 0.7 }]}>Snooze</Text>
+              </TouchableOpacity>
+              <View style={styles.inlineSep} />
+            </>
+          )}
 
-        {options.map(opt => (
-          <TouchableOpacity
-            key={opt.label}
-            style={styles.option}
-            onPress={() => onConfirm(opt.date)}
-          >
-            <Text style={styles.optionText}>{opt.label}</Text>
-            <Text style={styles.optionSub}>{opt.sublabel}</Text>
+          {options.map((opt, idx) => (
+            <React.Fragment key={opt.label}>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  onConfirm(opt.date);
+                }}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.optionLabel}>{opt.label}</Text>
+                <Text style={styles.optionSub}>{opt.sublabel}</Text>
+              </TouchableOpacity>
+              {idx < options.length - 1 && <View style={styles.inlineSep} />}
+            </React.Fragment>
+          ))}
+
+          <View style={styles.inlineSep} />
+          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={0.7}>
+            <View style={styles.customDateRow}>
+              <Ionicons name="calendar-outline" size={16} color={colors.accent} />
+              <Text style={[styles.optionLabel, { color: colors.accent }]}>Pick a date…</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
-        ))}
+        </View>
 
-        <TouchableOpacity style={styles.option} onPress={openCalendar}>
-          <View style={styles.customDateRow}>
-            <Ionicons name="calendar-outline" size={16} color={colors.accent} />
-            <Text style={[styles.optionText, { color: colors.accent }]}>Pick a date…</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={dismiss}>
-          <Text style={[styles.optionText, { color: colors.textSecondary }]}>Cancel</Text>
+        {/* Cancel card — iOS-style separate rounded block */}
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={0.7}>
+          <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -206,79 +261,74 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  backdropDim: {
+    backgroundColor: 'rgba(0,0,0,0.3)',
   },
-  sheet: {
-    backgroundColor: colors.bgSecondary,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingBottom: 40,
+  sheetOuter: {
     paddingHorizontal: spacing.md,
+    paddingBottom: 34,
   },
   handleArea: {
     alignItems: 'center',
     paddingTop: spacing.sm,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.bgQuaternary,
+    backgroundColor: 'rgba(120,120,128,0.5)',
   },
-  title: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
+  optionsCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
     marginBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
   },
-  option: {
+  optionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 15,
-    paddingHorizontal: spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
+    paddingVertical: 16,
+    paddingHorizontal: spacing.md,
+    minHeight: 56,
   },
-  optionText: {
+  optionLeft: {
+    flex: 1,
+    gap: 2,
+  },
+  optionLabel: {
     color: colors.text,
     fontSize: font.md,
+    lineHeight: lineHeight.md,
   },
   optionSub: {
     color: colors.textTertiary,
     fontSize: font.sm,
   },
-  cancelOption: {
-    marginTop: spacing.sm,
-    borderBottomWidth: 0,
-    justifyContent: 'center',
+  inlineSep: {
+    height: border.hairline,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md,
   },
   customDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  snoozeOption: {
-    borderBottomWidth: 0,
-  },
-  snoozeLeft: {
-    flex: 1,
-    gap: 2,
-  },
   snoozeReason: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  divider: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-    marginHorizontal: spacing.sm,
-    marginBottom: spacing.xs,
+  cancelCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.lg,
+    paddingVertical: 18,
+    alignItems: 'center',
+  },
+  cancelLabel: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
   },
 });

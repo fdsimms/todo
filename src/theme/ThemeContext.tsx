@@ -1,16 +1,20 @@
 import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
-import { darkColors, lightColors, type Colors, type ThemeMode } from './index';
+import { darkColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
 import { useSettingsStore } from '../store/useSettingsStore';
+
+type Shadows = ReturnType<typeof getShadows>;
 
 interface ThemeContextValue {
   colors: Colors;
   isDark: boolean;
+  shadows: Shadows;
 }
 
 const ThemeContext = createContext<ThemeContextValue>({
   colors: darkColors,
   isDark: true,
+  shadows: getShadows(true),
 });
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
@@ -24,7 +28,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const resolvedColors = isDark ? darkColors : lightColors;
 
   const value = useMemo<ThemeContextValue>(
-    () => ({ colors: resolvedColors, isDark }),
+    () => ({ colors: resolvedColors, isDark, shadows: getShadows(isDark) }),
     [resolvedColors, isDark]
   );
 

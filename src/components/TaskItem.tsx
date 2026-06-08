@@ -15,7 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
@@ -87,6 +88,7 @@ export function TaskItem({
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const allTasks = useTaskStore(s => s.tasks);
   const colors = useColors();
+  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const snoozeSuggestion = useMemo(
     () => computeSnoozeSuggestion(task, allTasks),
@@ -107,8 +109,8 @@ export function TaskItem({
   useEffect(() => {
     Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      tension: 180,
-      friction: 22,
+      damping: 26,
+      stiffness: 220,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
@@ -145,10 +147,10 @@ export function TaskItem({
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setCompleting(true);
     Animated.sequence([
-      Animated.timing(circleScale, { toValue: 1.35, duration: 80, useNativeDriver: true }),
-      Animated.timing(circleScale, { toValue: 1, duration: 80, useNativeDriver: true }),
-      Animated.delay(140),
-      Animated.timing(rowOpacity, { toValue: 0, duration: 250, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1.35, damping: 22, stiffness: 300, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, damping: 22, stiffness: 300, useNativeDriver: true }),
+      Animated.delay(120),
+      Animated.timing(rowOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start(() => {
       setCompleting(false);
       completeTask(task.id);
@@ -191,8 +193,14 @@ export function TaskItem({
   };
 
   const renderRightActions = () => (
-    <TouchableOpacity style={styles.deleteAction} onPress={confirmDelete}>
-      <Ionicons name="trash" size={20} color={colors.text} />
+    <TouchableOpacity
+      style={styles.deleteAction}
+      onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        confirmDelete();
+      }}
+    >
+      <Ionicons name="trash" size={iconSize.md} color={colors.text} />
       <Text style={styles.actionLabel}>Delete</Text>
     </TouchableOpacity>
   );
@@ -201,11 +209,12 @@ export function TaskItem({
     <TouchableOpacity
       style={styles.deferAction}
       onPress={() => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         swipeableRef.current?.close();
         setShowDeferModal(true);
       }}
     >
-      <Ionicons name="time" size={20} color={colors.text} />
+      <Ionicons name="time" size={iconSize.md} color={colors.text} />
       <Text style={styles.actionLabel}>Defer</Text>
     </TouchableOpacity>
   );
@@ -343,7 +352,7 @@ export function TaskItem({
         >
           <Ionicons
             name={task.focused ? 'star' : 'star-outline'}
-            size={16}
+            size={iconSize.sm}
             color={task.focused ? colors.orange : colors.textTertiary}
           />
         </TouchableOpacity>
@@ -356,7 +365,7 @@ export function TaskItem({
           hitSlop={8}
           style={styles.dragHandle}
         >
-          <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
+          <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
     </View>
@@ -498,6 +507,7 @@ export function TaskItem({
     <>
       <Animated.View style={[
         styles.itemWrapper,
+        shadows.card,
         { opacity: isActive ? 0.85 : rowOpacity },
         spotlightDisabled && styles.itemWrapperDimmed,
       ]}>
@@ -568,11 +578,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginVertical: 3,
     borderRadius: radius.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   itemWrapperDimmed: {
     opacity: 0.35,
@@ -596,9 +601,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   priorityBar: {
     position: 'absolute',
     left: 0,
-    top: 0,
-    bottom: 0,
+    top: 4,
+    bottom: 4,
     width: 3,
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
   },
   circleWrapper: {
     marginLeft: spacing.md,
@@ -608,7 +615,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    borderWidth: 2,
+    borderWidth: border.sm,
     borderColor: colors.bgQuaternary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -628,12 +635,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   title: {
     color: colors.text,
     fontSize: font.md,
-    lineHeight: 21,
+    lineHeight: lineHeight.md,
+    fontWeight: fontWeight.regular,
   },
   titleInput: {
     color: colors.text,
     fontSize: font.md,
-    lineHeight: 21,
+    lineHeight: lineHeight.md,
     padding: 0,
     margin: 0,
   },
@@ -663,15 +671,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
   },
   effortBadge: {
-    backgroundColor: colors.bgQuaternary,
-    borderRadius: 4,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 1,
   },
   effortText: {
-    color: colors.textSecondary,
+    color: colors.accent,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   starBtn: {
     padding: 4,
@@ -685,7 +693,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     backgroundColor: colors.bgTertiary,
-    borderRadius: 4,
+    borderRadius: radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
@@ -695,7 +703,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskBadgeText: {
     color: colors.textSecondary,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   subtaskBadgeTextDone: {
     color: colors.green,
@@ -706,6 +714,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     width: 80,
     gap: 5,
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
   },
   deferAction: {
     backgroundColor: colors.orange,
@@ -713,11 +723,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     width: 80,
     gap: 5,
+    borderTopLeftRadius: radius.md,
+    borderBottomLeftRadius: radius.md,
   },
   actionLabel: {
     color: colors.text,
     fontSize: font.xs,
-    fontWeight: '700',
+    fontWeight: fontWeight.bold,
     letterSpacing: 0.3,
   },
   expandedPanel: {
@@ -731,7 +743,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   expandNotes: {
     color: colors.textSecondary,
     fontSize: font.sm,
-    lineHeight: 19,
+    lineHeight: lineHeight.sm,
     paddingVertical: spacing.xs,
   },
   expandSection: {
@@ -739,7 +751,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   sectionDivider: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
     marginTop: 2,
   },
@@ -783,40 +795,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   expandMetaActive: {
     color: colors.accent,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   cycleSubtitle: {
     color: colors.accent,
     fontSize: font.sm,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   cycleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: colors.accent + '22',
-    borderRadius: 4,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
   cycleBadgeText: {
     color: colors.accent,
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   timeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
     backgroundColor: colors.bgTertiary,
-    borderRadius: 4,
+    borderRadius: radius.sm,
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
   timeBadgeText: {
     color: colors.textTertiary,
     fontSize: 11,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   editSection: {
     flexDirection: 'row',
@@ -839,7 +851,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   editBtnText: {
     color: colors.accent,
     fontSize: font.sm,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   skipBtnText: {
     color: colors.textSecondary,

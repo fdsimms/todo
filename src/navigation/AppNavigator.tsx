@@ -3,6 +3,7 @@ import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { TodayScreen } from '../screens/TodayScreen';
 import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
@@ -12,7 +13,8 @@ import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { useColors } from '../theme/ThemeContext';
-import { font } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { font, fontWeight, border } from '../theme';
 
 const Tab = createBottomTabNavigator();
 const EDGE_WIDTH = 20;
@@ -38,6 +40,7 @@ const styles = StyleSheet.create({
 
 export default function AppNavigator() {
   const colors = useColors();
+  const { isDark } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('Today');
   const navRef = useRef<NavigationContainerRef<any>>(null);
@@ -73,15 +76,26 @@ export default function AppNavigator() {
   const screenOptions = useMemo(() => ({
     headerShown: false,
     tabBarStyle: {
-      backgroundColor: colors.bgSecondary,
-      borderTopColor: colors.separator,
-      borderTopWidth: 0.5,
+      position: 'absolute' as const,
+      backgroundColor: 'transparent',
+      borderTopWidth: 0,
+      elevation: 0,
     },
+    tabBarBackground: () => (
+      <BlurView
+        intensity={isDark ? 60 : 80}
+        tint={isDark ? 'dark' : 'light'}
+        style={[StyleSheet.absoluteFill, {
+          borderTopWidth: border.hairline,
+          borderTopColor: colors.separator,
+        }]}
+      />
+    ),
     tabBarActiveTintColor: colors.accent,
     tabBarInactiveTintColor: colors.textTertiary,
-    tabBarLabelStyle: { fontSize: font.xs, fontWeight: '600' as const, letterSpacing: 0.2 },
+    tabBarLabelStyle: { fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.2 },
     tabBarItemStyle: { paddingVertical: 3 },
-  }), [colors]);
+  }), [colors, isDark]);
 
   return (
     <>

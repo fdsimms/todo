@@ -12,10 +12,12 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort } from '../types';
@@ -42,11 +44,13 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
   const addTask = useTaskStore(s => s.addTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const colors = useColors();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
   const translateY = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const panResponder = useRef(
     PanResponder.create({
@@ -56,25 +60,23 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
         if (dy > 0) translateY.setValue(dy);
       },
       onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 0.5) {
-          Animated.timing(translateY, {
-            toValue: 600,
-            duration: 200,
-            useNativeDriver: true,
-          }).start(() => { translateY.setValue(600); onClose(); });
+        if (dy > 80 || vy > 1.2) {
+          Animated.parallel([
+            Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
+            Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+          ]).start(() => { translateY.setValue(600); onClose(); });
         } else {
-          Animated.spring(translateY, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }).start();
+          Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
         }
       },
     })
   ).current;
 
   const dismiss = () => {
-    Animated.timing(translateY, {
-      toValue: 600,
-      duration: 220,
-      useNativeDriver: true,
-    }).start(() => { translateY.setValue(600); onClose(); });
+    Animated.parallel([
+      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(() => { translateY.setValue(600); onClose(); });
   };
 
   const [title, setTitle] = useState('');
@@ -95,7 +97,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
       setTagInput('');
       setActivePanel(null);
       translateY.setValue(600);
-      Animated.spring(translateY, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }).start();
+      backdropOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(translateY, { toValue: 0, damping: 26, stiffness: 220, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      ]).start();
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
@@ -157,11 +163,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
       transparent
       onRequestClose={dismiss}
     >
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+        <BlurView
+          intensity={isDark ? 20 : 15}
+          tint="dark"
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+      </Animated.View>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={dismiss} />
+        <TouchableOpacity style={styles.overlayTap} activeOpacity={1} onPress={dismiss} />
         <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm, transform: [{ translateY }] }]}>
           <View style={styles.handleArea} {...panResponder.panHandlers}>
             <View style={styles.handle} />
@@ -408,7 +422,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   flex: { flex: 1 },
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' },
+  backdropDim: { backgroundColor: 'rgba(0,0,0,0.3)' },
+  overlayTap: { flex: 1 },
   sheet: {
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
@@ -474,7 +489,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toolChipText: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   toolChipTextSet: {
     color: colors.accent,
@@ -506,11 +521,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   presetChipText: {
     color: colors.textSecondary,
     fontSize: font.sm,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   presetChipTextActive: {
     color: colors.text,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   clearChip: {
     width: 26,
@@ -560,7 +575,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   selectedTagText: {
     fontSize: font.xs,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   tagInputRow: {
     flexDirection: 'row',

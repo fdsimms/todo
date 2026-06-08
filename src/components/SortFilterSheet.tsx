@@ -12,7 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 
 interface Props {
   visible: boolean;
@@ -187,7 +187,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: '600' },
+  sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   resetBtn: {
     paddingHorizontal: spacing.sm, paddingVertical: 4,
@@ -196,7 +196,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
   groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   sortRow: {
@@ -206,7 +206,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sortRowActive: { backgroundColor: colors.bgTertiary },
   sortLabel: { flex: 1, color: colors.textSecondary, fontSize: font.md },
-  sortLabelActive: { color: colors.text, fontWeight: '500' },
+  sortLabelActive: { color: colors.text, fontWeight: fontWeight.medium },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     paddingHorizontal: 12, paddingVertical: 7,
@@ -215,8 +215,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipActive: { backgroundColor: colors.accent },
   chipDot: { width: 7, height: 7, borderRadius: 4 },
-  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  chipTextActive: { color: colors.text, fontWeight: '600' },
+  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
   chipHint: { color: colors.textTertiary, fontSize: 10 },
   chipHintActive: { color: colors.text + 'aa' },
 });
