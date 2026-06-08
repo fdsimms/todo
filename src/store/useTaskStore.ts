@@ -14,6 +14,10 @@ import {
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkAddTags,
+  dbGetTagRegistry,
+  dbAddToTagRegistry,
+  dbRemoveFromTagRegistry,
+  dbRemoveTagFromAllTasks,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -23,6 +27,7 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from
 
 interface TaskStore {
   tasks: Task[];
+  tagRegistry: string[];
   initialized: boolean;
   lastEditSnapshot: { id: string; snapshot: Task } | null;
 
@@ -50,6 +55,8 @@ interface TaskStore {
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
+  addTag: (tag: string) => void;
+  deleteTag: (tag: string) => void;
 
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
@@ -64,13 +71,15 @@ interface TaskStore {
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
+  tagRegistry: [],
   initialized: false,
   lastEditSnapshot: null,
 
   initialize() {
     initDatabase();
     const tasks = dbGetAllTasks();
-    set({ tasks, initialized: true });
+    const tagRegistry = dbGetTagRegistry();
+    set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
   },
 
@@ -429,9 +438,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   allTags() {
-    const tagSet = new Set<string>();
+    const tagSet = new Set<string>(get().tagRegistry);
     get().tasks.forEach(t => t.tags.forEach(tag => tagSet.add(tag)));
     return Array.from(tagSet).sort();
+  },
+
+  addTag(tag) {
+    const t = tag.trim().toLowerCase();
+    if (!t) return;
+    if (get().allTags().includes(t)) return;
+    dbAddToTagRegistry(t);
+    set(s => ({ tagRegistry: [...s.tagRegistry, t] }));
+  },
+
+  deleteTag(tag) {
+    dbRemoveTagFromAllTasks(tag);
+    dbRemoveFromTagRegistry(tag);
+    set(s => ({
+      tasks: s.tasks.map(t => ({ ...t, tags: t.tags.filter(tg => tg !== tag) })),
+      tagRegistry: s.tagRegistry.filter(t => t !== tag),
+    }));
   },
 
   tasksByTag(tag) {
