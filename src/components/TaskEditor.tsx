@@ -56,6 +56,8 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const addCategory = useTaskStore(s => s.addCategory);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -65,6 +67,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
@@ -77,6 +80,8 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const [effort, setEffort] = useState<Effort>(0);
   const [focused, setFocused] = useState(false);
 
+  const [newCategory, setNewCategory] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
@@ -100,7 +105,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     if (task) {
-      setTitle(task.title); setNotes(task.notes); setTags(task.tags);
+      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       setTimeOfDay(task.timeOfDay ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
@@ -111,13 +116,13 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
     } else {
-      setTitle(initialTitle ?? ''); setNotes(''); setTags([]);
+      setTitle(initialTitle ?? ''); setNotes(''); setCategory(null); setTags([]);
       setDueDate(null); setTimeOfDay(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
     }
-    setPickerMode('none'); setPickerDate(new Date()); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false); setAiSuggestions(null);
@@ -126,6 +131,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialTitle ?? ''),
       notes: task ? task.notes : '',
+      category: task ? (task.category ?? null) : null,
       tags: task ? task.tags : [],
       dueDate: task?.dueDate ?? null,
       deferUntil: task?.deferUntil ?? null,
@@ -145,7 +151,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const save = () => {
     if (!title.trim()) return;
     const data = {
-      title: title.trim(), notes, tags,
+      title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
       timeOfDay, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -211,6 +217,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     const current = JSON.stringify({
       title,
       notes,
+      category,
       tags,
       dueDate: dueDate?.toISOString() ?? null,
       deferUntil: deferUntil?.toISOString() ?? null,
@@ -296,6 +303,55 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             placeholderTextColor={colors.textTertiary}
             multiline
           />
+
+          {/* Category */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Category</Text>
+            <View style={styles.pillRow}>
+              <TouchableOpacity
+                style={[styles.pill, !category && styles.pillActiveNeutral]}
+                onPress={() => setCategory(null)}
+              >
+                <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+              </TouchableOpacity>
+              {allCategories.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                  onPress={() => setCategory(cat)}
+                >
+                  <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+              {addingCategory ? (
+                <TextInput
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newCategory}
+                  onChangeText={setNewCategory}
+                  onSubmitEditing={() => {
+                    const c = newCategory.trim();
+                    if (c) { addCategory(c); setCategory(c); }
+                    setNewCategory(''); setAddingCategory(false);
+                  }}
+                  onBlur={() => {
+                    const c = newCategory.trim();
+                    if (c) { addCategory(c); setCategory(c); }
+                    setNewCategory(''); setAddingCategory(false);
+                  }}
+                  placeholder="category name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="words"
+                />
+              ) : (
+                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                  <Ionicons name="add" size={14} color={colors.accent} />
+                  <Text style={styles.addTagText}>New</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
 
           {/* Tags */}
           <View style={styles.section}>

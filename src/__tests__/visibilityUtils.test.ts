@@ -37,6 +37,7 @@ const baseTask: Task = {
   reminderTime: null,
   parentId: null,
   projectId: null,
+  category: null,
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],

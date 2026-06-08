@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   SectionList,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
@@ -28,7 +27,6 @@ import { FocusSelector } from '../components/FocusSelector';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
-import { tagColor } from '../utils/tagColor';
 
 type ViewMode = 'today' | 'focus' | 'later';
 
@@ -40,6 +38,7 @@ export function TodayScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
+  const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -51,7 +50,6 @@ export function TodayScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -118,7 +116,6 @@ export function TodayScreen() {
 
   const applyFiltersAndSort = (tasks: Task[]): Task[] => {
     let result = tasks;
-    if (selectedTag) result = result.filter(t => t.tags.includes(selectedTag));
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
 
@@ -155,27 +152,28 @@ export function TodayScreen() {
 
   const buildGroupedData = (): ListItem[] => {
     const overdueItems = buildOverdueSection(overdueTasks);
-    const byTag: Record<string, Task[]> = {};
-    const untagged: Task[] = [];
+    const byCategory: Record<string, Task[]> = {};
+    const uncategorized: Task[] = [];
 
     todayTasks.forEach(task => {
-      if (task.tags.length === 0) {
-        untagged.push(task);
+      if (!task.category) {
+        uncategorized.push(task);
       } else {
-        const key = task.tags[0];
-        if (!byTag[key]) byTag[key] = [];
-        byTag[key].push(task);
+        if (!byCategory[task.category]) byCategory[task.category] = [];
+        byCategory[task.category].push(task);
       }
     });
 
     const groupedItems: ListItem[] = [];
-    Object.entries(byTag).forEach(([tag, tasks]) => {
-      groupedItems.push({ type: 'header', label: tag });
+    Object.entries(byCategory).forEach(([cat, tasks]) => {
+      groupedItems.push({ type: 'header', label: cat });
       tasks.forEach(task => groupedItems.push({ type: 'task', task }));
     });
-    if (untagged.length > 0) {
-      groupedItems.push({ type: 'header', label: 'Other' });
-      untagged.forEach(task => groupedItems.push({ type: 'task', task }));
+    if (uncategorized.length > 0) {
+      if (groupedItems.length > 0) {
+        groupedItems.push({ type: 'header', label: 'Other' });
+      }
+      uncategorized.forEach(task => groupedItems.push({ type: 'task', task }));
     }
     return [...overdueItems, ...groupedItems];
   };
@@ -228,11 +226,9 @@ export function TodayScreen() {
       <Text style={styles.emptySubtext}>
         {activeFilterCount > 0
           ? 'No tasks match these filters'
-          : selectedTag
-            ? `No visible tasks tagged "${selectedTag}"`
-            : viewMode === 'focus'
-              ? 'No tasks in focus'
-              : 'Nothing to do right now'}
+          : viewMode === 'focus'
+            ? 'No tasks in focus'
+            : 'Nothing to do right now'}
       </Text>
     </View>
   );
@@ -330,39 +326,6 @@ export function TodayScreen() {
         ))}
       </View>
 
-      {viewMode === 'today' && allTags.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterBar}
-        >
-          <TouchableOpacity
-            style={[styles.filterChip, !selectedTag && styles.filterChipActive]}
-            onPress={() => setSelectedTag(null)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.filterChipText, !selectedTag && styles.filterChipTextActive]}>
-              All
-            </Text>
-          </TouchableOpacity>
-          {allTags.map(tag => (
-            <TouchableOpacity
-              key={`tag-${tag}`}
-              style={[styles.filterChip, selectedTag === tag && { backgroundColor: tagColor(tag) }]}
-              onPress={() => {
-                Haptics.selectionAsync();
-                setSelectedTag(prev => prev === tag ? null : tag);
-              }}
-              activeOpacity={0.7}
-            >
-              {selectedTag !== tag && <View style={[styles.filterDot, { backgroundColor: tagColor(tag) }]} />}
-              <Text style={[styles.filterChipText, selectedTag === tag && styles.filterChipTextActive]}>
-                {tag}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
 
       {viewMode === 'focus' && (
         focusedTasks.length === 0 ? (
@@ -469,10 +432,25 @@ export function TodayScreen() {
           keyboardDismissMode="on-drag"
           renderItem={renderItem}
           onDragEnd={({ data: reordered }) => {
-            const taskIds = reordered
-              .filter((item): item is { type: 'task'; task: Task } => item.type === 'task')
-              .map(item => item.task.id);
+            const taskIds: string[] = [];
+            let currentSection: string | null | 'overdue' = 'overdue';
+            const categoryUpdates: Array<{ id: string; category: string | null }> = [];
+
+            for (const item of reordered) {
+              if (item.type === 'header') {
+                if (item.isOverdue) currentSection = 'overdue';
+                else if (item.label === 'Other') currentSection = null;
+                else currentSection = item.label;
+              } else {
+                taskIds.push(item.task.id);
+                if (currentSection !== 'overdue' && item.task.category !== currentSection) {
+                  categoryUpdates.push({ id: item.task.id, category: currentSection });
+                }
+              }
+            }
+
             reorderTasks(taskIds);
+            categoryUpdates.forEach(u => updateTask(u.id, { category: u.category }));
           }}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={

@@ -41,6 +41,7 @@ export interface Task {
   recurrenceFromCompletion: boolean;
 
   tags: string[];
+  category: string | null;
   sortOrder: number;
 
   focused: boolean;

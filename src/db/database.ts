@@ -67,6 +67,7 @@ export function initDatabase(): void {
     "ALTER TABLE tasks ADD COLUMN cycle_items TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
+    'ALTER TABLE tasks ADD COLUMN category TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -102,6 +103,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
+    category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     focused: Boolean(row.focused),
     priority: ((row.priority as number) ?? 0) as Task['priority'],
@@ -130,16 +132,16 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
-      tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
+      tags, category, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, project_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
       task.timeOfDay ?? null, task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
-      JSON.stringify(task.tags), task.sortOrder,
+      JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
@@ -154,7 +156,7 @@ export function dbUpdateTask(task: Task): void {
       title=?, notes=?, completed=?, completed_at=?,
       due_date=?, defer_until=?, time_of_day=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
-      tags=?, sort_order=?, focused=?, priority=?, effort=?,
+      tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?
     WHERE id=?`,
@@ -164,7 +166,7 @@ export function dbUpdateTask(task: Task): void {
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
-      JSON.stringify(task.tags), task.sortOrder,
+      JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
@@ -265,6 +267,28 @@ export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {
       db.runSync('UPDATE tasks SET tags = ? WHERE id = ?', [JSON.stringify(merged), id]);
     }
   });
+}
+
+export function dbGetCategoryRegistry(): string[] {
+  const val = dbGetSetting('category_registry');
+  if (!val) return [];
+  try { return JSON.parse(val) as string[]; } catch { return []; }
+}
+
+export function dbAddToCategoryRegistry(name: string): void {
+  const current = dbGetCategoryRegistry();
+  if (!current.includes(name)) {
+    dbSetSetting('category_registry', JSON.stringify([...current, name]));
+  }
+}
+
+export function dbRemoveFromCategoryRegistry(name: string): void {
+  const current = dbGetCategoryRegistry();
+  dbSetSetting('category_registry', JSON.stringify(current.filter(c => c !== name)));
+}
+
+export function dbRemoveCategoryFromAllTasks(name: string): void {
+  db.runSync("UPDATE tasks SET category = NULL WHERE category = ?", [name]);
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
