@@ -43,6 +43,7 @@ interface TaskStore {
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
   deleteSubtask: (id: string) => void;
+  reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
 
   bulkCompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
@@ -342,6 +343,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
   },
 
+  reorderSubtasks(parentId, orderedIds) {
+    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
+    dbBatchUpdateSortOrders(updates);
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, sortOrder: u.sortOrder } : t;
+      }),
+    }));
+  },
+
   bulkCompleteTasks(ids) {
     if (ids.length === 0) return;
     ids.forEach(id => get().completeTask(id));
@@ -411,7 +423,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   subtasksOf(parentId) {
-    return get().tasks.filter(t => t.parentId === parentId);
+    return get().tasks
+      .filter(t => t.parentId === parentId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   allTags() {

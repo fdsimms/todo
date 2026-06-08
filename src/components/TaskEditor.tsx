@@ -5,11 +5,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { NestableScrollContainer, NestableDraggableFlatList, ScaleDecorator } from 'react-native-draggable-flatlist';
+import type { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
 import { CalendarPicker } from './CalendarPicker';
 import { format } from 'date-fns';
@@ -49,6 +50,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allProjects = useProjectStore(useShallow(s => s.projects));
@@ -87,6 +89,10 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [projectPickerVisible, setProjectPickerVisible] = useState(false);
 
   const titleRef = useRef<TextInput>(null);
+  const cycleInputRef = useRef<TextInput>(null);
+  const cycleItemSavedRef = useRef(false);
+  const subtaskInputRef = useRef<TextInput>(null);
+  const subtaskSavedRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -207,7 +213,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+        <NestableScrollContainer style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
           <TextInput
             ref={titleRef}
             style={styles.titleInput}
@@ -334,35 +340,51 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                     <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
                   )}
                 </View>
-                {subtasks.map(sub => (
-                  <View key={sub.id} style={styles.subtaskRow}>
-                    <TouchableOpacity
-                      onPress={() => toggleSubtask(sub.id)}
-                      hitSlop={6}
-                      style={styles.subtaskCheck}
-                    >
-                      <Ionicons
-                        name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                        size={20}
-                        color={sub.completed ? colors.green : colors.bgQuaternary}
-                      />
-                    </TouchableOpacity>
-                    <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                      {sub.title}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => deleteSubtask(sub.id)}
-                      hitSlop={8}
-                      style={styles.subtaskDelete}
-                    >
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                <NestableDraggableFlatList
+                  data={subtasks}
+                  keyExtractor={sub => sub.id}
+                  onDragEnd={({ data }) => reorderSubtasks(task.id, data.map(s => s.id))}
+                  renderItem={({ item: sub, drag }: RenderItemParams<typeof subtasks[0]>) => (
+                    <ScaleDecorator>
+                      <View style={styles.subtaskRow}>
+                        <TouchableOpacity
+                          onPress={() => toggleSubtask(sub.id)}
+                          hitSlop={6}
+                          style={styles.subtaskCheck}
+                        >
+                          <Ionicons
+                            name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={20}
+                            color={sub.completed ? colors.green : colors.bgQuaternary}
+                          />
+                        </TouchableOpacity>
+                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                          {sub.title}
+                        </Text>
+                        <TouchableOpacity
+                          onLongPress={drag}
+                          delayLongPress={150}
+                          hitSlop={8}
+                          style={styles.dragHandle}
+                        >
+                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => deleteSubtask(sub.id)}
+                          hitSlop={8}
+                          style={styles.subtaskDelete}
+                        >
+                          <Ionicons name="close" size={14} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      </View>
+                    </ScaleDecorator>
+                  )}
+                />
                 {addingSubtask ? (
                   <View style={styles.subtaskInputRow}>
                     <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
                     <TextInput
+                      ref={subtaskInputRef}
                       autoFocus
                       style={styles.subtaskInput}
                       value={newSubtaskTitle}
@@ -371,12 +393,17 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                       placeholderTextColor={colors.textTertiary}
                       returnKeyType="done"
                       onSubmitEditing={() => {
+                        subtaskSavedRef.current = true;
                         const t = newSubtaskTitle.trim();
                         if (t) addSubtask(task.id, t);
                         setNewSubtaskTitle('');
-                        setAddingSubtask(false);
+                        setTimeout(() => {
+                          subtaskSavedRef.current = false;
+                          subtaskInputRef.current?.focus();
+                        }, 50);
                       }}
                       onBlur={() => {
+                        if (subtaskSavedRef.current) return;
                         const t = newSubtaskTitle.trim();
                         if (t) addSubtask(task.id, t);
                         setNewSubtaskTitle('');
@@ -416,41 +443,67 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
             )}
             {cycleEnabled && (
               <>
-                {cycleItems.map((item, i) => (
-                  <View key={item.id} style={styles.cycleItemRow}>
-                    <TouchableOpacity
-                      onPress={() => setCycleIndex(i)}
-                      hitSlop={6}
-                      style={styles.cycleItemIndexBtn}
-                    >
-                      <View style={[styles.cycleItemDot, i === cycleIndex && styles.cycleItemDotActive]}>
-                        <Text style={[styles.cycleItemDotText, i === cycleIndex && styles.cycleItemDotTextActive]}>
-                          {i + 1}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                    <Text style={[styles.cycleItemTitle, i === cycleIndex && styles.cycleItemTitleActive]}>
-                      {item.title}
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const next = cycleItems.filter((_, idx) => idx !== i);
-                        setCycleItems(next);
-                        if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
-                      }}
-                      hitSlop={8}
-                      style={styles.cycleItemDelete}
-                    >
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
+                <NestableDraggableFlatList
+                  data={cycleItems}
+                  keyExtractor={item => item.id}
+                  onDragEnd={({ data, from, to }) => {
+                    setCycleItems(data);
+                    const activeItem = cycleItems[cycleIndex];
+                    if (activeItem) {
+                      const newIdx = data.findIndex(item => item.id === activeItem.id);
+                      if (newIdx !== -1) setCycleIndex(newIdx);
+                    }
+                  }}
+                  renderItem={({ item, drag, getIndex }: RenderItemParams<CycleItem>) => {
+                    const i = getIndex() ?? 0;
+                    return (
+                      <ScaleDecorator>
+                        <View style={styles.cycleItemRow}>
+                          <TouchableOpacity
+                            onPress={() => setCycleIndex(i)}
+                            hitSlop={6}
+                            style={styles.cycleItemIndexBtn}
+                          >
+                            <View style={[styles.cycleItemDot, i === cycleIndex && styles.cycleItemDotActive]}>
+                              <Text style={[styles.cycleItemDotText, i === cycleIndex && styles.cycleItemDotTextActive]}>
+                                {i + 1}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                          <Text style={[styles.cycleItemTitle, i === cycleIndex && styles.cycleItemTitleActive]}>
+                            {item.title}
+                          </Text>
+                          <TouchableOpacity
+                            onLongPress={drag}
+                            delayLongPress={150}
+                            hitSlop={8}
+                            style={styles.dragHandle}
+                          >
+                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const next = cycleItems.filter((_, idx) => idx !== i);
+                              setCycleItems(next);
+                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                            }}
+                            hitSlop={8}
+                            style={styles.cycleItemDelete}
+                          >
+                            <Ionicons name="close" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        </View>
+                      </ScaleDecorator>
+                    );
+                  }}
+                />
                 {addingCycleItem ? (
                   <View style={styles.cycleInputRow}>
                     <View style={styles.cycleItemDot}>
                       <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
                     </View>
                     <TextInput
+                      ref={cycleInputRef}
                       autoFocus
                       style={styles.cycleInput}
                       value={newCycleItemTitle}
@@ -459,12 +512,17 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                       placeholderTextColor={colors.textTertiary}
                       returnKeyType="done"
                       onSubmitEditing={() => {
+                        cycleItemSavedRef.current = true;
                         const t = newCycleItemTitle.trim();
                         if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
                         setNewCycleItemTitle('');
-                        setAddingCycleItem(false);
+                        setTimeout(() => {
+                          cycleItemSavedRef.current = false;
+                          cycleInputRef.current?.focus();
+                        }, 50);
                       }}
                       onBlur={() => {
+                        if (cycleItemSavedRef.current) return;
                         const t = newCycleItemTitle.trim();
                         if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
                         setNewCycleItemTitle('');
@@ -660,7 +718,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
               </>
             )}
           </View>
-        </ScrollView>
+        </NestableScrollContainer>
 
         <CalendarPicker
           visible={pickerMode !== 'none'}
@@ -888,6 +946,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, textDecorationLine: 'line-through',
   },
   subtaskDelete: { padding: 4 },
+  dragHandle: { padding: 4 },
   subtaskInputRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
