@@ -7,6 +7,7 @@ import {
   Animated,
   StyleSheet,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -101,12 +102,25 @@ export function TaskItem({
   const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    Animated.timing(expansionAnim, {
+    Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      duration: 200,
+      tension: 180,
+      friction: 22,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
+
+  // Save and dismiss keyboard whenever the task collapses while title is being edited
+  useEffect(() => {
+    if (!expanded && isEditingTitle) {
+      const trimmed = titleEdit.trim();
+      if (trimmed && trimmed !== task.title) {
+        updateTask(task.id, { title: trimmed });
+      }
+      setIsEditingTitle(false);
+      Keyboard.dismiss();
+    }
+  }, [expanded, isEditingTitle]);
 
   const isOverdue =
     task.dueDate &&
@@ -235,10 +249,13 @@ export function TaskItem({
             blurOnSubmit
             autoFocus
           />
-        ) : (
+        ) : expanded ? (
+          // Only tappable for edit when already expanded — avoids intercepting expand taps
           <TouchableOpacity onPress={handleTitleTap} activeOpacity={0.6}>
             <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
           </TouchableOpacity>
+        ) : (
+          <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
         )}
         {activeCycleItem && (
           <Text style={styles.cycleSubtitle} numberOfLines={1}>
@@ -369,6 +386,9 @@ export function TaskItem({
             renderLeftActions={renderLeftActions}
             overshootRight={false}
             overshootLeft={false}
+            onSwipeableWillOpen={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            }}
             onSwipeableOpen={(direction) => {
               if (direction === 'right') {
                 confirmDelete();
@@ -385,8 +405,7 @@ export function TaskItem({
         <Animated.View style={[
           styles.expandedPanel,
           {
-            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }),
-            opacity: expansionAnim,
+            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
             overflow: 'hidden',
           },
         ]}>
@@ -777,19 +796,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: '500',
   },
   editSection: {
-    paddingTop: spacing.sm,
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
+    gap: spacing.xs,
   },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    backgroundColor: colors.bgTertiary,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: radius.full,
   },
   editBtnText: {
     color: colors.accent,
     fontSize: font.sm,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   skipBtnText: {
     color: colors.textSecondary,

@@ -135,6 +135,8 @@ export function SomedayScreen() {
         data={somedayTasks}
         keyExtractor={item => item.id}
         onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
           const subs = allTasks.filter(t => t.parentId === item.id);
           return (
