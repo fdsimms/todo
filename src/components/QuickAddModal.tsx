@@ -305,7 +305,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <View style={styles.panel}>
               <View style={styles.presetRow}>
                 {DATE_PRESETS.map(({ label, days }) => {
-                  const d = startOfDay(addDays(new Date(), days));
+                  const d = addDays(new Date(), days);
+                  d.setHours(12, 0, 0, 0);
                   const selected = dueDate?.toDateString() === d.toDateString();
                   return (
                     <TouchableOpacity

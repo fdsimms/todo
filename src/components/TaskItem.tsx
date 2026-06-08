@@ -560,10 +560,12 @@ export function TaskItem({
           visible={showCalendar}
           value={task.dueDate ? new Date(task.dueDate) : null}
           mode="date"
-          title="Due Date"
+          title="Date"
           nlEnabled
           onConfirm={date => {
-            updateTask(task.id, { dueDate: date.toISOString() });
+            const noon = new Date(date);
+            noon.setHours(12, 0, 0, 0);
+            updateTask(task.id, { dueDate: noon.toISOString() });
             setShowCalendar(false);
           }}
           onCancel={() => setShowCalendar(false)}

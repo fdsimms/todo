@@ -185,7 +185,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   };
 
   const confirmPicker = (confirmed: Date) => {
-    if (pickerMode === 'dueDate') setDueDate(confirmed);
+    if (pickerMode === 'dueDate') {
+      // Store noon of the selected day to ensure day-level comparison works
+      const noon = new Date(confirmed);
+      noon.setHours(12, 0, 0, 0);
+      setDueDate(noon);
+    }
     if (pickerMode === 'deferUntil') {
       // Store noon of the selected day to ensure day-level comparison works
       const noon = new Date(confirmed);
@@ -663,7 +668,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
           <View style={styles.optionsCard}>
             <OptionRow
               icon="calendar"
-              label="Due date"
+              label="Date"
               value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
               onPress={() => openPicker('dueDate')}
               onClear={dueDate ? () => setDueDate(null) : undefined}
@@ -783,9 +788,9 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
         <CalendarPicker
           visible={pickerMode !== 'none'}
           value={pickerDate}
-          mode={pickerMode === 'deferUntil' ? 'date' : 'datetime'}
+          mode={pickerMode === 'reminder' ? 'datetime' : 'date'}
           title={
-            pickerMode === 'dueDate' ? 'Due Date'
+            pickerMode === 'dueDate' ? 'Date'
               : pickerMode === 'reminder' ? 'Remind Me'
               : 'Defer Until'
           }
