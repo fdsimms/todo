@@ -89,7 +89,13 @@ export function LaterScreen() {
   }));
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[styles.container, { paddingTop: insets.top }]}
+      onStartShouldSetResponderCapture={() => {
+        if (expandedTaskId !== null) setExpandedTaskId(null);
+        return false;
+      }}
+    >
       <View style={styles.header}>
         <Text style={styles.title}>Later</Text>
         <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
