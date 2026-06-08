@@ -27,7 +27,7 @@ import { SortFilterSheet } from '../components/SortFilterSheet';
 import { FocusSelector } from '../components/FocusSelector';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 
 type ViewMode = 'today' | 'focus' | 'later';
@@ -67,7 +67,7 @@ export function TodayScreen() {
   const [focusSelectorVisible, setFocusSelectorVisible] = useState(false);
 
   const enterSelection = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
     setExpandedTaskId(null);
@@ -351,7 +351,13 @@ export function TodayScreen() {
           <TouchableOpacity
             key={mode}
             style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
-            onPress={() => { setViewMode(mode); setExpandedTaskId(null); setSelectionMode(false); setSelectedIds(new Set()); }}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setViewMode(mode);
+              setExpandedTaskId(null);
+              setSelectionMode(false);
+              setSelectedIds(new Set());
+            }}
             activeOpacity={0.7}
           >
             <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
@@ -382,7 +388,10 @@ export function TodayScreen() {
             <TouchableOpacity
               key={`tag-${tag}`}
               style={[styles.filterChip, selectedTag === tag && { backgroundColor: tagColor(tag) }]}
-              onPress={() => setSelectedTag(prev => prev === tag ? null : tag)}
+              onPress={() => {
+                Haptics.selectionAsync();
+                setSelectedTag(prev => prev === tag ? null : tag);
+              }}
               activeOpacity={0.7}
             >
               {selectedTag !== tag && <View style={[styles.filterDot, { backgroundColor: tagColor(tag) }]} />}
@@ -521,7 +530,10 @@ export function TodayScreen() {
       {viewMode === 'today' && (
         <TouchableOpacity
           style={[styles.fab, { bottom: insets.bottom + 20 }]}
-          onPress={() => setQuickAddVisible(true)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            setQuickAddVisible(true);
+          }}
           activeOpacity={0.85}
         >
           <Ionicons name="add" size={28} color={colors.text} />
@@ -593,20 +605,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingBottom: spacing.md, paddingTop: spacing.sm,
   },
-  dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: '500', letterSpacing: 0.3, marginBottom: 2 },
-  title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
+  dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium, letterSpacing: 0.3, marginBottom: 2 },
+  title: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, lineHeight: lineHeight.xxl, letterSpacing: -0.5 },
   headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
-  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   selectBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
-  selectText: { color: colors.text, fontSize: font.sm, fontWeight: '600' },
+  selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   viewModePills: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
@@ -616,8 +628,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   viewModePillActive: { backgroundColor: colors.accent },
-  viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  viewModePillTextActive: { color: colors.text, fontWeight: '600' },
+  viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  viewModePillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.bgSecondary,
@@ -636,7 +648,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   sectionHeaderText: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   sectionHeaderOverdue: {
@@ -646,11 +658,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
   listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600' },
-  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },
+  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
   suggestions: { paddingTop: spacing.lg },
   suggestionsLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.5,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
@@ -677,6 +689,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   filterChipActive: { backgroundColor: colors.accent },
   filterDot: { width: 6, height: 6, borderRadius: radius.full },
-  filterChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  filterChipTextActive: { color: colors.text, fontWeight: '700', letterSpacing: 0.1 },
+  filterChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  filterChipTextActive: { color: colors.text, fontWeight: fontWeight.semibold, letterSpacing: 0.1 },
 });

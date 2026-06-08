@@ -10,9 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
-import { font, radius, spacing } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { font, fontWeight, radius, spacing } from '../theme';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -39,6 +41,7 @@ interface Props {
 
 export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
@@ -83,9 +86,10 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
       ]).start();
     } else {
       Animated.parallel([
-        Animated.timing(translateX, {
+        Animated.spring(translateX, {
           toValue: -DRAWER_WIDTH,
-          duration: 200,
+          damping: 30,
+          stiffness: 280,
           useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
@@ -113,11 +117,17 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
       statusBarTranslucent
     >
       <View style={StyleSheet.absoluteFill}>
+        {/* Blur + dim backdrop */}
         <Animated.View
           style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]}
           pointerEvents="none"
         >
-          <View style={[StyleSheet.absoluteFill, styles.backdrop]} />
+          <BlurView
+            intensity={isDark ? 25 : 20}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
         </Animated.View>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
@@ -125,13 +135,20 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
           style={[
             styles.drawer,
             {
-              backgroundColor: colors.bgSecondary,
               borderRightColor: colors.separator,
               transform: [{ translateX: Animated.add(translateX, dragOffsetX) }],
             },
           ]}
           {...swipePanResponder.panHandlers}
         >
+          {/* Frosted glass drawer background */}
+          <BlurView
+            intensity={isDark ? 70 : 80}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(28,28,30,0.7)' : 'rgba(255,255,255,0.7)' }]} />
+
           <View style={[styles.header, { borderBottomColor: colors.separator }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
           </View>
@@ -183,8 +200,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
 }
 
 const styles = StyleSheet.create({
-  backdrop: {
-    backgroundColor: 'rgba(0,0,0,0.55)',
+  backdropDim: {
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
   drawer: {
     position: 'absolute',
@@ -198,6 +215,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 16,
     elevation: 20,
+    overflow: 'hidden',
   },
   header: {
     paddingTop: 64,
@@ -207,7 +225,7 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: font.xxl,
-    fontWeight: '700',
+    fontWeight: fontWeight.bold,
     letterSpacing: -0.5,
   },
   items: {
@@ -233,7 +251,7 @@ const styles = StyleSheet.create({
   itemLabel: {
     flex: 1,
     fontSize: font.md,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   activeDot: {
     width: 7,

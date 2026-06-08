@@ -1,3 +1,5 @@
+import { StyleSheet } from 'react-native';
+
 export type Colors = {
   bg: string;
   bgSecondary: string;
@@ -7,6 +9,7 @@ export type Colors = {
   textSecondary: string;
   textTertiary: string;
   accent: string;
+  accentSubtle: string;
   green: string;
   orange: string;
   red: string;
@@ -26,6 +29,7 @@ export const darkColors: Colors = {
   textSecondary: '#8E8E93',
   textTertiary: '#636366',
   accent: '#0A84FF',
+  accentSubtle: 'rgba(10, 132, 255, 0.15)',
   green: '#30D158',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -46,6 +50,7 @@ export const lightColors: Colors = {
   textSecondary: '#6C6C70',
   textTertiary: '#8A8A8E',
   accent: '#007AFF',
+  accentSubtle: 'rgba(0, 122, 255, 0.12)',
   green: '#34C759',
   orange: '#FF9500',
   red: '#FF3B30',
@@ -84,6 +89,49 @@ export const font = {
   xxl: 28,
 };
 
+export const fontWeight = {
+  regular: '400' as const,
+  medium: '500' as const,
+  semibold: '600' as const,
+  bold: '700' as const,
+};
+
+export const lineHeight = {
+  xs: 16,
+  sm: 18,
+  md: 22,
+  lg: 24,
+  xl: 28,
+  xxl: 34,
+};
+
+export const border = {
+  hairline: StyleSheet.hairlineWidth,
+  thin: 0.5,
+  sm: 1,
+};
+
+export const iconSize = {
+  xs: 12,
+  sm: 16,
+  md: 20,
+  lg: 24,
+  xl: 28,
+};
+
+export const animation = {
+  duration: {
+    fast: 150,
+    normal: 250,
+    slow: 400,
+  },
+  spring: {
+    snappy: { damping: 22, stiffness: 300, mass: 0.8 },
+    smooth: { damping: 26, stiffness: 220, mass: 1.0 },
+    bouncy: { damping: 15, stiffness: 350, mass: 0.9 },
+  },
+};
+
 export const shadow = {
   card: {
     shadowColor: '#000',
@@ -99,3 +147,26 @@ export const shadow = {
     elevation: 8,
   },
 };
+
+export const getShadows = (isDark: boolean) => ({
+  card: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: isDark ? 0.35 : 0.10,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  fab: {
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: isDark ? 0.55 : 0.30,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  sheet: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: isDark ? 0.45 : 0.12,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+});
