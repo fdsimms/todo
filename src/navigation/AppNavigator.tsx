@@ -8,7 +8,6 @@ import { TodayScreen } from '../screens/TodayScreen';
 import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
-import { SomedayScreen } from '../screens/SomedayScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
@@ -22,7 +21,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Later', 'Someday', 'Tags', 'Logbook', 'Stats']);
+const DRAWER_TABS = new Set(['Later', 'Tags', 'Logbook', 'Stats']);
 
 function MorePlaceholder() {
   return null;
@@ -134,7 +133,6 @@ export default function AppNavigator() {
 
           {/* Drawer-only screens — not visible in the tab bar */}
           <Tab.Screen name="Later" component={LaterScreen} options={HIDDEN} />
-          <Tab.Screen name="Someday" component={SomedayScreen} options={HIDDEN} />
           <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
           <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
           <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />

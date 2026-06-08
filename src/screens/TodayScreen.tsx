@@ -35,13 +35,11 @@ type ViewMode = 'today' | 'focus' | 'later';
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
-  const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
-  const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -142,8 +140,6 @@ export function TodayScreen() {
   const filtered = applyFiltersAndSort(visibleTasks);
   const overdueTasks = filtered.filter(isTaskOverdue);
   const todayTasks = filtered.filter(t => !isTaskOverdue(t));
-  const suggestions = somedayTasks.slice(0, 3);
-  const showSomeday = activeFilterCount === 0 && !selectedTag && suggestions.length > 0;
 
   type ListItem =
     | { type: 'header'; label: string; isOverdue?: boolean }
@@ -226,41 +222,7 @@ export function TodayScreen() {
     );
   };
 
-  const emptyComponent = showSomeday ? (
-    <View>
-      <View style={styles.empty}>
-        <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
-        <Text style={styles.emptyText}>All clear</Text>
-        <Text style={styles.emptySubtext}>Nothing scheduled for today</Text>
-      </View>
-      <View style={styles.suggestions}>
-        <Text style={styles.suggestionsLabel}>How about one of these?</Text>
-        {suggestions.map(task => {
-          const subs = allTasks.filter(t => t.parentId === task.id);
-          return (
-            <View key={task.id}>
-              <TaskItem
-                task={task}
-                onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                expanded={expandedTaskId === task.id}
-                onEdit={() => openEditor(task)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-              />
-              <TouchableOpacity
-                style={styles.doTodayBtn}
-                onPress={() => updateTask(task.id, { someday: false })}
-              >
-                <Ionicons name="arrow-up-circle-outline" size={14} color={colors.accent} />
-                <Text style={styles.doTodayText}>Move to today</Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
-      </View>
-    </View>
-  ) : (
+  const emptyComponent = (
     <View style={styles.empty}>
       <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
       <Text style={styles.emptyText}>All clear</Text>
@@ -660,17 +622,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
-  suggestions: { paddingTop: spacing.lg },
-  suggestionsLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase', letterSpacing: 0.5,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
-  },
-  doTodayBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: 2,
-  },
-  doTodayText: { color: colors.accent, fontSize: font.xs, fontWeight: '500' },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,

@@ -26,7 +26,6 @@ const BASE: Task = {
   tags: [],
   sortOrder: 0,
   focused: false,
-  someday: false,
   priority: 0,
   effort: 0,
   streakCount: 0,
