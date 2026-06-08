@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -122,7 +122,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
           style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]}
           pointerEvents="none"
         >
-          <BlurView
+          <SafeBlurView
             intensity={isDark ? 25 : 20}
             tint="dark"
             style={StyleSheet.absoluteFill}
@@ -142,7 +142,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
           {...swipePanResponder.panHandlers}
         >
           {/* Frosted glass drawer background */}
-          <BlurView
+          <SafeBlurView
             intensity={isDark ? 70 : 80}
             tint={isDark ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}

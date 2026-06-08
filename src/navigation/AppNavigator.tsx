@@ -3,7 +3,7 @@ import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
+import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
@@ -82,7 +82,7 @@ export default function AppNavigator() {
       elevation: 0,
     },
     tabBarBackground: () => (
-      <BlurView
+      <SafeBlurView
         intensity={isDark ? 60 : 80}
         tint={isDark ? 'dark' : 'light'}
         style={[StyleSheet.absoluteFill, {
