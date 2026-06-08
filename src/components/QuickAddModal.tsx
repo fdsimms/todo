@@ -5,6 +5,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
   Animated,
   PanResponder,
   StyleSheet,
@@ -19,11 +20,13 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
 import { tagColor } from '../utils/tagColor';
 import { format, addDays, startOfDay } from 'date-fns';
+import { suggestTaskAttributes } from '../services/aiSuggestions';
 
 interface Props {
   visible: boolean;
@@ -43,6 +46,7 @@ const DATE_PRESETS = [
 export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,6 +90,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -96,6 +101,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
       setTags([]);
       setTagInput('');
       setActivePanel(null);
+      setAiLoading(false);
       translateY.setValue(600);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -142,6 +148,20 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
 
   const toggleExistingTag = (tag: string) => {
     setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const handleSuggest = async () => {
+    if (!title.trim()) return;
+    setAiLoading(true);
+    try {
+      const result = await suggestTaskAttributes(title.trim(), '', allTags);
+      if (result.effort > 0 && effort === 0) setEffort(result.effort);
+      if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
+    } catch {
+      // silent fail
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -264,6 +284,22 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
                 {tags.length > 0 ? tags.slice(0, 2).join(', ') : 'Tags'}
               </Text>
             </TouchableOpacity>
+
+            {/* AI Suggest chip */}
+            {!!anthropicApiKey && !!title.trim() && (
+              <TouchableOpacity
+                style={[styles.toolChip, styles.aiChip]}
+                onPress={handleSuggest}
+                disabled={aiLoading}
+                activeOpacity={0.7}
+              >
+                {aiLoading
+                  ? <ActivityIndicator size="small" color={colors.purple} />
+                  : <Ionicons name="sparkles-outline" size={13} color={colors.purple} />
+                }
+                {!aiLoading && <Text style={[styles.toolChipText, styles.aiChipText]}>Suggest</Text>}
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Inline panels */}
@@ -621,5 +657,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   moreBtnText: {
     color: colors.textSecondary,
     fontSize: font.sm,
+  },
+  aiChip: {
+    backgroundColor: colors.purple + '22',
+  },
+  aiChipText: {
+    color: colors.purple,
+    fontWeight: '600',
   },
 });

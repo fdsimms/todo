@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -46,7 +47,10 @@ export function SettingsScreen({ visible, onClose }: Props) {
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     themeMode, setThemeMode,
+    anthropicApiKey, setAnthropicApiKey,
   } = useSettingsStore();
+
+  const [apiKeyDraft, setApiKeyDraft] = useState('');
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
@@ -57,6 +61,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   useEffect(() => {
     if (visible) {
       setActivePicker(null);
+      setApiKeyDraft(anthropicApiKey);
     }
   }, [visible]);
 
@@ -228,6 +233,35 @@ export function SettingsScreen({ visible, onClose }: Props) {
               Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
             </Text>
           </View>
+
+          {/* AI Suggestions */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>AI Suggestions</Text>
+            <View style={styles.card}>
+              <View style={[styles.row, { alignItems: 'flex-start', paddingVertical: spacing.md }]}>
+                <Ionicons name="sparkles-outline" size={18} color={colors.purple} style={{ marginTop: 2 }} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Anthropic API Key</Text>
+                  <Text style={styles.rowHint}>Enables auto-tag and effort suggestions in the task editor</Text>
+                  <TextInput
+                    style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
+                    value={apiKeyDraft}
+                    onChangeText={setApiKeyDraft}
+                    onBlur={() => setAnthropicApiKey(apiKeyDraft.trim())}
+                    placeholder="sk-ant-..."
+                    placeholderTextColor={colors.textTertiary}
+                    secureTextEntry
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    spellCheck={false}
+                  />
+                </View>
+              </View>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Get a key at console.anthropic.com. Stored locally on device only.
+            </Text>
+          </View>
         </ScrollView>
       </View>
     </Modal>
@@ -294,5 +328,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.sm,
     paddingHorizontal: spacing.sm, marginTop: spacing.sm, lineHeight: 19,
     marginBottom: spacing.sm,
+  },
+  apiKeyInput: {
+    fontSize: font.sm, marginTop: spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingBottom: 6, paddingTop: 2,
   },
 });

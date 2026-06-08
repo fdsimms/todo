@@ -8,6 +8,7 @@ interface SettingsStore {
   afternoonStart: string; // "HH:MM" — when afternoon begins (default "12:00")
   eveningStart: string;   // "HH:MM" — when evening begins (default "18:00")
   themeMode: ThemeMode;
+  anthropicApiKey: string;
   initialized: boolean;
   initialize: () => void;
   setDayResetTime: (time: string) => void;
@@ -15,6 +16,7 @@ interface SettingsStore {
   setAfternoonStart: (time: string) => void;
   setEveningStart: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
+  setAnthropicApiKey: (key: string) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>(set => ({
@@ -23,6 +25,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   afternoonStart: '12:00',
   eveningStart: '18:00',
   themeMode: 'dark',
+  anthropicApiKey: '',
   initialized: false,
 
   initialize() {
@@ -31,7 +34,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const afternoonStart = dbGetSetting('afternoonStart') ?? '12:00';
     const eveningStart = dbGetSetting('eveningStart') ?? '18:00';
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, initialized: true });
+    const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -58,5 +62,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setThemeMode(mode: ThemeMode) {
     dbSetSetting('themeMode', mode);
     set({ themeMode: mode });
+  },
+
+  setAnthropicApiKey(key: string) {
+    dbSetSetting('anthropicApiKey', key);
+    set({ anthropicApiKey: key });
   },
 }));
