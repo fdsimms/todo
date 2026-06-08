@@ -578,7 +578,7 @@ export function TaskItem({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
-    marginVertical: 2,
+    marginVertical: 1,
     borderRadius: radius.md,
   },
   itemWrapperDimmed: {
@@ -640,14 +640,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: font.md,
-    lineHeight: lineHeight.md,
+    fontSize: font.lg,
+    lineHeight: lineHeight.lg,
     fontWeight: fontWeight.regular,
   },
   titleInput: {
     color: colors.text,
-    fontSize: font.md,
-    lineHeight: lineHeight.md,
+    fontSize: font.lg,
+    lineHeight: lineHeight.lg,
     padding: 0,
     margin: 0,
   },

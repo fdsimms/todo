@@ -139,6 +139,7 @@ export function FocusScreen() {
                       setExpandedTaskId(prev => prev === item.id ? null : item.id);
                     }}
                     expanded={expandedTaskId === item.id}
+                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                     onEdit={() => openEditor(item)}
                     subtaskCount={subs.length}
                     subtaskDoneCount={subs.filter(t => t.completed).length}
@@ -226,7 +227,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
   },
   emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
