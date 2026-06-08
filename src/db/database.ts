@@ -227,6 +227,38 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   });
 }
 
+export function dbGetTagRegistry(): string[] {
+  const val = dbGetSetting('tag_registry');
+  if (!val) return [];
+  try { return JSON.parse(val) as string[]; } catch { return []; }
+}
+
+export function dbAddToTagRegistry(tag: string): void {
+  const current = dbGetTagRegistry();
+  if (!current.includes(tag)) {
+    dbSetSetting('tag_registry', JSON.stringify([...current, tag]));
+  }
+}
+
+export function dbRemoveFromTagRegistry(tag: string): void {
+  const current = dbGetTagRegistry();
+  dbSetSetting('tag_registry', JSON.stringify(current.filter(t => t !== tag)));
+}
+
+export function dbRemoveTagFromAllTasks(tag: string): void {
+  const rows = db.getAllSync<{ id: string; tags: string }>(
+    "SELECT id, tags FROM tasks WHERE tags != '[]'"
+  );
+  db.withTransactionSync(() => {
+    for (const row of rows) {
+      const existing: string[] = JSON.parse(row.tags ?? '[]');
+      if (!existing.includes(tag)) continue;
+      const updated = existing.filter(t => t !== tag);
+      db.runSync('UPDATE tasks SET tags = ? WHERE id = ?', [JSON.stringify(updated), row.id]);
+    }
+  });
+}
+
 export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {
   if (ids.length === 0 || tagsToAdd.length === 0) return;
   db.withTransactionSync(() => {
