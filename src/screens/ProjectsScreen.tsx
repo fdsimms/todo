@@ -240,29 +240,6 @@ export function ProjectsScreen() {
               );
             })()}
 
-            <FlatList
-              data={detailTasks}
-              keyExtractor={t => t.id}
-              renderItem={({ item }) => {
-                const subs = allTasks.filter(t => t.parentId === item.id);
-                return (
-                  <TaskItem
-                    task={item}
-                    onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
-                    expanded={expandedTaskId === item.id}
-                    onEdit={() => { setEditingTask(item); setEditorVisible(true); }}
-                    subtaskCount={subs.length}
-                    subtaskDoneCount={subs.filter(t => t.completed).length}
-                    subtasks={subs}
-                  />
-                );
-              }}
-              ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptySubtext}>No active tasks in this project</Text>
-                </View>
-              }
-            />
             {expandedTaskId !== null && (
               <TouchableOpacity
                 style={styles.focusOverlay}
@@ -270,6 +247,31 @@ export function ProjectsScreen() {
                 onPress={() => setExpandedTaskId(null)}
               />
             )}
+            <View style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}>
+              <FlatList
+                data={detailTasks}
+                keyExtractor={t => t.id}
+                renderItem={({ item }) => {
+                  const subs = allTasks.filter(t => t.parentId === item.id);
+                  return (
+                    <TaskItem
+                      task={item}
+                      onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                      expanded={expandedTaskId === item.id}
+                      onEdit={() => { setEditingTask(item); setEditorVisible(true); }}
+                      subtaskCount={subs.length}
+                      subtaskDoneCount={subs.filter(t => t.completed).length}
+                      subtasks={subs}
+                    />
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.empty}>
+                    <Text style={styles.emptySubtext}>No active tasks in this project</Text>
+                  </View>
+                }
+              />
+            </View>
           </View>
         )}
       </Modal>
@@ -446,6 +448,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent, borderRadius: radius.full,
   },
   emptyActionText: { color: '#fff', fontSize: font.sm, fontWeight: '600' },
+  listWrapper: { flex: 1 },
+  listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
     position: 'absolute',
     top: 0,

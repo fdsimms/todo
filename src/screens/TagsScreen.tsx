@@ -178,35 +178,6 @@ export function TagsScreen() {
             <View style={{ width: 24 }} />
           </View>
 
-          <FlatList
-            data={tagTasks}
-            keyExtractor={t => t.id}
-            renderItem={({ item }) => {
-              const subs = allTasks.filter(t => t.parentId === item.id);
-              return (
-                <TaskItem
-                  task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
-                  expanded={expandedTaskId === item.id}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                />
-              );
-            }}
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptySubtext}>No active tasks with this tag</Text>
-              </View>
-            }
-          />
           {expandedTaskId !== null && (
             <TouchableOpacity
               style={styles.focusOverlay}
@@ -214,6 +185,37 @@ export function TagsScreen() {
               onPress={() => setExpandedTaskId(null)}
             />
           )}
+          <View style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}>
+            <FlatList
+              data={tagTasks}
+              keyExtractor={t => t.id}
+              renderItem={({ item }) => {
+                const subs = allTasks.filter(t => t.parentId === item.id);
+                return (
+                  <TaskItem
+                    task={item}
+                    onPress={() => {
+                      if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                        setExpandedTaskId(null);
+                        return;
+                      }
+                      setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                    }}
+                    expanded={expandedTaskId === item.id}
+                    onEdit={() => openEditor(item)}
+                    subtaskCount={subs.length}
+                    subtaskDoneCount={subs.filter(t => t.completed).length}
+                    subtasks={subs}
+                  />
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.empty}>
+                  <Text style={styles.emptySubtext}>No active tasks with this tag</Text>
+                </View>
+              }
+            />
+          </View>
         </View>
       </Modal>
 
@@ -323,6 +325,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     textAlign: 'center',
   },
+  listWrapper: { flex: 1 },
+  listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
     position: 'absolute',
     top: 0,

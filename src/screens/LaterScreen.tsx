@@ -96,55 +96,6 @@ export function LaterScreen() {
         <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
       </View>
 
-      <SectionList
-        sections={sections}
-        keyExtractor={item => item.id}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
-        renderItem={({ item }) => {
-          const subs = allTasks.filter(t => t.parentId === item.id);
-          return (
-            <TaskItem
-              task={item}
-              onPress={() => {
-                if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                  setExpandedTaskId(null);
-                  return;
-                }
-                setExpandedTaskId(prev => prev === item.id ? null : item.id);
-              }}
-              expanded={expandedTaskId === item.id}
-              onEdit={() => openEditor(item)}
-              subtaskCount={subs.length}
-              subtaskDoneCount={subs.filter(t => t.completed).length}
-              subtasks={subs}
-              selectionMode={selectionMode}
-              selected={selectedIds.has(item.id)}
-              onLongPress={() => enterSelection(item.id)}
-              onSelect={() => toggleSelection(item.id)}
-            />
-          );
-        }}
-        renderSectionHeader={({ section }) => (
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{section.title}</Text>
-          </View>
-        )}
-        stickySectionHeadersEnabled={false}
-        ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-        onScrollBeginDrag={() => setExpandedTaskId(null)}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="moon" size={48} color={colors.bgQuaternary} />
-            <Text style={styles.emptyText}>Nothing deferred</Text>
-            <Text style={styles.emptySubtext}>
-              Swipe left on a task to defer it, or set a time of day in the task editor
-            </Text>
-          </View>
-        }
-      />
-
       {expandedTaskId !== null && !selectionMode && (
         <TouchableOpacity
           style={styles.focusOverlay}
@@ -152,6 +103,57 @@ export function LaterScreen() {
           onPress={() => setExpandedTaskId(null)}
         />
       )}
+
+      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+        <SectionList
+          sections={sections}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
+          renderItem={({ item }) => {
+            const subs = allTasks.filter(t => t.parentId === item.id);
+            return (
+              <TaskItem
+                task={item}
+                onPress={() => {
+                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                    setExpandedTaskId(null);
+                    return;
+                  }
+                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                }}
+                expanded={expandedTaskId === item.id}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onLongPress={() => enterSelection(item.id)}
+                onSelect={() => toggleSelection(item.id)}
+              />
+            );
+          }}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>{section.title}</Text>
+            </View>
+          )}
+          stickySectionHeadersEnabled={false}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="moon" size={48} color={colors.bgQuaternary} />
+              <Text style={styles.emptyText}>Nothing deferred</Text>
+              <Text style={styles.emptySubtext}>
+                Swipe left on a task to defer it, or set a time of day in the task editor
+              </Text>
+            </View>
+          }
+        />
+      </View>
 
       <TaskEditor
         visible={editorVisible}
@@ -203,6 +205,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
   listFooter: { height: 120 },
   emptyContainer: { flex: 1 },
+  listWrapper: { flex: 1 },
+  listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
     position: 'absolute',
     top: 0,
