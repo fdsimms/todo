@@ -577,7 +577,7 @@ export function TaskItem({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
     marginHorizontal: spacing.md,
-    marginVertical: 1.5,
+    marginVertical: 2,
     borderRadius: radius.md,
   },
   itemWrapperDimmed: {
