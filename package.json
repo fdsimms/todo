@@ -10,6 +10,9 @@
   },
   "jest": {
     "testEnvironment": "node",
+    "globals": {
+      "__DEV__": true
+    },
     "transform": {
       "^.+\\.[jt]sx?$": "babel-jest"
     },

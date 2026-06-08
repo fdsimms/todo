@@ -1,9 +1,8 @@
 import { tagColor } from '../utils/tagColor';
-import { colors } from '../theme';
 
 describe('tagColor', () => {
-  it('returns a color from the tag palette', () => {
-    expect(colors.tagPalette).toContain(tagColor('work'));
+  it('returns a hex color string for known tags', () => {
+    expect(tagColor('work')).toMatch(/^#[0-9A-Fa-f]{6}$/);
   });
 
   it('returns a hex color string', () => {

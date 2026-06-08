@@ -2,6 +2,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import {
   initDatabase,
   dbGetAllTasks,
+  dbGetTagRegistry,
   dbInsertTask,
   dbUpdateTask,
   dbDeleteTask,
@@ -23,6 +24,7 @@ import type { Task } from '../types';
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
+  dbGetTagRegistry: jest.fn().mockReturnValue([]),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
