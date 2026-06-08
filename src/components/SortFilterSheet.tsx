@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import {
   Modal,
   View,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  PanResponder,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { SortOption, Priority, Effort } from '../types';
@@ -43,6 +44,16 @@ export function SortFilterSheet({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dy }) => dy > 10,
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > 60 || vy > 1) onClose();
+      },
+    })
+  ).current;
+
   const activeCount =
     (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length;
 
@@ -61,7 +72,9 @@ export function SortFilterSheet({
     >
       <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
       <View style={styles.sheet}>
-        <View style={styles.handle} />
+        <View style={styles.handleArea} {...panResponder.panHandlers}>
+          <View style={styles.handle} />
+        </View>
 
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>Sort & Filter</Text>
@@ -164,8 +177,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   handle: {
     width: 36, height: 4, borderRadius: 2,
-    backgroundColor: colors.bgQuaternary, alignSelf: 'center',
-    marginTop: spacing.sm,
+    backgroundColor: colors.bgQuaternary,
+  },
+  handleArea: {
+    paddingVertical: spacing.md, alignItems: 'center',
   },
   sheetHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

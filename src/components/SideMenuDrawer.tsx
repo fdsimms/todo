@@ -24,7 +24,6 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   { name: 'Later', icon: 'time-outline', label: 'Later' },
   { name: 'Someday', icon: 'moon-outline', label: 'Someday' },
-  { name: 'Projects', icon: 'folder-outline', label: 'Projects' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
