@@ -95,9 +95,10 @@ export function TaskItem({
   const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    Animated.timing(expansionAnim, {
+    Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      duration: 200,
+      tension: 180,
+      friction: 22,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
@@ -388,8 +389,7 @@ export function TaskItem({
         <Animated.View style={[
           styles.expandedPanel,
           {
-            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600] }),
-            opacity: expansionAnim,
+            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
             overflow: 'hidden',
           },
         ]}>
