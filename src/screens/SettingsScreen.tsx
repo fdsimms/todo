@@ -15,6 +15,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
+import { ImportScreen } from './ImportScreen';
 
 interface Props {
   visible: boolean;
@@ -50,6 +51,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   } = useSettingsStore();
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
+  const [importVisible, setImportVisible] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const colors = useColors();
   const { isDark } = useTheme();
@@ -232,8 +234,21 @@ export function SettingsScreen({ visible, onClose }: Props) {
               Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
             </Text>
           </View>
+          {/* Data */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Data</Text>
+            <View style={styles.card}>
+              <TouchableOpacity style={styles.row} onPress={() => setImportVisible(true)}>
+                <Ionicons name="download-outline" size={18} color={colors.accent} />
+                <Text style={styles.rowLabel}>Import from Things 3</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </ScrollView>
       </View>
+
+      <ImportScreen visible={importVisible} onClose={() => setImportVisible(false)} />
     </Modal>
   );
 }
