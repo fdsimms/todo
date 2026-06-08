@@ -43,7 +43,6 @@ function dateToHhmm(d: Date): string {
 export function SettingsScreen({ visible, onClose }: Props) {
   const {
     dayResetTime, setDayResetTime,
-    morningStart, setMorningStart,
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     themeMode, setThemeMode,
@@ -64,7 +63,6 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const openPicker = (which: ActivePicker) => {
     if (activePicker === which) { setActivePicker(null); return; }
     const current = which === 'dayReset' ? dayResetTime
-      : which === 'morning' ? morningStart
       : which === 'afternoon' ? afternoonStart
       : eveningStart;
     setPickerDate(hhmmToDate(current!));
@@ -74,7 +72,6 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const confirmPicker = () => {
     const hhmm = dateToHhmm(pickerDate);
     if (activePicker === 'dayReset') setDayResetTime(hhmm);
-    else if (activePicker === 'morning') setMorningStart(hhmm);
     else if (activePicker === 'afternoon') setAfternoonStart(hhmm);
     else if (activePicker === 'evening') setEveningStart(hhmm);
     setActivePicker(null);
@@ -83,7 +80,6 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const formatTime = (hhmm: string) => format(hhmmToDate(hhmm), 'h:mm a');
 
   const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string }[] = [
-    { key: 'morning', label: 'Morning starts', icon: 'sunny-outline', value: formatTime(morningStart) },
     { key: 'afternoon', label: 'Afternoon starts', icon: 'sunny', value: formatTime(afternoonStart) },
     { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatTime(eveningStart) },
   ];
@@ -140,7 +136,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
 
           {/* Day segments */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Day segments</Text>
+            <Text style={styles.sectionLabel}>Afternoon & Evening</Text>
             <View style={styles.card}>
               {segmentRows.map((row, i) => (
                 <React.Fragment key={row.key}>
@@ -178,7 +174,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
               ))}
             </View>
             <Text style={styles.sectionFooter}>
-              Tasks with a time category only appear in your list after that part of the day begins.
+              Morning starts at the same time as your day reset below. Tasks with a time category only appear after that part of the day begins.
             </Text>
           </View>
 

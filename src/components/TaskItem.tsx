@@ -20,6 +20,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { DeferModal } from './DeferModal';
+import { CalendarPicker } from './CalendarPicker';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 
 interface Props {
@@ -91,6 +92,7 @@ export function TaskItem({
   );
 
   const [showDeferModal, setShowDeferModal] = useState(false);
+  const [showCalendar, setShowCalendar] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
@@ -442,29 +444,47 @@ export function TaskItem({
             <View style={[
               styles.editSection,
               hasExpandContent && styles.sectionDivider,
-              task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
+              { justifyContent: 'space-between' },
             ]}>
-              {task.recurrenceType !== 'none' && (
+              <View style={styles.editSectionLeft}>
+                {task.recurrenceType !== 'none' && (
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={async () => {
+                      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      skipNextRecurrence(task.id);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
+                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.editSectionRight}>
                 <TouchableOpacity
                   style={styles.editBtn}
-                  onPress={async () => {
-                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    skipNextRecurrence(task.id);
-                  }}
+                  onPress={() => setShowCalendar(true)}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                  <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                  <Ionicons
+                    name="calendar-outline"
+                    size={13}
+                    color={task.dueDate ? colors.accent : colors.textSecondary}
+                  />
+                  <Text style={[styles.editBtnText, !task.dueDate && styles.skipBtnText]}>
+                    {task.dueDate ? formatDueDate(task.dueDate) : 'Date'}
+                  </Text>
                 </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.editBtn}
-                onPress={onEdit}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                <Text style={styles.editBtnText}>Edit</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={onEdit}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="pencil-outline" size={13} color={colors.accent} />
+                  <Text style={styles.editBtnText}>Edit</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
         </>
@@ -517,6 +537,20 @@ export function TaskItem({
           }}
           onCancel={() => setShowDeferModal(false)}
           snoozeSuggestion={snoozeSuggestion}
+        />
+      )}
+      {!selectionMode && (
+        <CalendarPicker
+          visible={showCalendar}
+          value={task.dueDate ? new Date(task.dueDate) : null}
+          mode="date"
+          title="Due Date"
+          nlEnabled
+          onConfirm={date => {
+            updateTask(task.id, { dueDate: date.toISOString() });
+            setShowCalendar(false);
+          }}
+          onCancel={() => setShowCalendar(false)}
         />
       )}
     </>
@@ -777,11 +811,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   editSection: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
-    gap: spacing.xs,
   },
+  editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
+  editSectionRight: { flexDirection: 'row', gap: spacing.xs },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',

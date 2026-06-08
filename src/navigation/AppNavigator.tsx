@@ -3,16 +3,13 @@ import { NavigationContainer, NavigationContainerRef } from '@react-navigation/n
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { TodayScreen } from '../screens/TodayScreen';
-import { FocusScreen } from '../screens/FocusScreen';
 import { LaterScreen } from '../screens/LaterScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { SomedayScreen } from '../screens/SomedayScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
-import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
-import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { font } from '../theme';
 
@@ -21,14 +18,13 @@ const Tab = createBottomTabNavigator();
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Later', 'Someday', 'Projects', 'Tags', 'Logbook', 'Stats']);
+const DRAWER_TABS = new Set(['Later', 'Someday', 'Tags', 'Logbook', 'Stats']);
 
 function MorePlaceholder() {
   return null;
 }
 
 export default function AppNavigator() {
-  const focusedCount = useTaskStore(s => s.focusedTasks().length);
   const colors = useColors();
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('Today');
@@ -74,15 +70,6 @@ export default function AppNavigator() {
             }}
           />
           <Tab.Screen
-            name="Focus"
-            component={FocusScreen}
-            options={{
-              tabBarIcon: ({ color, size }) => <Ionicons name="star" size={size} color={color} />,
-              tabBarBadge: focusedCount > 0 ? focusedCount : undefined,
-              tabBarBadgeStyle: { backgroundColor: colors.orange, fontSize: 10 },
-            }}
-          />
-          <Tab.Screen
             name="Search"
             component={SearchScreen}
             options={{
@@ -109,7 +96,6 @@ export default function AppNavigator() {
           {/* Drawer-only screens — not visible in the tab bar */}
           <Tab.Screen name="Later" component={LaterScreen} options={HIDDEN} />
           <Tab.Screen name="Someday" component={SomedayScreen} options={HIDDEN} />
-          <Tab.Screen name="Projects" component={ProjectsScreen} options={HIDDEN} />
           <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
           <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
           <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />

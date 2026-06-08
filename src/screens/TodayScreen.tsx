@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  SectionList,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
@@ -13,29 +14,34 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
-import { getDayStart, getCurrentDayStart } from '../utils/dateUtils';
+import { getDayStart, getCurrentDayStart, formatGroupHeader } from '../utils/dateUtils';
+import { getVisibleAt } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { FocusSelector } from '../components/FocusSelector';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 
+type ViewMode = 'today' | 'focus' | 'later';
+
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const somedayTasks = useTaskStore(useShallow(s => s.somedayTasks()));
+  const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
+  const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const allProjects = useProjectStore(useShallow(s => s.projects));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
+  const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -44,9 +50,8 @@ export function TodayScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -57,6 +62,7 @@ export function TodayScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [focusSelectorVisible, setFocusSelectorVisible] = useState(false);
 
   const enterSelection = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -112,7 +118,6 @@ export function TodayScreen() {
 
   const applyFiltersAndSort = (tasks: Task[]): Task[] => {
     let result = tasks;
-    if (selectedProject) result = result.filter(t => t.projectId === selectedProject);
     if (selectedTag) result = result.filter(t => t.tags.includes(selectedTag));
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
@@ -136,7 +141,7 @@ export function TodayScreen() {
   const overdueTasks = filtered.filter(isTaskOverdue);
   const todayTasks = filtered.filter(t => !isTaskOverdue(t));
   const suggestions = somedayTasks.slice(0, 3);
-  const showSomeday = activeFilterCount === 0 && !selectedTag && !selectedProject && suggestions.length > 0;
+  const showSomeday = activeFilterCount === 0 && !selectedTag && suggestions.length > 0;
 
   type ListItem =
     | { type: 'header'; label: string; isOverdue?: boolean }
@@ -250,74 +255,115 @@ export function TodayScreen() {
           ? 'No tasks match these filters'
           : selectedTag
             ? `No visible tasks tagged "${selectedTag}"`
-            : 'Nothing to do right now'}
+            : viewMode === 'focus'
+              ? 'No tasks in focus'
+              : 'Nothing to do right now'}
       </Text>
     </View>
   );
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
+  // Later view grouping
+  const laterGroupKey = (task: Task): string => {
+    const visibleAt = getVisibleAt(task);
+    const dayLabel = formatGroupHeader(visibleAt.toISOString());
+    if (task.timeOfDay) {
+      const label = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }[task.timeOfDay];
+      return `${dayLabel} — ${label}`;
+    }
+    return dayLabel;
+  };
+
+  const laterSections = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    [...deferredTasks]
+      .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
+      .forEach(task => {
+        const key = laterGroupKey(task);
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(task);
+      });
+    return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
+  }, [deferredTasks]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.dateLabel}>{today}</Text>
-          <Text style={styles.title}>Today</Text>
+          {viewMode === 'today' && <Text style={styles.dateLabel}>{today}</Text>}
+          <Text style={styles.title}>
+            {viewMode === 'today' ? 'Today' : viewMode === 'focus' ? 'Focus' : 'Later'}
+          </Text>
         </View>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnAccent]}
-            onPress={() => setFilterVisible(true)}
-          >
-            <Ionicons
-              name="options"
-              size={18}
-              color={activeFilterCount > 0 ? colors.text : colors.textSecondary}
-            />
-            {activeFilterCount > 0 && (
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{activeFilterCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {viewMode === 'focus' && focusedTasks.length > 0 && (
+            <TouchableOpacity style={styles.clearBtn} onPress={clearAllFocus}>
+              <Text style={styles.clearText}>Clear</Text>
+            </TouchableOpacity>
+          )}
+          {viewMode === 'focus' && (
+            <TouchableOpacity style={styles.selectBtn} onPress={() => setFocusSelectorVisible(true)}>
+              <Ionicons name="add" size={16} color={colors.text} />
+              <Text style={styles.selectText}>Select</Text>
+            </TouchableOpacity>
+          )}
+          {viewMode === 'today' && (
+            <TouchableOpacity
+              style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnAccent]}
+              onPress={() => setFilterVisible(true)}
+            >
+              <Ionicons
+                name="options"
+                size={18}
+                color={activeFilterCount > 0 ? colors.text : colors.textSecondary}
+              />
+              {activeFilterCount > 0 && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.iconBtn} onPress={() => setSettingsVisible(true)}>
             <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
       </View>
 
-      {(allProjects.length > 0 || allTags.length > 0) && (
+      {/* View mode switcher */}
+      <View style={styles.viewModePills}>
+        {(['today', 'focus', 'later'] as ViewMode[]).map(mode => (
+          <TouchableOpacity
+            key={mode}
+            style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
+            onPress={() => { setViewMode(mode); setExpandedTaskId(null); setSelectionMode(false); setSelectedIds(new Set()); }}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              {mode === 'focus' && focusedTasks.length > 0 ? ` ${focusedTasks.length}` : ''}
+              {mode === 'later' && deferredTasks.length > 0 ? ` ${deferredTasks.length}` : ''}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {viewMode === 'today' && allTags.length > 0 && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterBar}
         >
           <TouchableOpacity
-            style={[styles.filterChip, !selectedProject && !selectedTag && styles.filterChipActive]}
-            onPress={() => { setSelectedProject(null); setSelectedTag(null); }}
+            style={[styles.filterChip, !selectedTag && styles.filterChipActive]}
+            onPress={() => setSelectedTag(null)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.filterChipText, !selectedProject && !selectedTag && styles.filterChipTextActive]}>
+            <Text style={[styles.filterChipText, !selectedTag && styles.filterChipTextActive]}>
               All
             </Text>
           </TouchableOpacity>
-          {allProjects.map(p => (
-            <TouchableOpacity
-              key={`proj-${p.id}`}
-              style={[styles.filterChip, selectedProject === p.id && { backgroundColor: p.color }]}
-              onPress={() => setSelectedProject(prev => prev === p.id ? null : p.id)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name="folder-outline"
-                size={11}
-                color={selectedProject === p.id ? '#fff' : p.color}
-              />
-              <Text style={[styles.filterChipText, selectedProject === p.id && styles.filterChipTextActive]}>
-                {p.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
           {allTags.map(tag => (
             <TouchableOpacity
               key={`tag-${tag}`}
@@ -334,39 +380,129 @@ export function TodayScreen() {
         </ScrollView>
       )}
 
-      <FlatList
-        data={data}
-        keyExtractor={(item, i) =>
-          item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
-        }
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        renderItem={renderItem}
-        contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            tintColor={colors.textSecondary}
+      {viewMode === 'focus' && (
+        focusedTasks.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="star" size={52} color={colors.bgQuaternary} />
+            <Text style={styles.emptyText}>No focus set</Text>
+            <Text style={styles.emptySubtext}>Tap "Select" to pick a few tasks to focus on, or star any task.</Text>
+          </View>
+        ) : (
+          <FlatList
+            data={focusedTasks}
+            keyExtractor={t => t.id}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.listContent}
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            onScrollBeginDrag={() => setExpandedTaskId(null)}
+            renderItem={({ item }) => {
+              const subs = allTasks.filter(t => t.parentId === item.id);
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  expanded={expandedTaskId === item.id}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onLongPress={() => enterSelection(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                />
+              );
+            }}
           />
-        }
-        ListEmptyComponent={emptyComponent}
-        ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-        onScrollBeginDrag={() => setExpandedTaskId(null)}
-      />
+        )
+      )}
 
-      <TouchableOpacity
-        style={[styles.fab, { bottom: insets.bottom + 20 }]}
-        onPress={() => setQuickAddVisible(true)}
-        activeOpacity={0.85}
-      >
-        <Ionicons name="add" size={28} color={colors.text} />
-      </TouchableOpacity>
+      {viewMode === 'later' && (
+        <SectionList
+          sections={laterSections}
+          keyExtractor={item => item.id}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
+          renderItem={({ item }) => {
+            const subs = allTasks.filter(t => t.parentId === item.id);
+            return (
+              <TaskItem
+                task={item}
+                onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                expanded={expandedTaskId === item.id}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onLongPress={() => enterSelection(item.id)}
+                onSelect={() => toggleSelection(item.id)}
+              />
+            );
+          }}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+            </View>
+          )}
+          stickySectionHeadersEnabled={false}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="moon" size={52} color={colors.bgQuaternary} />
+              <Text style={styles.emptyText}>Nothing deferred</Text>
+              <Text style={styles.emptySubtext}>Swipe left on a task to defer it</Text>
+            </View>
+          }
+        />
+      )}
+
+      {viewMode === 'today' && (
+        <FlatList
+          data={data}
+          keyExtractor={(item, i) =>
+            item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
+          }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          renderItem={renderItem}
+          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.textSecondary}
+            />
+          }
+          ListEmptyComponent={emptyComponent}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
+        />
+      )}
+
+      {viewMode === 'today' && (
+        <TouchableOpacity
+          style={[styles.fab, { bottom: insets.bottom + 20 }]}
+          onPress={() => setQuickAddVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add" size={28} color={colors.text} />
+        </TouchableOpacity>
+      )}
 
       <QuickAddModal
         visible={quickAddVisible}
         onClose={() => setQuickAddVisible(false)}
         onOpenFull={handleQuickAddOpenFull}
+      />
+
+      <FocusSelector
+        visible={focusSelectorVisible}
+        onClose={() => setFocusSelectorVisible(false)}
       />
 
       <TaskEditor
@@ -392,14 +528,22 @@ export function TodayScreen() {
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
-          totalCount={filtered.length}
+          totalCount={
+            viewMode === 'focus' ? focusedTasks.length
+            : viewMode === 'later' ? deferredTasks.length
+            : filtered.length
+          }
           existingTags={allTags}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
           onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
           onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-          onSelectAll={() => setSelectedIds(new Set(filtered.map(t => t.id)))}
+          onSelectAll={() => setSelectedIds(new Set(
+            viewMode === 'focus' ? focusedTasks.map(t => t.id)
+            : viewMode === 'later' ? deferredTasks.map(t => t.id)
+            : filtered.map(t => t.id)
+          ))}
           onDeselectAll={() => setSelectedIds(new Set())}
           onCancel={exitSelection}
           bottomInset={insets.bottom}
@@ -418,6 +562,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: '500', letterSpacing: 0.3, marginBottom: 2 },
   title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
   headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
+  clearBtn: {
+    paddingHorizontal: spacing.md, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgSecondary,
+  },
+  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  selectBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: spacing.md, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.accent,
+  },
+  selectText: { color: colors.text, fontSize: font.sm, fontWeight: '600' },
+  viewModePills: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  viewModePill: {
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    borderRadius: radius.full, backgroundColor: colors.bgSecondary,
+  },
+  viewModePillActive: { backgroundColor: colors.accent },
+  viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  viewModePillTextActive: { color: colors.text, fontWeight: '600' },
   iconBtn: {
     width: 34, height: 34, borderRadius: 17,
     backgroundColor: colors.bgSecondary,

@@ -36,7 +36,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
 
   setDayResetTime(time: string) {
     dbSetSetting('dayResetTime', time);
-    set({ dayResetTime: time });
+    dbSetSetting('morningStart', time);
+    set({ dayResetTime: time, morningStart: time });
   },
 
   setMorningStart(time: string) {
