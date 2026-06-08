@@ -5,6 +5,8 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Animated,
+  PanResponder,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -44,6 +46,36 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
+  const translateY = useRef(new Animated.Value(600)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
+      onPanResponderMove: (_, { dy }) => {
+        if (dy > 0) translateY.setValue(dy);
+      },
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > 80 || vy > 0.5) {
+          Animated.timing(translateY, {
+            toValue: 600,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => { translateY.setValue(600); onClose(); });
+        } else {
+          Animated.spring(translateY, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }).start();
+        }
+      },
+    })
+  ).current;
+
+  const dismiss = () => {
+    Animated.timing(translateY, {
+      toValue: 600,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => { translateY.setValue(600); onClose(); });
+  };
 
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority>(0);
@@ -62,6 +94,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
       setTags([]);
       setTagInput('');
       setActivePanel(null);
+      translateY.setValue(600);
+      Animated.spring(translateY, { toValue: 0, tension: 65, friction: 11, useNativeDriver: true }).start();
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [visible]);
@@ -119,17 +153,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
     >
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
-        <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm }]}>
-          <View style={styles.handle} />
+        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={dismiss} />
+        <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm, transform: [{ translateY }] }]}>
+          <View style={styles.handleArea} {...panResponder.panHandlers}>
+            <View style={styles.handle} />
+          </View>
 
           {/* Title input row */}
           <View style={styles.row}>
@@ -364,7 +400,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
             <Ionicons name="expand-outline" size={13} color={colors.textSecondary} />
             <Text style={styles.moreBtnText}>More details</Text>
           </TouchableOpacity>
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -380,13 +416,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },
+  handleArea: {
+    alignItems: 'center',
+    paddingTop: 2,
+    paddingBottom: spacing.sm,
+  },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.bgQuaternary,
-    alignSelf: 'center',
-    marginBottom: spacing.md,
   },
   row: {
     flexDirection: 'row',

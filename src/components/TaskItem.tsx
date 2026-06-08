@@ -373,6 +373,8 @@ export function TaskItem({
       styles.expandedPanel,
       {
         maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
+        // Fully hide at rest-closed so no hairline shows between row and panel
+        opacity: expansionAnim.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 1, 1] }),
         overflow: 'hidden',
       },
     ]}>
@@ -484,14 +486,16 @@ export function TaskItem({
     <>
       <Animated.View style={[styles.itemWrapper, { opacity: isActive ? 0.85 : rowOpacity }]}>
         {selectionMode ? (
-          <View style={styles.swipeContainer}>
+          <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
             {rowBody}
-            {expandedPanel}
           </View>
         ) : (
           <Swipeable
             ref={swipeableRef}
-            containerStyle={styles.swipeContainer}
+            containerStyle={[
+              styles.swipeContainer,
+              expanded && styles.swipeContainerExpanded,
+            ]}
             renderRightActions={renderRightActions}
             renderLeftActions={renderLeftActions}
             overshootRight={false}
@@ -509,9 +513,9 @@ export function TaskItem({
             }}
           >
             {rowBody}
-            {expandedPanel}
           </Swipeable>
         )}
+        {expandedPanel}
       </Animated.View>
 
       {!selectionMode && (
@@ -543,6 +547,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   swipeContainer: {
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  swipeContainerExpanded: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   row: {
     flexDirection: 'row',
@@ -694,6 +702,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   expandedPanel: {
     backgroundColor: colors.bgSecondary,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     paddingTop: spacing.xs,
