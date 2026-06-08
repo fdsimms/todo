@@ -98,6 +98,8 @@ export function LaterScreen() {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
         renderItem={({ item }) => {
           const subs = allTasks.filter(t => t.parentId === item.id);

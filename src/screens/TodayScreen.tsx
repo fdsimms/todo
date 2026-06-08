@@ -368,6 +368,8 @@ export function TodayScreen() {
           data={todayTasks}
           keyExtractor={item => item.id}
           onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           renderItem={renderDraggableItem}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
@@ -417,6 +419,8 @@ export function TodayScreen() {
           keyExtractor={(item, i) =>
             item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
           }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           renderItem={renderItem}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
