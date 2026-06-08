@@ -46,7 +46,7 @@ export function TodayScreen() {
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [groupByTag, setGroupByTag] = useState(false);
+
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -150,15 +150,6 @@ export function TodayScreen() {
     ];
   };
 
-  const buildFlatData = (): ListItem[] => {
-    const overdueItems = buildOverdueSection(overdueTasks);
-    const todayItems = todayTasks.map(t => ({ type: 'task' as const, task: t }));
-    if (overdueItems.length > 0 && todayItems.length > 0) {
-      return [...overdueItems, { type: 'header', label: 'Today' }, ...todayItems];
-    }
-    return [...overdueItems, ...todayItems];
-  };
-
   const buildGroupedData = (): ListItem[] => {
     const overdueItems = buildOverdueSection(overdueTasks);
     const byTag: Record<string, Task[]> = {};
@@ -186,9 +177,7 @@ export function TodayScreen() {
     return [...overdueItems, ...groupedItems];
   };
 
-  const data: ListItem[] = groupByTag
-    ? buildGroupedData()
-    : buildFlatData();
+  const data: ListItem[] = buildGroupedData();
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'header') {
@@ -276,12 +265,6 @@ export function TodayScreen() {
           <Text style={styles.title}>Today</Text>
         </View>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.iconBtn, groupByTag && styles.iconBtnActive]}
-            onPress={() => setGroupByTag(g => !g)}
-          >
-            <Ionicons name="list" size={18} color={groupByTag ? colors.text : colors.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnAccent]}
             onPress={() => setFilterVisible(true)}
