@@ -22,11 +22,11 @@ import { SettingsScreen } from './SettingsScreen';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
-import { TagFilterBar } from '../components/TagFilterBar';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
+import { tagColor } from '../utils/tagColor';
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
@@ -331,40 +331,57 @@ export function TodayScreen() {
         </View>
       </View>
 
-      {allProjects.length > 0 && (
+      {(allProjects.length > 0 || allTags.length > 0) && (
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.projectFilterBar}
+          contentContainerStyle={styles.filterBar}
         >
           <TouchableOpacity
-            style={[styles.projectChip, selectedProject === null && styles.projectChipActive]}
-            onPress={() => setSelectedProject(null)}
+            style={[styles.filterChip, !selectedProject && !selectedTag && styles.filterChipActive]}
+            onPress={() => { setSelectedProject(null); setSelectedTag(null); }}
             activeOpacity={0.7}
           >
-            <Text style={[styles.projectChipText, selectedProject === null && styles.projectChipTextActive]}>
+            <Text style={[styles.filterChipText, !selectedProject && !selectedTag && styles.filterChipTextActive]}>
               All
             </Text>
           </TouchableOpacity>
           {allProjects.map(p => (
             <TouchableOpacity
-              key={p.id}
-              style={[styles.projectChip, selectedProject === p.id && { backgroundColor: p.color }]}
+              key={`proj-${p.id}`}
+              style={[styles.filterChip, selectedProject === p.id && { backgroundColor: p.color }]}
               onPress={() => setSelectedProject(prev => prev === p.id ? null : p.id)}
               activeOpacity={0.7}
             >
-              {selectedProject !== p.id && <View style={[styles.projectChipDot, { backgroundColor: p.color }]} />}
-              <Text style={[styles.projectChipText, selectedProject === p.id && styles.projectChipTextActive]}>
+              <Ionicons
+                name="folder-outline"
+                size={11}
+                color={selectedProject === p.id ? '#fff' : p.color}
+              />
+              <Text style={[styles.filterChipText, selectedProject === p.id && styles.filterChipTextActive]}>
                 {p.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+          {allTags.map(tag => (
+            <TouchableOpacity
+              key={`tag-${tag}`}
+              style={[styles.filterChip, selectedTag === tag && { backgroundColor: tagColor(tag) }]}
+              onPress={() => setSelectedTag(prev => prev === tag ? null : tag)}
+              activeOpacity={0.7}
+            >
+              {selectedTag !== tag && <View style={[styles.filterDot, { backgroundColor: tagColor(tag) }]} />}
+              <Text style={[styles.filterChipText, selectedTag === tag && styles.filterChipTextActive]}>
+                {tag}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       )}
-      <TagFilterBar tags={allTags} selected={selectedTag} onSelect={setSelectedTag} />
 
       {isDragMode ? (
         <DraggableFlatList
+          style={{ flex: 1 }}
           data={todayTasks}
           keyExtractor={item => item.id}
           onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
@@ -548,17 +565,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
   },
-  projectFilterBar: {
+  filterBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: spacing.xs, gap: spacing.sm,
   },
-  projectChip: {
+  filterChip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  projectChipActive: { backgroundColor: colors.accent },
-  projectChipDot: { width: 6, height: 6, borderRadius: 3 },
-  projectChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
-  projectChipTextActive: { color: colors.text, fontWeight: '700', letterSpacing: 0.1 },
+  filterChipActive: { backgroundColor: colors.accent },
+  filterDot: { width: 6, height: 6, borderRadius: radius.full },
+  filterChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  filterChipTextActive: { color: colors.text, fontWeight: '700', letterSpacing: 0.1 },
 });
