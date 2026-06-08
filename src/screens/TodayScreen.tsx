@@ -9,6 +9,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
+import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -42,6 +43,7 @@ export function TodayScreen() {
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
+  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -184,7 +186,7 @@ export function TodayScreen() {
 
   const data: ListItem[] = buildGroupedData();
 
-  const renderItem = ({ item }: { item: ListItem }) => {
+  const renderItem = ({ item, drag, isActive }: RenderItemParams<ListItem>) => {
     if (item.type === 'header') {
       return (
         <View style={styles.sectionHeader}>
@@ -196,19 +198,31 @@ export function TodayScreen() {
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
     return (
-      <TaskItem
-        task={item.task}
-        onPress={() => setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id)}
-        expanded={expandedTaskId === item.task.id}
-        onEdit={() => openEditor(item.task)}
-        subtaskCount={subs.length}
-        subtaskDoneCount={subs.filter(t => t.completed).length}
-        subtasks={subs}
-        selectionMode={selectionMode}
-        selected={selectedIds.has(item.task.id)}
-        onLongPress={() => enterSelection(item.task.id)}
-        onSelect={() => toggleSelection(item.task.id)}
-      />
+      <ScaleDecorator>
+        <TaskItem
+          task={item.task}
+          onPress={() => {
+            if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
+              setExpandedTaskId(null);
+              return;
+            }
+            setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
+          }}
+          expanded={expandedTaskId === item.task.id}
+          onEdit={() => openEditor(item.task)}
+          subtaskCount={subs.length}
+          subtaskDoneCount={subs.filter(t => t.completed).length}
+          subtasks={subs}
+          drag={selectionMode ? undefined : drag}
+          isActive={isActive}
+          showDragHandle={!selectionMode && sort === 'default' && !selectedTag}
+          selectionMode={selectionMode}
+          selected={selectedIds.has(item.task.id)}
+          onLongPress={() => enterSelection(item.task.id)}
+          onSelect={() => toggleSelection(item.task.id)}
+          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id}
+        />
+      </ScaleDecorator>
     );
   };
 
@@ -401,7 +415,13 @@ export function TodayScreen() {
               return (
                 <TaskItem
                   task={item}
-                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
                   expanded={expandedTaskId === item.id}
                   onEdit={() => openEditor(item)}
                   subtaskCount={subs.length}
@@ -411,6 +431,7 @@ export function TodayScreen() {
                   selected={selectedIds.has(item.id)}
                   onLongPress={() => enterSelection(item.id)}
                   onSelect={() => toggleSelection(item.id)}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                 />
               );
             }}
@@ -430,7 +451,13 @@ export function TodayScreen() {
             return (
               <TaskItem
                 task={item}
-                onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                onPress={() => {
+                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                    setExpandedTaskId(null);
+                    return;
+                  }
+                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                }}
                 expanded={expandedTaskId === item.id}
                 onEdit={() => openEditor(item)}
                 subtaskCount={subs.length}
@@ -440,6 +467,7 @@ export function TodayScreen() {
                 selected={selectedIds.has(item.id)}
                 onLongPress={() => enterSelection(item.id)}
                 onSelect={() => toggleSelection(item.id)}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
               />
             );
           }}
@@ -462,7 +490,7 @@ export function TodayScreen() {
       )}
 
       {viewMode === 'today' && (
-        <FlatList
+        <DraggableFlatList
           data={data}
           keyExtractor={(item, i) =>
             item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
@@ -470,6 +498,12 @@ export function TodayScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={renderItem}
+          onDragEnd={({ data: reordered }) => {
+            const taskIds = reordered
+              .filter((item): item is { type: 'task'; task: Task } => item.type === 'task')
+              .map(item => item.task.id);
+            reorderTasks(taskIds);
+          }}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
             <RefreshControl

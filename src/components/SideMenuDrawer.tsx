@@ -3,6 +3,7 @@ import {
   Animated,
   Dimensions,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
@@ -40,7 +41,29 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
   const colors = useColors();
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
+
+  const swipePanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, gs) =>
+        Math.abs(gs.dx) > 8 && Math.abs(gs.dx) > Math.abs(gs.dy) && gs.dx < 0,
+      onPanResponderMove: (_e, gs) => {
+        if (gs.dx < 0) dragOffsetX.setValue(gs.dx);
+      },
+      onPanResponderRelease: (_e, gs) => {
+        if (gs.dx < -DRAWER_WIDTH * 0.3 || gs.vx < -0.5) {
+          Animated.timing(dragOffsetX, { toValue: 0, duration: 0, useNativeDriver: true }).start();
+          onClose();
+        } else {
+          Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(dragOffsetX, { toValue: 0, damping: 20, stiffness: 200, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
 
   useEffect(() => {
     if (visible) {
@@ -104,9 +127,10 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
             {
               backgroundColor: colors.bgSecondary,
               borderRightColor: colors.separator,
-              transform: [{ translateX }],
+              transform: [{ translateX: Animated.add(translateX, dragOffsetX) }],
             },
           ]}
+          {...swipePanResponder.panHandlers}
         >
           <View style={[styles.header, { borderBottomColor: colors.separator }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>

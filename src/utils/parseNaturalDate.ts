@@ -178,6 +178,25 @@ function parseDatePart(input: string, now: Date): DatePart | null {
     return { date: startOfDay(date), explicitTime: false };
   }
 
+  // "oxt weekend" — the weekend after next
+  if (text === 'oxt weekend') {
+    let date = nextDay(now, 6 as Day);
+    if (isSameWeek(date, now)) date = addWeeks(date, 1);
+    date = addWeeks(date, 1);
+    return { date: startOfDay(date), explicitTime: false };
+  }
+
+  // "oxt monday" — the weekday after "next X" (i.e. two occurrences away)
+  if ((m = text.match(/^oxt\s+([a-z]+)$/))) {
+    const wd = WEEKDAYS[m[1]];
+    if (wd !== undefined) {
+      let date = nextDay(now, wd);
+      if (isSameWeek(date, now)) date = addWeeks(date, 1);
+      date = addWeeks(date, 1);
+      return { date: startOfDay(date), explicitTime: false };
+    }
+  }
+
   // Weekday, optionally prefixed: "monday", "this fri", "next monday", "on tuesday"
   if ((m = text.match(/^(?:(this|next|coming|on)\s+)?([a-z]+)$/))) {
     const wd = WEEKDAYS[m[2]];
