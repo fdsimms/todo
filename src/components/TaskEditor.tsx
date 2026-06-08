@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { NestableScrollContainer, NestableDraggableFlatList, ScaleDecorator } from 'react-native-draggable-flatlist';
 import type { RenderItemParams } from 'react-native-draggable-flatlist';
 import { Ionicons } from '@expo/vector-icons';
@@ -197,6 +198,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
+      <GestureHandlerRootView style={styles.root}>
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -734,6 +736,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           onCancel={() => setPickerMode('none')}
         />
       </KeyboardAvoidingView>
+      </GestureHandlerRootView>
 
       <Modal
         visible={projectPickerVisible}
