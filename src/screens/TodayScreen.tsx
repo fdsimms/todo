@@ -193,6 +193,7 @@ export function TodayScreen() {
           selected={selectedIds.has(item.task.id)}
           onLongPress={() => enterSelection(item.task.id)}
           onSelect={() => toggleSelection(item.task.id)}
+          hideTodayLabel
         />
       </ScaleDecorator>
     );
@@ -352,6 +353,7 @@ export function TodayScreen() {
                   selected={selectedIds.has(item.id)}
                   onLongPress={() => enterSelection(item.id)}
                   onSelect={() => toggleSelection(item.id)}
+                  hideTodayLabel
                 />
               );
             }}
@@ -387,6 +389,7 @@ export function TodayScreen() {
                 selected={selectedIds.has(item.id)}
                 onLongPress={() => enterSelection(item.id)}
                 onSelect={() => toggleSelection(item.id)}
+                hideTodayLabel
               />
             );
           }}
