@@ -5,13 +5,12 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  ScrollView,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { NestableScrollContainer, NestableDraggableFlatList, ScaleDecorator } from 'react-native-draggable-flatlist';
-import type { RenderItemParams } from 'react-native-draggable-flatlist';
+import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
 import { CalendarPicker } from './CalendarPicker';
 import { format } from 'date-fns';
@@ -198,7 +197,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <GestureHandlerRootView style={styles.root}>
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -215,7 +213,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           </TouchableOpacity>
         </View>
 
-        <NestableScrollContainer style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
           <TextInput
             ref={titleRef}
             style={styles.titleInput}
@@ -342,44 +340,41 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                     <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
                   )}
                 </View>
-                <NestableDraggableFlatList
+                <SortableList
                   data={subtasks}
-                  keyExtractor={sub => sub.id}
-                  onDragEnd={({ data }) => reorderSubtasks(task.id, data.map(s => s.id))}
-                  renderItem={({ item: sub, drag }: RenderItemParams<typeof subtasks[0]>) => (
-                    <ScaleDecorator>
-                      <View style={styles.subtaskRow}>
-                        <TouchableOpacity
-                          onPress={() => toggleSubtask(sub.id)}
-                          hitSlop={6}
-                          style={styles.subtaskCheck}
-                        >
-                          <Ionicons
-                            name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={20}
-                            color={sub.completed ? colors.green : colors.bgQuaternary}
-                          />
-                        </TouchableOpacity>
-                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                          {sub.title}
-                        </Text>
-                        <TouchableOpacity
-                          onLongPress={drag}
-                          delayLongPress={150}
-                          hitSlop={8}
-                          style={styles.dragHandle}
-                        >
-                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => deleteSubtask(sub.id)}
-                          hitSlop={8}
-                          style={styles.subtaskDelete}
-                        >
-                          <Ionicons name="close" size={14} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                      </View>
-                    </ScaleDecorator>
+                  onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                  renderItem={(sub, _i, drag) => (
+                    <View style={styles.subtaskRow}>
+                      <TouchableOpacity
+                        onPress={() => toggleSubtask(sub.id)}
+                        hitSlop={6}
+                        style={styles.subtaskCheck}
+                      >
+                        <Ionicons
+                          name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={sub.completed ? colors.green : colors.bgQuaternary}
+                        />
+                      </TouchableOpacity>
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                      <TouchableOpacity
+                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        delayLongPress={150}
+                        hitSlop={8}
+                        style={styles.dragHandle}
+                      >
+                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => deleteSubtask(sub.id)}
+                        hitSlop={8}
+                        style={styles.subtaskDelete}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
                   )}
                 />
                 {addingSubtask ? (
@@ -445,57 +440,53 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
             )}
             {cycleEnabled && (
               <>
-                <NestableDraggableFlatList
+                <SortableList
                   data={cycleItems}
-                  keyExtractor={item => item.id}
-                  onDragEnd={({ data, from, to }) => {
-                    setCycleItems(data);
-                    const activeItem = cycleItems[cycleIndex];
-                    if (activeItem) {
-                      const newIdx = data.findIndex(item => item.id === activeItem.id);
-                      if (newIdx !== -1) setCycleIndex(newIdx);
-                    }
+                  onReorder={(newData) => {
+                    const activeItemId = cycleItems[cycleIndex]?.id;
+                    setCycleItems(newData);
+                    const newIdx = newData.findIndex(item => item.id === activeItemId);
+                    if (newIdx !== -1) setCycleIndex(newIdx);
                   }}
-                  renderItem={({ item, drag, getIndex }: RenderItemParams<CycleItem>) => {
-                    const i = getIndex() ?? 0;
+                  renderItem={(item, displayIndex, drag) => {
+                    const actualIdx = cycleItems.findIndex(c => c.id === item.id);
+                    const isCurrentStep = actualIdx === cycleIndex;
                     return (
-                      <ScaleDecorator>
-                        <View style={styles.cycleItemRow}>
-                          <TouchableOpacity
-                            onPress={() => setCycleIndex(i)}
-                            hitSlop={6}
-                            style={styles.cycleItemIndexBtn}
-                          >
-                            <View style={[styles.cycleItemDot, i === cycleIndex && styles.cycleItemDotActive]}>
-                              <Text style={[styles.cycleItemDotText, i === cycleIndex && styles.cycleItemDotTextActive]}>
-                                {i + 1}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                          <Text style={[styles.cycleItemTitle, i === cycleIndex && styles.cycleItemTitleActive]}>
-                            {item.title}
-                          </Text>
-                          <TouchableOpacity
-                            onLongPress={drag}
-                            delayLongPress={150}
-                            hitSlop={8}
-                            style={styles.dragHandle}
-                          >
-                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              const next = cycleItems.filter((_, idx) => idx !== i);
-                              setCycleItems(next);
-                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
-                            }}
-                            hitSlop={8}
-                            style={styles.cycleItemDelete}
-                          >
-                            <Ionicons name="close" size={14} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        </View>
-                      </ScaleDecorator>
+                      <View style={styles.cycleItemRow}>
+                        <TouchableOpacity
+                          onPress={() => setCycleIndex(actualIdx)}
+                          hitSlop={6}
+                          style={styles.cycleItemIndexBtn}
+                        >
+                          <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
+                            <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
+                              {displayIndex + 1}
+                            </Text>
+                          </View>
+                        </TouchableOpacity>
+                        <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
+                          {item.title}
+                        </Text>
+                        <TouchableOpacity
+                          onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                          delayLongPress={150}
+                          hitSlop={8}
+                          style={styles.dragHandle}
+                        >
+                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            const next = cycleItems.filter((_, j) => j !== actualIdx);
+                            setCycleItems(next);
+                            if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                          }}
+                          hitSlop={8}
+                          style={styles.cycleItemDelete}
+                        >
+                          <Ionicons name="close" size={14} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      </View>
                     );
                   }}
                 />
@@ -720,7 +711,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
               </>
             )}
           </View>
-        </NestableScrollContainer>
+        </ScrollView>
 
         <CalendarPicker
           visible={pickerMode !== 'none'}
@@ -736,7 +727,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           onCancel={() => setPickerMode('none')}
         />
       </KeyboardAvoidingView>
-      </GestureHandlerRootView>
 
       <Modal
         visible={projectPickerVisible}
