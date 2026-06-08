@@ -20,9 +20,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, type C
 import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
-import { DeferModal } from './DeferModal';
+import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
-import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 
 interface Props {
   task: Task;
@@ -81,21 +80,14 @@ export function TaskItem({
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
-  const deferTask = useTaskStore(s => s.deferTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
-  const allTasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const snoozeSuggestion = useMemo(
-    () => computeSnoozeSuggestion(task, allTasks),
-    [task, allTasks]
-  );
-
-  const [showDeferModal, setShowDeferModal] = useState(false);
+  const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -207,7 +199,6 @@ export function TaskItem({
       }}
     >
       <Ionicons name="trash" size={iconSize.md} color={colors.text} />
-      <Text style={styles.actionLabel}>Delete</Text>
     </TouchableOpacity>
   );
 
@@ -217,11 +208,10 @@ export function TaskItem({
       onPress={() => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         swipeableRef.current?.close();
-        setShowDeferModal(true);
+        setShowWhenPicker(true);
       }}
     >
       <Ionicons name="time" size={iconSize.md} color={colors.text} />
-      <Text style={styles.actionLabel}>Defer</Text>
     </TouchableOpacity>
   );
 
@@ -535,7 +525,7 @@ export function TaskItem({
                 confirmDelete();
               } else {
                 swipeableRef.current?.close();
-                setShowDeferModal(true);
+                setShowWhenPicker(true);
               }
             }}
           >
@@ -546,14 +536,21 @@ export function TaskItem({
       </Animated.View>
 
       {!selectionMode && (
-        <DeferModal
-          visible={showDeferModal}
-          onConfirm={date => {
-            deferTask(task.id, date);
-            setShowDeferModal(false);
+        <WhenPicker
+          visible={showWhenPicker}
+          value={task.deferUntil ? new Date(task.deferUntil) : null}
+          onConfirm={(deferUntil, timeOfDay) => {
+            updateTask(task.id, {
+              deferUntil: deferUntil ? deferUntil.toISOString() : null,
+              timeOfDay: timeOfDay,
+            });
+            setShowWhenPicker(false);
           }}
-          onCancel={() => setShowDeferModal(false)}
-          snoozeSuggestion={snoozeSuggestion}
+          onClear={() => {
+            updateTask(task.id, { deferUntil: null, timeOfDay: null });
+            setShowWhenPicker(false);
+          }}
+          onCancel={() => setShowWhenPicker(false)}
         />
       )}
       {!selectionMode && (
@@ -739,12 +736,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 5,
     borderTopLeftRadius: radius.md,
     borderBottomLeftRadius: radius.md,
-  },
-  actionLabel: {
-    color: colors.text,
-    fontSize: font.xs,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 0.3,
   },
   expandedPanel: {
     backgroundColor: colors.bgSecondary,

@@ -24,7 +24,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatDeferUntil } from '../utils/dateUtils';
+import { formatDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
 import type { AISuggestions } from '../services/aiSuggestions';
@@ -36,7 +36,7 @@ interface Props {
   onClose: () => void;
 }
 
-type PickerMode = 'none' | 'dueDate' | 'deferUntil' | 'reminder';
+type PickerMode = 'none' | 'dueDate' | 'reminder';
 
 const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -177,11 +177,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
   const openPicker = (mode: PickerMode) => {
     if (mode === 'dueDate') setPickerDate(dueDate ?? new Date());
-    if (mode === 'deferUntil') {
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      setPickerDate(deferUntil ?? tomorrow);
-    }
     if (mode === 'reminder') {
       const defaultDate = dueDate ?? new Date();
       defaultDate.setHours(9, 0, 0, 0);
@@ -196,12 +191,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       const noon = new Date(confirmed);
       noon.setHours(12, 0, 0, 0);
       setDueDate(noon);
-    }
-    if (pickerMode === 'deferUntil') {
-      // Store noon of the selected day to ensure day-level comparison works
-      const noon = new Date(confirmed);
-      noon.setHours(12, 0, 0, 0);
-      setDeferUntil(noon);
     }
     if (pickerMode === 'reminder') setReminderTime(confirmed);
     setPickerMode('none');
@@ -754,17 +743,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             </View>
             <View style={styles.sep} />
             <OptionRow
-              icon="time"
-              label="Defer until"
-              hint="Hide until this day"
-              value={deferUntil ? formatDeferUntil(deferUntil.toISOString()) : undefined}
-              onPress={() => openPicker('deferUntil')}
-              onClear={deferUntil ? () => setDeferUntil(null) : undefined}
-              colors={colors}
-              styles={styles}
-            />
-            <View style={styles.sep} />
-            <OptionRow
               icon="notifications"
               label="Remind me"
               hint="Send a notification at this time"
@@ -845,12 +823,8 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
           visible={pickerMode !== 'none'}
           value={pickerDate}
           mode={pickerMode === 'reminder' ? 'datetime' : 'date'}
-          title={
-            pickerMode === 'dueDate' ? 'Date'
-              : pickerMode === 'reminder' ? 'Remind Me'
-              : 'Defer Until'
-          }
-          nlEnabled={pickerMode !== 'deferUntil'}
+          title={pickerMode === 'dueDate' ? 'Date' : 'Remind Me'}
+          nlEnabled
           onConfirm={confirmPicker}
           onCancel={() => setPickerMode('none')}
         />
