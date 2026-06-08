@@ -77,7 +77,7 @@ export function TagsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Tags</Text>
         <TouchableOpacity onPress={handleStartAdding} style={styles.addButton} activeOpacity={0.7}>
-          <Ionicons name="add" size={24} color={colors.tint} />
+          <Ionicons name="add" size={24} color={colors.accent} />
         </TouchableOpacity>
       </View>
 
@@ -102,7 +102,7 @@ export function TagsScreen() {
             }}
           />
           <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={0.7}>
-            <Ionicons name="checkmark" size={20} color={colors.tint} />
+            <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewTagText(''); setAddingTag(false); }}
