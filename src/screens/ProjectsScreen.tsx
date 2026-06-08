@@ -263,6 +263,13 @@ export function ProjectsScreen() {
                 </View>
               }
             />
+            {expandedTaskId !== null && (
+              <TouchableOpacity
+                style={styles.focusOverlay}
+                activeOpacity={1}
+                onPress={() => setExpandedTaskId(null)}
+              />
+            )}
           </View>
         )}
       </Modal>
@@ -439,6 +446,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent, borderRadius: radius.full,
   },
   emptyActionText: { color: '#fff', fontSize: font.sm, fontWeight: '600' },
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
+  },
   detailRoot: { flex: 1, backgroundColor: colors.bg },
   detailHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

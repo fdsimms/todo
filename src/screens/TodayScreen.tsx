@@ -215,7 +215,6 @@ export function TodayScreen() {
           selected={selectedIds.has(item.task.id)}
           onLongPress={() => enterSelection(item.task.id)}
           onSelect={() => toggleSelection(item.task.id)}
-          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id}
         />
       </ScaleDecorator>
     );
@@ -401,7 +400,6 @@ export function TodayScreen() {
                   selected={selectedIds.has(item.id)}
                   onLongPress={() => enterSelection(item.id)}
                   onSelect={() => toggleSelection(item.id)}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                 />
               );
             }}
@@ -437,7 +435,6 @@ export function TodayScreen() {
                 selected={selectedIds.has(item.id)}
                 onLongPress={() => enterSelection(item.id)}
                 onSelect={() => toggleSelection(item.id)}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
               />
             );
           }}
@@ -532,6 +529,14 @@ export function TodayScreen() {
 
       <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
 
+      {expandedTaskId !== null && !selectionMode && (
+        <TouchableOpacity
+          style={styles.focusOverlay}
+          activeOpacity={1}
+          onPress={() => setExpandedTaskId(null)}
+        />
+      )}
+
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
@@ -621,6 +626,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
+  },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,

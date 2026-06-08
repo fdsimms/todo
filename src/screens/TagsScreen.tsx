@@ -198,7 +198,6 @@ export function TagsScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                 />
               );
             }}
@@ -208,6 +207,13 @@ export function TagsScreen() {
               </View>
             }
           />
+          {expandedTaskId !== null && (
+            <TouchableOpacity
+              style={styles.focusOverlay}
+              activeOpacity={1}
+              onPress={() => setExpandedTaskId(null)}
+            />
+          )}
         </View>
       </Modal>
 
@@ -316,6 +322,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.sm,
     textAlign: 'center',
+  },
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
   },
   detailRoot: {
     flex: 1,
