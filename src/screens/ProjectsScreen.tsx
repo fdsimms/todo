@@ -120,27 +120,7 @@ export function ProjectsScreen() {
     return { done, total: rootTasks.length };
   }, [allTasks]);
 
-  const rawDetailTasks = selectedProject ? tasksByProject(selectedProject.id) : [];
-
-  // Build a flat list of heading dividers + tasks for the project detail view
-  type DetailRow =
-    | { type: 'task'; task: Task }
-    | { type: 'heading'; label: string; key: string };
-
-  const detailRows = useMemo<DetailRow[]>(() => {
-    const rows: DetailRow[] = [];
-    let lastHeading: string | null | undefined = undefined;
-    for (const task of rawDetailTasks) {
-      if (task.heading !== lastHeading) {
-        lastHeading = task.heading;
-        if (task.heading) {
-          rows.push({ type: 'heading', label: task.heading, key: `h-${task.heading}` });
-        }
-      }
-      rows.push({ type: 'task', task });
-    }
-    return rows;
-  }, [rawDetailTasks]);
+  const detailTasks = selectedProject ? tasksByProject(selectedProject.id) : [];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -261,20 +241,16 @@ export function ProjectsScreen() {
             })()}
 
             <FlatList
-              data={detailRows}
-              keyExtractor={row => row.type === 'heading' ? row.key : row.task.id}
-              renderItem={({ item: row }) => {
-                if (row.type === 'heading') {
-                  return <Text style={styles.headingLabel}>{row.label}</Text>;
-                }
-                const { task } = row;
-                const subs = allTasks.filter(t => t.parentId === task.id);
+              data={detailTasks}
+              keyExtractor={t => t.id}
+              renderItem={({ item }) => {
+                const subs = allTasks.filter(t => t.parentId === item.id);
                 return (
                   <TaskItem
-                    task={task}
-                    onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                    expanded={expandedTaskId === task.id}
-                    onEdit={() => { setEditingTask(task); setEditorVisible(true); }}
+                    task={item}
+                    onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                    expanded={expandedTaskId === item.id}
+                    onEdit={() => { setEditingTask(item); setEditorVisible(true); }}
                     subtaskCount={subs.length}
                     subtaskDoneCount={subs.filter(t => t.completed).length}
                     subtasks={subs}
@@ -458,16 +434,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.lg, fontWeight: '600',
   },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center' },
-  headingLabel: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.xs,
-  },
   emptyAction: {
     marginTop: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
     backgroundColor: colors.accent, borderRadius: radius.full,
