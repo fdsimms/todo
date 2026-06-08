@@ -8,7 +8,6 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -37,7 +36,6 @@ export function TodayScreen() {
   const allProjects = useProjectStore(useShallow(s => s.projects));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
-  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -48,7 +46,7 @@ export function TodayScreen() {
 
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [groupByTag, setGroupByTag] = useState(false);
+
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -152,15 +150,6 @@ export function TodayScreen() {
     ];
   };
 
-  const buildFlatData = (): ListItem[] => {
-    const overdueItems = buildOverdueSection(overdueTasks);
-    const todayItems = todayTasks.map(t => ({ type: 'task' as const, task: t }));
-    if (overdueItems.length > 0 && todayItems.length > 0) {
-      return [...overdueItems, { type: 'header', label: 'Today' }, ...todayItems];
-    }
-    return [...overdueItems, ...todayItems];
-  };
-
   const buildGroupedData = (): ListItem[] => {
     const overdueItems = buildOverdueSection(overdueTasks);
     const byTag: Record<string, Task[]> = {};
@@ -188,11 +177,7 @@ export function TodayScreen() {
     return [...overdueItems, ...groupedItems];
   };
 
-  const isDragMode = sort === 'default' && !groupByTag;
-
-  const data: ListItem[] = groupByTag
-    ? buildGroupedData()
-    : buildFlatData();
+  const data: ListItem[] = buildGroupedData();
 
   const renderItem = ({ item }: { item: ListItem }) => {
     if (item.type === 'header') {
@@ -219,30 +204,6 @@ export function TodayScreen() {
         onLongPress={() => enterSelection(item.task.id)}
         onSelect={() => toggleSelection(item.task.id)}
       />
-    );
-  };
-
-  const renderDraggableItem = ({ item, drag, isActive }: RenderItemParams<Task>) => {
-    const subs = allTasks.filter(t => t.parentId === item.id);
-    return (
-      <ScaleDecorator>
-        <TaskItem
-          task={item}
-          onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
-          expanded={expandedTaskId === item.id}
-          onEdit={() => openEditor(item)}
-          subtaskCount={subs.length}
-          subtaskDoneCount={subs.filter(t => t.completed).length}
-          subtasks={subs}
-          drag={selectionMode ? undefined : drag}
-          isActive={isActive}
-          showDragHandle={!selectionMode}
-          selectionMode={selectionMode}
-          selected={selectedIds.has(item.id)}
-          onLongPress={() => enterSelection(item.id)}
-          onSelect={() => toggleSelection(item.id)}
-        />
-      </ScaleDecorator>
     );
   };
 
@@ -304,12 +265,6 @@ export function TodayScreen() {
           <Text style={styles.title}>Today</Text>
         </View>
         <View style={styles.headerButtons}>
-          <TouchableOpacity
-            style={[styles.iconBtn, groupByTag && styles.iconBtnActive]}
-            onPress={() => setGroupByTag(g => !g)}
-          >
-            <Ionicons name="list" size={18} color={groupByTag ? colors.text : colors.textSecondary} />
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnAccent]}
             onPress={() => setFilterVisible(true)}
@@ -379,80 +334,26 @@ export function TodayScreen() {
         </ScrollView>
       )}
 
-      {isDragMode ? (
-        <DraggableFlatList
-          containerStyle={{ flex: 1 }}
-          data={todayTasks}
-          keyExtractor={item => item.id}
-          onDragEnd={({ data: reordered }) => reorderTasks(reordered.map(t => t.id))}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          renderItem={renderDraggableItem}
-          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.textSecondary}
-            />
-          }
-          ListHeaderComponent={overdueTasks.length > 0 ? (
-            <View>
-              <View style={styles.sectionHeader}>
-                <Text style={[styles.sectionHeaderText, styles.sectionHeaderOverdue]}>Overdue</Text>
-              </View>
-              {overdueTasks.map(task => {
-                const subs = allTasks.filter(t => t.parentId === task.id);
-                return (
-                  <TaskItem
-                    key={task.id}
-                    task={task}
-                    onPress={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                    expanded={expandedTaskId === task.id}
-                    onEdit={() => openEditor(task)}
-                    subtaskCount={subs.length}
-                    subtaskDoneCount={subs.filter(t => t.completed).length}
-                    subtasks={subs}
-                    selectionMode={selectionMode}
-                    selected={selectedIds.has(task.id)}
-                    onLongPress={() => enterSelection(task.id)}
-                    onSelect={() => toggleSelection(task.id)}
-                  />
-                );
-              })}
-              {todayTasks.length > 0 && (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>Today</Text>
-                </View>
-              )}
-            </View>
-          ) : undefined}
-          ListEmptyComponent={overdueTasks.length > 0 ? undefined : emptyComponent}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
-        />
-      ) : (
-        <FlatList
-          data={data}
-          keyExtractor={(item, i) =>
-            item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
-          }
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          renderItem={renderItem}
-          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.textSecondary}
-            />
-          }
-          ListEmptyComponent={emptyComponent}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
-        />
-      )}
+      <FlatList
+        data={data}
+        keyExtractor={(item, i) =>
+          item.type === 'header' ? `h-${item.label}-${i}` : item.task.id
+        }
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        renderItem={renderItem}
+        contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.textSecondary}
+          />
+        }
+        ListEmptyComponent={emptyComponent}
+        ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+        onScrollBeginDrag={() => setExpandedTaskId(null)}
+      />
 
       <TouchableOpacity
         style={[styles.fab, { bottom: insets.bottom + 20 }]}
