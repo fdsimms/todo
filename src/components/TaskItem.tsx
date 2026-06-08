@@ -504,6 +504,7 @@ export function TaskItem({
         shadows.card,
         { opacity: isActive ? 0.85 : rowOpacity },
         spotlightDisabled && styles.itemWrapperDimmed,
+        expanded && styles.itemWrapperElevated,
       ]}>
         {selectionMode || spotlightDisabled ? (
           <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
@@ -577,6 +578,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   itemWrapperDimmed: {
     opacity: 0.35,
+  },
+  itemWrapperElevated: {
+    zIndex: 10,
+    elevation: 10,
   },
   swipeContainer: {
     borderRadius: radius.md,

@@ -123,7 +123,6 @@ export function LaterScreen() {
               selected={selectedIds.has(item.id)}
               onLongPress={() => enterSelection(item.id)}
               onSelect={() => toggleSelection(item.id)}
-              spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
             />
           );
         }}
@@ -145,6 +144,14 @@ export function LaterScreen() {
           </View>
         }
       />
+
+      {expandedTaskId !== null && !selectionMode && (
+        <TouchableOpacity
+          style={styles.focusOverlay}
+          activeOpacity={1}
+          onPress={() => setExpandedTaskId(null)}
+        />
+      )}
 
       <TaskEditor
         visible={editorVisible}
@@ -196,6 +203,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
   listFooter: { height: 120 },
   emptyContainer: { flex: 1 },
+  focusOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
+  },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
