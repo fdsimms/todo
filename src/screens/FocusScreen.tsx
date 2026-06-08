@@ -91,62 +91,6 @@ export function FocusScreen() {
         </View>
       </View>
 
-      {focusedTasks.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="star" size={52} color={colors.bgQuaternary} />
-          <Text style={styles.emptyTitle}>No focus set</Text>
-          <Text style={styles.emptyText}>
-            Tap "Select" to pick a few tasks to focus on.{'\n'}
-            Or star any task from the Today list.
-          </Text>
-          <TouchableOpacity
-            style={styles.emptyBtn}
-            onPress={() => setSelectorVisible(true)}
-          >
-            <Text style={styles.emptyBtnText}>Select tasks</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <DraggableFlatList
-          data={focusedTasks}
-          keyExtractor={t => t.id}
-          onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.listContent}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
-          renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
-            const subs = allTasks.filter(t => t.parentId === item.id);
-            return (
-              <ScaleDecorator>
-                <TaskItem
-                  task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
-                  expanded={expandedTaskId === item.id}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                  drag={selectionMode ? undefined : drag}
-                  isActive={isActive}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onLongPress={() => enterSelection(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                />
-              </ScaleDecorator>
-            );
-          }}
-        />
-      )}
-
       {expandedTaskId !== null && !selectionMode && (
         <TouchableOpacity
           style={styles.focusOverlay}
@@ -154,6 +98,64 @@ export function FocusScreen() {
           onPress={() => setExpandedTaskId(null)}
         />
       )}
+
+      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+        {focusedTasks.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="star" size={52} color={colors.bgQuaternary} />
+            <Text style={styles.emptyTitle}>No focus set</Text>
+            <Text style={styles.emptyText}>
+              Tap "Select" to pick a few tasks to focus on.{'\n'}
+              Or star any task from the Today list.
+            </Text>
+            <TouchableOpacity
+              style={styles.emptyBtn}
+              onPress={() => setSelectorVisible(true)}
+            >
+              <Text style={styles.emptyBtnText}>Select tasks</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <DraggableFlatList
+            data={focusedTasks}
+            keyExtractor={t => t.id}
+            onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            contentContainerStyle={styles.listContent}
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            onScrollBeginDrag={() => setExpandedTaskId(null)}
+            renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
+              const subs = allTasks.filter(t => t.parentId === item.id);
+              return (
+                <ScaleDecorator>
+                  <TaskItem
+                    task={item}
+                    onPress={() => {
+                      if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                        setExpandedTaskId(null);
+                        return;
+                      }
+                      setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                    }}
+                    expanded={expandedTaskId === item.id}
+                    onEdit={() => openEditor(item)}
+                    subtaskCount={subs.length}
+                    subtaskDoneCount={subs.filter(t => t.completed).length}
+                    subtasks={subs}
+                    drag={selectionMode ? undefined : drag}
+                    isActive={isActive}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(item.id)}
+                    onLongPress={() => enterSelection(item.id)}
+                    onSelect={() => toggleSelection(item.id)}
+                  />
+                </ScaleDecorator>
+              );
+            }}
+          />
+        )}
+      </View>
 
       <FocusSelector
         visible={selectorVisible}
@@ -226,6 +228,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
   listFooter: { height: 120 },
+  listWrapper: { flex: 1 },
+  listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
     position: 'absolute',
     top: 0,

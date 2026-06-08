@@ -326,6 +326,15 @@ export function TodayScreen() {
       </View>
 
 
+      {expandedTaskId !== null && !selectionMode && (
+        <TouchableOpacity
+          style={styles.focusOverlay}
+          activeOpacity={1}
+          onPress={() => setExpandedTaskId(null)}
+        />
+      )}
+
+      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
       {viewMode === 'focus' && (
         focusedTasks.length === 0 ? (
           <View style={styles.empty}>
@@ -462,6 +471,7 @@ export function TodayScreen() {
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
+      </View>
 
       {viewMode === 'today' && (
         <TouchableOpacity
@@ -506,14 +516,6 @@ export function TodayScreen() {
       />
 
       <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
-
-      {expandedTaskId !== null && !selectionMode && (
-        <TouchableOpacity
-          style={styles.focusOverlay}
-          activeOpacity={1}
-          onPress={() => setExpandedTaskId(null)}
-        />
-      )}
 
       {selectionMode && (
         <BulkActionBar
@@ -604,6 +606,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
+  listWrapper: { flex: 1 },
+  listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
     position: 'absolute',
     top: 0,
