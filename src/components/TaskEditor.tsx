@@ -32,7 +32,6 @@ import type { AISuggestions } from '../services/aiSuggestions';
 interface Props {
   visible: boolean;
   task?: Task | null;
-  initialSomeday?: boolean;
   initialTitle?: string;
   onClose: () => void;
 }
@@ -47,7 +46,7 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClose }: Props) {
+export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
@@ -77,7 +76,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [focused, setFocused] = useState(false);
-  const [someday, setSomeday] = useState(false);
 
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
@@ -110,7 +108,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
-      setSomeday(task.someday);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
     } else {
@@ -118,7 +115,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setDueDate(null); setTimeOfDay(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
-      setSomeday(initialSomeday ?? false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
     }
     setPickerMode('none'); setPickerDate(new Date()); setNewTag(''); setAddingTag(false);
@@ -140,7 +136,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       priority: task?.priority ?? 0,
       effort: task?.effort ?? 0,
       focused: task?.focused ?? false,
-      someday: task?.someday ?? (initialSomeday ?? false),
       cycleEnabled: task?.cycleEnabled ?? false,
       cycleItems: task?.cycleItems ?? [],
       cycleIndex: task?.cycleIndex ?? 0,
@@ -159,7 +154,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       recurrenceEndDate: null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      focused, someday, priority, effort,
+      focused, priority, effort,
       cycleEnabled: cycleEnabled && cycleItems.length > 0,
       cycleItems,
       cycleIndex,
@@ -226,7 +221,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       priority,
       effort,
       focused,
-      someday,
       cycleEnabled,
       cycleItems,
       cycleIndex,
@@ -667,21 +661,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
 
           {/* Options */}
           <View style={styles.optionsCard}>
-            <TouchableOpacity style={styles.optionRow} onPress={() => setSomeday(s => !s)}>
-              <Ionicons
-                name={someday ? 'moon' : 'moon-outline'}
-                size={18}
-                color={someday ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Someday</Text>
-                <Text style={styles.optionHint}>Park in Someday, not Today</Text>
-              </View>
-              <View style={[styles.toggle, someday && styles.toggleOnSomeday]}>
-                <View style={[styles.toggleKnob, someday && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.sep} />
             <OptionRow
               icon="calendar"
               label="Due date"
@@ -991,7 +970,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
   },
   toggleOn: { backgroundColor: colors.orange },
-  toggleOnSomeday: { backgroundColor: colors.accent },
   toggleKnob: {
     width: 21, height: 21, borderRadius: 11,
     backgroundColor: colors.textSecondary,

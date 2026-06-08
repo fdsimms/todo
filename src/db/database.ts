@@ -31,7 +31,6 @@ export function initDatabase(): void {
       streak_date TEXT,
       parent_id TEXT,
       reminder_time TEXT,
-      someday INTEGER NOT NULL DEFAULT 0,
       cycle_enabled INTEGER NOT NULL DEFAULT 0,
       cycle_index INTEGER NOT NULL DEFAULT 0,
       cycle_items TEXT NOT NULL DEFAULT '[]'
@@ -63,7 +62,6 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN recurrence_from_completion INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN parent_id TEXT',
     'ALTER TABLE tasks ADD COLUMN reminder_time TEXT',
-    'ALTER TABLE tasks ADD COLUMN someday INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN cycle_enabled INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN cycle_index INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE tasks ADD COLUMN cycle_items TEXT NOT NULL DEFAULT '[]'",
@@ -112,7 +110,6 @@ function rowToTask(row: Record<string, unknown>): Task {
     streakDate: (row.streak_date as string) ?? null,
     parentId: (row.parent_id as string) ?? null,
     reminderTime: (row.reminder_time as string) ?? null,
-    someday: Boolean(row.someday),
     cycleEnabled: Boolean(row.cycle_enabled),
     cycleIndex: (row.cycle_index as number) ?? 0,
     cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
@@ -133,9 +130,9 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
-      tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time, someday,
+      tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, project_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -145,7 +142,6 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
-      task.someday ? 1 : 0,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.projectId ?? null,
     ]
@@ -159,7 +155,7 @@ export function dbUpdateTask(task: Task): void {
       due_date=?, defer_until=?, time_of_day=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, sort_order=?, focused=?, priority=?, effort=?,
-      streak_count=?, streak_date=?, parent_id=?, reminder_time=?, someday=?,
+      streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?
     WHERE id=?`,
     [
@@ -171,7 +167,6 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.tags), task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
-      task.someday ? 1 : 0,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.projectId ?? null,
       task.id,

@@ -15,7 +15,6 @@ function getTimeOfDayThreshold(timeOfDay: NonNullable<Task['timeOfDay']>): Date 
 
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
-  if (task.someday) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
@@ -44,7 +43,6 @@ export function isTaskVisible(task: Task): boolean {
 
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
-  if (task.someday) return false;
   return !isTaskVisible(task);
 }
 

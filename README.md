@@ -18,7 +18,6 @@ A personal todo app built with Expo (React Native). Inspired by Things 3, with a
 | Today | Tasks actionable right now (visibility rules applied) |
 | Focus | Starred/flagged tasks with badge count |
 | Later | Deferred and time-gated tasks, grouped by when they surface |
-| Someday | Parked tasks with no date |
 | Projects | Tasks grouped by project |
 | Tags | All tags; tap to filter tasks by tag |
 | Search | Full-text + fuzzy search across all tasks |

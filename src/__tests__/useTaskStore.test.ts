@@ -65,7 +65,6 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   tags: [],
   sortOrder: 1,
   focused: false,
-  someday: false,
   priority: 0,
   effort: 0,
   streakCount: 0,
@@ -122,7 +121,6 @@ describe('addTask', () => {
     expect(task.tags).toEqual([]);
     expect(task.recurrenceType).toBe('none');
     expect(task.focused).toBe(false);
-    expect(task.someday).toBe(false);
     expect(task.parentId).toBeNull();
   });
 
@@ -131,11 +129,9 @@ describe('addTask', () => {
       title: 'Tagged',
       tags: ['work'],
       priority: 2,
-      someday: true,
     });
     expect(task.tags).toEqual(['work']);
     expect(task.priority).toBe(2);
-    expect(task.someday).toBe(true);
   });
 
   it('sets sortOrder to 1 when store is empty', () => {
@@ -592,7 +588,7 @@ describe('bulkAddTags', () => {
 // ─── selectors ───────────────────────────────────────────────────────────────
 
 describe('visibleTasks', () => {
-  it('returns non-completed, non-someday, non-subtask tasks sorted by sortOrder', () => {
+  it('returns non-completed, non-subtask tasks sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
         makeTask({ id: 'b', sortOrder: 2 }),
@@ -605,11 +601,6 @@ describe('visibleTasks', () => {
 
   it('excludes completed tasks', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now' })] });
-    expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
-  });
-
-  it('excludes someday tasks', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', someday: true })] });
     expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
   });
 
@@ -637,20 +628,6 @@ describe('focusedTasks', () => {
       tasks: [makeTask({ id: 't1', focused: true, completed: true, completedAt: 'now' })],
     });
     expect(useTaskStore.getState().focusedTasks()).toHaveLength(0);
-  });
-});
-
-describe('somedayTasks', () => {
-  it('returns someday, non-completed, non-subtask tasks', () => {
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 's1', someday: true }),
-        makeTask({ id: 'n1', someday: false }),
-        makeTask({ id: 's2', someday: true, completed: true, completedAt: 'now' }),
-      ],
-    });
-    const someday = useTaskStore.getState().somedayTasks();
-    expect(someday.map(t => t.id)).toEqual(['s1']);
   });
 });
 

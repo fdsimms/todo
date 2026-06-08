@@ -32,7 +32,6 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onOpenFull: (title: string) => void;
-  initialSomeday?: boolean;
 }
 
 type ActivePanel = 'date' | 'priority' | 'effort' | 'tags' | null;
@@ -43,7 +42,7 @@ const DATE_PRESETS = [
   { label: '+7 days', days: 7 },
 ];
 
-export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: Props) {
+export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -116,7 +115,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull, initialSomeday }: 
     if (!title.trim()) return;
     addTask({
       title: title.trim(),
-      someday: initialSomeday ?? false,
       priority,
       effort,
       dueDate: dueDate?.toISOString() ?? null,
