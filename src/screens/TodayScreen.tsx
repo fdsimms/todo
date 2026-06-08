@@ -297,13 +297,7 @@ export function TodayScreen() {
   const today = format(new Date(), 'EEEE, MMMM d');
 
   return (
-    <View
-      style={[styles.container, { paddingTop: insets.top }]}
-      onStartShouldSetResponderCapture={() => {
-        if (expandedTaskId !== null) setExpandedTaskId(null);
-        return false;
-      }}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.dateLabel}>{today}</Text>
@@ -417,6 +411,7 @@ export function TodayScreen() {
             </View>
           ) : undefined}
           ListEmptyComponent={overdueTasks.length > 0 ? undefined : emptyComponent}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       ) : (
@@ -437,6 +432,7 @@ export function TodayScreen() {
             />
           }
           ListEmptyComponent={emptyComponent}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
@@ -529,7 +525,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.red,
   },
   emptyContainer: { flex: 1 },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600' },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: 20 },

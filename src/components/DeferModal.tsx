@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
   Text,
   TouchableOpacity,
+  Animated,
+  PanResponder,
   StyleSheet,
 } from 'react-native';
 import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
@@ -58,16 +60,72 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const options = useMemo(() => dayOptions(), []);
 
+  const translateY = useRef(new Animated.Value(600)).current;
+
+  useEffect(() => {
+    if (visible) {
+      translateY.setValue(600);
+      Animated.spring(translateY, {
+        toValue: 0,
+        tension: 65,
+        friction: 11,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+
+  const dismiss = () => {
+    Animated.timing(translateY, {
+      toValue: 600,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(() => {
+      translateY.setValue(600);
+      onCancel();
+    });
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
+      onPanResponderMove: (_, { dy }) => {
+        if (dy > 0) translateY.setValue(dy);
+      },
+      onPanResponderRelease: (_, { dy, vy }) => {
+        if (dy > 80 || vy > 0.5) {
+          Animated.timing(translateY, {
+            toValue: 600,
+            duration: 200,
+            useNativeDriver: true,
+          }).start(() => {
+            translateY.setValue(600);
+            onCancel();
+          });
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            tension: 65,
+            friction: 11,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
-      onRequestClose={onCancel}
+      onRequestClose={dismiss}
     >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onCancel} />
-      <View style={styles.sheet}>
-        <View style={styles.handle} />
+      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={dismiss} />
+      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+        <View style={styles.handleArea} {...panResponder.panHandlers}>
+          <View style={styles.handle} />
+        </View>
         <Text style={styles.title}>Defer to…</Text>
 
         {options.map(opt => (
@@ -81,10 +139,10 @@ export function DeferModal({ visible, onConfirm, onCancel }: Props) {
           </TouchableOpacity>
         ))}
 
-        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={onCancel}>
+        <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={dismiss}>
           <Text style={[styles.optionText, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
@@ -101,14 +159,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: 40,
     paddingHorizontal: spacing.md,
   },
+  handleArea: {
+    alignItems: 'center',
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
+  },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.bgQuaternary,
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-    marginBottom: spacing.md,
   },
   title: {
     color: colors.textTertiary,

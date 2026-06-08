@@ -67,13 +67,7 @@ export function FocusScreen() {
   };
 
   return (
-    <View
-      style={[styles.container, { paddingTop: insets.top }]}
-      onStartShouldSetResponderCapture={() => {
-        if (expandedTaskId !== null) setExpandedTaskId(null);
-        return false;
-      }}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Focus</Text>
@@ -120,6 +114,7 @@ export function FocusScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           contentContainerStyle={styles.listContent}
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
@@ -216,5 +211,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
   },
   emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listFooter: { height: 120 },
 });

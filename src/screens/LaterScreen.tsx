@@ -3,6 +3,7 @@ import {
   View,
   Text,
   SectionList,
+  TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,13 +90,7 @@ export function LaterScreen() {
   }));
 
   return (
-    <View
-      style={[styles.container, { paddingTop: insets.top }]}
-      onStartShouldSetResponderCapture={() => {
-        if (expandedTaskId !== null) setExpandedTaskId(null);
-        return false;
-      }}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <Text style={styles.title}>Later</Text>
         <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
@@ -131,6 +126,7 @@ export function LaterScreen() {
           </View>
         )}
         stickySectionHeadersEnabled={false}
+        ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
         onScrollBeginDrag={() => setExpandedTaskId(null)}
         ListEmptyComponent={
           <View style={styles.empty}>
@@ -190,7 +186,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginTop: 2,
   },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 40 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listFooter: { height: 120 },
   emptyContainer: { flex: 1 },
   sectionHeader: {
     paddingHorizontal: spacing.md,

@@ -92,13 +92,7 @@ export function SomedayScreen() {
     : allSomedayTasks;
 
   return (
-    <View
-      style={[styles.container, { paddingTop: insets.top }]}
-      onStartShouldSetResponderCapture={() => {
-        if (expandedTaskId !== null) setExpandedTaskId(null);
-        return false;
-      }}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Someday</Text>
@@ -167,6 +161,7 @@ export function SomedayScreen() {
           );
         }}
         contentContainerStyle={somedayTasks.length === 0 ? styles.emptyContainer : styles.listContent}
+        ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
         onScrollBeginDrag={() => setExpandedTaskId(null)}
         refreshControl={
           <RefreshControl
@@ -237,7 +232,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
   subtitle: { color: colors.textTertiary, fontSize: font.sm, paddingBottom: 4 },
-  listContent: { paddingTop: spacing.xs, paddingBottom: 100 },
+  listContent: { paddingTop: spacing.xs, paddingBottom: 20 },
+  listFooter: { height: 120 },
   emptyContainer: { flex: 1 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: '600' },
