@@ -297,7 +297,13 @@ export function TodayScreen() {
   const today = format(new Date(), 'EEEE, MMMM d');
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[styles.container, { paddingTop: insets.top }]}
+      onStartShouldSetResponderCapture={() => {
+        if (expandedTaskId !== null) setExpandedTaskId(null);
+        return false;
+      }}
+    >
       <View style={styles.header}>
         <View>
           <Text style={styles.dateLabel}>{today}</Text>

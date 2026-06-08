@@ -67,7 +67,13 @@ export function FocusScreen() {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <View
+      style={[styles.container, { paddingTop: insets.top }]}
+      onStartShouldSetResponderCapture={() => {
+        if (expandedTaskId !== null) setExpandedTaskId(null);
+        return false;
+      }}
+    >
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Focus</Text>

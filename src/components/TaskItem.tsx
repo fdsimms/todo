@@ -352,20 +352,130 @@ export function TaskItem({
     </View>
   );
 
+  const expandedPanel = (
+    <Animated.View style={[
+      styles.expandedPanel,
+      {
+        maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
+        overflow: 'hidden',
+      },
+    ]}>
+      {!selectionMode && (
+        <>
+          {task.notes.length > 0 && (
+            <Text style={styles.expandNotes}>{task.notes}</Text>
+          )}
+
+          {subtasks.length > 0 && (
+            <View style={[
+              styles.expandSection,
+              task.notes.length > 0 && styles.sectionDivider,
+            ]}>
+              {subtasks.map(sub => (
+                <TouchableOpacity
+                  key={sub.id}
+                  style={styles.subtaskRow}
+                  onPress={() => toggleSubtask(sub.id)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                    {sub.completed && (
+                      <Ionicons name="checkmark" size={9} color={colors.bg} />
+                    )}
+                  </View>
+                  <Text style={[
+                    styles.subtaskTitle,
+                    sub.completed && styles.subtaskTitleDone,
+                  ]} numberOfLines={2}>
+                    {sub.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {task.recurrenceType !== 'none' && (
+            <View style={[
+              styles.recurrenceRow,
+              (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
+            ]}>
+              <Ionicons name="repeat" size={12} color={colors.textTertiary} />
+              <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
+              {task.streakCount > 0 && (
+                <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+              )}
+            </View>
+          )}
+
+          {activeCycleItem && task.cycleItems.length > 0 && (
+            <View style={[
+              styles.recurrenceRow,
+              (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+            ]}>
+              <Ionicons name="sync" size={12} color={colors.textTertiary} />
+              <Text style={styles.expandMeta}>
+                Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
+              </Text>
+              {task.cycleItems.map((item, i) => (
+                <Text
+                  key={item.id}
+                  style={[
+                    styles.expandMeta,
+                    i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
+                  ]}
+                >
+                  {i > 0 ? ' → ' : ' '}{item.title}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {onEdit && (
+            <View style={[
+              styles.editSection,
+              hasExpandContent && styles.sectionDivider,
+              task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
+            ]}>
+              {task.recurrenceType !== 'none' && (
+                <TouchableOpacity
+                  style={styles.editBtn}
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    skipNextRecurrence(task.id);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
+                  <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                style={styles.editBtn}
+                onPress={onEdit}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="pencil-outline" size={13} color={colors.accent} />
+                <Text style={styles.editBtnText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
+    </Animated.View>
+  );
+
   return (
     <>
       <Animated.View style={[styles.itemWrapper, { opacity: isActive ? 0.85 : rowOpacity }]}>
         {selectionMode ? (
-          <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
+          <View style={styles.swipeContainer}>
             {rowBody}
+            {expandedPanel}
           </View>
         ) : (
           <Swipeable
             ref={swipeableRef}
-            containerStyle={[
-              styles.swipeContainer,
-              expanded && styles.swipeContainerExpanded,
-            ]}
+            containerStyle={styles.swipeContainer}
             renderRightActions={renderRightActions}
             renderLeftActions={renderLeftActions}
             overshootRight={false}
@@ -383,118 +493,9 @@ export function TaskItem({
             }}
           >
             {rowBody}
+            {expandedPanel}
           </Swipeable>
         )}
-
-        <Animated.View style={[
-          styles.expandedPanel,
-          {
-            maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
-            overflow: 'hidden',
-          },
-        ]}>
-          {!selectionMode && (
-            <>
-              {task.notes.length > 0 && (
-                <Text style={styles.expandNotes}>{task.notes}</Text>
-              )}
-
-              {subtasks.length > 0 && (
-                <View style={[
-                  styles.expandSection,
-                  task.notes.length > 0 && styles.sectionDivider,
-                ]}>
-                  {subtasks.map(sub => (
-                    <TouchableOpacity
-                      key={sub.id}
-                      style={styles.subtaskRow}
-                      onPress={() => toggleSubtask(sub.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                        {sub.completed && (
-                          <Ionicons name="checkmark" size={9} color={colors.bg} />
-                        )}
-                      </View>
-                      <Text style={[
-                        styles.subtaskTitle,
-                        sub.completed && styles.subtaskTitleDone,
-                      ]} numberOfLines={2}>
-                        {sub.title}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-
-              {task.recurrenceType !== 'none' && (
-                <View style={[
-                  styles.recurrenceRow,
-                  (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
-                ]}>
-                  <Ionicons name="repeat" size={12} color={colors.textTertiary} />
-                  <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
-                  {task.streakCount > 0 && (
-                    <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
-                  )}
-                </View>
-              )}
-
-              {activeCycleItem && task.cycleItems.length > 0 && (
-                <View style={[
-                  styles.recurrenceRow,
-                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-                ]}>
-                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
-                  <Text style={styles.expandMeta}>
-                    Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
-                  </Text>
-                  {task.cycleItems.map((item, i) => (
-                    <Text
-                      key={item.id}
-                      style={[
-                        styles.expandMeta,
-                        i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
-                      ]}
-                    >
-                      {i > 0 ? ' → ' : ' '}{item.title}
-                    </Text>
-                  ))}
-                </View>
-              )}
-
-              {onEdit && (
-                <View style={[
-                  styles.editSection,
-                  hasExpandContent && styles.sectionDivider,
-                  task.recurrenceType !== 'none' && { justifyContent: 'space-between' },
-                ]}>
-                  {task.recurrenceType !== 'none' && (
-                    <TouchableOpacity
-                      style={styles.editBtn}
-                      onPress={async () => {
-                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        skipNextRecurrence(task.id);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity
-                    style={styles.editBtn}
-                    onPress={onEdit}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </>
-          )}
-        </Animated.View>
       </Animated.View>
 
       {!selectionMode && (
@@ -525,10 +526,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   swipeContainer: {
     borderRadius: radius.md,
     overflow: 'hidden',
-  },
-  swipeContainerExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
   },
   row: {
     flexDirection: 'row',
@@ -581,8 +578,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: 21,
     padding: 0,
     margin: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.accent,
   },
   meta: {
     flexDirection: 'row',
@@ -669,8 +664,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   expandedPanel: {
     backgroundColor: colors.bgSecondary,
-    borderBottomLeftRadius: radius.md,
-    borderBottomRightRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
     paddingTop: spacing.xs,
