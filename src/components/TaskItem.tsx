@@ -39,6 +39,7 @@ interface Props {
   onLongPress?: () => void;
   onSelect?: () => void;
   spotlightDisabled?: boolean;
+  hideTodayLabel?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -76,6 +77,7 @@ export function TaskItem({
   onLongPress,
   onSelect,
   spotlightDisabled = false,
+  hideTodayLabel = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -291,7 +293,7 @@ export function TaskItem({
           {task.tags.length > 0 && (
             <Text style={styles.metaText}>{task.tags.slice(0, 2).join(', ')}</Text>
           )}
-          {task.dueDate && (
+          {task.dueDate && (!hideTodayLabel || formatDueDate(task.dueDate) !== 'Today') && (
             <Text style={[styles.metaText, isOverdue && styles.overdue]}>
               {formatDueDate(task.dueDate)}
             </Text>
