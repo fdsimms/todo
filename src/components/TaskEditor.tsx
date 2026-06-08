@@ -10,19 +10,18 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
+import { CalendarPicker } from './CalendarPicker';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatDeferUntil } from '../utils/dateUtils';
-import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 
 interface Props {
@@ -54,7 +53,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allProjects = useProjectStore(useShallow(s => s.projects));
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [title, setTitle] = useState('');
@@ -76,7 +74,6 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const [addingTag, setAddingTag] = useState(false);
   const [pickerMode, setPickerMode] = useState<PickerMode>('none');
   const [pickerDate, setPickerDate] = useState(new Date());
-  const [nlText, setNlText] = useState('');
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
 
@@ -115,7 +112,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setProjectId(null);
     }
-    setPickerMode('none'); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setPickerDate(new Date()); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setProjectPickerVisible(false);
@@ -161,25 +158,18 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
       defaultDate.setHours(9, 0, 0, 0);
       setPickerDate(reminderTime ?? defaultDate);
     }
-    setNlText('');
     setPickerMode(mode);
   };
 
-  const onNlChange = (text: string) => {
-    setNlText(text);
-    const parsed = parseNaturalDate(text);
-    if (parsed) setPickerDate(parsed);
-  };
-
-  const confirmPicker = () => {
-    if (pickerMode === 'dueDate') setDueDate(pickerDate);
+  const confirmPicker = (confirmed: Date) => {
+    if (pickerMode === 'dueDate') setDueDate(confirmed);
     if (pickerMode === 'deferUntil') {
       // Store noon of the selected day to ensure day-level comparison works
-      const noon = new Date(pickerDate);
+      const noon = new Date(confirmed);
       noon.setHours(12, 0, 0, 0);
       setDeferUntil(noon);
     }
-    if (pickerMode === 'reminder') setReminderTime(pickerDate);
+    if (pickerMode === 'reminder') setReminderTime(confirmed);
     setPickerMode('none');
   };
 
@@ -672,44 +662,19 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
           </View>
         </ScrollView>
 
-        {pickerMode !== 'none' && (
-          <View style={styles.pickerSheet}>
-            <View style={styles.pickerHeader}>
-              <TouchableOpacity onPress={() => setPickerMode('none')}>
-                <Text style={styles.pickerBtn}>Cancel</Text>
-              </TouchableOpacity>
-              <Text style={styles.pickerTitle}>
-                {pickerMode === 'dueDate' ? 'Due Date'
-                  : pickerMode === 'reminder' ? 'Remind Me'
-                  : 'Defer Until'}
-              </Text>
-              <TouchableOpacity onPress={confirmPicker}>
-                <Text style={[styles.pickerBtn, { color: colors.accent }]}>Done</Text>
-              </TouchableOpacity>
-            </View>
-            {pickerMode !== 'deferUntil' && (
-              <TextInput
-                style={styles.nlInput}
-                value={nlText}
-                onChangeText={onNlChange}
-                onSubmitEditing={confirmPicker}
-                placeholder='Type a date — "next monday 9am", "in 3 days"…'
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            )}
-            <DateTimePicker
-              value={pickerDate}
-              mode={pickerMode === 'deferUntil' ? 'date' : 'datetime'}
-              display="spinner"
-              onChange={(_e, d) => d && setPickerDate(d)}
-              themeVariant={isDark ? 'dark' : 'light'}
-              style={styles.picker}
-            />
-          </View>
-        )}
+        <CalendarPicker
+          visible={pickerMode !== 'none'}
+          value={pickerDate}
+          mode={pickerMode === 'deferUntil' ? 'date' : 'datetime'}
+          title={
+            pickerMode === 'dueDate' ? 'Due Date'
+              : pickerMode === 'reminder' ? 'Remind Me'
+              : 'Defer Until'
+          }
+          nlEnabled={pickerMode !== 'deferUntil'}
+          onConfirm={confirmPicker}
+          onCancel={() => setPickerMode('none')}
+        />
       </KeyboardAvoidingView>
 
       <Modal
@@ -993,28 +958,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cycleCurrentHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
-  },
-  pickerSheet: {
-    backgroundColor: colors.bgSecondary,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-    paddingBottom: 20,
-  },
-  pickerHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
-  },
-  pickerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  pickerBtn: { color: colors.textSecondary, fontSize: font.md },
-  picker: { height: 200 },
-  nlInput: {
-    color: colors.text,
-    fontSize: font.md,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 11,
-    marginHorizontal: spacing.md,
-    marginBottom: spacing.xs,
   },
   projectPickerRoot: { flex: 1, backgroundColor: colors.bg },
   projectPickerHeader: {

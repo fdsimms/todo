@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -8,10 +8,12 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import type { SnoozeSuggestion } from '../utils/snoozeEngine';
+import { CalendarPicker } from './CalendarPicker';
 
 interface Props {
   visible: boolean;
@@ -61,6 +63,7 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const options = useMemo(() => dayOptions(), []);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const translateY = useRef(new Animated.Value(600)).current;
 
@@ -84,6 +87,16 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
     }).start(() => {
       translateY.setValue(600);
       onCancel();
+    });
+  };
+
+  const openCalendar = () => {
+    Animated.timing(translateY, {
+      toValue: 600,
+      duration: 180,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowCalendar(true);
     });
   };
 
@@ -159,10 +172,35 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
           </TouchableOpacity>
         ))}
 
+        <TouchableOpacity style={styles.option} onPress={openCalendar}>
+          <View style={styles.customDateRow}>
+            <Ionicons name="calendar-outline" size={16} color={colors.accent} />
+            <Text style={[styles.optionText, { color: colors.accent }]}>Pick a date…</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.option, styles.cancelOption]} onPress={dismiss}>
           <Text style={[styles.optionText, { color: colors.textSecondary }]}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
+
+      <CalendarPicker
+        visible={showCalendar}
+        value={null}
+        mode="date"
+        title="Defer Until"
+        onConfirm={date => {
+          setShowCalendar(false);
+          const noon = new Date(date);
+          noon.setHours(12, 0, 0, 0);
+          onConfirm(noon);
+        }}
+        onCancel={() => {
+          setShowCalendar(false);
+          onCancel();
+        }}
+      />
     </Modal>
   );
 }
@@ -220,6 +258,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.sm,
     borderBottomWidth: 0,
     justifyContent: 'center',
+  },
+  customDateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
   },
   snoozeOption: {
     borderBottomWidth: 0,
