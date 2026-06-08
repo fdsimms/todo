@@ -25,6 +25,7 @@ jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
   dbGetTagRegistry: jest.fn().mockReturnValue([]),
+  dbGetCategoryRegistry: jest.fn().mockReturnValue([]),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
