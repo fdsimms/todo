@@ -37,8 +37,6 @@ const BASE: Task = {
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
-  heading: null,
-  needsReview: false,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

@@ -29,8 +29,6 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
-  heading: null,
-  needsReview: false,
   projectId: null,
   ...overrides,
 });

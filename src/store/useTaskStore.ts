@@ -14,7 +14,6 @@ import {
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkAddTags,
-  dbSetNeedsReview,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -50,8 +49,6 @@ interface TaskStore {
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
-  bulkInsertTasks: (tasks: Task[]) => void;
-  dismissImportReview: (id: string) => void;
 
   visibleTasks: () => Task[];
   deferredTasks: () => Task[];
@@ -108,8 +105,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: draft.cycleIndex ?? 0,
       cycleItems: draft.cycleItems ?? [],
       projectId: draft.projectId ?? null,
-      heading: draft.heading ?? null,
-      needsReview: draft.needsReview ?? false,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -324,8 +319,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: 0,
       cycleItems: [],
       projectId: null,
-      heading: null,
-      needsReview: false,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -388,21 +381,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         if (!ids.includes(t.id)) return t;
         return { ...t, tags: Array.from(new Set([...t.tags, ...tags])) };
       }),
-    }));
-  },
-
-  bulkInsertTasks(tasks) {
-    if (tasks.length === 0) return;
-    for (const task of tasks) {
-      dbInsertTask(task);
-    }
-    set(s => ({ tasks: [...s.tasks, ...tasks] }));
-  },
-
-  dismissImportReview(id) {
-    dbSetNeedsReview(id, false);
-    set(s => ({
-      tasks: s.tasks.map(t => (t.id === id ? { ...t, needsReview: false } : t)),
     }));
   },
 
