@@ -91,54 +91,55 @@ export function FocusScreen() {
         </View>
       </View>
 
-      <DraggableFlatList
-        data={focusedTasks}
-        keyExtractor={t => t.id}
-        onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={focusedTasks.length === 0 ? styles.emptyContainer : styles.listContent}
-        onScrollBeginDrag={() => setExpandedTaskId(null)}
-        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
-          const subs = allTasks.filter(t => t.parentId === item.id);
-          return (
-            <ScaleDecorator>
-              <TaskItem
-                task={item}
-                onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
-                expanded={expandedTaskId === item.id}
-                onEdit={() => openEditor(item)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-                drag={selectionMode ? undefined : drag}
-                isActive={isActive}
-                showDragHandle={!selectionMode}
-                selectionMode={selectionMode}
-                selected={selectedIds.has(item.id)}
-                onLongPress={() => enterSelection(item.id)}
-                onSelect={() => toggleSelection(item.id)}
-              />
-            </ScaleDecorator>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="star" size={52} color={colors.bgQuaternary} />
-            <Text style={styles.emptyTitle}>No focus set</Text>
-            <Text style={styles.emptyText}>
-              Tap "Select" to pick a few tasks to focus on.{'\n'}
-              Or star any task from the Today list.
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyBtn}
-              onPress={() => setSelectorVisible(true)}
-            >
-              <Text style={styles.emptyBtnText}>Select tasks</Text>
-            </TouchableOpacity>
-          </View>
-        }
-      />
+      {focusedTasks.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="star" size={52} color={colors.bgQuaternary} />
+          <Text style={styles.emptyTitle}>No focus set</Text>
+          <Text style={styles.emptyText}>
+            Tap "Select" to pick a few tasks to focus on.{'\n'}
+            Or star any task from the Today list.
+          </Text>
+          <TouchableOpacity
+            style={styles.emptyBtn}
+            onPress={() => setSelectorVisible(true)}
+          >
+            <Text style={styles.emptyBtnText}>Select tasks</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <DraggableFlatList
+          data={focusedTasks}
+          keyExtractor={t => t.id}
+          onDragEnd={({ data: reordered }) => reorderTasks(reordered.map((t: Task) => t.id))}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          contentContainerStyle={styles.listContent}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
+          renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
+            const subs = allTasks.filter(t => t.parentId === item.id);
+            return (
+              <ScaleDecorator>
+                <TaskItem
+                  task={item}
+                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  expanded={expandedTaskId === item.id}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  drag={selectionMode ? undefined : drag}
+                  isActive={isActive}
+                  showDragHandle={!selectionMode}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onLongPress={() => enterSelection(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                />
+              </ScaleDecorator>
+            );
+          }}
+        />
+      )}
 
       <FocusSelector
         visible={selectorVisible}
@@ -191,7 +192,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: '600' },
-  emptyContainer: { flex: 1 },
   empty: {
     flex: 1,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl,
