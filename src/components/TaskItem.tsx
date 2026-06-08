@@ -34,7 +34,6 @@ interface Props {
   subtasks?: Task[];
   drag?: () => void;
   isActive?: boolean;
-  showDragHandle?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
   onLongPress?: () => void;
@@ -72,7 +71,6 @@ export function TaskItem({
   subtasks = [],
   drag,
   isActive = false,
-  showDragHandle = false,
   selectionMode = false,
   selected = false,
   onLongPress,
@@ -114,6 +112,12 @@ export function TaskItem({
       useNativeDriver: false,
     }).start();
   }, [expanded]);
+
+  useEffect(() => {
+    if (isActive) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+  }, [isActive]);
 
   // Save and dismiss keyboard whenever the task collapses while title is being edited
   useEffect(() => {
@@ -245,7 +249,7 @@ export function TaskItem({
       <TouchableOpacity
         style={styles.content}
         onPress={selectionMode ? onSelect : onPress}
-        onLongPress={onLongPress}
+        onLongPress={drag ?? onLongPress}
         delayLongPress={400}
         activeOpacity={0.7}
       >
@@ -358,16 +362,6 @@ export function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showDragHandle && (
-        <TouchableOpacity
-          onLongPress={drag}
-          delayLongPress={150}
-          hitSlop={8}
-          style={styles.dragHandle}
-        >
-          <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
-        </TouchableOpacity>
-      )}
     </View>
   );
 
@@ -683,10 +677,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   starBtn: {
     padding: 4,
-  },
-  dragHandle: {
-    padding: 4,
-    marginLeft: 2,
   },
   subtaskBadge: {
     flexDirection: 'row',

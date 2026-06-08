@@ -136,7 +136,6 @@ export function FocusScreen() {
                   subtasks={subs}
                   drag={selectionMode ? undefined : drag}
                   isActive={isActive}
-                  showDragHandle={!selectionMode}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
                   onLongPress={() => enterSelection(item.id)}

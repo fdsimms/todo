@@ -211,7 +211,6 @@ export function TodayScreen() {
           subtasks={subs}
           drag={selectionMode ? undefined : drag}
           isActive={isActive}
-          showDragHandle={!selectionMode && sort === 'default' && !selectedTag}
           selectionMode={selectionMode}
           selected={selectedIds.has(item.task.id)}
           onLongPress={() => enterSelection(item.task.id)}
