@@ -122,7 +122,13 @@ export function FocusScreen() {
               <ScaleDecorator>
                 <TaskItem
                   task={item}
-                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
                   expanded={expandedTaskId === item.id}
                   onEdit={() => openEditor(item)}
                   subtaskCount={subs.length}
@@ -135,6 +141,7 @@ export function FocusScreen() {
                   selected={selectedIds.has(item.id)}
                   onLongPress={() => enterSelection(item.id)}
                   onSelect={() => toggleSelection(item.id)}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                 />
               </ScaleDecorator>
             );

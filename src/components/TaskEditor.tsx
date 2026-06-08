@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -88,6 +89,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const cycleItemSavedRef = useRef(false);
   const subtaskInputRef = useRef<TextInput>(null);
   const subtaskSavedRef = useRef(false);
+  const initialStateRef = useRef<string>('');
 
   useEffect(() => {
     if (!visible) return;
@@ -115,6 +117,25 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setTimeout(() => titleRef.current?.focus(), 100);
+    // Snapshot initial form state for unsaved-changes detection
+    initialStateRef.current = JSON.stringify({
+      title: task ? task.title : (initialTitle ?? ''),
+      notes: task ? task.notes : '',
+      tags: task ? task.tags : [],
+      dueDate: task?.dueDate ?? null,
+      deferUntil: task?.deferUntil ?? null,
+      reminderTime: task?.reminderTime ?? null,
+      recurrenceType: task?.recurrenceType ?? 'none',
+      recurrenceInterval: task?.recurrenceInterval ?? 1,
+      recurrenceFromCompletion: task?.recurrenceFromCompletion ?? false,
+      priority: task?.priority ?? 0,
+      effort: task?.effort ?? 0,
+      focused: task?.focused ?? false,
+      someday: task?.someday ?? (initialSomeday ?? false),
+      cycleEnabled: task?.cycleEnabled ?? false,
+      cycleItems: task?.cycleItems ?? [],
+      cycleIndex: task?.cycleIndex ?? 0,
+    });
   }, [visible, task]);
 
   const save = () => {
@@ -182,19 +203,52 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     setRecurrenceType(types[(types.indexOf(recurrenceType) + 1) % types.length]);
   };
 
+  const handleCancel = () => {
+    const current = JSON.stringify({
+      title,
+      notes,
+      tags,
+      dueDate: dueDate?.toISOString() ?? null,
+      deferUntil: deferUntil?.toISOString() ?? null,
+      reminderTime: reminderTime?.toISOString() ?? null,
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceFromCompletion,
+      priority,
+      effort,
+      focused,
+      someday,
+      cycleEnabled,
+      cycleItems,
+      cycleIndex,
+    });
+    if (current !== initialStateRef.current) {
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes. Are you sure you want to discard them?',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          { text: 'Discard', style: 'destructive', onPress: onClose },
+        ],
+      );
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleCancel}
     >
       <KeyboardAvoidingView
         style={styles.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} hitSlop={8}>
+          <TouchableOpacity onPress={handleCancel} hitSlop={8}>
             <Text style={styles.headerBtn}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{task ? 'Edit Task' : 'New Task'}</Text>

@@ -38,6 +38,7 @@ interface Props {
   selected?: boolean;
   onLongPress?: () => void;
   onSelect?: () => void;
+  spotlightDisabled?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -75,6 +76,7 @@ export function TaskItem({
   selected = false,
   onLongPress,
   onSelect,
+  spotlightDisabled = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -494,8 +496,12 @@ export function TaskItem({
 
   return (
     <>
-      <Animated.View style={[styles.itemWrapper, { opacity: isActive ? 0.85 : rowOpacity }]}>
-        {selectionMode ? (
+      <Animated.View style={[
+        styles.itemWrapper,
+        { opacity: isActive ? 0.85 : rowOpacity },
+        spotlightDisabled && styles.itemWrapperDimmed,
+      ]}>
+        {selectionMode || spotlightDisabled ? (
           <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
             {rowBody}
           </View>
@@ -567,6 +573,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
+  },
+  itemWrapperDimmed: {
+    opacity: 0.35,
   },
   swipeContainer: {
     borderRadius: radius.md,

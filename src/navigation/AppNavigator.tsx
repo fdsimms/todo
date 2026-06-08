@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import { useColors } from '../theme/ThemeContext';
 import { font } from '../theme';
 
 const Tab = createBottomTabNavigator();
+const EDGE_WIDTH = 20;
 
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
@@ -24,6 +26,16 @@ function MorePlaceholder() {
   return null;
 }
 
+const styles = StyleSheet.create({
+  edgeZone: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: EDGE_WIDTH,
+  },
+});
+
 export default function AppNavigator() {
   const colors = useColors();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -32,6 +44,19 @@ export default function AppNavigator() {
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  const edgePanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: (e) => e.nativeEvent.pageX < EDGE_WIDTH,
+      onMoveShouldSetPanResponder: (e, gs) =>
+        e.nativeEvent.pageX < EDGE_WIDTH + 10 &&
+        gs.dx > 8 &&
+        Math.abs(gs.dx) > Math.abs(gs.dy),
+      onPanResponderRelease: (_e, gs) => {
+        if (gs.dx > 40 || gs.vx > 0.4) openMenu();
+      },
+    })
+  ).current;
 
   const handleDrawerNavigate = useCallback((tabName: string) => {
     setActiveTab(tabName);
@@ -108,6 +133,12 @@ export default function AppNavigator() {
         onNavigate={handleDrawerNavigate}
         activeTab={activeTab}
       />
+      {!menuOpen && (
+        <View
+          style={styles.edgeZone}
+          {...edgePanResponder.panHandlers}
+        />
+      )}
     </>
   );
 }

@@ -64,9 +64,13 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
     return d;
   });
   const [nlText, setNlText] = useState('');
+  const [pickerReady, setPickerReady] = useState(false);
 
   useEffect(() => {
-    if (!visible) return;
+    if (!visible) {
+      setPickerReady(false);
+      return;
+    }
     const base = value ?? new Date();
     setDisplayMonth(startOfMonth(base));
     setSelectedDate(value);
@@ -114,6 +118,7 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onCancel}
+      onShow={() => setPickerReady(true)}
     >
       <View style={styles.root}>
         {/* Header */}
@@ -208,7 +213,7 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
         </View>
 
         {/* Time picker (datetime mode only) */}
-        {mode === 'datetime' && (
+        {mode === 'datetime' && pickerReady && (
           <View style={styles.timePicker}>
             <View style={styles.timePickerHeader}>
               <Ionicons name="time-outline" size={16} color={colors.textSecondary} />

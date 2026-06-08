@@ -108,12 +108,19 @@ export function TagsScreen() {
               return (
                 <TaskItem
                   task={item}
-                  onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
                   expanded={expandedTaskId === item.id}
                   onEdit={() => openEditor(item)}
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                 />
               );
             }}
