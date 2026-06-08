@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  ActivityIndicator,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -21,9 +22,12 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatDeferUntil } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
+import { suggestTaskAttributes } from '../services/aiSuggestions';
+import type { AISuggestions } from '../services/aiSuggestions';
 
 interface Props {
   visible: boolean;
@@ -53,8 +57,12 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestions | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -116,6 +124,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     setPickerMode('none'); setPickerDate(new Date()); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
+    setAiLoading(false); setAiSuggestions(null);
     setTimeout(() => titleRef.current?.focus(), 100);
     // Snapshot initial form state for unsaved-changes detection
     initialStateRef.current = JSON.stringify({
@@ -236,6 +245,22 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
     }
   };
 
+  const handleSuggest = async () => {
+    setAiLoading(true);
+    setAiSuggestions(null);
+    try {
+      const result = await suggestTaskAttributes(title.trim(), notes, allTags);
+      setAiSuggestions({
+        tags: result.tags.filter(t => !tags.includes(t)),
+        effort: result.effort,
+      });
+    } catch {
+      // silently fail — no API key or network issue
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <Modal
       visible={visible}
@@ -280,7 +305,27 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
 
           {/* Tags */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Tags</Text>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionLabel}>Tags</Text>
+              {!!anthropicApiKey && (
+                <TouchableOpacity
+                  style={styles.suggestBtn}
+                  onPress={handleSuggest}
+                  disabled={aiLoading || !title.trim()}
+                  hitSlop={8}
+                >
+                  {aiLoading
+                    ? <ActivityIndicator size="small" color={colors.purple} />
+                    : (
+                      <>
+                        <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                        <Text style={styles.suggestBtnText}>Suggest</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+              )}
+            </View>
             <View style={styles.tagRow}>
               {tags.map(tag => (
                 <TouchableOpacity
@@ -326,6 +371,27 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                 ))}
               </View>
             )}
+            {aiSuggestions && aiSuggestions.tags.length > 0 && (
+              <View style={styles.aiRow}>
+                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                <Text style={styles.aiLabel}>AI</Text>
+                {aiSuggestions.tags.map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[styles.tagSuggestion, styles.aiTagChip]}
+                    onPress={() => {
+                      setTags(prev => [...prev, tag]);
+                      setAiSuggestions(prev => prev
+                        ? { ...prev, tags: prev.tags.filter(t => t !== tag) }
+                        : null
+                      );
+                    }}
+                  >
+                    <Text style={[styles.tagSuggestionText, { color: colors.purple }]}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
           </View>
 
           {/* Priority */}
@@ -360,6 +426,7 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                   style={[
                     styles.pill,
                     effort === e && styles.pillActiveNeutral,
+                    effort === 0 && aiSuggestions && aiSuggestions.effort === e && e > 0 && styles.pillAiHinted,
                   ]}
                   onPress={() => setEffort(e)}
                 >
@@ -372,6 +439,17 @@ export function TaskEditor({ visible, task, initialSomeday, initialTitle, onClos
                 </TouchableOpacity>
               ))}
             </View>
+            {aiSuggestions && aiSuggestions.effort > 0 && effort === 0 && (
+              <View style={styles.aiRow}>
+                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                <Text style={styles.aiLabel}>AI suggests</Text>
+                <TouchableOpacity onPress={() => setEffort(aiSuggestions.effort)} hitSlop={8}>
+                  <Text style={styles.aiEffortApply}>
+                    {EFFORT_LABELS[aiSuggestions.effort]} ({EFFORT_HINTS[aiSuggestions.effort]})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Subtasks — only shown when editing an existing task */}
@@ -799,6 +877,30 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  suggestBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.purple + '22',
+  },
+  suggestBtnText: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
+  aiRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    marginTop: spacing.sm, flexWrap: 'wrap',
+  },
+  aiLabel: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
+  aiTagChip: { backgroundColor: colors.purple + '22' },
+  aiEffortApply: {
+    color: colors.purple, fontSize: font.xs, fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  pillAiHinted: {
+    borderWidth: 1, borderColor: colors.purple + '88', borderStyle: 'dashed',
   },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
