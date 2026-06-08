@@ -34,7 +34,9 @@ export function initDatabase(): void {
       someday INTEGER NOT NULL DEFAULT 0,
       cycle_enabled INTEGER NOT NULL DEFAULT 0,
       cycle_index INTEGER NOT NULL DEFAULT 0,
-      cycle_items TEXT NOT NULL DEFAULT '[]'
+      cycle_items TEXT NOT NULL DEFAULT '[]',
+      heading TEXT,
+      needs_review INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -69,6 +71,8 @@ export function initDatabase(): void {
     "ALTER TABLE tasks ADD COLUMN cycle_items TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
+    'ALTER TABLE tasks ADD COLUMN heading TEXT',
+    'ALTER TABLE tasks ADD COLUMN needs_review INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -117,6 +121,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     cycleIndex: (row.cycle_index as number) ?? 0,
     cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
     projectId: (row.project_id as string) ?? null,
+    heading: (row.heading as string) ?? null,
+    needsReview: Boolean(row.needs_review),
   };
 }
 
@@ -134,8 +140,8 @@ export function dbInsertTask(task: Task): void {
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
       tags, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time, someday,
-      cycle_enabled, cycle_index, cycle_items, project_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, project_id, heading, needs_review
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -147,7 +153,7 @@ export function dbInsertTask(task: Task): void {
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.someday ? 1 : 0,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null,
+      task.projectId ?? null, task.heading ?? null, task.needsReview ? 1 : 0,
     ]
   );
 }
@@ -160,7 +166,7 @@ export function dbUpdateTask(task: Task): void {
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?, someday=?,
-      cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?
+      cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?, heading=?, needs_review=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -173,7 +179,7 @@ export function dbUpdateTask(task: Task): void {
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.someday ? 1 : 0,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null,
+      task.projectId ?? null, task.heading ?? null, task.needsReview ? 1 : 0,
       task.id,
     ]
   );
@@ -225,6 +231,10 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
       db.runSync('UPDATE tasks SET defer_until = ? WHERE id = ?', [deferUntil, id]);
     }
   });
+}
+
+export function dbSetNeedsReview(id: string, value: boolean): void {
+  db.runSync('UPDATE tasks SET needs_review = ? WHERE id = ?', [value ? 1 : 0, id]);
 }
 
 export function dbBulkAddTags(ids: string[], tagsToAdd: string[]): void {

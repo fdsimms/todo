@@ -61,6 +61,9 @@ export interface Task {
   cycleEnabled: boolean;
   cycleIndex: number;        // index of the currently active CycleItem
   cycleItems: CycleItem[];
+
+  heading: string | null;    // section label within a project (from Things 3 Action Groups)
+  needsReview: boolean;      // true for imported tasks awaiting user review
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;

@@ -78,6 +78,7 @@ export function TaskItem({
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const dismissImportReview = useTaskStore(s => s.dismissImportReview);
   const allTasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -249,6 +250,15 @@ export function TaskItem({
                 {subtaskDoneCount}/{subtaskCount}
               </Text>
             </View>
+          )}
+          {task.needsReview && (
+            <TouchableOpacity
+              style={styles.importedBadge}
+              onPress={e => { e.stopPropagation(); dismissImportReview(task.id); }}
+              hitSlop={6}
+            >
+              <Text style={styles.importedBadgeText}>Imported ✕</Text>
+            </TouchableOpacity>
           )}
         </View>
       </TouchableOpacity>
@@ -550,6 +560,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   subtaskBadgeTextDone: {
     color: colors.green,
+  },
+  importedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.orange + '22',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  importedBadgeText: {
+    color: colors.orange,
+    fontSize: 11,
+    fontWeight: '600',
   },
   deleteAction: {
     backgroundColor: colors.red,
