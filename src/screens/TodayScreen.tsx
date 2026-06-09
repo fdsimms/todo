@@ -42,6 +42,7 @@ export function TodayScreen() {
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
@@ -166,12 +167,12 @@ export function TodayScreen() {
       const restTasks = filtered.filter(t => !t.focused);
       if (restTasks.length > 0) {
         items.push({ type: 'rest-header' });
-        if (restExpanded) items.push(...makeCategoryGroups(restTasks));
+        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
       return items;
     }
 
-    const items = makeCategoryGroups(filtered);
+    const items = makeCategoryGroups(filtered, allCategories);
     if (showUpcoming && upcomingTodayTasks.length > 0) {
       let upcomingFiltered = upcomingTodayTasks;
       if (filterPriorities.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterPriorities.includes(t.priority));
@@ -182,7 +183,7 @@ export function TodayScreen() {
       }
     }
     return items;
-  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts]);
+  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
@@ -490,6 +491,7 @@ export function TodayScreen() {
             const { taskIds, categoryUpdates, settled } = resolveDrop(dropped, {
               isUpcoming: id => upcomingTaskIds.has(id),
               showUpcoming,
+              categoryOrder: allCategories,
             });
 
             // Show the final grouped layout immediately to avoid a flash; the

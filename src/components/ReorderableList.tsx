@@ -252,8 +252,15 @@ export function ReorderableList<T>({
                   pointerEvents={isPlaceholder ? 'none' : 'auto'}
                   style={isPlaceholder ? styles.placeholder : undefined}
                   onLayout={e => {
+                    // Record unconditionally: rows that move during a drag are
+                    // already in their final positions when it commits, so no
+                    // post-drop onLayout would fire to refresh a "rest only"
+                    // cache — leaving stale anchors that made the next drag's
+                    // overlay float away from the finger. A cancelled drag
+                    // shifts rows back, re-firing onLayout, so the cache
+                    // self-corrects in every path.
                     heightsRef.current.set(key, e.nativeEvent.layout.height);
-                    if (!isDragging) layoutYRef.current.set(key, e.nativeEvent.layout.y);
+                    layoutYRef.current.set(key, e.nativeEvent.layout.y);
                   }}
                 >
                   {renderItem({
