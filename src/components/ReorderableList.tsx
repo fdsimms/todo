@@ -75,6 +75,13 @@ export function ReorderableList<T>({
 }: Props<T>) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  // The committed order, rendered locally the instant a drop lands. This is
+  // set in the SAME state batch as the drag reset, so the first frame after
+  // the overlay disappears is guaranteed to show the new order — the parent's
+  // data refresh (via onReorder → store → props) may land a frame later, and
+  // without this the list briefly flashed the old order on drop. Cleared as
+  // soon as the data prop changes (the parent caught up).
+  const [committedData, setCommittedData] = useState<T[] | null>(null);
   // Overlay top position (viewport coords) at drag start; finger movement is
   // applied via the Animated translate values so moves don't re-render the
   // list. The card follows the finger in both axes (X is purely cosmetic —
@@ -82,6 +89,7 @@ export function ReorderableList<T>({
   const [overlayBaseTop, setOverlayBaseTop] = useState(0);
   const overlayY = useRef(new Animated.Value(0)).current;
   const overlayX = useRef(new Animated.Value(0)).current;
+  const overlayScale = useRef(new Animated.Value(1.03)).current;
 
   const scrollRef = useRef<ScrollView>(null);
   const dataRef = useRef(data);
@@ -99,19 +107,27 @@ export function ReorderableList<T>({
   const heightsRef = useRef<Map<string, number>>(new Map());
   const layoutYRef = useRef<Map<string, number>>(new Map());
   const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guards against commitDrag re-entry while the drop animation runs (it can
+  // be invoked from both onTouchEnd and onPanResponderRelease).
+  const committingRef = useRef(false);
   // Mirrors overlayBaseTop state so the stable PanResponder callbacks read the
   // latest value.
   const overlayBaseTopRef = useRef(0);
 
-  useEffect(() => { dataRef.current = data; }, [data]);
+  // What the rows currently render. Kept in a ref (assigned during render) so
+  // the gesture handlers always operate on the same array the user is seeing.
+  const renderData = committedData ?? data;
+  dataRef.current = renderData;
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
-  // If the data identity changes mid-drag (e.g. an external store update),
-  // cancel the drag rather than committing against a stale order.
+  // The parent caught up (or changed the data externally): drop the local
+  // committed copy, and cancel any in-progress drag rather than committing
+  // against a stale order.
   const dataKeySignature = data.map(keyExtractor).join('\u0000');
   useEffect(() => {
-    if (activeIndexRef.current !== null) resetDrag();
+    setCommittedData(null);
+    if (activeIndexRef.current !== null && !committingRef.current) resetDrag();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKeySignature]);
 
@@ -124,13 +140,15 @@ export function ReorderableList<T>({
 
   const resetDrag = useCallback(() => {
     stopAutoscroll();
+    committingRef.current = false;
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
     setActiveIndex(null);
     setHoverIndex(null);
     overlayY.setValue(0);
     overlayX.setValue(0);
-  }, [overlayY, overlayX]);
+    overlayScale.setValue(1.03);
+  }, [overlayY, overlayX, overlayScale]);
 
   const currentHeights = (): number[] =>
     dataRef.current.map(item => heightsRef.current.get(keyExtractor(item)) ?? DEFAULT_ROW_HEIGHT);
@@ -179,12 +197,37 @@ export function ReorderableList<T>({
 
   const commitDrag = useCallback(() => {
     const ai = activeIndexRef.current;
+    if (ai === null || committingRef.current) return;
+    committingRef.current = true;
+    stopAutoscroll();
+
     const hi = hoverIndexRef.current;
-    if (ai === null) return;
     const result = hi !== null && hi !== ai ? moveItem(dataRef.current, ai, hi) : null;
-    resetDrag();
-    if (result) onReorderRef.current(result);
-  }, [resetDrag]);
+
+    // Glide the floating card into the open slot before committing. The slot
+    // is the placeholder row, whose current position onLayout has recorded, so
+    // the card lands exactly where the real row will appear. Committing only
+    // after the card covers the destination also masks the frame where the
+    // overlay swaps for the real row.
+    const activeKey = keyExtractor(dataRef.current[ai]!);
+    const slotTop = (layoutYRef.current.get(activeKey) ?? 0) - scrollOffsetRef.current;
+    Animated.parallel([
+      Animated.timing(overlayY, {
+        toValue: slotTop - overlayBaseTopRef.current,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayX, { toValue: 0, duration: 160, useNativeDriver: true }),
+      Animated.timing(overlayScale, { toValue: 1, duration: 160, useNativeDriver: true }),
+    ]).start(() => {
+      // Render the committed order locally in the same state batch as the
+      // reset, so the first frame without the overlay already shows the new
+      // order (see committedData).
+      if (result) setCommittedData(result);
+      resetDrag();
+      if (result) onReorderRef.current(result);
+    });
+  }, [resetDrag, keyExtractor, overlayY, overlayX, overlayScale]);
 
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
@@ -202,6 +245,7 @@ export function ReorderableList<T>({
     setOverlayBaseTop(baseTop);
     overlayY.setValue(0);
     overlayX.setValue(0);
+    overlayScale.setValue(1.03);
     setActiveIndex(index);
     setHoverIndex(index);
     onDragBegin?.();
@@ -219,7 +263,7 @@ export function ReorderableList<T>({
         startPageXRef.current = e.nativeEvent.pageX;
       },
       onPanResponderMove: e => {
-        if (activeIndexRef.current === null) return;
+        if (activeIndexRef.current === null || committingRef.current) return;
         lastPageYRef.current = e.nativeEvent.pageY;
         overlayY.setValue(lastPageYRef.current - startPageYRef.current);
         overlayX.setValue(e.nativeEvent.pageX - startPageXRef.current);
@@ -227,7 +271,11 @@ export function ReorderableList<T>({
         maybeAutoscroll();
       },
       onPanResponderRelease: () => commitDrag(),
-      onPanResponderTerminate: () => resetDrag(),
+      onPanResponderTerminate: () => {
+        // A terminate during the drop animation is cleaned up by the
+        // animation's completion; resetting here would yank the gliding card.
+        if (!committingRef.current) resetDrag();
+      },
     }),
   ).current;
 
@@ -238,10 +286,10 @@ export function ReorderableList<T>({
   const isDragging = activeIndex !== null;
   const displayData =
     isDragging && hoverIndex !== null && hoverIndex !== activeIndex
-      ? moveItem(data, activeIndex, hoverIndex)
-      : data;
-  const activeKey = isDragging ? keyExtractor(data[activeIndex]!) : null;
-  const activeItem = isDragging ? data[activeIndex]! : null;
+      ? moveItem(renderData, activeIndex, hoverIndex)
+      : renderData;
+  const activeKey = isDragging ? keyExtractor(renderData[activeIndex]!) : null;
+  const activeItem = isDragging ? renderData[activeIndex]! : null;
 
   return (
     <View style={styles.container} {...panResponder.panHandlers} onTouchEnd={commitDrag}>
@@ -259,7 +307,7 @@ export function ReorderableList<T>({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {data.length === 0
+        {renderData.length === 0
           ? ListEmptyComponent
           : displayData.map(item => {
               const key = keyExtractor(item);
@@ -307,7 +355,7 @@ export function ReorderableList<T>({
             styles.overlay,
             {
               top: overlayBaseTop,
-              transform: [{ translateY: overlayY }, { translateX: overlayX }, { scale: 1.03 }],
+              transform: [{ translateY: overlayY }, { translateX: overlayX }, { scale: overlayScale }],
             },
           ]}
         >
