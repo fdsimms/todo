@@ -41,6 +41,7 @@ export function TodayScreen() {
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
+  const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -109,11 +110,10 @@ export function TodayScreen() {
     setEditorVisible(true);
   };
 
-  const applyFiltersAndSort = (tasks: Task[]): Task[] => {
-    let result = tasks;
+  const filtered = useMemo(() => {
+    let result = visibleTasks;
     if (filterPriorities.length > 0) result = result.filter(t => filterPriorities.includes(t.priority));
     if (filterEfforts.length > 0) result = result.filter(t => filterEfforts.includes(t.effort));
-
     switch (sort) {
       case 'priority': return [...result].sort((a, b) => b.priority - a.priority);
       case 'effort-asc': return [...result].sort((a, b) => (a.effort || 99) - (b.effort || 99));
@@ -127,9 +127,7 @@ export function TodayScreen() {
       case 'streak': return [...result].sort((a, b) => b.streakCount - a.streakCount);
       default: return result;
     }
-  };
-
-  const filtered = applyFiltersAndSort(visibleTasks);
+  }, [visibleTasks, sort, filterPriorities, filterEfforts]);
 
   type ListItem =
     | { type: 'header'; label: string }
@@ -440,8 +438,7 @@ export function TodayScreen() {
               }
             }
 
-            reorderTasks(taskIds);
-            categoryUpdates.forEach(u => updateTask(u.id, { category: u.category }));
+            reorderWithCategoryUpdates(taskIds, categoryUpdates);
           }}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
