@@ -214,7 +214,6 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'rest-header') {
-      const restCount = filtered.filter(t => !t.focused).length;
       return (
         <TouchableOpacity
           style={styles.restSectionHeader}
@@ -222,7 +221,6 @@ export function TodayScreen() {
           activeOpacity={0.7}
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
-          {restCount > 0 && <Text style={styles.restCount}>{restCount}</Text>}
           <Ionicons name={restExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
         </TouchableOpacity>
       );
@@ -379,7 +377,6 @@ export function TodayScreen() {
           >
             <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              {mode === 'later' && deferredTasks.length > 0 ? ` ${deferredTasks.length}` : ''}
             </Text>
           </TouchableOpacity>
         ))}
@@ -653,10 +650,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
-  },
-  restCount: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
-    marginLeft: 2,
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
