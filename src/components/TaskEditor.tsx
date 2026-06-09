@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
-import { CalendarPicker } from './CalendarPicker';
+import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
@@ -791,13 +791,11 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
           </View>
         </ScrollView>
 
-        <CalendarPicker
+        <RemindMePicker
           visible={pickerMode !== 'none'}
           value={pickerDate}
-          mode="datetime"
-          title="Remind Me"
-          nlEnabled
           onConfirm={confirmPicker}
+          onClear={reminderTime ? () => { setReminderTime(null); setPickerMode('none'); } : undefined}
           onCancel={() => setPickerMode('none')}
         />
         <WhenPicker
