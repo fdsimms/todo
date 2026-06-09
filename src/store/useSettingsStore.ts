@@ -9,6 +9,8 @@ interface SettingsStore {
   eveningStart: string;   // "HH:MM" — when evening begins (default "18:00")
   themeMode: ThemeMode;
   anthropicApiKey: string;
+  vacationMode: boolean;
+  vacationStart: string | null;
   initialized: boolean;
   initialize: () => void;
   setDayResetTime: (time: string) => void;
@@ -17,6 +19,7 @@ interface SettingsStore {
   setEveningStart: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAnthropicApiKey: (key: string) => void;
+  setVacationMode: (on: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>(set => ({
@@ -26,6 +29,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   eveningStart: '18:00',
   themeMode: 'dark',
   anthropicApiKey: '',
+  vacationMode: false,
+  vacationStart: null,
   initialized: false,
 
   initialize() {
@@ -35,7 +40,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const eveningStart = dbGetSetting('eveningStart') ?? '18:00';
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, initialized: true });
+    const vacationMode = dbGetSetting('vacationMode') === 'true';
+    const vacationStart = dbGetSetting('vacationStart') ?? null;
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -67,5 +74,17 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAnthropicApiKey(key: string) {
     dbSetSetting('anthropicApiKey', key);
     set({ anthropicApiKey: key });
+  },
+
+  setVacationMode(on: boolean) {
+    if (on) {
+      const start = new Date().toISOString();
+      dbSetSetting('vacationMode', 'true');
+      dbSetSetting('vacationStart', start);
+      set({ vacationMode: true, vacationStart: start });
+    } else {
+      dbSetSetting('vacationMode', 'false');
+      set({ vacationMode: false, vacationStart: null });
+    }
   },
 }));

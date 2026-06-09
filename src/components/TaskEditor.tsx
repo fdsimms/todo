@@ -78,6 +78,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [focused, setFocused] = useState(false);
+  const [vacationPause, setVacationPause] = useState(false);
 
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
@@ -115,12 +116,14 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
+      setVacationPause(task.vacationPause ?? false);
     } else {
       setTitle(initialTitle ?? ''); setNotes(''); setCategory(null); setTags([]);
       setDueDate(null); setTimeSegments([]); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
+      setVacationPause(false);
     }
     setPickerMode('none'); setShowWhenPicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
@@ -144,6 +147,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       cycleEnabled: task?.cycleEnabled ?? false,
       cycleItems: task?.cycleItems ?? [],
       cycleIndex: task?.cycleIndex ?? 0,
+      vacationPause: task?.vacationPause ?? false,
     });
   }, [visible, task]);
 
@@ -164,6 +168,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       cycleItems,
       cycleIndex,
       projectId: task?.projectId ?? null,
+      vacationPause,
     };
     if (task) {
       setLastEditSnapshot({ id: task.id, snapshot: { ...task } });
@@ -206,7 +211,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval, recurrenceFromCompletion,
-      priority, effort, focused, cycleEnabled, cycleItems, cycleIndex,
+      priority, effort, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -677,6 +682,17 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
               </View>
               <View style={[styles.toggle, focused && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={0.7}>
+              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Vacation pause</Text>
+                {!vacationPause && <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>}
+              </View>
+              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
             <View style={styles.sep} />

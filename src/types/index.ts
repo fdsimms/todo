@@ -61,6 +61,8 @@ export interface Task {
   cycleEnabled: boolean;
   cycleIndex: number;        // index of the currently active CycleItem
   cycleItems: CycleItem[];
+
+  vacationPause: boolean;    // hide and protect streak while vacation mode is on
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
