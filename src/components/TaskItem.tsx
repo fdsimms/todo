@@ -21,7 +21,6 @@ import { tagColor } from '../utils/tagColor';
 import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
-import { CalendarPicker } from './CalendarPicker';
 
 interface Props {
   task: Task;
@@ -88,7 +87,6 @@ export function TaskItem({
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showWhenPicker, setShowWhenPicker] = useState(false);
-  const [showCalendar, setShowCalendar] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
@@ -467,7 +465,7 @@ export function TaskItem({
                 <View style={styles.editSectionRight}>
                   <TouchableOpacity
                     style={styles.editBtn}
-                    onPress={() => setShowCalendar(true)}
+                    onPress={() => setShowWhenPicker(true)}
                     activeOpacity={0.7}
                   >
                     <Ionicons
@@ -558,22 +556,6 @@ export function TaskItem({
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}
-        />
-      )}
-      {!selectionMode && (
-        <CalendarPicker
-          visible={showCalendar}
-          value={task.dueDate ? new Date(task.dueDate) : null}
-          mode="date"
-          title="Date"
-          nlEnabled
-          onConfirm={date => {
-            const noon = new Date(date);
-            noon.setHours(12, 0, 0, 0);
-            updateTask(task.id, { dueDate: noon.toISOString() });
-            setShowCalendar(false);
-          }}
-          onCancel={() => setShowCalendar(false)}
         />
       )}
     </>
