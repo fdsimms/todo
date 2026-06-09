@@ -32,7 +32,7 @@ interface Props {
   onOpenFull: (title: string) => void;
 }
 
-type ActivePanel = 'date' | 'priority' | 'effort' | 'tags' | null;
+type ActivePanel = 'date' | 'priority' | 'effort' | 'tags' | 'category' | null;
 
 const DATE_PRESETS = [
   { label: 'Today', days: 0 },
@@ -43,6 +43,7 @@ const DATE_PRESETS = [
 export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
@@ -66,6 +67,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [effort, setEffort] = useState<Effort>(0);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [tags, setTags] = useState<string[]>([]);
+  const [category, setCategory] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -77,6 +79,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setEffort(0);
       setDueDate(null);
       setTags([]);
+      setCategory(null);
       setTagInput('');
       setActivePanel(null);
       setAiLoading(false);
@@ -100,6 +103,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       effort,
       dueDate: dueDate?.toISOString() ?? null,
       tags,
+      category,
     });
     onClose();
   };
@@ -133,9 +137,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     if (!title.trim()) return;
     setAiLoading(true);
     try {
-      const result = await suggestTaskAttributes(title.trim(), '', allTags, []);
+      const result = await suggestTaskAttributes(title.trim(), '', allTags, allCategories);
       if (result.effort > 0 && effort === 0) setEffort(result.effort);
       if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
+      if (result.category && !category) setCategory(result.category);
     } catch {
       // silent fail
     } finally {
@@ -258,6 +263,22 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               />
               <Text style={[styles.toolChipText, tags.length > 0 && styles.toolChipTextSet]}>
                 {tags.length > 0 ? tags.slice(0, 2).join(', ') : 'Tags'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Category chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
+              onPress={() => togglePanel('category')}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="folder-outline"
+                size={13}
+                color={category ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]}>
+                {category ?? 'Category'}
               </Text>
             </TouchableOpacity>
 
@@ -419,6 +440,32 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                   </View>
                 </ScrollView>
               )}
+            </View>
+          )}
+
+          {activePanel === 'category' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                <TouchableOpacity
+                  style={[styles.presetChip, category === null && styles.presetChipActive]}
+                  onPress={() => setCategory(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
+                </TouchableOpacity>
+                {allCategories.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.presetChip, category === cat && styles.presetChipActive]}
+                    onPress={() => setCategory(prev => prev === cat ? null : cat)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
