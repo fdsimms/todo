@@ -20,8 +20,9 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort } from '../types';
+import type { Priority, Effort, TimeOfDay } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import { WhenPicker } from './WhenPicker';
 import { tagColor } from '../utils/tagColor';
 import { format, addDays, startOfDay } from 'date-fns';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
@@ -32,13 +33,8 @@ interface Props {
   onOpenFull: (title: string) => void;
 }
 
-type ActivePanel = 'date' | 'priority' | 'effort' | 'tags' | 'category' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | null;
 
-const DATE_PRESETS = [
-  { label: 'Today', days: 0 },
-  { label: 'Tomorrow', days: 1 },
-  { label: '+7 days', days: 7 },
-];
 
 export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addTask = useTaskStore(s => s.addTask);
@@ -66,10 +62,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
 
   useEffect(() => {
@@ -78,10 +76,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setPriority(0);
       setEffort(0);
       setDueDate(null);
+      setTimeSegments([]);
       setTags([]);
       setCategory(null);
       setTagInput('');
       setActivePanel(null);
+      setWhenPickerVisible(false);
       setAiLoading(false);
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);
@@ -102,6 +102,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       priority,
       effort,
       dueDate: dueDate?.toISOString() ?? null,
+      timeSegments,
       tags,
       category,
     });
@@ -209,8 +210,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           <View style={styles.toolbar}>
             {/* Due date chip */}
             <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'date' && styles.toolChipActive, dueDate != null && styles.toolChipSet]}
-              onPress={() => togglePanel('date')}
+              style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
+              onPress={() => setWhenPickerVisible(true)}
               activeOpacity={0.7}
             >
               <Ionicons
@@ -301,41 +302,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           </View>
 
           {/* Inline panels */}
-          {activePanel === 'date' && (
-            <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                {DATE_PRESETS.map(({ label, days }) => {
-                  const d = addDays(new Date(), days);
-                  d.setHours(12, 0, 0, 0);
-                  const selected = dueDate?.toDateString() === d.toDateString();
-                  return (
-                    <TouchableOpacity
-                      key={label}
-                      style={[styles.presetChip, selected && styles.presetChipActive]}
-                      onPress={() => {
-                        setDueDate(selected ? null : d);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={[styles.presetChipText, selected && styles.presetChipTextActive]}>
-                        {label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-                {dueDate && (
-                  <TouchableOpacity
-                    style={styles.clearChip}
-                    onPress={() => setDueDate(null)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="close" size={12} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          )}
-
           {activePanel === 'priority' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
@@ -477,6 +443,23 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           </TouchableOpacity>
         </Animated.View>
       </KeyboardAvoidingView>
+      <WhenPicker
+        visible={whenPickerVisible}
+        value={dueDate}
+        timeSegments={timeSegments}
+        taskTitle={title}
+        onConfirm={(date, segs) => {
+          setDueDate(date);
+          setTimeSegments(segs);
+          setWhenPickerVisible(false);
+        }}
+        onClear={() => {
+          setDueDate(null);
+          setTimeSegments([]);
+          setWhenPickerVisible(false);
+        }}
+        onCancel={() => setWhenPickerVisible(false)}
+      />
     </Modal>
 
   );
