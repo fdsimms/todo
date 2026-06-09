@@ -189,6 +189,7 @@ export function TagsScreen() {
             <FlatList
               data={tagTasks}
               keyExtractor={t => t.id}
+              contentContainerStyle={{ flexGrow: 1 }}
               renderItem={({ item }) => {
                 const subs = allTasks.filter(t => t.parentId === item.id);
                 return (

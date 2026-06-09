@@ -624,7 +624,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
     marginLeft: 2,
   },
-  emptyContainer: { flex: 1 },
+  emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },

@@ -208,7 +208,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
-  emptyContainer: { flex: 1 },
+  emptyContainer: { flexGrow: 1 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
