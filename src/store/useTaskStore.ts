@@ -56,6 +56,7 @@ interface TaskStore {
   deleteSubtask: (id: string) => void;
   reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
 
+  forgivVacationStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
@@ -127,6 +128,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: draft.cycleIndex ?? 0,
       cycleItems: draft.cycleItems ?? [],
       projectId: draft.projectId ?? null,
+      vacationPause: draft.vacationPause ?? false,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -233,6 +235,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           streakDate: getCurrentDayStart().toISOString(),
           reminderTime: nextReminderTime,
           cycleIndex: nextCycleIndex,
+          // vacationPause carries over so recurring tasks stay paused across occurrences
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -362,6 +365,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: 0,
       cycleItems: [],
       projectId: null,
+      vacationPause: false,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -393,6 +397,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         const u = updates.find(x => x.id === t.id);
         return u ? { ...t, sortOrder: u.sortOrder } : t;
       }),
+    }));
+  },
+
+  forgivVacationStreaks() {
+    const today = getCurrentDayStart().toISOString();
+    const toUpdate = get().tasks.filter(
+      t => t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
+    );
+    if (toUpdate.length === 0) return;
+    toUpdate.forEach(t => {
+      const updated = { ...t, streakDate: today };
+      dbUpdateTask(updated);
+    });
+    set(s => ({
+      tasks: s.tasks.map(t =>
+        t.vacationPause && t.recurrenceType !== 'none' && !t.completed && t.streakCount > 0
+          ? { ...t, streakDate: today }
+          : t
+      ),
     }));
   },
 
@@ -455,8 +478,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   focusedTasks() {
+    const { vacationMode } = useSettingsStore.getState();
     return get().tasks
-      .filter(t => !t.parentId && t.focused && !t.completed)
+      .filter(t => !t.parentId && t.focused && !t.completed && !(vacationMode && t.vacationPause))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

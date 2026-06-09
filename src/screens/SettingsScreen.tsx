@@ -13,6 +13,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
@@ -48,7 +49,10 @@ export function SettingsScreen({ visible, onClose }: Props) {
     eveningStart, setEveningStart,
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
+    vacationMode, setVacationMode,
   } = useSettingsStore();
+
+  const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
 
@@ -234,6 +238,43 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* Vacation mode */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Vacation</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => {
+                  if (vacationMode) {
+                    forgivVacationStreaks();
+                    setVacationMode(false);
+                  } else {
+                    setVacationMode(true);
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="airplane-outline"
+                  size={18}
+                  color={vacationMode ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Vacation mode</Text>
+                  <Text style={styles.rowHint}>
+                    {vacationMode ? 'On — tasks marked for vacation pause are hidden' : 'Hides tasks marked for vacation pause'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, vacationMode && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, vacationMode && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. Turn it off when you return and streaks will be forgiven automatically.
+            </Text>
+          </View>
+
           {/* AI Suggestions */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>AI Suggestions</Text>
@@ -324,6 +365,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pickerBtnPrimary: { backgroundColor: colors.accent },
   pickerBtnText: { fontSize: font.md, fontWeight: '600' },
+  toggle: {
+    width: 44, height: 26, borderRadius: 13,
+    backgroundColor: colors.bgTertiary,
+    justifyContent: 'center', padding: 2,
+  },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleKnob: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.textSecondary,
+  },
+  toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
   sectionFooter: {
     color: colors.textTertiary, fontSize: font.sm,
     paddingHorizontal: spacing.sm, marginTop: spacing.sm, lineHeight: 19,

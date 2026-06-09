@@ -23,6 +23,8 @@ function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
 
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
@@ -48,6 +50,7 @@ export function isTaskVisible(task: Task): boolean {
 
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   return !isTaskVisible(task);
 }
 
@@ -55,6 +58,7 @@ export function isTaskDeferred(task: Task): boolean {
 // Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
   if (task.completed || !task.timeOfDay) return false;
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();

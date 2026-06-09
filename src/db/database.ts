@@ -77,6 +77,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
     'ALTER TABLE tasks ADD COLUMN category TEXT',
+    'ALTER TABLE tasks ADD COLUMN vacation_pause INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -125,6 +126,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     cycleIndex: (row.cycle_index as number) ?? 0,
     cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
     projectId: (row.project_id as string) ?? null,
+    vacationPause: Boolean(row.vacation_pause),
   };
 }
 
@@ -142,8 +144,8 @@ export function dbInsertTask(task: Task): void {
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
-      cycle_enabled, cycle_index, cycle_items, project_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, project_id, vacation_pause
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -154,7 +156,7 @@ export function dbInsertTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null,
+      task.projectId ?? null, task.vacationPause ? 1 : 0,
     ]
   );
 }
@@ -167,7 +169,7 @@ export function dbUpdateTask(task: Task): void {
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
-      cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?
+      cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?, vacation_pause=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -179,7 +181,7 @@ export function dbUpdateTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null,
+      task.projectId ?? null, task.vacationPause ? 1 : 0,
       task.id,
     ]
   );
