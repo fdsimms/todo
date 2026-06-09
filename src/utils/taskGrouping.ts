@@ -6,19 +6,24 @@ export type CategoryListItem =
 
 const UNCATEGORIZED = '';
 
+/** Header label for tasks with no category. */
+export const OTHER_LABEL = 'Uncategorized';
+export const LATER_TODAY_LABEL = 'Later Today';
+
 /**
  * Group tasks into category sections for the Today list.
  *
  * Each group is emitted in the order its category first appears in the
- * incoming (sortOrder-ordered) list — including the uncategorized "Other"
- * group. This keeps the displayed order in sync with the drag order: a task
- * dragged above a named section stays where it was dropped instead of snapping
- * back down, because group order follows task order rather than forcing
- * uncategorized tasks to the bottom.
+ * incoming (sortOrder-ordered) list — including the uncategorized
+ * ("Uncategorized") group. This keeps the displayed order in sync with the
+ * drag order: a task dragged above a named section stays where it was dropped
+ * instead of snapping back down, because group order follows task order rather
+ * than forcing uncategorized tasks to the bottom.
  *
- * The "Other" header is only emitted when there's at least one named category
- * to distinguish it from; a list with no categories renders as a plain,
- * header-less list.
+ * Every group — including the uncategorized group — always gets a header. That
+ * guarantees a task is never rendered in a header-less region and the headings
+ * can't all disappear (e.g. once every task is uncategorized), which were both
+ * reachable broken states before.
  */
 export function makeCategoryGroups(tasks: Task[]): CategoryListItem[] {
   const order: string[] = [];
@@ -32,21 +37,13 @@ export function makeCategoryGroups(tasks: Task[]): CategoryListItem[] {
     byCategory.get(key)!.push(task);
   });
 
-  const hasNamedCategory = order.some(key => key !== UNCATEGORIZED);
   const items: CategoryListItem[] = [];
   order.forEach(key => {
-    if (key === UNCATEGORIZED) {
-      if (hasNamedCategory) items.push({ type: 'header', label: 'Other' });
-    } else {
-      items.push({ type: 'header', label: key });
-    }
+    items.push({ type: 'header', label: key === UNCATEGORIZED ? OTHER_LABEL : key });
     byCategory.get(key)!.forEach(task => items.push({ type: 'task', task }));
   });
   return items;
 }
-
-export const LATER_TODAY_LABEL = 'Later Today';
-export const OTHER_LABEL = 'Other';
 
 export interface DropResolution {
   /** Task ids in their new top-to-bottom order (for sortOrder persistence). */
@@ -67,7 +64,7 @@ export interface DropResolution {
  * Category rules — a task adopts the category of the nearest section header
  * above it, with two deliberate exceptions that keep dragging predictable:
  *   - Tasks above the first header keep their own category, so dragging a task
- *     to the very top doesn't spawn a surprise "Other" section.
+ *     to the very top doesn't spawn a surprise "Uncategorized" section.
  *   - The "Later Today" header is not a category; upcoming tasks under it keep
  *     their own category and stay in their own section.
  *
