@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
+import { makeCategoryGroups } from '../utils/taskGrouping';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
@@ -158,28 +159,6 @@ export function TodayScreen() {
     [upcomingTodayTasks],
   );
 
-  const makeCategoryGroups = (tasks: Task[]): ListItem[] => {
-    const byCategory: Record<string, Task[]> = {};
-    const uncategorized: Task[] = [];
-    tasks.forEach(task => {
-      if (!task.category) uncategorized.push(task);
-      else {
-        if (!byCategory[task.category]) byCategory[task.category] = [];
-        byCategory[task.category].push(task);
-      }
-    });
-    const items: ListItem[] = [];
-    Object.entries(byCategory).forEach(([cat, catTasks]) => {
-      items.push({ type: 'header', label: cat });
-      catTasks.forEach(task => items.push({ type: 'task', task }));
-    });
-    if (uncategorized.length > 0) {
-      if (Object.keys(byCategory).length > 0) items.push({ type: 'header', label: 'Other' });
-      uncategorized.forEach(task => items.push({ type: 'task', task }));
-    }
-    return items;
-  };
-
   const data: ListItem[] = useMemo(() => {
     if (focusedTasks.length > 0) {
       const items: ListItem[] = [{ type: 'focus-header' }];
@@ -208,10 +187,16 @@ export function TodayScreen() {
   // Local copy of data fed to DraggableFlatList. Updated optimistically in
   // onDragEnd so the list never flashes back to the pre-drag order while the
   // store propagates, which also prevents ghost placeholder gaps getting stuck.
+  //
+  // We deliberately do NOT gate this sync behind an "is dragging" ref: `data`
+  // only changes as a result of a store update, and no store update happens
+  // mid-drag (the store is only touched in onDragEnd). A sticky ref previously
+  // froze the list permanently when a drag was interrupted without firing
+  // onDragEnd — e.g. taking a screenshot or backgrounding the app mid-drag —
+  // because the ref never reset and this sync stayed blocked forever.
   const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  const isDraggingRef = useRef(false);
   useEffect(() => {
-    if (!isDraggingRef.current) setDraggableData(data);
+    setDraggableData(data);
   }, [data]);
 
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
@@ -499,11 +484,9 @@ export function TodayScreen() {
           keyboardDismissMode="on-drag"
           renderItem={renderItem as any}
           onDragBegin={() => {
-            isDraggingRef.current = true;
             setExpandedTaskId(null);
           }}
           onDragEnd={({ data: reordered }) => {
-            isDraggingRef.current = false;
             // Optimistic update: immediately show the new order so the list
             // never reverts to the pre-drag state while the store propagates.
             setDraggableData(reordered);
@@ -515,7 +498,7 @@ export function TodayScreen() {
             for (const item of reordered) {
               if (item.type === 'header') {
                 currentSection = item.label === 'Other' ? null : item.label;
-              } else {
+              } else if (item.type === 'task') {
                 taskIds.push(item.task.id);
                 if (item.task.category !== currentSection) {
                   categoryUpdates.push({ id: item.task.id, category: currentSection });
