@@ -5,14 +5,29 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
+  LayoutAnimation,
+  Platform,
+  UIManager,
   type StyleProp,
   type ViewStyle,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
   type RefreshControlProps,
+  type LayoutAnimationConfig,
 } from 'react-native';
 import { moveItem, dropIndexFromTranslation } from '../utils/reorder';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// Subtle slide for rows displaced by the dragged item. Layout-only (no
+// create/delete fades) so the placeholder swap can't flicker.
+const ROW_SHIFT_ANIMATION: LayoutAnimationConfig = {
+  duration: 180,
+  update: { type: LayoutAnimation.Types.easeInEaseOut },
+};
 
 export interface ReorderableRenderInfo<T> {
   item: T;
@@ -161,6 +176,10 @@ export function ReorderableList<T>({
     const next = dropIndexFromTranslation(currentHeights(), ai, fingerDelta + scrollDelta);
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
+      // Slide the displaced rows into their new spots instead of snapping.
+      // onLayout still reports final positions immediately, so the cached
+      // slot position the drop animation targets stays exact.
+      LayoutAnimation.configureNext(ROW_SHIFT_ANIMATION);
       setHoverIndex(next);
       onHoverChangeRef.current?.();
     }
