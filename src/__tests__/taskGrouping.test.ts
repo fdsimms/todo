@@ -41,15 +41,15 @@ const seq = (tasks: Task[]) =>
   );
 
 describe('makeCategoryGroups', () => {
-  // Every group always gets a header — including the uncategorized "Other"
+  // Every group always gets a header — including the uncategorized "Uncategorized"
   // group — so a task is never rendered in a header-less region and the
   // headings can't all disappear once every task is uncategorized.
-  it('always heads the uncategorized group with "Other", even with no named category', () => {
+  it('always heads the uncategorized group with "Uncategorized", even with no named category', () => {
     const tasks = [
       makeTask({ id: 'a', category: null }),
       makeTask({ id: 'b', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['#Other', 'a', 'b']);
+    expect(seq(tasks)).toEqual(['#Uncategorized', 'a', 'b']);
   });
 
   it('emits a header per named category, preserving task order within each', () => {
@@ -61,24 +61,24 @@ describe('makeCategoryGroups', () => {
     expect(seq(tasks)).toEqual(['#health', 'a', 'b', '#work', 'c']);
   });
 
-  it('heads the uncategorized group with "Other" alongside named categories', () => {
+  it('heads the uncategorized group with "Uncategorized" alongside named categories', () => {
     const tasks = [
       makeTask({ id: 'a', category: 'health' }),
       makeTask({ id: 'b', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['#health', 'a', '#Other', 'b']);
+    expect(seq(tasks)).toEqual(['#health', 'a', '#Uncategorized', 'b']);
   });
 
-  // Regression: the teleport bug. Previously the uncategorized ("Other") group
+  // Regression: the teleport bug. Previously the uncategorized ("Uncategorized") group
   // was always appended last, so an uncategorized task dragged above a named
   // section snapped back down on the post-drop regroup. Group order must follow
-  // task (sortOrder/drag) order, so "Other" can come first.
-  it('orders the "Other" group by first appearance, not always last', () => {
+  // task (sortOrder/drag) order, so "Uncategorized" can come first.
+  it('orders the "Uncategorized" group by first appearance, not always last', () => {
     const tasks = [
       makeTask({ id: 'dragged-to-top', category: null }),
       makeTask({ id: 'workout', category: 'health' }),
     ];
-    expect(seq(tasks)).toEqual(['#Other', 'dragged-to-top', '#health', 'workout']);
+    expect(seq(tasks)).toEqual(['#Uncategorized', 'dragged-to-top', '#health', 'workout']);
   });
 
   it('keeps a category contiguous even if its tasks reappear later in the list', () => {
@@ -88,7 +88,7 @@ describe('makeCategoryGroups', () => {
       makeTask({ id: 'c', category: 'health' }),
     ];
     // health first appeared at index 0, so both health tasks group there.
-    expect(seq(tasks)).toEqual(['#health', 'a', 'c', '#Other', 'b']);
+    expect(seq(tasks)).toEqual(['#health', 'a', 'c', '#Uncategorized', 'b']);
   });
 });
 
@@ -120,14 +120,14 @@ describe('resolveDrop', () => {
     ];
     const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
     expect(categoryUpdates).toEqual([{ id: 'go-outside', category: 'health' }]);
-    // No stray "Other" header: both tasks now sit in HEALTH, in drop order.
+    // No stray "Uncategorized" header: both tasks now sit in HEALTH, in drop order.
     expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'go-outside']);
   });
 
   // Regression: dragging a categorized task to the very top (above every
-  // header) used to make it uncategorized and spawn a phantom "Other" header
+  // header) used to make it uncategorized and spawn a phantom "Uncategorized" header
   // wedged into the list. A task above the first header now keeps its category.
-  it('does NOT spawn a phantom "Other" header when a task is dragged to the top', () => {
+  it('does NOT spawn a phantom "Uncategorized" header when a task is dragged to the top', () => {
     const reordered: CategoryListItem[] = [
       { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
       { type: 'header', label: 'health' },
@@ -138,16 +138,16 @@ describe('resolveDrop', () => {
     expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'test']);
   });
 
-  it('uncategorizes a task dropped under the "Other" header', () => {
+  it('uncategorizes a task dropped under the "Uncategorized" header', () => {
     const reordered: CategoryListItem[] = [
       { type: 'header', label: 'health' },
       { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
-      { type: 'header', label: 'Other' },
+      { type: 'header', label: 'Uncategorized' },
       { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
     ];
     const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
     expect(categoryUpdates).toEqual([{ id: 'test', category: null }]);
-    expect(layoutSeq(settled)).toEqual(['#health', 'workout', '#Other', 'test']);
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', '#Uncategorized', 'test']);
   });
 
   it('keeps upcoming "Later Today" tasks in their own section, never recategorized', () => {
@@ -173,7 +173,7 @@ describe('resolveDrop', () => {
     const reordered: CategoryListItem[] = [
       { type: 'header', label: 'health' },
       { type: 'task', task: workout },
-      { type: 'header', label: 'Other' },
+      { type: 'header', label: 'Uncategorized' },
       { type: 'task', task: test },
     ];
     const { settled } = resolveDrop(reordered, noUpcoming);
