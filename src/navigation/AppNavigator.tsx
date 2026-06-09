@@ -14,7 +14,7 @@ import { StatsScreen } from '../screens/StatsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { font, fontWeight, border } from '../theme';
+import { border } from '../theme';
 
 const Tab = createBottomTabNavigator();
 const EDGE_WIDTH = 20;
@@ -93,7 +93,7 @@ export default function AppNavigator() {
     ),
     tabBarActiveTintColor: colors.accent,
     tabBarInactiveTintColor: colors.textTertiary,
-    tabBarLabelStyle: { fontSize: font.xs, fontWeight: fontWeight.semibold, letterSpacing: 0.2 },
+    tabBarShowLabel: false,
     tabBarItemStyle: { paddingVertical: 3 },
   }), [colors, isDark]);
 
@@ -128,7 +128,6 @@ export default function AppNavigator() {
               tabBarIcon: ({ color }) => (
                 <Ionicons name="menu" size={24} color={menuOpen ? colors.accent : color} />
               ),
-              tabBarLabel: 'Menu',
             }}
           />
 
