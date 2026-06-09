@@ -239,10 +239,11 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     setAiLoading(true);
     setAiSuggestions(null);
     try {
-      const result = await suggestTaskAttributes(title.trim(), notes, allTags);
+      const result = await suggestTaskAttributes(title.trim(), notes, allTags, allCategories);
       setAiSuggestions({
         tags: result.tags.filter(t => !tags.includes(t)),
         effort: result.effort,
+        category: result.category,
       });
     } catch {
       // silently fail — no API key or network issue
@@ -340,6 +341,15 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                 </TouchableOpacity>
               )}
             </View>
+            {aiSuggestions?.category && !category && (
+              <View style={styles.aiRow}>
+                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                <Text style={styles.aiLabel}>AI suggests</Text>
+                <TouchableOpacity onPress={() => setCategory(aiSuggestions.category!)} hitSlop={8}>
+                  <Text style={styles.aiEffortApply}>{aiSuggestions.category}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           {/* Tags */}

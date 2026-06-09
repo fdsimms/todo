@@ -4,12 +4,14 @@ import { useSettingsStore } from '../store/useSettingsStore';
 export interface AISuggestions {
   tags: string[];
   effort: Effort;
+  category: string | null;
 }
 
 export async function suggestTaskAttributes(
   title: string,
   notes: string,
   availableTags: string[],
+  availableCategories: string[],
 ): Promise<AISuggestions> {
   const apiKey = useSettingsStore.getState().anthropicApiKey;
   if (!apiKey) throw new Error('No API key');
@@ -17,6 +19,10 @@ export async function suggestTaskAttributes(
   const tagPart = availableTags.length > 0
     ? `Available tags (only suggest from this list): ${availableTags.join(', ')}`
     : 'No existing tags.';
+
+  const categoryPart = availableCategories.length > 0
+    ? `Available categories (pick one or leave blank): ${availableCategories.join(', ')}`
+    : 'No existing categories.';
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -27,10 +33,10 @@ export async function suggestTaskAttributes(
     },
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 150,
+      max_tokens: 200,
       tools: [{
         name: 'suggest',
-        description: 'Return tag and effort suggestions for a task',
+        description: 'Return tag, effort, and category suggestions for a task',
         input_schema: {
           type: 'object',
           properties: {
@@ -45,14 +51,18 @@ export async function suggestTaskAttributes(
               minimum: 0,
               maximum: 5,
             },
+            category: {
+              type: 'string',
+              description: 'The single most relevant category from the available list. Empty string if none fit.',
+            },
           },
-          required: ['tags', 'effort'],
+          required: ['tags', 'effort', 'category'],
         },
       }],
       tool_choice: { type: 'tool', name: 'suggest' },
       messages: [{
         role: 'user',
-        content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}`,
+        content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}\n${categoryPart}`,
       }],
     }),
   });
@@ -62,14 +72,16 @@ export async function suggestTaskAttributes(
   }
 
   const data = await response.json() as {
-    content?: Array<{ type: string; input?: { tags: string[]; effort: number } }>;
+    content?: Array<{ type: string; input?: { tags: string[]; effort: number; category: string } }>;
   };
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   if (!toolUse?.input) throw new Error('No suggestion returned');
 
-  const { tags: rawTags, effort: rawEffort } = toolUse.input;
+  const { tags: rawTags, effort: rawEffort, category: rawCategory } = toolUse.input;
+  const suggestedCategory = rawCategory && availableCategories.includes(rawCategory) ? rawCategory : null;
   return {
     tags: (rawTags ?? []).filter(t => availableTags.includes(t)),
     effort: Math.max(0, Math.min(5, rawEffort ?? 0)) as Effort,
+    category: suggestedCategory,
   };
 }

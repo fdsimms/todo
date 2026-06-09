@@ -152,7 +152,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     if (!title.trim()) return;
     setAiLoading(true);
     try {
-      const result = await suggestTaskAttributes(title.trim(), '', allTags);
+      const result = await suggestTaskAttributes(title.trim(), '', allTags, []);
       if (result.effort > 0 && effort === 0) setEffort(result.effort);
       if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
     } catch {
