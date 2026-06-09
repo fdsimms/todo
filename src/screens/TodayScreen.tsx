@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -187,6 +187,15 @@ export function TodayScreen() {
     }
     return items;
   }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts]);
+
+  // Local copy of data fed to DraggableFlatList. Updated optimistically in
+  // onDragEnd so the list never flashes back to the pre-drag order while the
+  // store propagates, which also prevents ghost placeholder gaps getting stuck.
+  const [draggableData, setDraggableData] = useState<ListItem[]>(data);
+  const isDraggingRef = useRef(false);
+  useEffect(() => {
+    if (!isDraggingRef.current) setDraggableData(data);
+  }, [data]);
 
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     if (item.type === 'focus-header') {
@@ -449,15 +458,23 @@ export function TodayScreen() {
 
       {viewMode === 'today' && focusedTasks.length === 0 && (
         <DraggableFlatList
-          data={data}
+          data={draggableData}
           keyExtractor={item =>
             item.type === 'header' ? `h-${item.label}` : item.task.id
           }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={renderItem as any}
-          onDragBegin={() => setExpandedTaskId(null)}
+          onDragBegin={() => {
+            isDraggingRef.current = true;
+            setExpandedTaskId(null);
+          }}
           onDragEnd={({ data: reordered }) => {
+            isDraggingRef.current = false;
+            // Optimistic update: immediately show the new order so the list
+            // never reverts to the pre-drag state while the store propagates.
+            setDraggableData(reordered);
+
             const taskIds: string[] = [];
             let currentSection: string | null = null;
             const categoryUpdates: Array<{ id: string; category: string | null }> = [];
