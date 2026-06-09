@@ -28,7 +28,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
-import type { AISuggestions } from '../services/aiSuggestions';
 
 interface Props {
   visible: boolean;
@@ -64,7 +63,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [aiLoading, setAiLoading] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestions | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -127,7 +125,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     setPickerMode('none'); setShowWhenPicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
-    setAiLoading(false); setAiSuggestions(null);
+    setAiLoading(false);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialTitle ?? ''),
@@ -226,14 +224,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
   const handleSuggest = async () => {
     setAiLoading(true);
-    setAiSuggestions(null);
     try {
       const result = await suggestTaskAttributes(title.trim(), notes, allTags, allCategories);
-      setAiSuggestions({
-        tags: result.tags.filter(t => !tags.includes(t)),
-        effort: result.effort,
-        category: result.category,
-      });
+      if (result.effort > 0 && effort === 0) setEffort(result.effort);
+      const newTags = result.tags.filter(t => !tags.includes(t));
+      if (newTags.length > 0) setTags(prev => [...prev, ...newTags]);
+      if (result.category && !category) setCategory(result.category);
     } catch {
       // silently fail — no API key or network issue
     } finally {
@@ -331,15 +327,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                   </TouchableOpacity>
                 )}
               </View>
-              {aiSuggestions?.category && !category && (
-                <View style={styles.aiRow}>
-                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                  <Text style={styles.aiLabel}>AI suggests</Text>
-                  <TouchableOpacity onPress={() => setCategory(aiSuggestions.category!)} hitSlop={8}>
-                    <Text style={styles.aiEffortApply}>{aiSuggestions.category}</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
 
             <View style={styles.cardSep} />
@@ -411,27 +398,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                   ))}
                 </View>
               )}
-              {aiSuggestions && aiSuggestions.tags.length > 0 && (
-                <View style={styles.aiRow}>
-                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                  <Text style={styles.aiLabel}>AI</Text>
-                  {aiSuggestions.tags.map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={[styles.tagSuggestion, styles.aiTagChip]}
-                      onPress={() => {
-                        setTags(prev => [...prev, tag]);
-                        setAiSuggestions(prev => prev
-                          ? { ...prev, tags: prev.tags.filter(t => t !== tag) }
-                          : null
-                        );
-                      }}
-                    >
-                      <Text style={[styles.tagSuggestionText, { color: colors.purple }]}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
             </View>
           </View>
 
@@ -469,7 +435,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                     style={[
                       styles.pill,
                       effort === e && styles.pillActiveNeutral,
-                      effort === 0 && aiSuggestions && aiSuggestions.effort === e && e > 0 && styles.pillAiHinted,
                     ]}
                     onPress={() => setEffort(e)}
                   >
@@ -482,17 +447,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                   </TouchableOpacity>
                 ))}
               </View>
-              {aiSuggestions && aiSuggestions.effort > 0 && effort === 0 && (
-                <View style={styles.aiRow}>
-                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                  <Text style={styles.aiLabel}>AI suggests</Text>
-                  <TouchableOpacity onPress={() => setEffort(aiSuggestions.effort)} hitSlop={8}>
-                    <Text style={styles.aiEffortApply}>
-                      {EFFORT_LABELS[aiSuggestions.effort]} ({EFFORT_HINTS[aiSuggestions.effort]})
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
           </View>
 
@@ -940,19 +894,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.purple + '22',
   },
   suggestBtnText: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
-  aiRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    marginTop: spacing.sm, flexWrap: 'wrap',
-  },
-  aiLabel: { color: colors.purple, fontSize: font.xs, fontWeight: '600' },
-  aiTagChip: { backgroundColor: colors.purple + '22' },
-  aiEffortApply: {
-    color: colors.purple, fontSize: font.xs, fontWeight: '600',
-    textDecorationLine: 'underline',
-  },
-  pillAiHinted: {
-    borderWidth: 1, borderColor: colors.purple + '88', borderStyle: 'dashed',
-  },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
