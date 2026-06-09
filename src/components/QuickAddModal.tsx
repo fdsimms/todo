@@ -423,8 +423,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           )}
 
           {/* More details */}
-          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull}>
-            <Ionicons name="expand-outline" size={13} color={colors.textSecondary} />
+          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={0.7}>
+            <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
             <Text style={styles.moreBtnText}>More details</Text>
           </TouchableOpacity>
         </Animated.View>
@@ -622,12 +622,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   moreBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingVertical: spacing.sm,
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    marginTop: spacing.xs,
   },
   moreBtnText: {
     color: colors.textSecondary,
     fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   aiChip: {
     backgroundColor: colors.purple + '22',
