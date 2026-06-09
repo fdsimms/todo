@@ -121,7 +121,7 @@ export function WhenPicker({
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
-      prev.includes(seg) ? prev.filter(s => s !== seg) : [...prev, seg]
+      prev.includes(seg) ? [] : [seg]
     );
   };
 
