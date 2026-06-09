@@ -482,6 +482,8 @@ export function TodayScreen() {
           onDragBegin={() => {
             setExpandedTaskId(null);
           }}
+          onHoverChange={() => Haptics.selectionAsync()}
+          placeholderStyle={styles.dropSlot}
           onReorder={reordered => {
             // The draggable list only ever contains header + task items.
             const dropped = reordered.filter(
@@ -653,6 +655,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
+  // Subtle slot marking where a dragged task will land; mirrors the task
+  // card's footprint (margin + radius).
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
+  },
   listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },

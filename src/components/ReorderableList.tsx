@@ -28,6 +28,10 @@ interface Props<T> {
   /** Called once with the final order when a drag commits. */
   onReorder: (data: T[]) => void;
   onDragBegin?: () => void;
+  /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
+  onHoverChange?: () => void;
+  /** Style for the slot shown where the dragged item will land. */
+  placeholderStyle?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   refreshControl?: React.ReactElement<RefreshControlProps>;
   ListEmptyComponent?: React.ReactNode;
@@ -61,6 +65,8 @@ export function ReorderableList<T>({
   renderItem,
   onReorder,
   onDragBegin,
+  onHoverChange,
+  placeholderStyle,
   contentContainerStyle,
   refreshControl,
   ListEmptyComponent,
@@ -70,9 +76,12 @@ export function ReorderableList<T>({
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   // Overlay top position (viewport coords) at drag start; finger movement is
-  // applied via the Animated translateY so moves don't re-render the list.
+  // applied via the Animated translate values so moves don't re-render the
+  // list. The card follows the finger in both axes (X is purely cosmetic —
+  // drop targeting stays vertical).
   const [overlayBaseTop, setOverlayBaseTop] = useState(0);
   const overlayY = useRef(new Animated.Value(0)).current;
+  const overlayX = useRef(new Animated.Value(0)).current;
 
   const scrollRef = useRef<ScrollView>(null);
   const dataRef = useRef(data);
@@ -81,6 +90,8 @@ export function ReorderableList<T>({
   const hoverIndexRef = useRef<number | null>(null);
   const startPageYRef = useRef(0);
   const lastPageYRef = useRef(0);
+  const startPageXRef = useRef(0);
+  const onHoverChangeRef = useRef(onHoverChange);
   const scrollOffsetRef = useRef(0);
   const scrollOffsetAtStartRef = useRef(0);
   const viewportHeightRef = useRef(0);
@@ -94,6 +105,7 @@ export function ReorderableList<T>({
 
   useEffect(() => { dataRef.current = data; }, [data]);
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
+  useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
   // If the data identity changes mid-drag (e.g. an external store update),
   // cancel the drag rather than committing against a stale order.
@@ -117,7 +129,8 @@ export function ReorderableList<T>({
     setActiveIndex(null);
     setHoverIndex(null);
     overlayY.setValue(0);
-  }, [overlayY]);
+    overlayX.setValue(0);
+  }, [overlayY, overlayX]);
 
   const currentHeights = (): number[] =>
     dataRef.current.map(item => heightsRef.current.get(keyExtractor(item)) ?? DEFAULT_ROW_HEIGHT);
@@ -131,6 +144,7 @@ export function ReorderableList<T>({
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
       setHoverIndex(next);
+      onHoverChangeRef.current?.();
     }
   };
 
@@ -182,10 +196,12 @@ export function ReorderableList<T>({
     // establishes the finger baseline.
     startPageYRef.current = 0;
     lastPageYRef.current = 0;
+    startPageXRef.current = 0;
     const baseTop = rowTop - scrollOffsetRef.current;
     overlayBaseTopRef.current = baseTop;
     setOverlayBaseTop(baseTop);
     overlayY.setValue(0);
+    overlayX.setValue(0);
     setActiveIndex(index);
     setHoverIndex(index);
     onDragBegin?.();
@@ -200,11 +216,13 @@ export function ReorderableList<T>({
       onPanResponderGrant: e => {
         startPageYRef.current = e.nativeEvent.pageY;
         lastPageYRef.current = e.nativeEvent.pageY;
+        startPageXRef.current = e.nativeEvent.pageX;
       },
       onPanResponderMove: e => {
         if (activeIndexRef.current === null) return;
         lastPageYRef.current = e.nativeEvent.pageY;
         overlayY.setValue(lastPageYRef.current - startPageYRef.current);
+        overlayX.setValue(e.nativeEvent.pageX - startPageXRef.current);
         updateHover();
         maybeAutoscroll();
       },
@@ -250,7 +268,6 @@ export function ReorderableList<T>({
                 <View
                   key={key}
                   pointerEvents={isPlaceholder ? 'none' : 'auto'}
-                  style={isPlaceholder ? styles.placeholder : undefined}
                   onLayout={e => {
                     // Record unconditionally: rows that move during a drag are
                     // already in their final positions when it commits, so no
@@ -263,14 +280,20 @@ export function ReorderableList<T>({
                     layoutYRef.current.set(key, e.nativeEvent.layout.y);
                   }}
                 >
-                  {renderItem({
-                    item,
-                    drag: () => {
-                      const idx = dataRef.current.findIndex(d => keyExtractor(d) === key);
-                      if (idx >= 0) startDrag(idx, key);
-                    },
-                    isActive: false,
-                  })}
+                  {/* Subtle slot marker where the dragged item will land. */}
+                  {isPlaceholder && (
+                    <View style={[StyleSheet.absoluteFill, placeholderStyle]} />
+                  )}
+                  <View style={isPlaceholder ? styles.placeholder : undefined}>
+                    {renderItem({
+                      item,
+                      drag: () => {
+                        const idx = dataRef.current.findIndex(d => keyExtractor(d) === key);
+                        if (idx >= 0) startDrag(idx, key);
+                      },
+                      isActive: false,
+                    })}
+                  </View>
                 </View>
               );
             })}
@@ -282,7 +305,10 @@ export function ReorderableList<T>({
           pointerEvents="none"
           style={[
             styles.overlay,
-            { top: overlayBaseTop, transform: [{ translateY: overlayY }, { scale: 1.03 }] },
+            {
+              top: overlayBaseTop,
+              transform: [{ translateY: overlayY }, { translateX: overlayX }, { scale: 1.03 }],
+            },
           ]}
         >
           {renderItem({ item: activeItem, drag: () => {}, isActive: true })}
