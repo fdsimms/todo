@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,6 +21,7 @@ import { getVisibleAt } from '../utils/visibilityUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
+import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -63,6 +66,19 @@ export function TodayScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [restExpanded, setRestExpanded] = useState(false);
+  const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
+
+  const handleSuggestFocus = async () => {
+    setIsSuggestingFocus(true);
+    try {
+      const ids = await suggestFocusTasks(visibleTasks, focusedTasks.length);
+      for (const id of ids) updateTask(id, { focused: true });
+    } catch (e) {
+      Alert.alert('Could not suggest focus', e instanceof Error ? e.message : 'Unknown error');
+    } finally {
+      setIsSuggestingFocus(false);
+    }
+  };
 
   const enterSelection = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -341,6 +357,19 @@ export function TodayScreen() {
               )}
             </TouchableOpacity>
           )}
+          {viewMode === 'today' && focusedTasks.length < 3 && visibleTasks.length > 0 && (
+            <TouchableOpacity
+              style={[styles.iconBtn, focusedTasks.length === 0 && styles.iconBtnOrange]}
+              onPress={handleSuggestFocus}
+              disabled={isSuggestingFocus}
+              hitSlop={4}
+            >
+              {isSuggestingFocus
+                ? <ActivityIndicator size="small" color={focusedTasks.length === 0 ? colors.text : colors.textSecondary} />
+                : <Ionicons name="sparkles" size={16} color={focusedTasks.length === 0 ? colors.text : colors.textSecondary} />
+              }
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.iconBtn} onPress={() => setSettingsVisible(true)}>
             <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
           </TouchableOpacity>
@@ -606,6 +635,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtnActive: { backgroundColor: colors.bgTertiary },
   iconBtnAccent: { backgroundColor: colors.accent },
+  iconBtnOrange: { backgroundColor: colors.orange },
   badge: {
     position: 'absolute', top: -3, right: -3,
     width: 16, height: 16, borderRadius: 8,
