@@ -18,12 +18,9 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
-  dbGetCategoryRegistry,
-  dbAddToCategoryRegistry,
-  dbRemoveFromCategoryRegistry,
-  dbRemoveCategoryFromAllTasks,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
+import { useCategoryStore } from './useCategoryStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday } from '../utils/visibilityUtils';
@@ -32,7 +29,6 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from
 interface TaskStore {
   tasks: Task[];
   tagRegistry: string[];
-  categoryRegistry: string[];
   initialized: boolean;
   lastEditSnapshot: { id: string; snapshot: Task } | null;
 
@@ -83,16 +79,15 @@ interface TaskStore {
 export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
-  categoryRegistry: [],
   initialized: false,
   lastEditSnapshot: null,
 
   initialize() {
     initDatabase();
+    useCategoryStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
-    const categoryRegistry = dbGetCategoryRegistry();
-    set({ tasks, tagRegistry, categoryRegistry, initialized: true });
+    set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
   },
 
@@ -518,7 +513,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   allCategories() {
-    const catSet = new Set<string>(get().categoryRegistry);
+    const catSet = new Set<string>(
+      useCategoryStore.getState().categories.map(c => c.name)
+    );
     get().tasks.forEach(t => { if (t.category) catSet.add(t.category); });
     return Array.from(catSet).sort();
   },
@@ -526,17 +523,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addCategory(name) {
     const n = name.trim();
     if (!n) return;
-    if (get().categoryRegistry.includes(n)) return;
-    dbAddToCategoryRegistry(n);
-    set(s => ({ categoryRegistry: [...s.categoryRegistry, n] }));
+    useCategoryStore.getState().addCategory(n);
   },
 
   deleteCategory(name) {
-    dbRemoveCategoryFromAllTasks(name);
-    dbRemoveFromCategoryRegistry(name);
+    useCategoryStore.getState().deleteCategory(name);
     set(s => ({
       tasks: s.tasks.map(t => t.category === name ? { ...t, category: null } : t),
-      categoryRegistry: s.categoryRegistry.filter(c => c !== name),
     }));
   },
 

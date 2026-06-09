@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Project, TimeOfDay } from '../types';
+import type { Task, Project, Category, TimeOfDay } from '../types';
+import { generateId } from '../utils/id';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
   if (!raw) return [];
@@ -59,6 +60,14 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      schedule_days TEXT,
+      schedule_start TEXT,
+      schedule_end TEXT
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
@@ -81,6 +90,17 @@ export function initDatabase(): void {
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
+  }
+
+  // One-time migration: populate categories table from legacy category_registry setting
+  const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
+  if (catCount === 0) {
+    const registry = dbGetCategoryRegistry();
+    for (const name of registry) {
+      try {
+        db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
+      } catch (_) {}
+    }
   }
 }
 
@@ -300,6 +320,46 @@ export function dbRemoveFromCategoryRegistry(name: string): void {
 
 export function dbRemoveCategoryFromAllTasks(name: string): void {
   db.runSync("UPDATE tasks SET category = NULL WHERE category = ?", [name]);
+}
+
+// ─── Categories ───────────────────────────────────────────────────────────────
+
+function rowToCategory(row: Record<string, unknown>): Category {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    scheduleDays: row.schedule_days ? JSON.parse(row.schedule_days as string) as number[] : null,
+    scheduleStart: (row.schedule_start as string) ?? null,
+    scheduleEnd: (row.schedule_end as string) ?? null,
+  };
+}
+
+export function dbGetAllCategories(): Category[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM categories ORDER BY name ASC');
+  return rows.map(rowToCategory);
+}
+
+export function dbInsertCategory(name: string): Category {
+  const id = generateId();
+  db.runSync('INSERT INTO categories (id, name) VALUES (?, ?)', [id, name]);
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null };
+}
+
+export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'scheduleDays' | 'scheduleStart' | 'scheduleEnd'>>): void {
+  db.runSync(
+    'UPDATE categories SET schedule_days = ?, schedule_start = ?, schedule_end = ? WHERE id = ?',
+    [
+      updates.scheduleDays ? JSON.stringify(updates.scheduleDays) : null,
+      updates.scheduleStart ?? null,
+      updates.scheduleEnd ?? null,
+      id,
+    ]
+  );
+}
+
+export function dbDeleteCategory(name: string): void {
+  db.runSync('DELETE FROM categories WHERE name = ?', [name]);
+  db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
 }
 
 // ─── Projects ─────────────────────────────────────────────────────────────────

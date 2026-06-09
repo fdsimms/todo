@@ -1,5 +1,6 @@
 import { isTaskVisible, isTaskDeferred, getVisibleAt } from '../utils/visibilityUtils';
-import type { Task } from '../types';
+import { useCategoryStore } from '../store/useCategoryStore';
+import type { Task, Category } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -11,6 +12,31 @@ jest.mock('../store/useSettingsStore', () => ({
     }),
   },
 }));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: jest.fn(() => ({
+      categories: [],
+      getCategoryByName: jest.fn().mockReturnValue(null),
+    })),
+  },
+}));
+
+const mockCategorySchedule = (schedule: Partial<Category> | null) => {
+  (useCategoryStore.getState as jest.Mock).mockReturnValue({
+    categories: schedule ? [schedule] : [],
+    getCategoryByName: (name: string) =>
+      schedule && name === (schedule as Category).name ? schedule as Category : null,
+  });
+};
+
+const workCategory: Category = {
+  id: 'cat-work',
+  name: 'Work',
+  scheduleDays: [1, 2, 3, 4, 5],
+  scheduleStart: '09:00',
+  scheduleEnd: '18:00',
+};
 
 const baseTask: Task = {
   id: 'test-1',
@@ -238,5 +264,92 @@ describe('getVisibleAt', () => {
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);
     expect(result.getTime()).toBe(NOW.getTime());
+  });
+});
+
+// ─── Category schedule visibility ─────────────────────────────────────────────
+// NOW = Tuesday June 10, 2025 at 10:00 AM (getDay() === 2)
+// workCategory = Mon–Fri, 09:00–18:00
+
+describe('category schedule — isTaskVisible', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    mockCategorySchedule(workCategory);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+  });
+
+  it('shows work task on a weekday within work hours', () => {
+    // Tuesday 10:00 AM — inside Mon–Fri 09:00–18:00
+    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
+  });
+
+  it('hides work task on a weekend', () => {
+    // June 14, 2025 = Saturday
+    jest.setSystemTime(new Date(2025, 5, 14, 10, 0, 0));
+    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+  });
+
+  it('hides work task before start time on a weekday', () => {
+    // Tuesday 8:00 AM — before 09:00
+    jest.setSystemTime(new Date(2025, 5, 10, 8, 0, 0));
+    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+  });
+
+  it('hides work task after end time on a weekday', () => {
+    // Tuesday 19:00 — after 18:00
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0));
+    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+  });
+
+  it('shows task with no category regardless of work schedule', () => {
+    expect(isTaskVisible(baseTask)).toBe(true);
+  });
+
+  it('shows task in a different category not in work schedule', () => {
+    expect(isTaskVisible({ ...baseTask, category: 'Personal' })).toBe(true);
+  });
+});
+
+describe('category schedule — getVisibleAt', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+  });
+
+  it('returns start time today when before the window on a valid day', () => {
+    // Tuesday 8:00 AM — before 09:00 start
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 8, 0, 0));
+    mockCategorySchedule(workCategory);
+    const result = getVisibleAt({ ...baseTask, category: 'Work' });
+    expect(result.getHours()).toBe(9);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('returns Monday 09:00 when called on Saturday', () => {
+    // Saturday June 14 at 10:00 AM → next window is Monday June 16 09:00
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 14, 10, 0, 0));
+    mockCategorySchedule(workCategory);
+    const result = getVisibleAt({ ...baseTask, category: 'Work' });
+    expect(result.getDay()).toBe(1); // Monday
+    expect(result.getHours()).toBe(9);
+    expect(result.getMinutes()).toBe(0);
+  });
+
+  it('returns next day start when after work hours on a weekday', () => {
+    // Tuesday 19:00 — after 18:00 → next window is Wednesday 09:00
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0));
+    mockCategorySchedule(workCategory);
+    const result = getVisibleAt({ ...baseTask, category: 'Work' });
+    expect(result.getDay()).toBe(3); // Wednesday
+    expect(result.getHours()).toBe(9);
   });
 });

@@ -1,6 +1,7 @@
-import type { Task, TimeOfDay } from '../types';
+import type { Task, TimeOfDay, Category } from '../types';
 import { getDayStart, getCurrentDayStart } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 
 function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   const { morningStart, afternoonStart, eveningStart } = useSettingsStore.getState();
@@ -11,6 +12,48 @@ function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   const t = new Date();
   t.setHours(h, m, 0, 0);
   return t;
+}
+
+function isCategoryScheduleActive(category: string | null): boolean {
+  if (!category) return true;
+  const cat = useCategoryStore.getState().getCategoryByName(category);
+  if (!cat || !cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return true;
+
+  const now = new Date();
+  const dayOfWeek = now.getDay();
+  if (!cat.scheduleDays.includes(dayOfWeek)) return false;
+
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const [sh, sm] = cat.scheduleStart.split(':').map(Number);
+  const [eh, em] = cat.scheduleEnd.split(':').map(Number);
+  return nowMins >= sh * 60 + sm && nowMins < eh * 60 + em;
+}
+
+function getNextCategoryWindowStart(cat: Category): Date | null {
+  if (!cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return null;
+
+  const now = new Date();
+  const [sh, sm] = cat.scheduleStart.split(':').map(Number);
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const startMins = sh * 60 + sm;
+  const dayOfWeek = now.getDay();
+
+  if (cat.scheduleDays.includes(dayOfWeek) && nowMins < startMins) {
+    const next = new Date(now);
+    next.setHours(sh, sm, 0, 0);
+    return next;
+  }
+
+  for (let i = 1; i <= 7; i++) {
+    const candidate = new Date(now);
+    candidate.setDate(candidate.getDate() + i);
+    if (cat.scheduleDays.includes(candidate.getDay())) {
+      candidate.setHours(sh, sm, 0, 0);
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
@@ -44,6 +87,8 @@ export function isTaskVisible(task: Task): boolean {
     const todayStart = getCurrentDayStart();
     if (taskDayStart > todayStart) return false;
   }
+
+  if (!isCategoryScheduleActive(task.category)) return false;
 
   return true;
 }
@@ -111,6 +156,14 @@ export function getVisibleAt(task: Task): Date {
       if (candidates.length === 0 || candidate > candidates[candidates.length - 1]) {
         candidates.push(candidate);
       }
+    }
+  }
+
+  if (task.category) {
+    const cat = useCategoryStore.getState().getCategoryByName(task.category);
+    if (cat) {
+      const nextWindow = getNextCategoryWindowStart(cat);
+      if (nextWindow && nextWindow > now) candidates.push(nextWindow);
     }
   }
 
