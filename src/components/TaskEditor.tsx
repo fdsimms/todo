@@ -674,22 +674,11 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
           {/* Options */}
           <View style={styles.optionsCard}>
-            <TouchableOpacity style={styles.optionRow} onPress={() => setFocused(v => !v)} activeOpacity={0.7}>
-              <Ionicons name="flash" size={18} color={focused ? colors.orange : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Focused</Text>
-                {!focused && <Text style={styles.optionHint}>Pin to the top of your day</Text>}
-              </View>
-              <View style={[styles.toggle, focused && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.sep} />
             <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={0.7}>
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
-                {!vacationPause && <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>}
+                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
               </View>
               <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
