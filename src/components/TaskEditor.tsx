@@ -801,6 +801,9 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
           visible={showWhenPicker}
           value={dueDate}
           timeSegments={timeSegments}
+          taskTitle={title}
+          taskNotes={notes}
+          taskEffort={effort}
           onConfirm={(date, segs) => {
             if (date) {
               const noon = new Date(date);

@@ -1,5 +1,6 @@
 import type { Effort, Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { addDays, startOfDay, format } from 'date-fns';
 
 export interface AISuggestions {
   tags: string[];
@@ -84,6 +85,116 @@ export async function suggestTaskAttributes(
     effort: Math.max(0, Math.min(5, rawEffort ?? 0)) as Effort,
     category: suggestedCategory,
   };
+}
+
+export interface DateSuggestion {
+  date: string; // ISO yyyy-MM-dd, one of the next 7 days
+  reason: string;
+}
+
+const SUGGEST_HORIZON_DAYS = 7;
+
+/**
+ * Ask the AI to pick a good due date within the next 7 days, balancing the
+ * task's size against how loaded each upcoming day already is.
+ */
+export async function suggestTaskDate(
+  title: string,
+  notes: string,
+  effort: Effort,
+  tasks: Task[],
+): Promise<DateSuggestion> {
+  const apiKey = useSettingsStore.getState().anthropicApiKey;
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+
+  const EFFORT_HINTS = ['unknown', 'XS ~15min', 'S ~30min', 'M ~1-2hr', 'L ~4hr', 'XL day+'];
+
+  const today = startOfDay(new Date());
+  const candidates = Array.from({ length: SUGGEST_HORIZON_DAYS }, (_, i) => {
+    const date = addDays(today, i + 1); // tomorrow .. +7 days
+    return { date, iso: format(date, 'yyyy-MM-dd') };
+  });
+  const candidateIsos = new Set(candidates.map(c => c.iso));
+
+  // Bucket open tasks by their due day so we can describe each day's load.
+  const dueByDay = new Map<string, Task[]>();
+  for (const t of tasks) {
+    if (t.completed || !t.dueDate) continue;
+    const key = format(startOfDay(new Date(t.dueDate)), 'yyyy-MM-dd');
+    if (!candidateIsos.has(key)) continue;
+    const bucket = dueByDay.get(key);
+    if (bucket) bucket.push(t);
+    else dueByDay.set(key, [t]);
+  }
+
+  const dayLoad = (iso: string) => {
+    const dayTasks = dueByDay.get(iso) ?? [];
+    return dayTasks.reduce((sum, t) => sum + (t.effort || 1), 0);
+  };
+
+  const scheduleLines = candidates.map(c => {
+    const dayTasks = dueByDay.get(c.iso) ?? [];
+    const totalEffort = dayLoad(c.iso);
+    const titles = dayTasks.slice(0, 4).map(t => `"${t.title}"`).join(', ');
+    return `${c.iso} (${format(c.date, 'EEE')}): ${dayTasks.length} task${dayTasks.length === 1 ? '' : 's'}, load ${totalEffort}${titles ? ` — ${titles}` : ' — open'}`;
+  });
+
+  const effortPart = effort > 0 ? ` (size: ${EFFORT_HINTS[effort]})` : '';
+  const content = [
+    `Pick the best day in the next ${SUGGEST_HORIZON_DAYS} days to schedule this task.`,
+    `Task: "${title || 'Untitled task'}"${effortPart}${notes ? `\nNotes: ${notes.slice(0, 200)}` : ''}`,
+    '',
+    `Prefer lighter days so the workload stays balanced; give a big task its own breathing room and avoid piling it onto an already-loaded day. "load" is the combined effort of tasks already due that day (higher = busier).`,
+    '',
+    'Upcoming days:',
+    ...scheduleLines,
+  ].join('\n');
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 150,
+      tools: [{
+        name: 'schedule',
+        description: 'Return the best day to schedule the task',
+        input_schema: {
+          type: 'object',
+          properties: {
+            date: {
+              type: 'string',
+              description: `The chosen day as YYYY-MM-DD. Must be one of the listed upcoming days.`,
+            },
+            reason: {
+              type: 'string',
+              description: 'A short (one sentence, <90 chars) explanation of why this day fits.',
+            },
+          },
+          required: ['date', 'reason'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'schedule' },
+      messages: [{ role: 'user', content }],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`API error ${response.status}`);
+
+  const data = await response.json() as {
+    content?: Array<{ type: string; input?: { date: string; reason: string } }>;
+  };
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  if (!toolUse?.input) throw new Error('No suggestion returned');
+
+  // Fall back to the lightest upcoming day if the model returns something off-list.
+  const lightest = [...candidates].sort((a, b) => dayLoad(a.iso) - dayLoad(b.iso))[0];
+  const date = candidateIsos.has(toolUse.input.date) ? toolUse.input.date : lightest.iso;
+  return { date, reason: toolUse.input.reason?.trim() || 'Balances your upcoming workload.' };
 }
 
 const CO_COMPLETION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
