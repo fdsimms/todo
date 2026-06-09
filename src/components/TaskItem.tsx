@@ -543,6 +543,9 @@ export function TaskItem({
           visible={showWhenPicker}
           value={task.dueDate ? new Date(task.dueDate) : null}
           timeSegments={task.timeSegments}
+          taskTitle={task.title}
+          taskNotes={task.notes}
+          taskEffort={task.effort}
           onConfirm={(date, segs) => {
             updateTask(task.id, {
               dueDate: date ? date.toISOString() : null,

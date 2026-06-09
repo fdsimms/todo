@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -6,8 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   addMonths, subMonths, isSameMonth, isSameDay, isToday,
@@ -15,12 +18,19 @@ import {
 } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
-import type { TimeOfDay } from '../types';
+import type { TimeOfDay, Effort } from '../types';
+import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { suggestTaskDate } from '../services/aiSuggestions';
 
 interface Props {
   visible: boolean;
   value?: Date | null;
   timeSegments?: TimeOfDay[];
+  // Context for the AI "Suggest" date feature.
+  taskTitle?: string;
+  taskNotes?: string;
+  taskEffort?: Effort;
   onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
@@ -31,6 +41,9 @@ const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 
+// How long the selection "pop" plays before the modal commits and closes.
+const CONFIRM_DELAY_MS = 320;
+
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string }[] = [
@@ -38,6 +51,13 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', color: '#0A84FF' },
   { key: 'evening', label: 'Evening', icon: 'moon-outline', color: '#BF5AF2' },
 ];
+
+const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
+const noonOf = (d: Date) => {
+  const n = new Date(d);
+  n.setHours(12, 0, 0, 0);
+  return n;
+};
 
 function buildCalendarGrid(displayMonth: Date): Date[] {
   const monthStart = startOfMonth(displayMonth);
@@ -56,18 +76,45 @@ function buildCalendarGrid(displayMonth: Date): Date[] {
   return days;
 }
 
-export function WhenPicker({ visible, value, timeSegments: initialSegments, onConfirm, onClear, onCancel }: Props) {
+export function WhenPicker({
+  visible, value, timeSegments: initialSegments,
+  taskTitle, taskNotes, taskEffort,
+  onConfirm, onClear, onCancel,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const tasks = useTaskStore(s => s.tasks);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
+  // Day currently being confirmed — drives the brief "you picked it" feedback.
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+
+  const popAnim = useRef(new Animated.Value(1)).current;
+  const pendingRef = useRef(false);
+  const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const tomorrow = useMemo(() => startOfDay(addDays(new Date(), 1)), [visible]);
+  const tomorrowKey = dayKey(tomorrow);
 
   useEffect(() => {
     if (visible) {
       setDisplayMonth(startOfMonth(value ?? new Date()));
       setSegments(initialSegments ?? []);
+      setPendingKey(null);
+      setAiLoading(false);
+      setSuggestion(null);
+      setSuggestError(null);
+      pendingRef.current = false;
+      popAnim.setValue(1);
     }
+    return () => {
+      if (confirmTimer.current) clearTimeout(confirmTimer.current);
+    };
   }, [visible]);
 
   const calendarDays = useMemo(() => buildCalendarGrid(displayMonth), [displayMonth]);
@@ -78,19 +125,63 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
     );
   };
 
-  const handleDayPress = (day: Date) => {
-    if (isToday(day)) {
-      onConfirm(null, segments);
-      return;
-    }
-    const noon = new Date(day);
-    noon.setHours(12, 0, 0, 0);
-    onConfirm(noon, segments);
+  // Play a quick pop + haptic on the chosen target, then commit & close.
+  const confirmWithFeedback = (date: Date | null, key: string) => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPendingKey(key);
+    if (date) setDisplayMonth(startOfMonth(date));
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    popAnim.setValue(0.7);
+    Animated.spring(popAnim, {
+      toValue: 1.16,
+      useNativeDriver: true,
+      friction: 4,
+      tension: 180,
+    }).start();
+    confirmTimer.current = setTimeout(() => onConfirm(date, segments), CONFIRM_DELAY_MS);
   };
 
-  const handleToday = () => {
-    onConfirm(null, segments);
+  const handleDayPress = (day: Date) => {
+    if (isToday(day)) {
+      confirmWithFeedback(null, 'today');
+      return;
+    }
+    confirmWithFeedback(noonOf(day), dayKey(day));
   };
+
+  const handleToday = () => confirmWithFeedback(null, 'today');
+  const handleTomorrow = () => confirmWithFeedback(noonOf(tomorrow), tomorrowKey);
+
+  const handleSuggest = async () => {
+    if (aiLoading || pendingRef.current) return;
+    setAiLoading(true);
+    setSuggestion(null);
+    setSuggestError(null);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    try {
+      const res = await suggestTaskDate(taskTitle ?? '', taskNotes ?? '', taskEffort ?? 0, tasks);
+      const suggested = noonOf(new Date(`${res.date}T12:00:00`));
+      setSuggestion({ key: res.date, reason: res.reason });
+      setDisplayMonth(startOfMonth(suggested));
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    } catch (e) {
+      setSuggestError(e instanceof Error ? e.message : 'Could not suggest a date.');
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Selection state for the Today / Tomorrow shortcuts (pending overrides current value).
+  const todaySelected = pendingKey ? pendingKey === 'today' : !value;
+  const tomorrowSelected = pendingKey
+    ? pendingKey === tomorrowKey
+    : !!value && isSameDay(value, tomorrow);
+
+  const suggestionLabel = suggestion
+    ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`
+    : null;
 
   return (
     <Modal
@@ -111,26 +202,9 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
             </TouchableOpacity>
           </View>
 
-          {/* Quick picks */}
-          <View style={styles.quickSection}>
-            {/* Today */}
-            <TouchableOpacity
-              style={styles.quickRow}
-              onPress={handleToday}
-              activeOpacity={0.7}
-            >
-              <View style={styles.quickLeft}>
-                <Ionicons name="star" size={18} color="#FFD60A" />
-                <Text style={styles.quickLabel}>Today</Text>
-              </View>
-              {!value && segments.length === 0 && (
-                <Ionicons name="checkmark" size={18} color={colors.accent} />
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.inlineSep} />
-
-            {/* Time segment toggles */}
+          {/* Time of day — its own section, distinct from the date shortcuts */}
+          <View style={styles.timeSection}>
+            <Text style={styles.sectionLabel}>Time of day</Text>
             <View style={styles.segmentRow}>
               {SEGMENTS.map(seg => {
                 const active = segments.includes(seg.key);
@@ -153,6 +227,69 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
                 );
               })}
             </View>
+          </View>
+
+          <View style={styles.sectionGap} />
+
+          {/* Date shortcuts — separate section: choosing a day is its own thing */}
+          <View style={styles.quickSection}>
+            <Text style={styles.sectionLabel}>Pick a day</Text>
+            <View style={styles.quickRow}>
+              <QuickButton
+                styles={styles}
+                colors={colors}
+                icon="star"
+                iconColor="#FFD60A"
+                label="Today"
+                active={todaySelected}
+                pending={pendingKey === 'today'}
+                popAnim={popAnim}
+                onPress={handleToday}
+              />
+              <QuickButton
+                styles={styles}
+                colors={colors}
+                icon="sunny"
+                iconColor="#FF9F0A"
+                label="Tomorrow"
+                active={tomorrowSelected}
+                pending={pendingKey === tomorrowKey}
+                popAnim={popAnim}
+                onPress={handleTomorrow}
+              />
+              {!!anthropicApiKey && (
+                <TouchableOpacity
+                  style={[styles.quickButton, styles.suggestButton]}
+                  onPress={handleSuggest}
+                  activeOpacity={0.7}
+                  disabled={aiLoading}
+                >
+                  {aiLoading ? (
+                    <ActivityIndicator size="small" color={colors.purple} />
+                  ) : (
+                    <Ionicons name="sparkles" size={15} color={colors.purple} />
+                  )}
+                  {!aiLoading && (
+                    <Text style={[styles.quickButtonLabel, { color: colors.purple, fontWeight: fontWeight.semibold }]}>
+                      Suggest
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {(suggestionLabel || suggestError) && (
+              <View style={styles.suggestBanner}>
+                <Ionicons
+                  name={suggestError ? 'alert-circle' : 'sparkles'}
+                  size={13}
+                  color={suggestError ? colors.red : colors.purple}
+                />
+                <Text style={[styles.suggestBannerText, suggestError && { color: colors.red }]} numberOfLines={2}>
+                  {suggestError ?? suggestionLabel}
+                </Text>
+              </View>
+            )}
           </View>
 
           <View style={styles.sectionGap} />
@@ -190,6 +327,9 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
                 const todayDay = isToday(day);
+                const key = todayDay ? 'today' : dayKey(day);
+                const isPending = pendingKey === key && pendingRef.current;
+                const isSuggested = suggestion?.key === dayKey(day);
 
                 return (
                   <TouchableOpacity
@@ -198,20 +338,28 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
                     onPress={() => handleDayPress(day)}
                     activeOpacity={0.7}
                   >
-                    <View style={[
+                    <Animated.View style={[
                       styles.dayCircle,
-                      isSelected && styles.dayCircleSelected,
-                      !isSelected && todayDay && styles.dayCircleToday,
+                      isSelected && !isPending && styles.dayCircleSelected,
+                      !isSelected && !isPending && todayDay && styles.dayCircleToday,
+                      !isPending && isSuggested && styles.dayCircleSuggested,
+                      isPending && styles.dayCirclePending,
+                      isPending && { transform: [{ scale: popAnim }] },
                     ]}>
-                      <Text style={[
-                        styles.dayText,
-                        !inMonth && styles.dayTextOtherMonth,
-                        isSelected && styles.dayTextSelected,
-                        !isSelected && todayDay && styles.dayTextToday,
-                      ]}>
-                        {format(day, 'd')}
-                      </Text>
-                    </View>
+                      {isPending ? (
+                        <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color="#FFFFFF" />
+                      ) : (
+                        <Text style={[
+                          styles.dayText,
+                          !inMonth && styles.dayTextOtherMonth,
+                          isSelected && styles.dayTextSelected,
+                          !isSelected && todayDay && styles.dayTextToday,
+                          isSuggested && styles.dayTextSuggested,
+                        ]}>
+                          {format(day, 'd')}
+                        </Text>
+                      )}
+                    </Animated.View>
                   </TouchableOpacity>
                 );
               })}
@@ -230,6 +378,39 @@ export function WhenPicker({ visible, value, timeSegments: initialSegments, onCo
         </View>
       </View>
     </Modal>
+  );
+}
+
+function QuickButton({
+  styles, colors, icon, iconColor, label, active, pending, popAnim, onPress,
+}: {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  iconColor: string;
+  label: string;
+  active: boolean;
+  pending: boolean;
+  popAnim: Animated.Value;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.quickButton, active && styles.quickButtonActive]}
+      onPress={onPress}
+      activeOpacity={0.7}
+    >
+      <Animated.View style={[styles.quickButtonInner, pending && { transform: [{ scale: popAnim }] }]}>
+        <Ionicons
+          name={pending ? 'checkmark-circle' : icon}
+          size={15}
+          color={pending ? colors.accent : iconColor}
+        />
+        <Text style={[styles.quickButtonLabel, (active || pending) && styles.quickButtonLabelActive]}>
+          {label}
+        </Text>
+      </Animated.View>
+    </TouchableOpacity>
   );
 }
 
@@ -276,40 +457,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  quickSection: {
+  sectionLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: spacing.xs + 2,
+  },
+  timeSection: {
     marginHorizontal: spacing.md,
     backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
-    overflow: 'hidden',
-  },
-  quickRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: spacing.md,
-    minHeight: 44,
-  },
-  quickLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  quickLabel: {
-    color: colors.text,
-    fontSize: font.md,
-  },
-  inlineSep: {
-    height: border.hairline,
-    backgroundColor: colors.separator,
-    marginLeft: 42,
+    paddingHorizontal: spacing.sm + 2,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
   },
   segmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
   },
   segmentPill: {
     flex: 1,
@@ -325,6 +492,63 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
+  },
+  quickSection: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.sm + 2,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  quickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  quickButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 9,
+    paddingHorizontal: 4,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgQuaternary,
+  },
+  quickButtonActive: {
+    backgroundColor: colors.accentSubtle,
+  },
+  quickButtonInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  quickButtonLabel: {
+    color: colors.text,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+  },
+  quickButtonLabelActive: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  suggestButton: {
+    backgroundColor: colors.purple + '22',
+  },
+  suggestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: spacing.sm,
+    paddingHorizontal: 2,
+  },
+  suggestBannerText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    lineHeight: 16,
   },
   sectionGap: {
     height: spacing.sm,
@@ -391,6 +615,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.accent,
   },
+  dayCircleSuggested: {
+    borderWidth: 1.5,
+    borderColor: colors.purple,
+    backgroundColor: colors.purple + '22',
+  },
+  dayCirclePending: {
+    backgroundColor: colors.accent,
+  },
   dayText: {
     color: colors.text,
     fontSize: font.xs + 1,
@@ -405,6 +637,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayTextToday: {
     color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  dayTextSuggested: {
+    color: colors.purple,
     fontWeight: fontWeight.semibold,
   },
   clearBtn: {
