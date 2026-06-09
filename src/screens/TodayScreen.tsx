@@ -490,7 +490,10 @@ export function TodayScreen() {
         <DraggableFlatList
           data={draggableData}
           keyExtractor={item =>
-            item.type === 'header' ? `h-${item.label}` : item.task.id
+            item.type === 'focus-header' ? '__focus-header__'
+            : item.type === 'rest-header' ? '__rest-header__'
+            : item.type === 'header' ? `h-${item.label}`
+            : item.task.id
           }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
