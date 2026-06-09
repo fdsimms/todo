@@ -21,7 +21,7 @@ const baseTask: Task = {
   createdAt: new Date(2025, 0, 1).toISOString(),
   dueDate: null,
   deferUntil: null,
-  timeOfDay: null,
+  timeSegments: [],
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -67,30 +67,36 @@ describe('isTaskVisible', () => {
   });
 
   it('hides tasks deferred to a future day', () => {
-    // noon of tomorrow — still a future day
     const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, deferUntil })).toBe(false);
   });
 
   it('shows tasks whose deferUntil day has arrived (noon today)', () => {
-    // noon today — same logical day
     const deferUntil = new Date(2025, 5, 10, 12, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, deferUntil })).toBe(true);
   });
 
-  it('hides tasks with timeOfDay=afternoon before noon', () => {
+  it('hides tasks with afternoon segment before noon', () => {
     // NOW is 10:00 AM, afternoon starts at 12:00
-    expect(isTaskVisible({ ...baseTask, timeOfDay: 'afternoon' })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, timeSegments: ['afternoon'] })).toBe(false);
   });
 
-  it('shows tasks with timeOfDay=morning at 10 AM (morning started at 6 AM)', () => {
-    // NOW is 10:00 AM, morning starts at 06:00
-    expect(isTaskVisible({ ...baseTask, timeOfDay: 'morning' })).toBe(true);
+  it('shows tasks with morning segment at 10 AM (morning started at 6 AM)', () => {
+    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
   });
 
-  it('hides tasks with timeOfDay=evening before 6 PM', () => {
-    // NOW is 10:00 AM, evening starts at 18:00
-    expect(isTaskVisible({ ...baseTask, timeOfDay: 'evening' })).toBe(false);
+  it('hides tasks with evening segment before 6 PM', () => {
+    expect(isTaskVisible({ ...baseTask, timeSegments: ['evening'] })).toBe(false);
+  });
+
+  it('shows tasks when earliest segment (morning) has started even if other segment (evening) has not', () => {
+    // morning started at 6 AM — task is visible even though evening hasn't started
+    expect(isTaskVisible({ ...baseTask, timeSegments: ['morning', 'evening'] })).toBe(true);
+  });
+
+  it('hides tasks where all segments are in the future', () => {
+    // both afternoon (12:00) and evening (18:00) haven't started at 10 AM
+    expect(isTaskVisible({ ...baseTask, timeSegments: ['afternoon', 'evening'] })).toBe(false);
   });
 
   it('shows tasks due today', () => {
@@ -99,20 +105,20 @@ describe('isTaskVisible', () => {
   });
 
   it('shows overdue tasks (due in the past)', () => {
-    const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString(); // June 8
+    const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, dueDate })).toBe(true);
   });
 
   it('hides tasks with a future due date', () => {
-    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString(); // tomorrow
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, dueDate })).toBe(false);
   });
 
-  it('hides when both deferUntil (future day) and timeOfDay block visibility', () => {
+  it('hides when both deferUntil (future day) and segment block visibility', () => {
     const task: Task = {
       ...baseTask,
-      deferUntil: new Date(2025, 5, 11, 12, 0, 0).toISOString(), // tomorrow noon
-      timeOfDay: 'evening',
+      deferUntil: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
+      timeSegments: ['evening'],
     };
     expect(isTaskVisible(task)).toBe(false);
   });
@@ -140,17 +146,16 @@ describe('isTaskDeferred', () => {
   });
 
   it('returns true for tasks deferred to a future day', () => {
-    const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString(); // tomorrow
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString();
     expect(isTaskDeferred({ ...baseTask, deferUntil })).toBe(true);
   });
 
-  it('returns true when timeOfDay segment has not started yet', () => {
-    expect(isTaskDeferred({ ...baseTask, timeOfDay: 'evening' })).toBe(true);
+  it('returns true when evening segment has not started yet', () => {
+    expect(isTaskDeferred({ ...baseTask, timeSegments: ['evening'] })).toBe(true);
   });
 
-  it('returns false when timeOfDay segment has already started', () => {
-    // morning started at 6 AM, it is now 10 AM
-    expect(isTaskDeferred({ ...baseTask, timeOfDay: 'morning' })).toBe(false);
+  it('returns false when morning segment has already started', () => {
+    expect(isTaskDeferred({ ...baseTask, timeSegments: ['morning'] })).toBe(false);
   });
 
   it('returns true for tasks with a future due date', () => {
@@ -183,16 +188,15 @@ describe('getVisibleAt', () => {
   });
 
   it('returns the deferUntil day start when deferred to a future day', () => {
-    const deferUntil = new Date(2025, 5, 11, 12, 0, 0); // tomorrow noon
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0);
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);
-    // Should be on tomorrow (June 11)
     expect(result.getDate()).toBe(11);
   });
 
-  it('returns timeOfDay threshold when the segment has not started today', () => {
+  it('returns earliest segment threshold when no segment has started today', () => {
     // NOW is 10:00 AM, evening starts at 18:00
-    const task: Task = { ...baseTask, timeOfDay: 'evening' };
+    const task: Task = { ...baseTask, timeSegments: ['evening'] };
     const result = getVisibleAt(task);
     expect(result.getHours()).toBe(18);
     expect(result.getMinutes()).toBe(0);
@@ -200,31 +204,36 @@ describe('getVisibleAt', () => {
   });
 
   it('returns afternoon start when afternoon has not started', () => {
-    // NOW is 10:00 AM, afternoon starts at 12:00
-    const task: Task = { ...baseTask, timeOfDay: 'afternoon' };
+    const task: Task = { ...baseTask, timeSegments: ['afternoon'] };
     const result = getVisibleAt(task);
     expect(result.getHours()).toBe(12);
     expect(result.getMinutes()).toBe(0);
   });
 
+  it('returns earliest of multiple segments when none have started', () => {
+    // afternoon (12:00) is earlier than evening (18:00), both are future at 10 AM
+    const task: Task = { ...baseTask, timeSegments: ['evening', 'afternoon'] };
+    const result = getVisibleAt(task);
+    expect(result.getHours()).toBe(12);
+  });
+
   it('returns dueDate day start when due date is in the future', () => {
-    const dueDate = new Date(2025, 5, 11, 0, 0, 0); // tomorrow midnight
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0);
     const task: Task = { ...baseTask, dueDate: dueDate.toISOString() };
     const result = getVisibleAt(task);
     expect(result.getDate()).toBe(11);
     expect(result.getHours()).toBe(0);
   });
 
-  it('applies timeOfDay to the deferUntil day', () => {
-    const deferUntil = new Date(2025, 5, 11, 12, 0, 0); // tomorrow
-    const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString(), timeOfDay: 'evening' };
+  it('applies earliest segment to the deferUntil day', () => {
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0);
+    const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString(), timeSegments: ['evening'] };
     const result = getVisibleAt(task);
     expect(result.getDate()).toBe(11);
-    expect(result.getHours()).toBe(18); // evening start
+    expect(result.getHours()).toBe(18);
   });
 
   it('ignores past deferUntil when building candidates', () => {
-    // deferUntil is on today's logical day — not in the future at day level
     const deferUntil = new Date(2025, 5, 10, 8, 0, 0); // 8 AM today, before NOW
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);

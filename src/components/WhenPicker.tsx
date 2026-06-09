@@ -20,7 +20,8 @@ import type { TimeOfDay } from '../types';
 interface Props {
   visible: boolean;
   value?: Date | null;
-  onConfirm: (date: Date | null, timeOfDay: TimeOfDay | null) => void;
+  timeSegments?: TimeOfDay[];
+  onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -31,6 +32,12 @@ const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string }[] = [
+  { key: 'morning', label: 'Morning', icon: 'sunny-outline', color: '#FF9F0A' },
+  { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', color: '#0A84FF' },
+  { key: 'evening', label: 'Evening', icon: 'moon-outline', color: '#BF5AF2' },
+];
 
 function buildCalendarGrid(displayMonth: Date): Date[] {
   const monthStart = startOfMonth(displayMonth);
@@ -43,78 +50,46 @@ function buildCalendarGrid(displayMonth: Date): Date[] {
     days.push(cur);
     cur = addDays(cur, 1);
   }
-  // Always pad to 42 cells (6 rows) so the grid height never shifts
   while (days.length < 42) {
     days.push(addDays(days[days.length - 1], 1));
   }
   return days;
 }
 
-export function WhenPicker({ visible, value, onConfirm, onClear, onCancel }: Props) {
+export function WhenPicker({ visible, value, timeSegments: initialSegments, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
+  const [segments, setSegments] = useState<TimeOfDay[]>([]);
 
   useEffect(() => {
     if (visible) {
       setDisplayMonth(startOfMonth(value ?? new Date()));
+      setSegments(initialSegments ?? []);
     }
   }, [visible]);
 
   const calendarDays = useMemo(() => buildCalendarGrid(displayMonth), [displayMonth]);
 
-  const todayNoon = () => {
-    const d = startOfDay(new Date());
-    d.setHours(12, 0, 0, 0);
-    return d;
+  const toggleSegment = (seg: TimeOfDay) => {
+    setSegments(prev =>
+      prev.includes(seg) ? prev.filter(s => s !== seg) : [...prev, seg]
+    );
   };
-
-  const quickOptions: {
-    label: string;
-    icon: React.ComponentProps<typeof Ionicons>['name'];
-    iconColor: string;
-    deferUntil: Date | null;
-    timeOfDay: TimeOfDay | null;
-  }[] = [
-    {
-      label: 'Today',
-      icon: 'star',
-      iconColor: '#FFD60A',
-      deferUntil: null,
-      timeOfDay: null,
-    },
-    {
-      label: 'This Morning',
-      icon: 'sunny-outline',
-      iconColor: colors.orange,
-      deferUntil: null,
-      timeOfDay: 'morning',
-    },
-    {
-      label: 'This Afternoon',
-      icon: 'partly-sunny-outline',
-      iconColor: colors.accent,
-      deferUntil: null,
-      timeOfDay: 'afternoon',
-    },
-    {
-      label: 'This Evening',
-      icon: 'moon-outline',
-      iconColor: colors.purple,
-      deferUntil: null,
-      timeOfDay: 'evening',
-    },
-  ];
 
   const handleDayPress = (day: Date) => {
     if (isToday(day)) {
-      onConfirm(null, null);
+      onConfirm(null, segments);
       return;
     }
     const noon = new Date(day);
     noon.setHours(12, 0, 0, 0);
-    onConfirm(noon, null);
+    onConfirm(noon, segments);
+  };
+
+  const handleToday = () => {
+    onConfirm(null, segments);
   };
 
   return (
@@ -129,6 +104,7 @@ export function WhenPicker({ visible, value, onConfirm, onClear, onCancel }: Pro
         <View style={styles.card}>
           {/* Header */}
           <View style={styles.header}>
+            <View style={styles.headerSpacer} />
             <Text style={styles.headerTitle}>When?</Text>
             <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn}>
               <Ionicons name="close" size={20} color={colors.textSecondary} />
@@ -137,36 +113,52 @@ export function WhenPicker({ visible, value, onConfirm, onClear, onCancel }: Pro
 
           {/* Quick picks */}
           <View style={styles.quickSection}>
-            {quickOptions.map((opt, idx) => {
-              const isActive = value
-                ? (isToday(value) && opt.timeOfDay === null && opt.label === 'Today')
-                : false;
-              return (
-                <React.Fragment key={opt.label}>
+            {/* Today */}
+            <TouchableOpacity
+              style={styles.quickRow}
+              onPress={handleToday}
+              activeOpacity={0.7}
+            >
+              <View style={styles.quickLeft}>
+                <Ionicons name="star" size={18} color="#FFD60A" />
+                <Text style={styles.quickLabel}>Today</Text>
+              </View>
+              {!value && segments.length === 0 && (
+                <Ionicons name="checkmark" size={18} color={colors.accent} />
+              )}
+            </TouchableOpacity>
+
+            <View style={styles.inlineSep} />
+
+            {/* Time segment toggles */}
+            <View style={styles.segmentRow}>
+              {SEGMENTS.map(seg => {
+                const active = segments.includes(seg.key);
+                return (
                   <TouchableOpacity
-                    style={styles.quickRow}
-                    onPress={() => onConfirm(opt.deferUntil, opt.timeOfDay)}
+                    key={seg.key}
+                    style={[styles.segmentPill, active && { backgroundColor: seg.color + '33' }]}
+                    onPress={() => toggleSegment(seg.key)}
                     activeOpacity={0.7}
                   >
-                    <View style={styles.quickLeft}>
-                      <Ionicons name={opt.icon} size={18} color={opt.iconColor} />
-                      <Text style={styles.quickLabel}>{opt.label}</Text>
-                    </View>
-                    {isActive && (
-                      <Ionicons name="checkmark" size={18} color={colors.accent} />
-                    )}
+                    <Ionicons
+                      name={seg.icon}
+                      size={14}
+                      color={active ? seg.color : colors.textSecondary}
+                    />
+                    <Text style={[styles.segmentLabel, active && { color: seg.color, fontWeight: fontWeight.semibold }]}>
+                      {seg.label}
+                    </Text>
                   </TouchableOpacity>
-                  {idx < quickOptions.length - 1 && <View style={styles.inlineSep} />}
-                </React.Fragment>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
 
           <View style={styles.sectionGap} />
 
           {/* Calendar section */}
           <View style={styles.calSection}>
-            {/* Month navigation */}
             <View style={styles.monthNav}>
               <TouchableOpacity
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
@@ -185,7 +177,6 @@ export function WhenPicker({ visible, value, onConfirm, onClear, onCancel }: Pro
               </TouchableOpacity>
             </View>
 
-            {/* Day-of-week headers */}
             <View style={styles.dayHeaders}>
               {DAY_HEADERS.map((d, i) => (
                 <View key={i} style={styles.dayHeaderCell}>
@@ -194,7 +185,6 @@ export function WhenPicker({ visible, value, onConfirm, onClear, onCancel }: Pro
               ))}
             </View>
 
-            {/* Calendar grid */}
             <View style={styles.grid}>
               {calendarDays.map((day, idx) => {
                 const inMonth = isSameMonth(day, displayMonth);
@@ -265,11 +255,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
-    position: 'relative',
+  },
+  headerSpacer: {
+    width: 28,
   },
   headerTitle: {
     color: colors.text,
@@ -277,9 +269,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   closeBtn: {
-    position: 'absolute',
-    right: spacing.md,
-    top: spacing.md,
     width: 28,
     height: 28,
     borderRadius: 14,
@@ -314,6 +303,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: 42,
+  },
+  segmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  segmentPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 8,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgQuaternary,
+  },
+  segmentLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   sectionGap: {
     height: spacing.sm,

@@ -64,24 +64,27 @@ export function LaterScreen() {
     setSelectedIds(new Set());
   };
 
-  const getGroupKey = (task: Task): string => {
+  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+
+  const getGroupKeys = (task: Task): string[] => {
     const visibleAt = getVisibleAt(task);
     const dayLabel = formatGroupHeader(visibleAt.toISOString());
-    if (task.timeOfDay) {
-      const label = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }[task.timeOfDay];
-      return `${dayLabel} — ${label}`;
+    if (task.timeSegments.length > 0) {
+      return task.timeSegments.map(seg => `${dayLabel} — ${SEG_LABELS[seg]}`);
     }
-    return dayLabel;
+    return [dayLabel];
   };
 
-  // Group by the date (and time of day) they'll become visible
+  // Group by the date (and time segment) they'll become visible
+  // Tasks with multiple segments appear in each segment's group
   const grouped = new Map<string, Task[]>();
   [...deferredTasks]
     .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
     .forEach(task => {
-      const key = getGroupKey(task);
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(task);
+      for (const key of getGroupKeys(task)) {
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(task);
+      }
     });
 
   const sections = Array.from(grouped.entries()).map(([title, data]) => ({

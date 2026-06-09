@@ -1,6 +1,15 @@
 import * as SQLite from 'expo-sqlite';
 import type { Task, Project, TimeOfDay } from '../types';
 
+function parseTimeSegments(raw: unknown): TimeOfDay[] {
+  if (!raw) return [];
+  const s = raw as string;
+  if (s.startsWith('[')) {
+    try { return JSON.parse(s) as TimeOfDay[]; } catch { return []; }
+  }
+  return [s as TimeOfDay];
+}
+
 const db = SQLite.openDatabaseSync('todo.db');
 
 export function initDatabase(): void {
@@ -96,7 +105,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     createdAt: row.created_at as string,
     dueDate: (row.due_date as string) ?? null,
     deferUntil: (row.defer_until as string) ?? null,
-    timeOfDay: ((row.time_of_day as string) ?? null) as TimeOfDay | null,
+    timeSegments: parseTimeSegments(row.time_of_day),
     recurrenceType: (row.recurrence_type as Task['recurrenceType']) ?? 'none',
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
@@ -138,7 +147,7 @@ export function dbInsertTask(task: Task): void {
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
-      task.timeOfDay ?? null, task.recurrenceType, task.recurrenceInterval,
+      task.timeSegments.length ? JSON.stringify(task.timeSegments) : null, task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
@@ -162,7 +171,7 @@ export function dbUpdateTask(task: Task): void {
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
-      task.dueDate, task.deferUntil, task.timeOfDay ?? null,
+      task.dueDate, task.deferUntil, task.timeSegments.length ? JSON.stringify(task.timeSegments) : null,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,

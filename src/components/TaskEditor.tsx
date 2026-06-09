@@ -71,7 +71,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
+  const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -109,7 +109,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     if (task) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
-      setTimeOfDay(task.timeOfDay ?? null);
+      setTimeSegments(task.timeSegments ?? []);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
@@ -119,7 +119,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       setCycleIndex(task.cycleIndex);
     } else {
       setTitle(initialTitle ?? ''); setNotes(''); setCategory(null); setTags([]);
-      setDueDate(null); setTimeOfDay(null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(null); setTimeSegments([]); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
       setPriority(0); setEffort(0); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
@@ -155,7 +155,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     const data = {
       title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
-      timeOfDay, deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: task?.recurrenceDays ?? [],
@@ -721,30 +721,40 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
               label="Date"
               value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
               onPress={() => setShowWhenPicker(true)}
-              onClear={dueDate ? () => { setDueDate(null); setTimeOfDay(null); } : undefined}
+              onClear={dueDate ? () => { setDueDate(null); setTimeSegments([]); } : undefined}
               colors={colors}
               styles={styles}
             />
             <View style={styles.sep} />
             <View style={styles.optionRow}>
-              <Ionicons name="time-outline" size={18} color={timeOfDay ? colors.accent : colors.textSecondary} />
+              <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Time of day</Text>
-                {!timeOfDay && <Text style={styles.optionHint}>Show from a specific part of the day</Text>}
+                {timeSegments.length === 0 && <Text style={styles.optionHint}>Show from a specific part of the day</Text>}
               </View>
+              {timeSegments.length > 0 && (
+                <TouchableOpacity onPress={() => setTimeSegments([])} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
             </View>
             <View style={styles.timePillRow}>
-              {([null, 'morning', 'afternoon', 'evening'] as (TimeOfDay | null)[]).map(tod => (
-                <TouchableOpacity
-                  key={tod ?? 'any'}
-                  style={[styles.timePill, timeOfDay === tod && styles.timePillActive]}
-                  onPress={() => setTimeOfDay(tod)}
-                >
-                  <Text style={[styles.timePillText, timeOfDay === tod && styles.timePillTextActive]}>
-                    {tod === null ? 'Any' : tod.charAt(0).toUpperCase() + tod.slice(1)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+              {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map(tod => {
+                const active = timeSegments.includes(tod);
+                return (
+                  <TouchableOpacity
+                    key={tod}
+                    style={[styles.timePill, active && styles.timePillActive]}
+                    onPress={() => setTimeSegments(prev =>
+                      prev.includes(tod) ? prev.filter(s => s !== tod) : [...prev, tod]
+                    )}
+                  >
+                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                      {tod.charAt(0).toUpperCase() + tod.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <View style={styles.sep} />
             <OptionRow
@@ -836,7 +846,8 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
         <WhenPicker
           visible={showWhenPicker}
           value={dueDate}
-          onConfirm={(date, tod) => {
+          timeSegments={timeSegments}
+          onConfirm={(date, segs) => {
             if (date) {
               const noon = new Date(date);
               noon.setHours(12, 0, 0, 0);
@@ -844,12 +855,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             } else {
               setDueDate(null);
             }
-            setTimeOfDay(tod);
+            setTimeSegments(segs);
             setShowWhenPicker(false);
           }}
           onClear={() => {
             setDueDate(null);
-            setTimeOfDay(null);
+            setTimeSegments([]);
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}

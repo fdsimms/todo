@@ -32,7 +32,7 @@ export interface Task {
 
   dueDate: string | null;
   deferUntil: string | null;
-  timeOfDay: TimeOfDay | null;
+  timeSegments: TimeOfDay[];
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
