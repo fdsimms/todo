@@ -86,9 +86,42 @@ export async function suggestTaskAttributes(
   };
 }
 
+const CO_COMPLETION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
+const MAX_COMPLETED_HISTORY = 300;
+
+function buildCoCompletionHints(completedTasks: Task[], candidates: Task[]): string {
+  const recent = [...completedTasks]
+    .filter(t => t.completedAt)
+    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
+    .slice(0, MAX_COMPLETED_HISTORY)
+    .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime());
+
+  const freq = new Map<string, number>();
+  for (let i = 0; i < recent.length; i++) {
+    const ti = new Date(recent[i].completedAt!).getTime();
+    for (let j = i + 1; j < recent.length; j++) {
+      const tj = new Date(recent[j].completedAt!).getTime();
+      if (tj - ti > CO_COMPLETION_WINDOW_MS) break;
+      const pair = [recent[i].title.toLowerCase(), recent[j].title.toLowerCase()].sort().join(' ↔ ');
+      freq.set(pair, (freq.get(pair) ?? 0) + 1);
+    }
+  }
+
+  const candidateTitles = new Set(candidates.map(t => t.title.toLowerCase()));
+  const relevant = [...freq.entries()]
+    .filter(([pair, count]) => count > 1 && pair.split(' ↔ ').some(p => candidateTitles.has(p)))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+
+  if (relevant.length === 0) return '';
+  return 'Tasks historically completed together (within 2hrs of each other): ' +
+    relevant.map(([pair, count]) => `${pair} (${count}x)`).join(', ');
+}
+
 export async function suggestFocusTasks(
   tasks: Task[],
   alreadyFocusedCount: number,
+  completedTasks: Task[] = [],
 ): Promise<string[]> {
   const apiKey = useSettingsStore.getState().anthropicApiKey;
   if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
@@ -141,10 +174,18 @@ export async function suggestFocusTasks(
         },
       }],
       tool_choice: { type: 'tool', name: 'focus' },
-      messages: [{
-        role: 'user',
-        content: `Pick exactly ${needed} task${needed > 1 ? 's' : ''} to focus on right now. Prefer: high priority or overdue tasks; tasks that work well together because they are spatially or thematically related (e.g. errands, computer tasks, cleaning tasks); reasonable combined effort. Today: ${today}.\n\n${taskList}`,
-      }],
+      messages: (() => {
+        const coHints = buildCoCompletionHints(completedTasks, candidates);
+        const content = [
+          `Pick exactly ${needed} task${needed > 1 ? 's' : ''} to focus on right now.`,
+          `Prefer: high priority or overdue tasks; tasks that work well together (spatially or thematically — e.g. errands, computer tasks, cleaning); reasonable combined effort; tasks the user has historically done in the same session.`,
+          `Today: ${today}.`,
+          '',
+          taskList,
+          ...(coHints ? ['', coHints] : []),
+        ].join('\n');
+        return [{ role: 'user' as const, content }];
+      })(),
     }),
   });
 
