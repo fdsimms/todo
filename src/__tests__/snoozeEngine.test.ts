@@ -17,7 +17,7 @@ const BASE: Task = {
   createdAt: new Date().toISOString(),
   dueDate: null,
   deferUntil: null,
-  timeOfDay: null,
+  timeSegments: [],
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],

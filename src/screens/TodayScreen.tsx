@@ -216,15 +216,15 @@ export function TodayScreen() {
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
-  // Later view grouping
-  const laterGroupKey = (task: Task): string => {
+  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+
+  const laterGroupKeys = (task: Task): string[] => {
     const visibleAt = getVisibleAt(task);
     const dayLabel = formatGroupHeader(visibleAt.toISOString());
-    if (task.timeOfDay) {
-      const label = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' }[task.timeOfDay];
-      return `${dayLabel} — ${label}`;
+    if (task.timeSegments.length > 0) {
+      return task.timeSegments.map(seg => `${dayLabel} — ${SEG_LABELS[seg]}`);
     }
-    return dayLabel;
+    return [dayLabel];
   };
 
   const laterSections = useMemo(() => {
@@ -232,9 +232,10 @@ export function TodayScreen() {
     [...deferredTasks]
       .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
       .forEach(task => {
-        const key = laterGroupKey(task);
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key)!.push(task);
+        for (const key of laterGroupKeys(task)) {
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(task);
+        }
       });
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [deferredTasks]);

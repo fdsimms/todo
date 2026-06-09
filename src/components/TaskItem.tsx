@@ -291,15 +291,18 @@ export function TaskItem({
           {task.deferUntil && new Date(task.deferUntil) > new Date() && (
             <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
           )}
-          {task.timeOfDay && (
+          {task.timeSegments.length > 0 && (
             <View style={styles.timeBadge}>
-              <Ionicons
-                name={task.timeOfDay === 'morning' ? 'sunny-outline' : task.timeOfDay === 'afternoon' ? 'sunny' : 'moon-outline'}
-                size={9}
-                color={colors.textTertiary}
-              />
+              {task.timeSegments.map(seg => (
+                <Ionicons
+                  key={seg}
+                  name={seg === 'morning' ? 'sunny-outline' : seg === 'afternoon' ? 'sunny' : 'moon-outline'}
+                  size={9}
+                  color={colors.textTertiary}
+                />
+              ))}
               <Text style={styles.timeBadgeText}>
-                {task.timeOfDay.charAt(0).toUpperCase() + task.timeOfDay.slice(1)}
+                {task.timeSegments.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' · ')}
               </Text>
             </View>
           )}
@@ -539,15 +542,16 @@ export function TaskItem({
         <WhenPicker
           visible={showWhenPicker}
           value={task.dueDate ? new Date(task.dueDate) : null}
-          onConfirm={(date, timeOfDay) => {
+          timeSegments={task.timeSegments}
+          onConfirm={(date, segs) => {
             updateTask(task.id, {
               dueDate: date ? date.toISOString() : null,
-              timeOfDay: timeOfDay,
+              timeSegments: segs,
             });
             setShowWhenPicker(false);
           }}
           onClear={() => {
-            updateTask(task.id, { dueDate: null, timeOfDay: null });
+            updateTask(task.id, { dueDate: null, timeSegments: [] });
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}

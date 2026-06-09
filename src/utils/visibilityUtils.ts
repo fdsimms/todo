@@ -1,8 +1,8 @@
-import type { Task } from '../types';
+import type { Task, TimeOfDay } from '../types';
 import { getDayStart, getCurrentDayStart } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 
-function getTimeOfDayThreshold(timeOfDay: NonNullable<Task['timeOfDay']>): Date {
+function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   const { morningStart, afternoonStart, eveningStart } = useSettingsStore.getState();
   const hhmm = timeOfDay === 'morning' ? morningStart
     : timeOfDay === 'afternoon' ? afternoonStart
@@ -13,22 +13,27 @@ function getTimeOfDayThreshold(timeOfDay: NonNullable<Task['timeOfDay']>): Date 
   return t;
 }
 
+function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
+  if (segments.length === 0) return null;
+  return segments
+    .map(s => getTimeOfDayThreshold(s))
+    .reduce((min, t) => (t < min ? t : min));
+}
+
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
-  // deferUntil is day-level: hidden until that logical day arrives
   if (task.deferUntil) {
     const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
     const todayStart = getCurrentDayStart();
     if (deferDayStart > todayStart) return false;
   }
 
-  // timeOfDay: hidden until that time segment starts each day
-  if (task.timeOfDay) {
-    const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  if (task.timeSegments.length > 0) {
+    const threshold = earliestSegmentThreshold(task.timeSegments)!;
     if (now < threshold) return false;
   }
 
@@ -52,34 +57,30 @@ export function getVisibleAt(task: Task): Date {
   const candidates: Date[] = [];
   const todayStart = getCurrentDayStart();
 
-  const applyTimeOfDay = (base: Date): Date => {
-    if (!task.timeOfDay) return base;
-    const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  const applyTimeSegments = (base: Date): Date => {
+    const threshold = earliestSegmentThreshold(task.timeSegments);
+    if (!threshold) return base;
     const result = new Date(base);
     result.setHours(threshold.getHours(), threshold.getMinutes(), 0, 0);
     return result;
   };
 
-  // deferUntil - day-level block
   if (task.deferUntil) {
     const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart > todayStart) {
-      candidates.push(applyTimeOfDay(deferDayStart));
+      candidates.push(applyTimeSegments(deferDayStart));
     }
   }
 
-  // timeOfDay - time-level block within today (only when not already pushed to future day)
-  if (task.timeOfDay && candidates.length === 0) {
-    const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  if (task.timeSegments.length > 0 && candidates.length === 0) {
+    const threshold = earliestSegmentThreshold(task.timeSegments)!;
     if (threshold > now) candidates.push(threshold);
   }
 
-  // dueDate - day-level block
   if (task.dueDate) {
     const taskStart = getDayStart(new Date(task.dueDate), dayResetTime);
     if (taskStart > todayStart) {
-      const candidate = applyTimeOfDay(taskStart);
-      // Only add if later than any existing candidate
+      const candidate = applyTimeSegments(taskStart);
       if (candidates.length === 0 || candidate > candidates[candidates.length - 1]) {
         candidates.push(candidate);
       }
@@ -88,4 +89,9 @@ export function getVisibleAt(task: Task): Date {
 
   if (candidates.length === 0) return now;
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
+}
+
+export function getSegmentLabels(task: Task): string[] {
+  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+  return task.timeSegments.map(s => SEG_LABELS[s]);
 }
