@@ -78,3 +78,7 @@ export const PRIORITY_COLORS = [
 
 export const EFFORT_LABELS = ['—', 'XS', 'S', 'M', 'L', 'XL'] as const;
 export const EFFORT_HINTS = ['', '~15min', '~30min', '~1-2hr', '~4hr', 'day+'] as const;
+
+// Max length for any title-style input (task, subtask, cycle step). Long titles
+// are truncated with an ellipsis in the list, so cap input to keep them sane.
+export const TITLE_MAX_LENGTH = 200;

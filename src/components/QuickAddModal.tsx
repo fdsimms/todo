@@ -21,7 +21,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort } from '../types';
-import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
+import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { tagColor } from '../utils/tagColor';
 import { format, addDays, startOfDay } from 'date-fns';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
@@ -193,6 +193,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               onChangeText={setTitle}
               onSubmitEditing={handleAdd}
               returnKeyType="done"
+              maxLength={TITLE_MAX_LENGTH}
               blurOnSubmit={false}
             />
             <TouchableOpacity

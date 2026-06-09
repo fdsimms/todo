@@ -13,7 +13,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
-import { PRIORITY_COLORS } from '../types';
+import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, type Colors } from '../theme';
@@ -252,6 +252,7 @@ export function TaskItem({
             onBlur={saveTitle}
             onSubmitEditing={saveTitle}
             returnKeyType="done"
+            maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
           />
@@ -263,7 +264,7 @@ export function TaskItem({
                 <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.title, styles.titleFlex]} numberOfLines={cycleStep ? 1 : 2}>
+              <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
                 {cycleStep ? cycleStep.title : task.title}
               </Text>
             )}
