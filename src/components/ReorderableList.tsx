@@ -5,29 +5,21 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
-  LayoutAnimation,
-  Platform,
-  UIManager,
   type StyleProp,
   type ViewStyle,
   type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type NativeScrollEvent,
   type RefreshControlProps,
-  type LayoutAnimationConfig,
 } from 'react-native';
+import Reanimated, { LinearTransition } from 'react-native-reanimated';
 import { moveItem, dropIndexFromTranslation } from '../utils/reorder';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
-// Subtle slide for rows displaced by the dragged item. Layout-only (no
-// create/delete fades) so the placeholder swap can't flicker.
-const ROW_SHIFT_ANIMATION: LayoutAnimationConfig = {
-  duration: 180,
-  update: { type: LayoutAnimation.Types.easeInEaseOut },
-};
+// Subtle slide for rows displaced by the dragged item. Reanimated layout
+// transitions (not RN's LayoutAnimation, which silently no-ops on the New
+// Architecture) animate each row to its new layout position; rows still rest
+// transform-free once the transition completes.
+const ROW_SHIFT = LinearTransition.duration(180);
 
 export interface ReorderableRenderInfo<T> {
   item: T;
@@ -160,10 +152,12 @@ export function ReorderableList<T>({
     hoverIndexRef.current = null;
     setActiveIndex(null);
     setHoverIndex(null);
-    overlayY.setValue(0);
-    overlayX.setValue(0);
-    overlayScale.setValue(1.03);
-  }, [overlayY, overlayX, overlayScale]);
+    // Do NOT reset the overlay's animated values here: the native view obeys
+    // setValue immediately, while React unmounts the overlay a frame later —
+    // zeroing the translates snapped the card back to its drag-start position
+    // for one visible frame (the "flash to old spot" on drop). The values are
+    // re-initialized in startDrag before the overlay mounts again.
+  }, []);
 
   const currentHeights = (): number[] =>
     dataRef.current.map(item => heightsRef.current.get(keyExtractor(item)) ?? DEFAULT_ROW_HEIGHT);
@@ -176,10 +170,6 @@ export function ReorderableList<T>({
     const next = dropIndexFromTranslation(currentHeights(), ai, fingerDelta + scrollDelta);
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
-      // Slide the displaced rows into their new spots instead of snapping.
-      // onLayout still reports final positions immediately, so the cached
-      // slot position the drop animation targets stays exact.
-      LayoutAnimation.configureNext(ROW_SHIFT_ANIMATION);
       setHoverIndex(next);
       onHoverChangeRef.current?.();
     }
@@ -332,8 +322,9 @@ export function ReorderableList<T>({
               const key = keyExtractor(item);
               const isPlaceholder = key === activeKey;
               return (
-                <View
+                <Reanimated.View
                   key={key}
+                  layout={ROW_SHIFT}
                   pointerEvents={isPlaceholder ? 'none' : 'auto'}
                   onLayout={e => {
                     // Record unconditionally: rows that move during a drag are
@@ -361,7 +352,7 @@ export function ReorderableList<T>({
                       isActive: false,
                     })}
                   </View>
-                </View>
+                </Reanimated.View>
               );
             })}
         {ListFooterComponent}
