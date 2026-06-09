@@ -1,0 +1,88 @@
+import { moveItem, dropIndexFromTranslation, cumulativeOffsets } from '../utils/reorder';
+
+describe('moveItem', () => {
+  it('moves an item down', () => {
+    expect(moveItem(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+  });
+
+  it('moves an item up', () => {
+    expect(moveItem(['a', 'b', 'c', 'd'], 3, 1)).toEqual(['a', 'd', 'b', 'c']);
+  });
+
+  it('returns an equal array when from === to', () => {
+    expect(moveItem(['a', 'b', 'c'], 1, 1)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('clamps an out-of-range destination', () => {
+    expect(moveItem(['a', 'b', 'c'], 0, 99)).toEqual(['b', 'c', 'a']);
+    expect(moveItem(['a', 'b', 'c'], 2, -5)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('ignores an invalid source index', () => {
+    expect(moveItem(['a', 'b'], 7, 0)).toEqual(['a', 'b']);
+  });
+
+  it('does not mutate the input', () => {
+    const input = ['a', 'b', 'c'];
+    moveItem(input, 0, 2);
+    expect(input).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('dropIndexFromTranslation', () => {
+  // Mixed heights modeling the real list: short headers (~36) between
+  // taller task rows (~52).
+  const heights = [36, 52, 52, 36, 52];
+
+  it('stays put for small movements', () => {
+    expect(dropIndexFromTranslation(heights, 2, 0)).toBe(2);
+    expect(dropIndexFromTranslation(heights, 2, 10)).toBe(2);
+    expect(dropIndexFromTranslation(heights, 2, -10)).toBe(2);
+  });
+
+  it('crosses a row below once past its midpoint', () => {
+    // Row 3 is 36 tall; crossing requires >= 36 - 18 = 18.
+    expect(dropIndexFromTranslation(heights, 2, 17)).toBe(2);
+    expect(dropIndexFromTranslation(heights, 2, 18)).toBe(3);
+  });
+
+  it('crosses a row above once past its midpoint', () => {
+    // Row 1 is 52 tall; crossing requires <= -(52/2) = -26.
+    expect(dropIndexFromTranslation(heights, 2, -25)).toBe(2);
+    expect(dropIndexFromTranslation(heights, 2, -26)).toBe(1);
+  });
+
+  it('crosses multiple rows of different heights', () => {
+    // From index 4 moving up over rows 3 (36) and 2 (52):
+    // row 3 midpoint at -(36/2)=-18 ... row 2 at -(36 + 52/2)=-62.
+    expect(dropIndexFromTranslation(heights, 4, -20)).toBe(3);
+    expect(dropIndexFromTranslation(heights, 4, -62)).toBe(2);
+    // All the way to the top: row 1 at -(36+52+52/2)=-114, row 0 at -(36+52+52+36/2)=-158.
+    expect(dropIndexFromTranslation(heights, 4, -114)).toBe(1);
+    expect(dropIndexFromTranslation(heights, 4, -158)).toBe(0);
+  });
+
+  it('clamps at the list edges', () => {
+    expect(dropIndexFromTranslation(heights, 0, -500)).toBe(0);
+    expect(dropIndexFromTranslation(heights, 4, 500)).toBe(4);
+    expect(dropIndexFromTranslation(heights, 2, 5000)).toBe(4);
+    expect(dropIndexFromTranslation(heights, 2, -5000)).toBe(0);
+  });
+
+  it('handles uniform heights like a simple division', () => {
+    const uniform = [50, 50, 50, 50, 50, 50];
+    expect(dropIndexFromTranslation(uniform, 0, 124)).toBe(2);
+    expect(dropIndexFromTranslation(uniform, 0, 126)).toBe(3);
+    expect(dropIndexFromTranslation(uniform, 5, -126)).toBe(2);
+  });
+});
+
+describe('cumulativeOffsets', () => {
+  it('returns the running top offset of each row', () => {
+    expect(cumulativeOffsets([36, 52, 52])).toEqual([0, 36, 88]);
+  });
+
+  it('returns empty for an empty list', () => {
+    expect(cumulativeOffsets([])).toEqual([]);
+  });
+});

@@ -10,7 +10,6 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +23,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
+import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
@@ -267,7 +267,7 @@ export function TodayScreen() {
         hideTodayLabel
       />
     );
-    return drag ? <ScaleDecorator>{taskNode}</ScaleDecorator> : taskNode;
+    return taskNode;
   };
 
   const emptyComponent = (
@@ -474,16 +474,14 @@ export function TodayScreen() {
       )}
 
       {viewMode === 'today' && focusedTasks.length === 0 && (
-        <DraggableFlatList
+        <ReorderableList
           data={draggableData}
           keyExtractor={listItemKey}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          renderItem={renderItem as any}
+          renderItem={renderItem}
           onDragBegin={() => {
             setExpandedTaskId(null);
           }}
-          onDragEnd={({ data: reordered }) => {
+          onReorder={reordered => {
             // The draggable list only ever contains header + task items.
             const dropped = reordered.filter(
               (item): item is { type: 'header'; label: string } | { type: 'task'; task: Task } =>
