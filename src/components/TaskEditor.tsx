@@ -816,21 +816,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                 </View>
               </>
             )}
-            <View style={styles.sep} />
-            <TouchableOpacity style={styles.optionRow} onPress={() => setFocused(f => !f)}>
-              <Ionicons
-                name={focused ? 'star' : 'star-outline'}
-                size={18}
-                color={focused ? colors.orange : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>In Focus</Text>
-                <Text style={styles.optionHint}>Show in Focus tab</Text>
-              </View>
-              <View style={[styles.toggle, focused && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
           </View>
         </ScrollView>
 
