@@ -129,7 +129,6 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false); setAiSuggestions(null);
     setTimeout(() => titleRef.current?.focus(), 100);
-    // Snapshot initial form state for unsaved-changes detection
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialTitle ?? ''),
       notes: task ? task.notes : '',
@@ -204,22 +203,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
   const handleCancel = () => {
     const current = JSON.stringify({
-      title,
-      notes,
-      category,
-      tags,
+      title, notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
-      recurrenceType,
-      recurrenceInterval,
-      recurrenceFromCompletion,
-      priority,
-      effort,
-      focused,
-      cycleEnabled,
-      cycleItems,
-      cycleIndex,
+      recurrenceType, recurrenceInterval, recurrenceFromCompletion,
+      priority, effort, focused, cycleEnabled, cycleItems, cycleIndex,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -294,211 +283,217 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             multiline
           />
 
-          {/* Category */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Category</Text>
-            <View style={styles.pillRow}>
-              <TouchableOpacity
-                style={[styles.pill, !category && styles.pillActiveNeutral]}
-                onPress={() => setCategory(null)}
-              >
-                <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-              </TouchableOpacity>
-              {allCategories.map(cat => (
+          {/* Category + Tags */}
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabel}>Category</Text>
+              <View style={styles.pillRow}>
                 <TouchableOpacity
-                  key={cat}
-                  style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                  onPress={() => setCategory(cat)}
+                  style={[styles.pill, !category && styles.pillActiveNeutral]}
+                  onPress={() => setCategory(null)}
                 >
-                  <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
+                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
-              ))}
-              {addingCategory ? (
-                <TextInput
-                  autoFocus
-                  style={styles.tagInput}
-                  value={newCategory}
-                  onChangeText={setNewCategory}
-                  onSubmitEditing={() => {
-                    const c = newCategory.trim();
-                    if (c) { addCategory(c); setCategory(c); }
-                    setNewCategory(''); setAddingCategory(false);
-                  }}
-                  onBlur={() => {
-                    const c = newCategory.trim();
-                    if (c) { addCategory(c); setCategory(c); }
-                    setNewCategory(''); setAddingCategory(false);
-                  }}
-                  placeholder="category name"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  autoCapitalize="words"
-                />
-              ) : (
-                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                  <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addTagText}>New</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {aiSuggestions?.category && !category && (
-              <View style={styles.aiRow}>
-                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                <Text style={styles.aiLabel}>AI suggests</Text>
-                <TouchableOpacity onPress={() => setCategory(aiSuggestions.category!)} hitSlop={8}>
-                  <Text style={styles.aiEffortApply}>{aiSuggestions.category}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          {/* Tags */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionLabel}>Tags</Text>
-              {!!anthropicApiKey && (
-                <TouchableOpacity
-                  style={styles.suggestBtn}
-                  onPress={handleSuggest}
-                  disabled={aiLoading || !title.trim()}
-                  hitSlop={8}
-                >
-                  {aiLoading
-                    ? <ActivityIndicator size="small" color={colors.purple} />
-                    : (
-                      <>
-                        <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                        <Text style={styles.suggestBtnText}>Suggest</Text>
-                      </>
-                    )
-                  }
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.tagRow}>
-              {tags.map(tag => (
-                <TouchableOpacity
-                  key={tag}
-                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                  onPress={() => setTags(prev => prev.filter(t => t !== tag))}
-                >
-                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                  <Ionicons name="close" size={12} color={tagColor(tag)} />
-                </TouchableOpacity>
-              ))}
-              {addingTag ? (
-                <TextInput
-                  autoFocus
-                  style={styles.tagInput}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  onSubmitEditing={addTagFromInput}
-                  onBlur={addTagFromInput}
-                  placeholder="tag name"
-                  placeholderTextColor={colors.textTertiary}
-                  returnKeyType="done"
-                  autoCapitalize="none"
-                />
-              ) : (
-                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
-                  <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addTagText}>Add tag</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {allTags.filter(t => !tags.includes(t)).length > 0 && (
-              <View style={styles.tagSuggestions}>
-                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                {allCategories.map(cat => (
                   <TouchableOpacity
-                    key={tag}
-                    style={styles.tagSuggestion}
-                    onPress={() => setTags(prev => [...prev, tag])}
+                    key={cat}
+                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                    onPress={() => setCategory(cat)}
                   >
-                    <Text style={styles.tagSuggestionText}>{tag}</Text>
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
-              </View>
-            )}
-            {aiSuggestions && aiSuggestions.tags.length > 0 && (
-              <View style={styles.aiRow}>
-                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                <Text style={styles.aiLabel}>AI</Text>
-                {aiSuggestions.tags.map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[styles.tagSuggestion, styles.aiTagChip]}
-                    onPress={() => {
-                      setTags(prev => [...prev, tag]);
-                      setAiSuggestions(prev => prev
-                        ? { ...prev, tags: prev.tags.filter(t => t !== tag) }
-                        : null
-                      );
+                {addingCategory ? (
+                  <TextInput
+                    autoFocus
+                    style={styles.tagInput}
+                    value={newCategory}
+                    onChangeText={setNewCategory}
+                    onSubmitEditing={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); }
+                      setNewCategory(''); setAddingCategory(false);
                     }}
+                    onBlur={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); }
+                      setNewCategory(''); setAddingCategory(false);
+                    }}
+                    placeholder="category name"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    autoCapitalize="words"
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addTagText}>New</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {aiSuggestions?.category && !category && (
+                <View style={styles.aiRow}>
+                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                  <Text style={styles.aiLabel}>AI suggests</Text>
+                  <TouchableOpacity onPress={() => setCategory(aiSuggestions.category!)} hitSlop={8}>
+                    <Text style={styles.aiEffortApply}>{aiSuggestions.category}</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            <View style={styles.cardSep} />
+
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>Tags</Text>
+                {!!anthropicApiKey && (
+                  <TouchableOpacity
+                    style={styles.suggestBtn}
+                    onPress={handleSuggest}
+                    disabled={aiLoading || !title.trim()}
+                    hitSlop={8}
                   >
-                    <Text style={[styles.tagSuggestionText, { color: colors.purple }]}>{tag}</Text>
+                    {aiLoading
+                      ? <ActivityIndicator size="small" color={colors.purple} />
+                      : (
+                        <>
+                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                          <Text style={styles.suggestBtnText}>Suggest</Text>
+                        </>
+                      )
+                    }
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.tagRow}>
+                {tags.map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                    onPress={() => setTags(prev => prev.filter(t => t !== tag))}
+                  >
+                    <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                    <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                    <Ionicons name="close" size={12} color={tagColor(tag)} />
+                  </TouchableOpacity>
+                ))}
+                {addingTag ? (
+                  <TextInput
+                    autoFocus
+                    style={styles.tagInput}
+                    value={newTag}
+                    onChangeText={setNewTag}
+                    onSubmitEditing={addTagFromInput}
+                    onBlur={addTagFromInput}
+                    placeholder="tag name"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    autoCapitalize="none"
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addTagText}>Add tag</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {allTags.filter(t => !tags.includes(t)).length > 0 && (
+                <View style={styles.tagSuggestions}>
+                  {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.tagSuggestion}
+                      onPress={() => setTags(prev => [...prev, tag])}
+                    >
+                      <Text style={styles.tagSuggestionText}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+              {aiSuggestions && aiSuggestions.tags.length > 0 && (
+                <View style={styles.aiRow}>
+                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                  <Text style={styles.aiLabel}>AI</Text>
+                  {aiSuggestions.tags.map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={[styles.tagSuggestion, styles.aiTagChip]}
+                      onPress={() => {
+                        setTags(prev => [...prev, tag]);
+                        setAiSuggestions(prev => prev
+                          ? { ...prev, tags: prev.tags.filter(t => t !== tag) }
+                          : null
+                        );
+                      }}
+                    >
+                      <Text style={[styles.tagSuggestionText, { color: colors.purple }]}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Priority + Effort */}
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabel}>Priority</Text>
+              <View style={styles.pillRow}>
+                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[
+                      styles.pill,
+                      priority === p && p === 0 && styles.pillActiveNeutral,
+                      priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
+                    ]}
+                    onPress={() => setPriority(p)}
+                  >
+                    <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
+                      {PRIORITY_LABELS[p]}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            )}
-          </View>
-
-          {/* Priority */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Priority</Text>
-            <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                <TouchableOpacity
-                  key={p}
-                  style={[
-                    styles.pill,
-                    priority === p && p === 0 && styles.pillActiveNeutral,
-                    priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                  ]}
-                  onPress={() => setPriority(p)}
-                >
-                  <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                    {PRIORITY_LABELS[p]}
-                  </Text>
-                </TouchableOpacity>
-              ))}
             </View>
-          </View>
 
-          {/* Effort */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Effort</Text>
-            <View style={styles.pillRow}>
-              {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => (
-                <TouchableOpacity
-                  key={e}
-                  style={[
-                    styles.pill,
-                    effort === e && styles.pillActiveNeutral,
-                    effort === 0 && aiSuggestions && aiSuggestions.effort === e && e > 0 && styles.pillAiHinted,
-                  ]}
-                  onPress={() => setEffort(e)}
-                >
-                  <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
-                    {e === 0 ? '—' : EFFORT_LABELS[e]}
-                  </Text>
-                  {EFFORT_HINTS[e] ? (
-                    <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
-                  ) : null}
-                </TouchableOpacity>
-              ))}
-            </View>
-            {aiSuggestions && aiSuggestions.effort > 0 && effort === 0 && (
-              <View style={styles.aiRow}>
-                <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
-                <Text style={styles.aiLabel}>AI suggests</Text>
-                <TouchableOpacity onPress={() => setEffort(aiSuggestions.effort)} hitSlop={8}>
-                  <Text style={styles.aiEffortApply}>
-                    {EFFORT_LABELS[aiSuggestions.effort]} ({EFFORT_HINTS[aiSuggestions.effort]})
-                  </Text>
-                </TouchableOpacity>
+            <View style={styles.cardSep} />
+
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabel}>Effort</Text>
+              <View style={styles.pillRow}>
+                {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => (
+                  <TouchableOpacity
+                    key={e}
+                    style={[
+                      styles.pill,
+                      effort === e && styles.pillActiveNeutral,
+                      effort === 0 && aiSuggestions && aiSuggestions.effort === e && e > 0 && styles.pillAiHinted,
+                    ]}
+                    onPress={() => setEffort(e)}
+                  >
+                    <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
+                      {e === 0 ? '—' : EFFORT_LABELS[e]}
+                    </Text>
+                    {EFFORT_HINTS[e] ? (
+                      <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                ))}
               </View>
-            )}
+              {aiSuggestions && aiSuggestions.effort > 0 && effort === 0 && (
+                <View style={styles.aiRow}>
+                  <Ionicons name="sparkles-outline" size={11} color={colors.purple} />
+                  <Text style={styles.aiLabel}>AI suggests</Text>
+                  <TouchableOpacity onPress={() => setEffort(aiSuggestions.effort)} hitSlop={8}>
+                    <Text style={styles.aiEffortApply}>
+                      {EFFORT_LABELS[aiSuggestions.effort]} ({EFFORT_HINTS[aiSuggestions.effort]})
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
 
           {/* Subtasks — only shown when editing an existing task */}
@@ -506,139 +501,32 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             const subtasks = subtasksOf(task.id);
             const doneCount = subtasks.filter(s => s.completed).length;
             return (
-              <View style={styles.section}>
-                <View style={styles.subtaskHeader}>
-                  <Text style={styles.sectionLabel}>Subtasks</Text>
-                  {subtasks.length > 0 && (
-                    <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
-                  )}
-                </View>
-                <SortableList
-                  data={subtasks}
-                  onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-                  renderItem={(sub, _i, drag) => (
-                    <View style={styles.subtaskRow}>
-                      <TouchableOpacity
-                        onPress={() => toggleSubtask(sub.id)}
-                        hitSlop={6}
-                        style={styles.subtaskCheck}
-                      >
-                        <Ionicons
-                          name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                          size={20}
-                          color={sub.completed ? colors.green : colors.bgQuaternary}
-                        />
-                      </TouchableOpacity>
-                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                        {sub.title}
-                      </Text>
-                      <TouchableOpacity
-                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
-                        delayLongPress={150}
-                        hitSlop={8}
-                        style={styles.dragHandle}
-                      >
-                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => deleteSubtask(sub.id)}
-                        hitSlop={8}
-                        style={styles.subtaskDelete}
-                      >
-                        <Ionicons name="close" size={14} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
-                />
-                {addingSubtask ? (
-                  <View style={styles.subtaskInputRow}>
-                    <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
-                    <TextInput
-                      ref={subtaskInputRef}
-                      autoFocus
-                      style={styles.subtaskInput}
-                      value={newSubtaskTitle}
-                      onChangeText={setNewSubtaskTitle}
-                      placeholder="Subtask title"
-                      placeholderTextColor={colors.textTertiary}
-                      returnKeyType="done"
-                      onSubmitEditing={() => {
-                        subtaskSavedRef.current = true;
-                        const t = newSubtaskTitle.trim();
-                        if (t) addSubtask(task.id, t);
-                        setNewSubtaskTitle('');
-                        setTimeout(() => {
-                          subtaskSavedRef.current = false;
-                          subtaskInputRef.current?.focus();
-                        }, 50);
-                      }}
-                      onBlur={() => {
-                        if (subtaskSavedRef.current) return;
-                        const t = newSubtaskTitle.trim();
-                        if (t) addSubtask(task.id, t);
-                        setNewSubtaskTitle('');
-                        setAddingSubtask(false);
-                      }}
-                    />
+              <View style={styles.sectionCard}>
+                <View style={styles.cardSection}>
+                  <View style={styles.subtaskHeader}>
+                    <Text style={styles.sectionLabel}>Subtasks</Text>
+                    {subtasks.length > 0 && (
+                      <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
+                    )}
                   </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.addSubtaskBtn}
-                    onPress={() => setAddingSubtask(true)}
-                  >
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addSubtaskText}>Add subtask</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          })()}
-
-          {/* Cycle items */}
-          <View style={styles.section}>
-            <View style={styles.cycleHeader}>
-              <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
-              <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
-              <TouchableOpacity
-                style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
-                onPress={() => setCycleEnabled(v => !v)}
-              >
-                <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
-              </TouchableOpacity>
-            </View>
-            {!cycleEnabled && (
-              <Text style={styles.cycleHint}>
-                Rotate through different versions of this task on each recurrence.
-              </Text>
-            )}
-            {cycleEnabled && (
-              <>
-                <SortableList
-                  data={cycleItems}
-                  onReorder={(newData) => {
-                    const activeItemId = cycleItems[cycleIndex]?.id;
-                    setCycleItems(newData);
-                    const newIdx = newData.findIndex(item => item.id === activeItemId);
-                    if (newIdx !== -1) setCycleIndex(newIdx);
-                  }}
-                  renderItem={(item, displayIndex, drag) => {
-                    const actualIdx = cycleItems.findIndex(c => c.id === item.id);
-                    const isCurrentStep = actualIdx === cycleIndex;
-                    return (
-                      <View style={styles.cycleItemRow}>
+                  <SortableList
+                    data={subtasks}
+                    onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                    renderItem={(sub, _i, drag) => (
+                      <View style={styles.subtaskRow}>
                         <TouchableOpacity
-                          onPress={() => setCycleIndex(actualIdx)}
+                          onPress={() => toggleSubtask(sub.id)}
                           hitSlop={6}
-                          style={styles.cycleItemIndexBtn}
+                          style={styles.subtaskCheck}
                         >
-                          <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
-                            <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
-                              {displayIndex + 1}
-                            </Text>
-                          </View>
+                          <Ionicons
+                            name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                            size={20}
+                            color={sub.completed ? colors.green : colors.bgQuaternary}
+                          />
                         </TouchableOpacity>
-                        <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
-                          {item.title}
+                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                          {sub.title}
                         </Text>
                         <TouchableOpacity
                           onLongPress={(e) => drag(e.nativeEvent.pageY)}
@@ -649,73 +537,195 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                           <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={() => {
-                            const next = cycleItems.filter((_, j) => j !== actualIdx);
-                            setCycleItems(next);
-                            if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
-                          }}
+                          onPress={() => deleteSubtask(sub.id)}
                           hitSlop={8}
-                          style={styles.cycleItemDelete}
+                          style={styles.subtaskDelete}
                         >
                           <Ionicons name="close" size={14} color={colors.textTertiary} />
                         </TouchableOpacity>
                       </View>
-                    );
-                  }}
-                />
-                {addingCycleItem ? (
-                  <View style={styles.cycleInputRow}>
-                    <View style={styles.cycleItemDot}>
-                      <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
+                    )}
+                  />
+                  {addingSubtask ? (
+                    <View style={styles.subtaskInputRow}>
+                      <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
+                      <TextInput
+                        ref={subtaskInputRef}
+                        autoFocus
+                        style={styles.subtaskInput}
+                        value={newSubtaskTitle}
+                        onChangeText={setNewSubtaskTitle}
+                        placeholder="Subtask title"
+                        placeholderTextColor={colors.textTertiary}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          subtaskSavedRef.current = true;
+                          const t = newSubtaskTitle.trim();
+                          if (t) addSubtask(task.id, t);
+                          setNewSubtaskTitle('');
+                          setTimeout(() => {
+                            subtaskSavedRef.current = false;
+                            subtaskInputRef.current?.focus();
+                          }, 50);
+                        }}
+                        onBlur={() => {
+                          if (subtaskSavedRef.current) return;
+                          const t = newSubtaskTitle.trim();
+                          if (t) addSubtask(task.id, t);
+                          setNewSubtaskTitle('');
+                          setAddingSubtask(false);
+                        }}
+                      />
                     </View>
-                    <TextInput
-                      ref={cycleInputRef}
-                      autoFocus
-                      style={styles.cycleInput}
-                      value={newCycleItemTitle}
-                      onChangeText={setNewCycleItemTitle}
-                      placeholder="Item title"
-                      placeholderTextColor={colors.textTertiary}
-                      returnKeyType="done"
-                      onSubmitEditing={() => {
-                        cycleItemSavedRef.current = true;
-                        const t = newCycleItemTitle.trim();
-                        if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                        setNewCycleItemTitle('');
-                        setTimeout(() => {
-                          cycleItemSavedRef.current = false;
-                          cycleInputRef.current?.focus();
-                        }, 50);
-                      }}
-                      onBlur={() => {
-                        if (cycleItemSavedRef.current) return;
-                        const t = newCycleItemTitle.trim();
-                        if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                        setNewCycleItemTitle('');
-                        setAddingCycleItem(false);
-                      }}
-                    />
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.addCycleItemBtn}
-                    onPress={() => setAddingCycleItem(true)}
-                  >
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addCycleItemText}>Add item</Text>
-                  </TouchableOpacity>
-                )}
-                {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
-                  <Text style={styles.cycleCurrentHint}>
-                    Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
-                  </Text>
-                )}
-              </>
-            )}
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.addSubtaskBtn}
+                      onPress={() => setAddingSubtask(true)}
+                    >
+                      <Ionicons name="add" size={14} color={colors.accent} />
+                      <Text style={styles.addSubtaskText}>Add subtask</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Cycle items */}
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <View style={styles.cycleHeader}>
+                <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
+                <TouchableOpacity
+                  style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
+                  onPress={() => setCycleEnabled(v => !v)}
+                >
+                  <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
+                </TouchableOpacity>
+              </View>
+              {!cycleEnabled && (
+                <Text style={styles.cycleHint}>
+                  Rotate through different versions of this task on each recurrence.
+                </Text>
+              )}
+              {cycleEnabled && (
+                <>
+                  <SortableList
+                    data={cycleItems}
+                    onReorder={(newData) => {
+                      const activeItemId = cycleItems[cycleIndex]?.id;
+                      setCycleItems(newData);
+                      const newIdx = newData.findIndex(item => item.id === activeItemId);
+                      if (newIdx !== -1) setCycleIndex(newIdx);
+                    }}
+                    renderItem={(item, displayIndex, drag) => {
+                      const actualIdx = cycleItems.findIndex(c => c.id === item.id);
+                      const isCurrentStep = actualIdx === cycleIndex;
+                      return (
+                        <View style={styles.cycleItemRow}>
+                          <TouchableOpacity
+                            onPress={() => setCycleIndex(actualIdx)}
+                            hitSlop={6}
+                            style={styles.cycleItemIndexBtn}
+                          >
+                            <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
+                              <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
+                                {displayIndex + 1}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                          <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
+                            {item.title}
+                          </Text>
+                          <TouchableOpacity
+                            onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                            delayLongPress={150}
+                            hitSlop={8}
+                            style={styles.dragHandle}
+                          >
+                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const next = cycleItems.filter((_, j) => j !== actualIdx);
+                              setCycleItems(next);
+                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                            }}
+                            hitSlop={8}
+                            style={styles.cycleItemDelete}
+                          >
+                            <Ionicons name="close" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    }}
+                  />
+                  {addingCycleItem ? (
+                    <View style={styles.cycleInputRow}>
+                      <View style={styles.cycleItemDot}>
+                        <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
+                      </View>
+                      <TextInput
+                        ref={cycleInputRef}
+                        autoFocus
+                        style={styles.cycleInput}
+                        value={newCycleItemTitle}
+                        onChangeText={setNewCycleItemTitle}
+                        placeholder="Item title"
+                        placeholderTextColor={colors.textTertiary}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          cycleItemSavedRef.current = true;
+                          const t = newCycleItemTitle.trim();
+                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewCycleItemTitle('');
+                          setTimeout(() => {
+                            cycleItemSavedRef.current = false;
+                            cycleInputRef.current?.focus();
+                          }, 50);
+                        }}
+                        onBlur={() => {
+                          if (cycleItemSavedRef.current) return;
+                          const t = newCycleItemTitle.trim();
+                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewCycleItemTitle('');
+                          setAddingCycleItem(false);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.addCycleItemBtn}
+                      onPress={() => setAddingCycleItem(true)}
+                    >
+                      <Ionicons name="add" size={14} color={colors.accent} />
+                      <Text style={styles.addCycleItemText}>Add item</Text>
+                    </TouchableOpacity>
+                  )}
+                  {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
+                    <Text style={styles.cycleCurrentHint}>
+                      Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
           </View>
 
           {/* Options */}
           <View style={styles.optionsCard}>
+            <TouchableOpacity style={styles.optionRow} onPress={() => setFocused(v => !v)} activeOpacity={0.7}>
+              <Ionicons name="flash" size={18} color={focused ? colors.orange : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Focused</Text>
+                {!focused && <Text style={styles.optionHint}>Pin to the top of your day</Text>}
+              </View>
+              <View style={[styles.toggle, focused && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
             <OptionRow
               icon="calendar"
               label="Date"
@@ -906,10 +916,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md, minHeight: 50,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.lg, minHeight: 50,
     lineHeight: 22,
   },
-  section: { paddingHorizontal: spacing.md, marginBottom: spacing.md },
+  sectionCard: {
+    marginHorizontal: spacing.md, marginBottom: spacing.lg,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
+  },
+  cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
@@ -1029,9 +1044,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleOn: { backgroundColor: colors.orange },
   toggleKnob: {
     width: 21, height: 21, borderRadius: 11,
-    backgroundColor: colors.textSecondary,
+    backgroundColor: colors.bg,
   },
-  toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
+  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   subtaskHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     marginBottom: spacing.sm,
@@ -1078,7 +1093,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cycleToggleOn: { backgroundColor: colors.accent },
   cycleToggleKnob: {
     width: 19, height: 19, borderRadius: 10,
-    backgroundColor: colors.textSecondary,
+    backgroundColor: colors.bg,
   },
   cycleToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   cycleHint: {
