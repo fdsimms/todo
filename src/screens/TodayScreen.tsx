@@ -8,7 +8,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from 'react-native';
-import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
+import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -23,12 +23,11 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
-import { FocusSelector } from '../components/FocusSelector';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
 
-type ViewMode = 'today' | 'focus' | 'later';
+type ViewMode = 'today' | 'later';
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
@@ -63,7 +62,7 @@ export function TodayScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [focusSelectorVisible, setFocusSelectorVisible] = useState(false);
+  const [restExpanded, setRestExpanded] = useState(false);
 
   const enterSelection = (id: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
@@ -132,6 +131,8 @@ export function TodayScreen() {
   }, [visibleTasks, sort, filterPriorities, filterEfforts]);
 
   type ListItem =
+    | { type: 'focus-header' }
+    | { type: 'rest-header' }
     | { type: 'header'; label: string }
     | { type: 'task'; task: Task };
 
@@ -140,43 +141,81 @@ export function TodayScreen() {
     [upcomingTodayTasks],
   );
 
-  const data: ListItem[] = useMemo(() => {
+  const makeCategoryGroups = (tasks: Task[]): ListItem[] => {
     const byCategory: Record<string, Task[]> = {};
     const uncategorized: Task[] = [];
-
-    filtered.forEach(task => {
-      if (!task.category) {
-        uncategorized.push(task);
-      } else {
+    tasks.forEach(task => {
+      if (!task.category) uncategorized.push(task);
+      else {
         if (!byCategory[task.category]) byCategory[task.category] = [];
         byCategory[task.category].push(task);
       }
     });
-
-    const groupedItems: ListItem[] = [];
-    Object.entries(byCategory).forEach(([cat, tasks]) => {
-      groupedItems.push({ type: 'header', label: cat });
-      tasks.forEach(task => groupedItems.push({ type: 'task', task }));
+    const items: ListItem[] = [];
+    Object.entries(byCategory).forEach(([cat, catTasks]) => {
+      items.push({ type: 'header', label: cat });
+      catTasks.forEach(task => items.push({ type: 'task', task }));
     });
     if (uncategorized.length > 0) {
-      if (groupedItems.length > 0) {
-        groupedItems.push({ type: 'header', label: 'Other' });
+      if (Object.keys(byCategory).length > 0) items.push({ type: 'header', label: 'Other' });
+      uncategorized.forEach(task => items.push({ type: 'task', task }));
+    }
+    return items;
+  };
+
+  const data: ListItem[] = useMemo(() => {
+    if (focusedTasks.length > 0) {
+      const items: ListItem[] = [{ type: 'focus-header' }];
+      focusedTasks.forEach(task => items.push({ type: 'task', task }));
+      const restTasks = filtered.filter(t => !t.focused);
+      if (restTasks.length > 0) {
+        items.push({ type: 'rest-header' });
+        if (restExpanded) items.push(...makeCategoryGroups(restTasks));
       }
-      uncategorized.forEach(task => groupedItems.push({ type: 'task', task }));
+      return items;
     }
 
+    const items = makeCategoryGroups(filtered);
     if (showUpcoming && upcomingTodayTasks.length > 0) {
-      const upcomingFiltered = applyFiltersAndSort(upcomingTodayTasks);
+      let upcomingFiltered = upcomingTodayTasks;
+      if (filterPriorities.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterPriorities.includes(t.priority));
+      if (filterEfforts.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterEfforts.includes(t.effort));
       if (upcomingFiltered.length > 0) {
-        groupedItems.push({ type: 'header', label: 'Later Today' });
-        upcomingFiltered.forEach(task => groupedItems.push({ type: 'task', task }));
+        items.push({ type: 'header', label: 'Later Today' });
+        upcomingFiltered.forEach(task => items.push({ type: 'task', task }));
       }
     }
+    return items;
+  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts]);
 
-    return groupedItems;
-  }, [filtered, showUpcoming, upcomingTodayTasks]);
-
-  const renderItem = ({ item, drag, isActive }: RenderItemParams<ListItem>) => {
+  const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
+    if (item.type === 'focus-header') {
+      return (
+        <View style={styles.focusSectionHeader}>
+          <View style={styles.focusSectionTitleRow}>
+            <Ionicons name="star" size={13} color={colors.orange} />
+            <Text style={styles.focusSectionTitle}>Focus</Text>
+          </View>
+          <TouchableOpacity onPress={clearAllFocus} hitSlop={8}>
+            <Text style={styles.clearText}>Clear</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (item.type === 'rest-header') {
+      const restCount = filtered.filter(t => !t.focused).length;
+      return (
+        <TouchableOpacity
+          style={styles.restSectionHeader}
+          onPress={() => setRestExpanded(e => !e)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.sectionHeaderText}>Everything else</Text>
+          {restCount > 0 && <Text style={styles.restCount}>{restCount}</Text>}
+          <Ionicons name={restExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+        </TouchableOpacity>
+      );
+    }
     if (item.type === 'header') {
       return (
         <View style={styles.sectionHeader}>
@@ -185,33 +224,32 @@ export function TodayScreen() {
       );
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
-    return (
-      <ScaleDecorator>
-        <TaskItem
-          task={item.task}
-          onPress={() => {
-            if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
-              setExpandedTaskId(null);
-              return;
-            }
-            setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
-          }}
-          expanded={expandedTaskId === item.task.id}
-          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
-          onEdit={() => openEditor(item.task)}
-          subtaskCount={subs.length}
-          subtaskDoneCount={subs.filter(t => t.completed).length}
-          subtasks={subs}
-          drag={selectionMode || upcomingTaskIds.has(item.task.id) ? undefined : drag}
-          isActive={isActive}
-          selectionMode={selectionMode}
-          selected={selectedIds.has(item.task.id)}
-          onLongPress={() => enterSelection(item.task.id)}
-          onSelect={() => toggleSelection(item.task.id)}
-          hideTodayLabel
-        />
-      </ScaleDecorator>
+    const taskNode = (
+      <TaskItem
+        task={item.task}
+        onPress={() => {
+          if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
+            setExpandedTaskId(null);
+            return;
+          }
+          setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
+        }}
+        expanded={expandedTaskId === item.task.id}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
+        onEdit={() => openEditor(item.task)}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        drag={selectionMode || !drag || upcomingTaskIds.has(item.task.id) ? undefined : drag}
+        isActive={isActive}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(item.task.id)}
+        onLongPress={() => enterSelection(item.task.id)}
+        onSelect={() => toggleSelection(item.task.id)}
+        hideTodayLabel
+      />
     );
+    return drag ? <ScaleDecorator>{taskNode}</ScaleDecorator> : taskNode;
   };
 
   const emptyComponent = (
@@ -219,11 +257,7 @@ export function TodayScreen() {
       <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
       <Text style={styles.emptyText}>All clear</Text>
       <Text style={styles.emptySubtext}>
-        {activeFilterCount > 0
-          ? 'No tasks match these filters'
-          : viewMode === 'focus'
-            ? 'No tasks in focus'
-            : 'Nothing to do right now'}
+        {activeFilterCount > 0 ? 'No tasks match these filters' : 'Nothing to do right now'}
       </Text>
     </View>
   );
@@ -260,22 +294,11 @@ export function TodayScreen() {
         <View>
           {viewMode === 'today' && <Text style={styles.dateLabel}>{today}</Text>}
           <Text style={styles.title}>
-            {viewMode === 'today' ? 'Today' : viewMode === 'focus' ? 'Focus' : 'Later'}
+            {viewMode === 'today' ? 'Today' : 'Later'}
           </Text>
         </View>
         <View style={styles.headerButtons}>
-          {viewMode === 'focus' && focusedTasks.length > 0 && (
-            <TouchableOpacity style={styles.clearBtn} onPress={clearAllFocus}>
-              <Text style={styles.clearText}>Clear</Text>
-            </TouchableOpacity>
-          )}
-          {viewMode === 'focus' && (
-            <TouchableOpacity style={styles.selectBtn} onPress={() => setFocusSelectorVisible(true)}>
-              <Ionicons name="add" size={16} color={colors.text} />
-              <Text style={styles.selectText}>Select</Text>
-            </TouchableOpacity>
-          )}
-          {viewMode === 'today' && upcomingTodayTasks.length > 0 && (
+          {viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0 && (
             <TouchableOpacity
               style={[styles.iconBtn, showUpcoming && styles.iconBtnAccent]}
               onPress={() => setShowUpcoming(v => !v)}
@@ -317,7 +340,7 @@ export function TodayScreen() {
 
       {/* View mode switcher */}
       <View style={styles.viewModePills}>
-        {(['today', 'focus', 'later'] as ViewMode[]).map(mode => (
+        {(['today', 'later'] as ViewMode[]).map(mode => (
           <TouchableOpacity
             key={mode}
             style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
@@ -332,7 +355,6 @@ export function TodayScreen() {
           >
             <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              {mode === 'focus' && focusedTasks.length > 0 ? ` ${focusedTasks.length}` : ''}
               {mode === 'later' && deferredTasks.length > 0 ? ` ${deferredTasks.length}` : ''}
             </Text>
           </TouchableOpacity>
@@ -349,52 +371,6 @@ export function TodayScreen() {
       )}
 
       <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
-      {viewMode === 'focus' && (
-        focusedTasks.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="star" size={52} color={colors.bgQuaternary} />
-            <Text style={styles.emptyText}>No focus set</Text>
-            <Text style={styles.emptySubtext}>Tap "Select" to pick a few tasks to focus on, or star any task.</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={focusedTasks}
-            keyExtractor={t => t.id}
-            keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="on-drag"
-            contentContainerStyle={styles.listContent}
-            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-            onScrollBeginDrag={() => setExpandedTaskId(null)}
-            renderItem={({ item }) => {
-              const subs = allTasks.filter(t => t.parentId === item.id);
-              return (
-                <TaskItem
-                  task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
-                  expanded={expandedTaskId === item.id}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onLongPress={() => enterSelection(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                  hideTodayLabel
-                />
-              );
-            }}
-          />
-        )
-      )}
-
       {viewMode === 'later' && (
         <SectionList
           sections={laterSections}
@@ -446,7 +422,32 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && (
+      {viewMode === 'today' && focusedTasks.length > 0 && (
+        <FlatList
+          data={data}
+          keyExtractor={item =>
+            item.type === 'focus-header' ? '__focus-header__'
+            : item.type === 'rest-header' ? '__rest-header__'
+            : item.type === 'header' ? `h-${item.label}`
+            : item.task.id
+          }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          renderItem={({ item }) => renderItem({ item })}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              tintColor={colors.textSecondary}
+            />
+          }
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          onScrollBeginDrag={() => setExpandedTaskId(null)}
+        />
+      )}
+
+      {viewMode === 'today' && focusedTasks.length === 0 && (
         <DraggableFlatList
           data={data}
           keyExtractor={item =>
@@ -454,7 +455,7 @@ export function TodayScreen() {
           }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          renderItem={renderItem}
+          renderItem={renderItem as any}
           onDragBegin={() => setExpandedTaskId(null)}
           onDragEnd={({ data: reordered }) => {
             const taskIds: string[] = [];
@@ -508,11 +509,6 @@ export function TodayScreen() {
         onOpenFull={handleQuickAddOpenFull}
       />
 
-      <FocusSelector
-        visible={focusSelectorVisible}
-        onClose={() => setFocusSelectorVisible(false)}
-      />
-
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
@@ -536,11 +532,7 @@ export function TodayScreen() {
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
-          totalCount={
-            viewMode === 'focus' ? focusedTasks.length
-            : viewMode === 'later' ? deferredTasks.length
-            : filtered.length
-          }
+          totalCount={viewMode === 'later' ? deferredTasks.length : filtered.length}
           existingTags={allTags}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
           onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
@@ -548,9 +540,7 @@ export function TodayScreen() {
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
           onSelectAll={() => setSelectedIds(new Set(
-            viewMode === 'focus' ? focusedTasks.map(t => t.id)
-            : viewMode === 'later' ? deferredTasks.map(t => t.id)
-            : filtered.map(t => t.id)
+            viewMode === 'later' ? deferredTasks.map(t => t.id) : filtered.map(t => t.id)
           ))}
           onDeselectAll={() => setSelectedIds(new Set())}
           onCancel={exitSelection}
@@ -612,6 +602,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  focusSectionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
+  },
+  focusSectionTitleRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+  },
+  focusSectionTitle: {
+    color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  restSectionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
+  },
+  restCount: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium,
+    marginLeft: 2,
   },
   emptyContainer: { flex: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
