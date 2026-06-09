@@ -5,6 +5,7 @@ export type CategoryListItem =
   | { type: 'task'; task: Task };
 
 const UNCATEGORIZED = '';
+const OTHER_HEADER = 'Other';
 
 /**
  * Group tasks into category sections for the Today list.
@@ -16,9 +17,10 @@ const UNCATEGORIZED = '';
  * back down, because group order follows task order rather than forcing
  * uncategorized tasks to the bottom.
  *
- * The "Other" header is only emitted when there's at least one named category
- * to distinguish it from; a list with no categories renders as a plain,
- * header-less list.
+ * Every group — including the uncategorized "Other" group — always gets a
+ * header. That guarantees a task is never rendered in a header-less region and
+ * the headings can't all disappear (e.g. once every task is uncategorized),
+ * which were both reachable broken states before.
  */
 export function makeCategoryGroups(tasks: Task[]): CategoryListItem[] {
   const order: string[] = [];
@@ -32,14 +34,9 @@ export function makeCategoryGroups(tasks: Task[]): CategoryListItem[] {
     byCategory.get(key)!.push(task);
   });
 
-  const hasNamedCategory = order.some(key => key !== UNCATEGORIZED);
   const items: CategoryListItem[] = [];
   order.forEach(key => {
-    if (key === UNCATEGORIZED) {
-      if (hasNamedCategory) items.push({ type: 'header', label: 'Other' });
-    } else {
-      items.push({ type: 'header', label: key });
-    }
+    items.push({ type: 'header', label: key === UNCATEGORIZED ? OTHER_HEADER : key });
     byCategory.get(key)!.forEach(task => items.push({ type: 'task', task }));
   });
   return items;

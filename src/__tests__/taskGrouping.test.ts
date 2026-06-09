@@ -41,12 +41,15 @@ const seq = (tasks: Task[]) =>
   );
 
 describe('makeCategoryGroups', () => {
-  it('renders a plain, header-less list when no task has a category', () => {
+  // Every group always gets a header — including the uncategorized "Other"
+  // group — so a task is never rendered in a header-less region and the
+  // headings can't all disappear once every task is uncategorized.
+  it('always heads the uncategorized group with "Other", even with no named category', () => {
     const tasks = [
       makeTask({ id: 'a', category: null }),
       makeTask({ id: 'b', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['a', 'b']);
+    expect(seq(tasks)).toEqual(['#Other', 'a', 'b']);
   });
 
   it('emits a header per named category, preserving task order within each', () => {
@@ -58,7 +61,7 @@ describe('makeCategoryGroups', () => {
     expect(seq(tasks)).toEqual(['#health', 'a', 'b', '#work', 'c']);
   });
 
-  it('labels the uncategorized group "Other" only when a named category exists', () => {
+  it('heads the uncategorized group with "Other" alongside named categories', () => {
     const tasks = [
       makeTask({ id: 'a', category: 'health' }),
       makeTask({ id: 'b', category: null }),

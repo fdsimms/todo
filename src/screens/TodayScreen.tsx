@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -190,29 +190,19 @@ export function TodayScreen() {
     : item.type === 'header' ? `h-${item.label}`
     : item.task.id;
 
-  // Local copy of data fed to DraggableFlatList. onDragEnd writes the *final*
-  // grouped layout here once (see resolveDrop) so the list shows the settled
-  // result immediately, and `justDroppedRef` then skips the single redundant
-  // store-driven resync that follows.
+  // Local copy of data fed to DraggableFlatList. onDragEnd writes the settled
+  // grouped layout here immediately so the list doesn't flash back to the
+  // pre-drag order while the store write propagates; the effect below then
+  // reconciles to the store-derived `data` on the next render.
   //
-  // Why this matters: react-native-draggable-flatlist animates the dropped
-  // cell to its resting offset on drag end. If the `data` array identity
-  // changes *again* mid-animation (which a second resync does), that cell's
-  // translateY gets stranded — leaving a task floating below the list in a
-  // slot you can't tap. Writing the settled layout exactly once keeps the
-  // array stable across the drop animation.
-  //
-  // The ref self-resets on the very next `data` change (the store write always
-  // produces one), so unlike the previous "is dragging" guard it can never
-  // freeze the list — an interrupted drag (e.g. a screenshot) just never sets
-  // it, and normal resync continues.
+  // Both values are produced by makeCategoryGroups over the same tasks in the
+  // same order, so they're structurally identical — the reconcile moves no
+  // cells (no stranded drop), but it is essential: it hands the drag library a
+  // fresh canonical array *after* the drop animation settles, so the library
+  // can't get stuck showing its own internal drag order (e.g. a task left
+  // resting above a header).
   const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  const justDroppedRef = useRef(false);
   useEffect(() => {
-    if (justDroppedRef.current) {
-      justDroppedRef.current = false;
-      return;
-    }
     setDraggableData(data);
   }, [data]);
 
@@ -504,12 +494,9 @@ export function TodayScreen() {
               showUpcoming,
             });
 
-            // Show the final grouped layout immediately. It's rebuilt the same
-            // way `data` is, so the store-driven resync that follows is a
-            // structural no-op which justDroppedRef skips — keeping the list
-            // array stable across the drop animation so the dropped cell can't
-            // get stranded in a slot you can't tap.
-            justDroppedRef.current = true;
+            // Show the final grouped layout immediately to avoid a flash; the
+            // effect then reconciles to the store-derived `data` (structurally
+            // identical) once the store write lands.
             setDraggableData(settled);
 
             reorderWithCategoryUpdates(taskIds, categoryUpdates);
