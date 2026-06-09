@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
-  PanResponder,
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
@@ -15,7 +14,6 @@ import {
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
@@ -48,38 +46,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
-  const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
-  const translateY = useRef(new Animated.Value(600)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, { dy }) => dy > 4,
-      onPanResponderMove: (_, { dy }) => {
-        if (dy > 0) translateY.setValue(dy);
-      },
-      onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 80 || vy > 1.2) {
-          Animated.parallel([
-            Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-            Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-          ]).start(() => { translateY.setValue(600); onClose(); });
-        } else {
-          Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
-        }
-      },
-    })
-  ).current;
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
-    ]).start(() => { translateY.setValue(600); onClose(); });
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+    ]).start(() => { scaleAnim.setValue(0.95); sheetOpacity.setValue(0); onClose(); });
   };
 
   const [title, setTitle] = useState('');
@@ -101,10 +80,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setTagInput('');
       setActivePanel(null);
       setAiLoading(false);
-      translateY.setValue(600);
+      scaleAnim.setValue(0.95);
+      sheetOpacity.setValue(0);
       backdropOpacity.setValue(0);
       Animated.parallel([
-        Animated.spring(translateY, { toValue: 0, damping: 26, stiffness: 220, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, damping: 22, stiffness: 300, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -189,16 +170,13 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
       <KeyboardAvoidingView
-        style={styles.flex}
+        style={styles.centeredContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        pointerEvents="box-none"
       >
-        <TouchableOpacity style={styles.overlayTap} activeOpacity={1} onPress={dismiss} />
-        <Animated.View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm, transform: [{ translateY }] }]}>
-          <View style={styles.handleArea} {...panResponder.panHandlers}>
-            <View style={styles.handle} />
-          </View>
-
+        <Animated.View style={[styles.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }] }]}>
           {/* Title input row */}
           <View style={styles.row}>
             <TextInput
@@ -452,30 +430,24 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         </Animated.View>
       </KeyboardAvoidingView>
     </Modal>
+
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  flex: { flex: 1 },
   backdropDim: { backgroundColor: 'rgba(0,0,0,0.3)' },
-  overlayTap: { flex: 1 },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
   sheet: {
     backgroundColor: colors.bgSecondary,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
+    borderRadius: 20,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  handleArea: {
-    alignItems: 'center',
-    paddingTop: 2,
-    paddingBottom: spacing.sm,
-  },
-  handle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.bgQuaternary,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   row: {
     flexDirection: 'row',
