@@ -718,7 +718,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                     key={tod}
                     style={[styles.timePill, active && styles.timePillActive]}
                     onPress={() => setTimeSegments(prev =>
-                      prev.includes(tod) ? prev.filter(s => s !== tod) : [...prev, tod]
+                      prev.includes(tod) ? [] : [tod]
                     )}
                   >
                     <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
