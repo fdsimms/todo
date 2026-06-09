@@ -582,6 +582,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginVertical: 2,
     borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
   },
   itemWrapperDimmed: {
     opacity: 0.35,
