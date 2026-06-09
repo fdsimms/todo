@@ -242,7 +242,7 @@ export function TaskItem({
         style={styles.content}
         onPress={selectionMode ? onSelect : onPress}
         onLongPress={drag ?? onLongPress}
-        delayLongPress={400}
+        delayLongPress={200}
         activeOpacity={0.7}
       >
         {isEditingTitle ? (
