@@ -14,6 +14,14 @@ export interface Project {
   createdAt: string;
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  scheduleDays: number[] | null;   // 0=Sun … 6=Sat, null = no restriction
+  scheduleStart: string | null;    // "HH:MM"
+  scheduleEnd: string | null;      // "HH:MM"
+}
+
 export type ProjectDraft = Omit<Project, 'id' | 'createdAt'>;
 
 export interface CycleItem {

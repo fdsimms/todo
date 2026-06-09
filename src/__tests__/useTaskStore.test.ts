@@ -26,6 +26,10 @@ jest.mock('../db/database', () => ({
   dbGetAllTasks: jest.fn().mockReturnValue([]),
   dbGetTagRegistry: jest.fn().mockReturnValue([]),
   dbGetCategoryRegistry: jest.fn().mockReturnValue([]),
+  dbGetAllCategories: jest.fn().mockReturnValue([]),
+  dbInsertCategory: jest.fn(),
+  dbUpdateCategory: jest.fn(),
+  dbDeleteCategory: jest.fn(),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
@@ -36,6 +40,21 @@ jest.mock('../db/database', () => ({
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
   dbBulkAddTags: jest.fn(),
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: jest.fn(() => ({
+      categories: [],
+      initialized: false,
+      initialize: jest.fn(),
+      addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
+      deleteCategory: jest.fn(),
+      setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(),
+      getCategoryByName: jest.fn().mockReturnValue(null),
+    })),
+  },
 }));
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -86,6 +105,18 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
   useTaskStore.setState({ tasks: [], initialized: false });
+  // re-register the category store mock after clearAllMocks
+  const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+  useCategoryStore.getState.mockReturnValue({
+    categories: [],
+    initialized: false,
+    initialize: jest.fn(),
+    addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
+    deleteCategory: jest.fn(),
+    setCategorySchedule: jest.fn(),
+    removeCategorySchedule: jest.fn(),
+    getCategoryByName: jest.fn().mockReturnValue(null),
+  });
 });
 
 // ─── initialize ───────────────────────────────────────────────────────────────
