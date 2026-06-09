@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,7 +18,7 @@ import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
-import { makeCategoryGroups } from '../utils/taskGrouping';
+import { makeCategoryGroups, resolveDrop } from '../utils/taskGrouping';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
@@ -184,18 +184,35 @@ export function TodayScreen() {
     return items;
   }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts]);
 
-  // Local copy of data fed to DraggableFlatList. Updated optimistically in
-  // onDragEnd so the list never flashes back to the pre-drag order while the
-  // store propagates, which also prevents ghost placeholder gaps getting stuck.
+  const listItemKey = (item: ListItem): string =>
+    item.type === 'focus-header' ? '__focus-header__'
+    : item.type === 'rest-header' ? '__rest-header__'
+    : item.type === 'header' ? `h-${item.label}`
+    : item.task.id;
+
+  // Local copy of data fed to DraggableFlatList. onDragEnd writes the *final*
+  // grouped layout here once (see resolveDrop) so the list shows the settled
+  // result immediately, and `justDroppedRef` then skips the single redundant
+  // store-driven resync that follows.
   //
-  // We deliberately do NOT gate this sync behind an "is dragging" ref: `data`
-  // only changes as a result of a store update, and no store update happens
-  // mid-drag (the store is only touched in onDragEnd). A sticky ref previously
-  // froze the list permanently when a drag was interrupted without firing
-  // onDragEnd — e.g. taking a screenshot or backgrounding the app mid-drag —
-  // because the ref never reset and this sync stayed blocked forever.
+  // Why this matters: react-native-draggable-flatlist animates the dropped
+  // cell to its resting offset on drag end. If the `data` array identity
+  // changes *again* mid-animation (which a second resync does), that cell's
+  // translateY gets stranded — leaving a task floating below the list in a
+  // slot you can't tap. Writing the settled layout exactly once keeps the
+  // array stable across the drop animation.
+  //
+  // The ref self-resets on the very next `data` change (the store write always
+  // produces one), so unlike the previous "is dragging" guard it can never
+  // freeze the list — an interrupted drag (e.g. a screenshot) just never sets
+  // it, and normal resync continues.
   const [draggableData, setDraggableData] = useState<ListItem[]>(data);
+  const justDroppedRef = useRef(false);
   useEffect(() => {
+    if (justDroppedRef.current) {
+      justDroppedRef.current = false;
+      return;
+    }
     setDraggableData(data);
   }, [data]);
 
@@ -446,12 +463,7 @@ export function TodayScreen() {
       {viewMode === 'today' && focusedTasks.length > 0 && (
         <FlatList
           data={data}
-          keyExtractor={item =>
-            item.type === 'focus-header' ? '__focus-header__'
-            : item.type === 'rest-header' ? '__rest-header__'
-            : item.type === 'header' ? `h-${item.label}`
-            : item.task.id
-          }
+          keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={({ item }) => renderItem({ item })}
@@ -471,12 +483,7 @@ export function TodayScreen() {
       {viewMode === 'today' && focusedTasks.length === 0 && (
         <DraggableFlatList
           data={draggableData}
-          keyExtractor={item =>
-            item.type === 'focus-header' ? '__focus-header__'
-            : item.type === 'rest-header' ? '__rest-header__'
-            : item.type === 'header' ? `h-${item.label}`
-            : item.task.id
-          }
+          keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={renderItem as any}
@@ -484,24 +491,23 @@ export function TodayScreen() {
             setExpandedTaskId(null);
           }}
           onDragEnd={({ data: reordered }) => {
-            // Optimistic update: immediately show the new order so the list
-            // never reverts to the pre-drag state while the store propagates.
-            setDraggableData(reordered);
+            // The draggable list only ever contains header + task items.
+            const dropped = reordered.filter(
+              (item): item is { type: 'header'; label: string } | { type: 'task'; task: Task } =>
+                item.type === 'header' || item.type === 'task',
+            );
+            const { taskIds, categoryUpdates, settled } = resolveDrop(dropped, {
+              isUpcoming: id => upcomingTaskIds.has(id),
+              showUpcoming,
+            });
 
-            const taskIds: string[] = [];
-            let currentSection: string | null = null;
-            const categoryUpdates: Array<{ id: string; category: string | null }> = [];
-
-            for (const item of reordered) {
-              if (item.type === 'header') {
-                currentSection = item.label === 'Other' ? null : item.label;
-              } else if (item.type === 'task') {
-                taskIds.push(item.task.id);
-                if (item.task.category !== currentSection) {
-                  categoryUpdates.push({ id: item.task.id, category: currentSection });
-                }
-              }
-            }
+            // Show the final grouped layout immediately. It's rebuilt the same
+            // way `data` is, so the store-driven resync that follows is a
+            // structural no-op which justDroppedRef skips — keeping the list
+            // array stable across the drop animation so the dropped cell can't
+            // get stranded in a slot you can't tap.
+            justDroppedRef.current = true;
+            setDraggableData(settled);
 
             reorderWithCategoryUpdates(taskIds, categoryUpdates);
           }}

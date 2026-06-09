@@ -13,12 +13,11 @@ import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
-import { PRIORITY_COLORS, EFFORT_LABELS } from '../types';
+import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, type Colors } from '../theme';
-import { tagColor } from '../utils/tagColor';
-import { formatDueDate, formatDeferUntil, getStreakDisplay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
+import { formatDueDate } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 
@@ -123,18 +122,17 @@ export function TaskItem({
     }
   }, [expanded, isEditingTitle]);
 
-  const isOverdue =
-    task.dueDate &&
-    getDayStart(new Date(task.dueDate)) < getCurrentDayStart();
-
-  const streak = getStreakDisplay(task);
   const priorityColor = PRIORITY_COLORS[task.priority];
-  const effortLabel = task.effort > 0 ? EFFORT_LABELS[task.effort] : null;
 
   const activeCycleItem =
     task.cycleEnabled && task.cycleItems.length > 0
       ? task.cycleItems[task.cycleIndex % task.cycleItems.length]
       : null;
+  // A multi-step cycle drives the collapsed row's title: we show the current
+  // step's title with a compact step-count badge beside it, instead of a
+  // second subtitle line, so the row stays the same height as the others.
+  const cycleStep = activeCycleItem && task.cycleItems.length > 1 ? activeCycleItem : null;
+  const cyclePosition = cycleStep ? `${(task.cycleIndex % task.cycleItems.length) + 1}/${task.cycleItems.length}` : '';
 
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
@@ -252,95 +250,30 @@ export function TaskItem({
             onBlur={saveTitle}
             onSubmitEditing={saveTitle}
             returnKeyType="done"
+            maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
           />
-        ) : expanded ? (
-          // Only tappable for edit when already expanded — avoids intercepting expand taps
-          <TouchableOpacity onPress={handleTitleTap} activeOpacity={0.6}>
-            <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
-          </TouchableOpacity>
         ) : (
-          <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+          <View style={styles.titleRow}>
+            {expanded ? (
+              // Only tappable for edit when already expanded — avoids intercepting expand taps
+              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={0.6}>
+                <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
+                {cycleStep ? cycleStep.title : task.title}
+              </Text>
+            )}
+            {cycleStep && (
+              <View style={styles.cycleBadge}>
+                <Ionicons name="sync" size={9} color={colors.accent} />
+                <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
+              </View>
+            )}
+          </View>
         )}
-        {activeCycleItem && (
-          <Text style={styles.cycleSubtitle} numberOfLines={1}>
-            {activeCycleItem.title}
-          </Text>
-        )}
-
-        <View style={styles.meta}>
-          {task.category && (
-            <View style={styles.categoryBadge}>
-              <Text style={styles.categoryBadgeText}>{task.category}</Text>
-            </View>
-          )}
-          {task.tags.slice(0, 3).map(tag => (
-            <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-          ))}
-          {task.tags.length > 0 && (
-            <Text style={styles.metaText}>{task.tags.slice(0, 2).join(', ')}</Text>
-          )}
-          {task.dueDate && (!hideTodayLabel || formatDueDate(task.dueDate) !== 'Today') && (
-            <Text style={[styles.metaText, isOverdue && styles.overdue]}>
-              {formatDueDate(task.dueDate)}
-            </Text>
-          )}
-          {task.deferUntil && new Date(task.deferUntil) > new Date() && (
-            <Text style={styles.metaDim}>{formatDeferUntil(task.deferUntil)}</Text>
-          )}
-          {task.timeSegments.length > 0 && (
-            <View style={styles.timeBadge}>
-              {task.timeSegments.map(seg => (
-                <Ionicons
-                  key={seg}
-                  name={seg === 'morning' ? 'sunny-outline' : seg === 'afternoon' ? 'sunny' : 'moon-outline'}
-                  size={9}
-                  color={colors.textTertiary}
-                />
-              ))}
-              <Text style={styles.timeBadgeText}>
-                {task.timeSegments.map(s => s.charAt(0).toUpperCase() + s.slice(1)).join(' · ')}
-              </Text>
-            </View>
-          )}
-          {effortLabel && (
-            <View style={styles.effortBadge}>
-              <Text style={styles.effortText}>{effortLabel}</Text>
-            </View>
-          )}
-          {streak && (
-            <Text style={[styles.metaText, streak.sign === '-' && styles.streakNeg]}>
-              {streak.sign === '+' ? '🔥' : '❄️'} {streak.count}
-            </Text>
-          )}
-          {activeCycleItem && task.cycleItems.length > 1 && (
-            <View style={styles.cycleBadge}>
-              <Ionicons name="sync" size={9} color={colors.accent} />
-              <Text style={styles.cycleBadgeText}>
-                {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}
-              </Text>
-            </View>
-          )}
-          {subtaskCount > 0 && (
-            <View style={[
-              styles.subtaskBadge,
-              subtaskDoneCount === subtaskCount && styles.subtaskBadgeDone,
-            ]}>
-              <Ionicons
-                name="list"
-                size={10}
-                color={subtaskDoneCount === subtaskCount ? colors.green : colors.textSecondary}
-              />
-              <Text style={[
-                styles.subtaskBadgeText,
-                subtaskDoneCount === subtaskCount && styles.subtaskBadgeTextDone,
-              ]}>
-                {subtaskDoneCount}/{subtaskCount}
-              </Text>
-            </View>
-          )}
-        </View>
       </TouchableOpacity>
 
       {!selectionMode && (
@@ -639,75 +572,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 0,
     margin: 0,
   },
-  meta: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 5,
+    gap: 6,
   },
-  tagDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  metaText: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
-  },
-  metaDim: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-  },
-  overdue: {
-    color: colors.red,
-  },
-  streakNeg: {
-    color: colors.textTertiary,
-  },
-  categoryBadge: {
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  categoryBadgeText: {
-    color: colors.textTertiary,
-    fontSize: 10,
-    fontWeight: fontWeight.medium,
-  },
-  effortBadge: {
-    backgroundColor: colors.accentSubtle,
-    borderRadius: radius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-  },
-  effortText: {
-    color: colors.accent,
-    fontSize: 11,
-    fontWeight: fontWeight.semibold,
+  titleFlex: {
+    flexShrink: 1,
   },
   starBtn: {
     padding: 4,
-  },
-  subtaskBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  subtaskBadgeDone: {
-    backgroundColor: colors.green + '22',
-  },
-  subtaskBadgeText: {
-    color: colors.textSecondary,
-    fontSize: 11,
-    fontWeight: fontWeight.semibold,
-  },
-  subtaskBadgeTextDone: {
-    color: colors.green,
   },
   deleteAction: {
     backgroundColor: colors.red,
@@ -792,11 +666,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
-  cycleSubtitle: {
-    color: colors.accent,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
   cycleBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -810,20 +679,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
-  },
-  timeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  timeBadgeText: {
-    color: colors.textTertiary,
-    fontSize: 11,
-    fontWeight: fontWeight.medium,
   },
   editSection: {
     flexDirection: 'row',

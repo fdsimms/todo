@@ -1,4 +1,4 @@
-import { makeCategoryGroups } from '../utils/taskGrouping';
+import { makeCategoryGroups, resolveDrop, type CategoryListItem } from '../utils/taskGrouping';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -86,5 +86,96 @@ describe('makeCategoryGroups', () => {
     ];
     // health first appeared at index 0, so both health tasks group there.
     expect(seq(tasks)).toEqual(['#health', 'a', 'c', '#Other', 'b']);
+  });
+});
+
+// Readable view of a header/task layout.
+const layoutSeq = (items: CategoryListItem[]) =>
+  items.map(item => (item.type === 'header' ? `#${item.label}` : item.task.id));
+
+const noUpcoming = { isUpcoming: () => false, showUpcoming: false };
+
+describe('resolveDrop', () => {
+  it('persists the dropped order and rebuilds matching groups', () => {
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
+      { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
+    ];
+    const { taskIds, categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(taskIds).toEqual(['workout', 'test']);
+    expect(categoryUpdates).toEqual([]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'test']);
+  });
+
+  it('recategorizes a task dropped under a different section header', () => {
+    // "Go outside" (uncategorized) dragged up under the HEALTH header.
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
+      { type: 'task', task: makeTask({ id: 'go-outside', category: null }) },
+    ];
+    const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(categoryUpdates).toEqual([{ id: 'go-outside', category: 'health' }]);
+    // No stray "Other" header: both tasks now sit in HEALTH, in drop order.
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'go-outside']);
+  });
+
+  // Regression: dragging a categorized task to the very top (above every
+  // header) used to make it uncategorized and spawn a phantom "Other" header
+  // wedged into the list. A task above the first header now keeps its category.
+  it('does NOT spawn a phantom "Other" header when a task is dragged to the top', () => {
+    const reordered: CategoryListItem[] = [
+      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
+      { type: 'header', label: 'health' },
+      { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
+    ];
+    const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(categoryUpdates).toEqual([]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'test']);
+  });
+
+  it('uncategorizes a task dropped under the "Other" header', () => {
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
+      { type: 'header', label: 'Other' },
+      { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
+    ];
+    const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(categoryUpdates).toEqual([{ id: 'test', category: null }]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', '#Other', 'test']);
+  });
+
+  it('keeps upcoming "Later Today" tasks in their own section, never recategorized', () => {
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
+      { type: 'header', label: 'Later Today' },
+      { type: 'task', task: makeTask({ id: 'upcoming', category: null }) },
+    ];
+    const { categoryUpdates, settled } = resolveDrop(reordered, {
+      isUpcoming: id => id === 'upcoming',
+      showUpcoming: true,
+    });
+    expect(categoryUpdates).toEqual([]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'workout', '#Later Today', 'upcoming']);
+  });
+
+  it('produces a settled layout identical to a fresh regroup of the same tasks', () => {
+    // This invariant is what lets the screen skip the post-drop resync without
+    // the visible list drifting from the store-derived list.
+    const workout = makeTask({ id: 'workout', category: 'health' });
+    const test = makeTask({ id: 'test', category: null });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'task', task: workout },
+      { type: 'header', label: 'Other' },
+      { type: 'task', task: test },
+    ];
+    const { settled } = resolveDrop(reordered, noUpcoming);
+    // The store will end up with these task objects, in this order:
+    const fromStore = makeCategoryGroups([workout, test]);
+    expect(layoutSeq(settled)).toEqual(layoutSeq(fromStore));
   });
 });

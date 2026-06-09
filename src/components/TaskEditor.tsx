@@ -18,7 +18,7 @@ import { CalendarPicker } from './CalendarPicker';
 import { WhenPicker } from './WhenPicker';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
+import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
@@ -273,6 +273,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
             onChangeText={setTitle}
             placeholder="Task title"
             placeholderTextColor={colors.textTertiary}
+            maxLength={TITLE_MAX_LENGTH}
             multiline blurOnSubmit
           />
           <TextInput
@@ -516,6 +517,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                         onChangeText={setNewSubtaskTitle}
                         placeholder="Subtask title"
                         placeholderTextColor={colors.textTertiary}
+                        maxLength={TITLE_MAX_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={() => {
                           subtaskSavedRef.current = true;
@@ -633,6 +635,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
                         onChangeText={setNewCycleItemTitle}
                         placeholder="Item title"
                         placeholderTextColor={colors.textTertiary}
+                        maxLength={TITLE_MAX_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={() => {
                           cycleItemSavedRef.current = true;
