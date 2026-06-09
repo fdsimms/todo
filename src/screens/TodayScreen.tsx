@@ -35,6 +35,7 @@ export function TodayScreen() {
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
+  const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const initialize = useTaskStore(s => s.initialize);
@@ -56,6 +57,7 @@ export function TodayScreen() {
   const [editorInitialTitle, setEditorInitialTitle] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [showUpcoming, setShowUpcoming] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -135,6 +137,11 @@ export function TodayScreen() {
     | { type: 'header'; label: string }
     | { type: 'task'; task: Task };
 
+  const upcomingTaskIds = useMemo(
+    () => new Set(upcomingTodayTasks.map(t => t.id)),
+    [upcomingTodayTasks],
+  );
+
   const data: ListItem[] = useMemo(() => {
     const byCategory: Record<string, Task[]> = {};
     const uncategorized: Task[] = [];
@@ -159,8 +166,17 @@ export function TodayScreen() {
       }
       uncategorized.forEach(task => groupedItems.push({ type: 'task', task }));
     }
+
+    if (showUpcoming && upcomingTodayTasks.length > 0) {
+      const upcomingFiltered = applyFiltersAndSort(upcomingTodayTasks);
+      if (upcomingFiltered.length > 0) {
+        groupedItems.push({ type: 'header', label: 'Later Today' });
+        upcomingFiltered.forEach(task => groupedItems.push({ type: 'task', task }));
+      }
+    }
+
     return groupedItems;
-  }, [filtered]);
+  }, [filtered, showUpcoming, upcomingTodayTasks]);
 
   const renderItem = ({ item, drag, isActive }: RenderItemParams<ListItem>) => {
     if (item.type === 'header') {
@@ -188,7 +204,7 @@ export function TodayScreen() {
           subtaskCount={subs.length}
           subtaskDoneCount={subs.filter(t => t.completed).length}
           subtasks={subs}
-          drag={selectionMode ? undefined : drag}
+          drag={selectionMode || upcomingTaskIds.has(item.task.id) ? undefined : drag}
           isActive={isActive}
           selectionMode={selectionMode}
           selected={selectedIds.has(item.task.id)}
@@ -258,6 +274,23 @@ export function TodayScreen() {
             <TouchableOpacity style={styles.selectBtn} onPress={() => setFocusSelectorVisible(true)}>
               <Ionicons name="add" size={16} color={colors.text} />
               <Text style={styles.selectText}>Select</Text>
+            </TouchableOpacity>
+          )}
+          {viewMode === 'today' && upcomingTodayTasks.length > 0 && (
+            <TouchableOpacity
+              style={[styles.iconBtn, showUpcoming && styles.iconBtnAccent]}
+              onPress={() => setShowUpcoming(v => !v)}
+            >
+              <Ionicons
+                name="time-outline"
+                size={18}
+                color={showUpcoming ? colors.text : colors.textSecondary}
+              />
+              {!showUpcoming && (
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{upcomingTodayTasks.length}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           )}
           {viewMode === 'today' && (

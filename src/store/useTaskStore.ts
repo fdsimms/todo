@@ -26,7 +26,7 @@ import {
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface TaskStore {
@@ -68,6 +68,7 @@ interface TaskStore {
   tasksByCategory: (category: string) => Task[];
 
   visibleTasks: () => Task[];
+  upcomingTodayTasks: () => Task[];
   deferredTasks: () => Task[];
   focusedTasks: () => Task[];
   completedTasks: () => Task[];
@@ -418,6 +419,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   visibleTasks() {
     return get().tasks
       .filter(t => !t.parentId && isTaskVisible(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  upcomingTodayTasks() {
+    return get().tasks
+      .filter(t => !t.parentId && isUpcomingToday(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

@@ -46,6 +46,29 @@ export function isTaskDeferred(task: Task): boolean {
   return !isTaskVisible(task);
 }
 
+// True when a task is hidden solely because its time-of-day segment hasn't started yet today.
+// Excludes tasks deferred to a future day or due on a future day.
+export function isUpcomingToday(task: Task): boolean {
+  if (task.completed || !task.timeOfDay) return false;
+
+  const now = new Date();
+  const { dayResetTime } = useSettingsStore.getState();
+  const todayStart = getCurrentDayStart();
+
+  if (task.deferUntil) {
+    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    if (deferDayStart > todayStart) return false;
+  }
+
+  if (task.dueDate) {
+    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    if (taskDayStart > todayStart) return false;
+  }
+
+  const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  return now < threshold;
+}
+
 export function getVisibleAt(task: Task): Date {
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
