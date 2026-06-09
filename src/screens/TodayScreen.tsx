@@ -36,6 +36,7 @@ export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
+  const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
@@ -71,7 +72,7 @@ export function TodayScreen() {
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
     try {
-      const ids = await suggestFocusTasks(visibleTasks, focusedTasks.length);
+      const ids = await suggestFocusTasks(visibleTasks, focusedTasks.length, completedTasks);
       for (const id of ids) updateTask(id, { focused: true });
     } catch (e) {
       Alert.alert('Could not suggest focus', e instanceof Error ? e.message : 'Unknown error');
