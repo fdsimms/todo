@@ -330,8 +330,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    // offset for header + search bar so content centers relative to the full screen
-    paddingBottom: 100,
   },
   emptyText: {
     color: colors.textSecondary,

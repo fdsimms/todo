@@ -117,7 +117,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
   },
   listContent: { paddingBottom: 40 },
-  emptyContainer: { flex: 1 },
+  emptyContainer: { flexGrow: 1 },
   empty: {
     flex: 1,
     alignItems: 'center',
