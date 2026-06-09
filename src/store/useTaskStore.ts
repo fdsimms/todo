@@ -49,6 +49,7 @@ interface TaskStore {
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
   reorderTasks: (orderedIds: string[]) => void;
+  reorderWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
 
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
@@ -302,6 +303,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: s.tasks.map(t => {
         const u = updates.find(x => x.id === t.id);
         return u ? { ...t, sortOrder: u.sortOrder } : t;
+      }),
+    }));
+  },
+
+  reorderWithCategoryUpdates(orderedIds, categoryUpdates) {
+    const orderUpdates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
+    dbBatchUpdateSortOrders(orderUpdates);
+    categoryUpdates.forEach(u => {
+      const task = get().tasks.find(t => t.id === u.id);
+      if (task) dbUpdateTask({ ...task, category: u.category });
+    });
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        const orderUpdate = orderUpdates.find(x => x.id === t.id);
+        const categoryUpdate = categoryUpdates.find(x => x.id === t.id);
+        if (!orderUpdate && !categoryUpdate) return t;
+        return {
+          ...t,
+          ...(orderUpdate ? { sortOrder: orderUpdate.sortOrder } : {}),
+          ...(categoryUpdate ? { category: categoryUpdate.category } : {}),
+        };
       }),
     }));
   },
