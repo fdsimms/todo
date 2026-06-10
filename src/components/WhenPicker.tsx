@@ -98,6 +98,7 @@ export function WhenPicker({
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const today = useMemo(() => startOfDay(new Date()), [visible]);
   const tomorrow = useMemo(() => startOfDay(addDays(new Date(), 1)), [visible]);
   const tomorrowKey = dayKey(tomorrow);
 
@@ -143,14 +144,10 @@ export function WhenPicker({
   };
 
   const handleDayPress = (day: Date) => {
-    if (isToday(day)) {
-      confirmWithFeedback(null, 'today');
-      return;
-    }
-    confirmWithFeedback(noonOf(day), dayKey(day));
+    confirmWithFeedback(noonOf(day), isToday(day) ? 'today' : dayKey(day));
   };
 
-  const handleToday = () => confirmWithFeedback(null, 'today');
+  const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => confirmWithFeedback(noonOf(tomorrow), tomorrowKey);
 
   const handleSuggest = async () => {
@@ -174,7 +171,7 @@ export function WhenPicker({
   };
 
   // Selection state for the Today / Tomorrow shortcuts (pending overrides current value).
-  const todaySelected = pendingKey ? pendingKey === 'today' : !value;
+  const todaySelected = pendingKey ? pendingKey === 'today' : (!value || isSameDay(value, today));
   const tomorrowSelected = pendingKey
     ? pendingKey === tomorrowKey
     : !!value && isSameDay(value, tomorrow);

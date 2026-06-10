@@ -78,7 +78,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setTitle('');
       setPriority(0);
       setEffort(0);
-      setDueDate(null);
+      setDueDate(startOfDay(new Date()));
       setTimeSegments([]);
       setTags([]);
       setCategory(null);
