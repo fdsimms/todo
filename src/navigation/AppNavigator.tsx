@@ -15,6 +15,7 @@ import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
+import { haptics } from '../utils/haptics';
 
 const Tab = createBottomTabNavigator();
 const EDGE_WIDTH = 20;
@@ -47,6 +48,13 @@ export default function AppNavigator() {
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+
+  // Light selection tick on every tab switch, matching native tab bars.
+  const tabPressHaptic = useMemo(() => ({
+    tabPress: () => {
+      haptics.tap();
+    },
+  }), []);
 
   const edgePanResponder = useRef(
     PanResponder.create({
@@ -104,6 +112,7 @@ export default function AppNavigator() {
           <Tab.Screen
             name="Today"
             component={TodayScreen}
+            listeners={tabPressHaptic}
             options={{
               tabBarIcon: ({ color, size }) => <Ionicons name="sunny" size={size} color={color} />,
             }}
@@ -111,6 +120,7 @@ export default function AppNavigator() {
           <Tab.Screen
             name="Search"
             component={SearchScreen}
+            listeners={tabPressHaptic}
             options={{
               tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
             }}
@@ -121,6 +131,7 @@ export default function AppNavigator() {
             listeners={{
               tabPress: (e) => {
                 e.preventDefault();
+                haptics.tap();
                 openMenu();
               },
             }}

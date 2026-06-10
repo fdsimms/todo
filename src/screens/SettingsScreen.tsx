@@ -15,7 +15,7 @@ import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
 
 interface Props {
@@ -252,7 +252,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
                     setVacationMode(true);
                   }
                 }}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <Ionicons
                   name="airplane-outline"

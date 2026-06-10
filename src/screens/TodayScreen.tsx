@@ -251,7 +251,7 @@ export function TodayScreen() {
         <TouchableOpacity
           style={styles.restSectionHeader}
           onPress={() => setRestExpanded(e => !e)}
-          activeOpacity={0.7}
+          activeOpacity={interaction.activeOpacity}
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
           <Ionicons name={restExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />

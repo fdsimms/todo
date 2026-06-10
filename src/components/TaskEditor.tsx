@@ -20,7 +20,9 @@ import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -170,10 +172,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       projectId: task?.projectId ?? null,
       vacationPause,
     };
+    haptics.success();
     if (task) {
       setLastEditSnapshot({ id: task.id, snapshot: { ...task } });
       updateTask(task.id, data);
     } else {
+      animateLayout();
       addTask(data);
     }
     onClose();
@@ -677,7 +681,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
           {/* Options */}
           <View style={styles.optionsCard}>
-            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={interaction.activeOpacity}>
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
@@ -837,7 +841,7 @@ function OptionRow({
   colors: Colors; styles: ReturnType<typeof makeStyles>;
 }) {
   return (
-    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
       <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
       <View style={styles.optionContent}>
         <Text style={styles.optionLabel}>{label}</Text>

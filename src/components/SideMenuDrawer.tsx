@@ -14,7 +14,8 @@ import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { font, fontWeight, radius, spacing } from '../theme';
+import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
+import { haptics } from '../utils/haptics';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -102,6 +103,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
   }, [visible]);
 
   const handleNavigate = (tabName: string) => {
+    haptics.tap();
     onClose();
     onNavigate(tabName);
   };
@@ -127,7 +129,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
             tint="dark"
             style={StyleSheet.absoluteFill}
           />
-          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]} />
         </Animated.View>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
 
@@ -147,24 +149,24 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
             tint={isDark ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}
           />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(28,28,30,0.7)' : 'rgba(255,255,255,0.7)' }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.blurFallback }]} />
 
           <View style={[styles.header, { borderBottomColor: colors.separator }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
           </View>
 
           <View style={styles.items}>
-            {MENU_ITEMS.map((item) => {
+            {MENU_ITEMS.map((item, index) => {
               const isActive = activeTab === item.name;
               return (
+                <DrawerItemAppear key={item.name} index={index}>
                 <TouchableOpacity
-                  key={item.name}
                   style={[
                     styles.item,
                     isActive && { backgroundColor: colors.accent + '18' },
                   ]}
                   onPress={() => handleNavigate(item.name)}
-                  activeOpacity={0.65}
+                  activeOpacity={interaction.activeOpacity}
                 >
                   <View
                     style={[
@@ -190,6 +192,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
                     <View style={[styles.activeDot, { backgroundColor: colors.accent }]} />
                   )}
                 </TouchableOpacity>
+                </DrawerItemAppear>
               );
             })}
           </View>
@@ -199,10 +202,32 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
   );
 }
 
+// Menu rows cascade in as the drawer opens: each fades and slides from the
+// left with a small per-row delay. The drawer unmounts when closed, so the
+// mount animation replays on every open.
+function DrawerItemAppear({ index, children }: { index: number; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: animation.duration.normal,
+      delay: 60 + index * 35,
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateX: anim.interpolate({ inputRange: [0, 1], outputRange: [-16, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
-  backdropDim: {
-    backgroundColor: 'rgba(0,0,0,0.35)',
-  },
   drawer: {
     position: 'absolute',
     left: 0,

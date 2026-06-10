@@ -8,10 +8,11 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { DeferModal } from './DeferModal';
-import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { PressableScale } from './PressableScale';
+import { useTheme } from '../theme/ThemeContext';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority } from '../types';
 import { tagColor } from '../utils/tagColor';
 
@@ -46,7 +47,7 @@ export function BulkActionBar({
   onCancel,
   bottomInset,
 }: Props) {
-  const colors = useColors();
+  const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [panel, setPanel] = useState<Panel>('actions');
   const [deferVisible, setDeferVisible] = useState(false);
@@ -78,7 +79,7 @@ export function BulkActionBar({
   };
 
   const handleSetPriority = (p: Priority) => {
-    Haptics.selectionAsync();
+    haptics.tap();
     onSetPriority(p);
     setPanel('actions');
   };
@@ -91,13 +92,13 @@ export function BulkActionBar({
 
   return (
     <>
-      <View style={[styles.container, { paddingBottom: Math.max(bottomInset, spacing.sm) + spacing.sm }]}>
+      <View style={[styles.container, shadows.sheet, { paddingBottom: Math.max(bottomInset, spacing.sm) + spacing.sm }]}>
         {panel === 'actions' && (
           <>
             <View style={styles.topRow}>
               <TouchableOpacity
                 style={styles.selectAllBtn}
-                onPress={() => { Haptics.selectionAsync(); allSelected ? onDeselectAll() : onSelectAll(); }}
+                onPress={() => { haptics.tap(); allSelected ? onDeselectAll() : onSelectAll(); }}
               >
                 <Text style={styles.selectAllText}>
                   {allSelected ? 'Deselect All' : 'Select All'}
@@ -109,41 +110,41 @@ export function BulkActionBar({
               </TouchableOpacity>
             </View>
             <View style={styles.actionRow}>
-              <TouchableOpacity
+              <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); onComplete(); }}
+                onPress={() => { haptics.success(); onComplete(); }}
               >
                 <Ionicons name="checkmark-circle" size={24} color={colors.green} />
                 <Text style={[styles.actionLabel, { color: colors.green }]}>Complete</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { Haptics.selectionAsync(); setDeferVisible(true); }}
+                onPress={() => { haptics.tap(); setDeferVisible(true); }}
               >
                 <Ionicons name="time" size={24} color={colors.orange} />
                 <Text style={[styles.actionLabel, { color: colors.orange }]}>Defer</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { Haptics.selectionAsync(); setPanel('tags'); }}
+                onPress={() => { haptics.tap(); setPanel('tags'); }}
               >
                 <Ionicons name="pricetag" size={24} color={colors.accent} />
                 <Text style={[styles.actionLabel, { color: colors.accent }]}>Tag</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { Haptics.selectionAsync(); setPanel('priority'); }}
+                onPress={() => { haptics.tap(); setPanel('priority'); }}
               >
                 <Ionicons name="flag" size={24} color={colors.purple} />
                 <Text style={[styles.actionLabel, { color: colors.purple }]}>Priority</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
+              </PressableScale>
+              <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onDelete(); }}
+                onPress={() => { haptics.impactMedium(); onDelete(); }}
               >
                 <Ionicons name="trash" size={24} color={colors.red} />
                 <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
-              </TouchableOpacity>
+              </PressableScale>
             </View>
           </>
         )}
@@ -215,7 +216,7 @@ export function BulkActionBar({
                       styles.tagChip,
                       selectedTags.has(tag) && { backgroundColor: tagColor(tag) + '33', borderColor: tagColor(tag) },
                     ]}
-                    onPress={() => { Haptics.selectionAsync(); handleTagToggle(tag); }}
+                    onPress={() => { haptics.tap(); handleTagToggle(tag); }}
                   >
                     <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                     <Text style={[
@@ -263,11 +264,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 10,
   },
   topRow: {
     flexDirection: 'row',
@@ -356,9 +352,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   applyBtnText: {
-    color: colors.text,
+    color: colors.onAccent,
     fontSize: font.sm,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
   applyBtnTextDisabled: {
     color: colors.textTertiary,

@@ -16,7 +16,9 @@ import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -42,7 +44,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
-  const { isDark } = useTheme();
+  const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
@@ -87,8 +89,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       sheetOpacity.setValue(0);
       backdropOpacity.setValue(0);
       Animated.parallel([
-        Animated.spring(scaleAnim, { toValue: 1, damping: 22, stiffness: 300, useNativeDriver: true }),
-        Animated.timing(sheetOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
       ]).start();
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -97,6 +99,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
 
   const handleAdd = () => {
     if (!title.trim()) return;
+    haptics.success();
+    animateLayout();
     addTask({
       title: title.trim(),
       priority,
@@ -106,7 +110,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       tags,
       category,
     });
-    onClose();
+    dismiss();
   };
 
   const handleOpenFull = () => {
@@ -114,6 +118,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   };
 
   const togglePanel = (panel: ActivePanel) => {
+    haptics.tap();
     setActivePanel(prev => prev === panel ? null : panel);
     if (panel === 'tags') {
       setTimeout(() => tagInputRef.current?.focus(), 100);
@@ -122,15 +127,20 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
 
   const addTag = (tag: string) => {
     const t = tag.trim().toLowerCase();
-    if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
+    if (t && !tags.includes(t)) {
+      haptics.tap();
+      setTags(prev => [...prev, t]);
+    }
     setTagInput('');
   };
 
   const removeTag = (tag: string) => {
+    haptics.tap();
     setTags(prev => prev.filter(t => t !== tag));
   };
 
   const toggleExistingTag = (tag: string) => {
+    haptics.tap();
     setTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
   };
 
@@ -182,7 +192,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }] }]}>
           {/* Title input row */}
           <View style={styles.row}>
             <TextInput
@@ -202,7 +212,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               onPress={handleAdd}
               disabled={!title.trim()}
             >
-              <Ionicons name="arrow-up" size={18} color={colors.text} />
+              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
             </TouchableOpacity>
           </View>
 
@@ -212,7 +222,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <TouchableOpacity
               style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
               onPress={() => setWhenPickerVisible(true)}
-              activeOpacity={0.7}
+              activeOpacity={interaction.activeOpacity}
             >
               <Ionicons
                 name="calendar-outline"
@@ -228,7 +238,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('priority')}
-              activeOpacity={0.7}
+              activeOpacity={interaction.activeOpacity}
             >
               <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
               <Text style={[styles.toolChipText, priority > 0 && styles.toolChipTextSet]}>
@@ -240,7 +250,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('effort')}
-              activeOpacity={0.7}
+              activeOpacity={interaction.activeOpacity}
             >
               <Ionicons
                 name="flash-outline"
@@ -256,7 +266,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('tags')}
-              activeOpacity={0.7}
+              activeOpacity={interaction.activeOpacity}
             >
               <Ionicons
                 name="pricetag-outline"
@@ -272,7 +282,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
               onPress={() => togglePanel('category')}
-              activeOpacity={0.7}
+              activeOpacity={interaction.activeOpacity}
             >
               <Ionicons
                 name="folder-outline"
@@ -290,7 +300,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 style={[styles.toolChip, styles.aiChip]}
                 onPress={handleSuggest}
                 disabled={aiLoading}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 {aiLoading
                   ? <ActivityIndicator size="small" color={colors.purple} />
@@ -313,8 +323,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                       priority === p && styles.priorityChipActive,
                       priority === p && p > 0 && { borderColor: PRIORITY_COLORS[p], backgroundColor: PRIORITY_COLORS[p] + '22' },
                     ]}
-                    onPress={() => setPriority(p)}
-                    activeOpacity={0.7}
+                    onPress={() => {
+                      haptics.tap();
+                      setPriority(p);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     {p > 0 && <View style={[styles.priorityChipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />}
                     <Text style={[
@@ -337,8 +350,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                   <TouchableOpacity
                     key={e}
                     style={[styles.presetChip, effort === e && styles.presetChipActive]}
-                    onPress={() => setEffort(prev => prev === e ? 0 : e)}
-                    activeOpacity={0.7}
+                    onPress={() => {
+                      haptics.tap();
+                      setEffort(prev => prev === e ? 0 : e);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.presetChipText, effort === e && styles.presetChipTextActive]}>
                       {EFFORT_LABELS[e]}
@@ -359,7 +375,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                       key={tag}
                       style={[styles.selectedTagChip, { backgroundColor: tagColor(tag) + '33' }]}
                       onPress={() => removeTag(tag)}
-                      activeOpacity={0.7}
+                      activeOpacity={interaction.activeOpacity}
                     >
                       <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                       <Text style={[styles.selectedTagText, { color: tagColor(tag) }]}>{tag}</Text>
@@ -398,7 +414,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                         key={tag}
                         style={styles.suggestionChip}
                         onPress={() => toggleExistingTag(tag)}
-                        activeOpacity={0.7}
+                        activeOpacity={interaction.activeOpacity}
                       >
                         <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
                         <Text style={styles.suggestionText}>{tag}</Text>
@@ -416,7 +432,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 <TouchableOpacity
                   style={[styles.presetChip, category === null && styles.presetChipActive]}
                   onPress={() => setCategory(null)}
-                  activeOpacity={0.7}
+                  activeOpacity={interaction.activeOpacity}
                 >
                   <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
                 </TouchableOpacity>
@@ -424,8 +440,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                   <TouchableOpacity
                     key={cat}
                     style={[styles.presetChip, category === cat && styles.presetChipActive]}
-                    onPress={() => setCategory(prev => prev === cat ? null : cat)}
-                    activeOpacity={0.7}
+                    onPress={() => {
+                      haptics.tap();
+                      setCategory(prev => prev === cat ? null : cat);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
                       {cat}
@@ -437,7 +456,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           )}
 
           {/* More details */}
-          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
             <Text style={styles.moreBtnText}>More details</Text>
           </TouchableOpacity>
@@ -466,7 +485,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdropDim: { backgroundColor: 'rgba(0,0,0,0.3)' },
+  backdropDim: { backgroundColor: colors.backdrop },
   centeredContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -562,7 +581,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   presetChipTextActive: {
-    color: colors.text,
+    color: colors.onAccent,
     fontWeight: fontWeight.semibold,
   },
   clearChip: {

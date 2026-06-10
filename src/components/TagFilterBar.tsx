@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 
 interface Props {
@@ -59,7 +59,7 @@ function Chip({
   return (
     <TouchableOpacity
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={interaction.activeOpacity}
       style={[styles.chip, active && { backgroundColor: color }]}
     >
       {!active && <View style={[styles.dot, { backgroundColor: color }]} />}

@@ -11,10 +11,10 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { Ionicons } from '@expo/vector-icons';
 import { addDays, addWeeks, addMonths, startOfDay } from 'date-fns';
-import * as Haptics from 'expo-haptics';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import type { SnoozeSuggestion } from '../utils/snoozeEngine';
 import { CalendarPicker } from './CalendarPicker';
 
@@ -79,8 +79,7 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
-          damping: 26,
-          stiffness: 220,
+          ...animation.spring.smooth,
           useNativeDriver: true,
         }),
         Animated.timing(backdropOpacity, {
@@ -190,10 +189,10 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap();
                   onConfirm(snoozeSuggestion.date);
                 }}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={styles.optionLeft}>
                   <Text style={[styles.optionLabel, { color: colors.accent }]}>
@@ -212,10 +211,10 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
               <TouchableOpacity
                 style={styles.optionRow}
                 onPress={() => {
-                  Haptics.selectionAsync();
+                  haptics.tap();
                   onConfirm(opt.date);
                 }}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <Text style={styles.optionLabel}>{opt.label}</Text>
                 <Text style={styles.optionSub}>{opt.sublabel}</Text>
@@ -225,7 +224,7 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
           ))}
 
           <View style={styles.inlineSep} />
-          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
             <View style={styles.customDateRow}>
               <Ionicons name="calendar-outline" size={16} color={colors.accent} />
               <Text style={[styles.optionLabel, { color: colors.accent }]}>Pick a date…</Text>
@@ -235,7 +234,7 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
         </View>
 
         {/* Cancel card — iOS-style separate rounded block */}
-        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
           <Text style={styles.cancelLabel}>Cancel</Text>
         </TouchableOpacity>
       </Animated.View>
@@ -262,7 +261,7 @@ export function DeferModal({ visible, onConfirm, onCancel, snoozeSuggestion }: P
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdropDim: {
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: colors.backdrop,
   },
   sheetOuter: {
     paddingHorizontal: spacing.md,
