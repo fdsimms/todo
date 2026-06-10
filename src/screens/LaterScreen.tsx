@@ -1,11 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   SectionList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -14,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, type Colors } from '../theme';
 import { getVisibleAt } from '../utils/visibilityUtils';
@@ -38,6 +41,17 @@ export function LaterScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
+
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
+  const listElevated = useSpotlightElevation(spotlightActive);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -99,15 +113,18 @@ export function LaterScreen() {
         <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
       </View>
 
-      {expandedTaskId !== null && !selectionMode && (
-        <TouchableOpacity
-          style={styles.focusOverlay}
-          activeOpacity={1}
-          onPress={() => setExpandedTaskId(null)}
-        />
-      )}
+      <SpotlightOverlay
+        visible={spotlightActive}
+        onPress={() => setExpandedTaskId(null)}
+      />
 
-      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+      <View
+        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+        // The list sits above the spotlight overlay, so the overlay can't see
+        // taps here — catch any touch in the list area instead. The expanded
+        // card stops propagation so its own controls keep working.
+        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
+      >
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
@@ -140,12 +157,13 @@ export function LaterScreen() {
             );
           }}
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
+            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
               <Text style={styles.sectionTitle}>{section.title}</Text>
-            </View>
+            </Pressable>
           )}
           stickySectionHeadersEnabled={false}
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={sections.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -206,20 +224,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginTop: 2,
   },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
-  listFooter: { height: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   emptyContainer: { flexGrow: 1 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 5,
-  },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,

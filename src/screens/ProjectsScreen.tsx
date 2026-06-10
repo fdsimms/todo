@@ -247,7 +247,13 @@ export function ProjectsScreen() {
                 onPress={() => setExpandedTaskId(null)}
               />
             )}
-            <View style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}>
+            <View
+              style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}
+              // The list sits above the spotlight overlay, so the overlay can't
+              // see taps here — catch any touch in the list area instead. The
+              // expanded card stops propagation so its own controls keep working.
+              onTouchEnd={expandedTaskId !== null ? () => setExpandedTaskId(null) : undefined}
+            >
               <FlatList
                 data={detailTasks}
                 keyExtractor={t => t.id}
@@ -257,7 +263,13 @@ export function ProjectsScreen() {
                   return (
                     <TaskItem
                       task={item}
-                      onPress={() => setExpandedTaskId(prev => prev === item.id ? null : item.id)}
+                      onPress={() => {
+                        if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                          setExpandedTaskId(null);
+                          return;
+                        }
+                        setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                      }}
                       expanded={expandedTaskId === item.id}
                       spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
                       onEdit={() => { setEditingTask(item); setEditorVisible(true); }}
@@ -267,6 +279,8 @@ export function ProjectsScreen() {
                     />
                   );
                 }}
+                ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+                ListFooterComponentStyle={detailTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
                   <View style={styles.empty}>
                     <Text style={styles.emptySubtext}>No active tasks in this project</Text>
@@ -452,6 +466,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyActionText: { color: '#fff', fontSize: font.sm, fontWeight: '600' },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   focusOverlay: {
     position: 'absolute',
     top: 0,
