@@ -15,6 +15,13 @@ export type Colors = {
   red: string;
   purple: string;
   separator: string;
+  /** Text/icon color on filled accent/colored surfaces (always white, iOS-style). */
+  onAccent: string;
+  backdrop: string;
+  blurFallback: string;
+  timeMorning: string;
+  timeAfternoon: string;
+  timeEvening: string;
   tagPalette: string[];
 };
 
@@ -35,6 +42,12 @@ export const darkColors: Colors = {
   red: '#FF453A',
   purple: '#BF5AF2',
   separator: '#38383A',
+  onAccent: '#FFFFFF',
+  backdrop: 'rgba(0, 0, 0, 0.45)',
+  blurFallback: 'rgba(28, 28, 30, 0.85)',
+  timeMorning: '#FF9F0A',
+  timeAfternoon: '#0A84FF',
+  timeEvening: '#BF5AF2',
   tagPalette: [
     '#0A84FF', '#30D158', '#FF9F0A', '#FF453A', '#BF5AF2',
     '#5E5CE6', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68',
@@ -56,6 +69,12 @@ export const lightColors: Colors = {
   red: '#FF3B30',
   purple: '#AF52DE',
   separator: '#C6C6C8',
+  onAccent: '#FFFFFF',
+  backdrop: 'rgba(0, 0, 0, 0.35)',
+  blurFallback: 'rgba(255, 255, 255, 0.85)',
+  timeMorning: '#FF9500',
+  timeAfternoon: '#007AFF',
+  timeEvening: '#AF52DE',
   tagPalette: [
     '#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE',
     '#5856D6', '#FF2D55', '#32ADE6', '#FFCC00', '#A2845E',
@@ -117,6 +136,15 @@ export const iconSize = {
   md: 20,
   lg: 24,
   xl: 28,
+};
+
+// Single source of truth for press behavior across the app. Buttons and
+// chips should use PressableScale; rows that keep TouchableOpacity should
+// use interaction.activeOpacity rather than ad-hoc values.
+export const interaction = {
+  activeOpacity: 0.7,
+  pressScale: 0.96,
+  delayLongPress: 180,
 };
 
 export const animation = {

@@ -11,8 +11,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isYesterday } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
 
 function formatDayHeader(iso: string): string {
@@ -50,10 +54,7 @@ export function LogbookScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Logbook</Text>
-        <Text style={styles.subtitle}>{completedTasks.length} completed</Text>
-      </View>
+      <ScreenHeader title="Logbook" subtitle={`${completedTasks.length} completed`} />
 
       <SectionList
         sections={sections}
@@ -68,7 +69,11 @@ export function LogbookScreen() {
           <View style={styles.row}>
             <TouchableOpacity
               style={styles.checkCircle}
-              onPress={() => uncompleteTask(item.id)}
+              onPress={() => {
+                haptics.tap();
+                animateLayout();
+                uncompleteTask(item.id);
+              }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="checkmark" size={14} color={colors.green} />
@@ -80,11 +85,11 @@ export function LogbookScreen() {
           </View>
         )}
         ListEmptyComponent={
-          <View style={styles.empty}>
-            <Ionicons name="book-outline" size={52} color={colors.bgQuaternary} />
-            <Text style={styles.emptyText}>No completed tasks</Text>
-            <Text style={styles.emptySubtext}>Tasks you complete will appear here</Text>
-          </View>
+          <EmptyState
+            icon="book-outline"
+            title="No completed tasks"
+            subtitle="Tasks you complete will appear here"
+          />
         }
       />
     </View>
@@ -93,16 +98,6 @@ export function LogbookScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    paddingTop: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-  },
-  title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
-  subtitle: { color: colors.textTertiary, fontSize: font.sm, fontWeight: '500', paddingBottom: 4 },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
@@ -112,37 +107,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    fontWeight: '700',
+    fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
   listContent: { paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.lg,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
-    lineHeight: 20,
-  },
+  // Same inset-grouped card footprint as TaskItem rows.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
     gap: spacing.sm,
   },
   checkCircle: {

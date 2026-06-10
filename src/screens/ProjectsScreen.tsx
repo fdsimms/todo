@@ -21,8 +21,12 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, radius, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import type { Project, Task } from '../types';
 
 const PROJECT_COLORS = [
@@ -85,18 +89,21 @@ export function ProjectsScreen() {
       dueDate: projectDueDate?.toISOString() ?? null,
       order: editingProject?.order ?? 0,
     };
+    haptics.success();
     if (editingProject) {
       updateProject(editingProject.id, data);
       if (selectedProject?.id === editingProject.id) {
         setSelectedProject({ ...editingProject, ...data });
       }
     } else {
+      animateLayout();
       addProject(data);
     }
     setProjectEditorVisible(false);
   }, [projectName, projectNotes, projectColor, projectDueDate, editingProject, addProject, updateProject, selectedProject]);
 
   const confirmDeleteProject = useCallback((project: Project) => {
+    haptics.warning();
     Alert.alert(
       'Delete Project',
       `Delete "${project.name}"? Tasks in this project won't be deleted, just unassigned.`,
@@ -106,6 +113,7 @@ export function ProjectsScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
+            animateLayout();
             deleteProject(project.id);
             if (selectedProject?.id === project.id) setSelectedProject(null);
           },
@@ -124,22 +132,19 @@ export function ProjectsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Projects</Text>
-        <TouchableOpacity style={styles.addBtn} onPress={openNewProject} activeOpacity={0.7}>
-          <Ionicons name="add" size={22} color={colors.accent} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Projects"
+        actions={[{ icon: 'add', onPress: openNewProject }]}
+      />
 
       {projects.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="folder-open" size={48} color={colors.bgQuaternary} />
-          <Text style={styles.emptyText}>No projects yet</Text>
-          <Text style={styles.emptySubtext}>Create a project to group related tasks</Text>
-          <TouchableOpacity style={styles.emptyAction} onPress={openNewProject} activeOpacity={0.8}>
-            <Text style={styles.emptyActionText}>New Project</Text>
-          </TouchableOpacity>
-        </View>
+        <EmptyState
+          icon="folder-open"
+          title="No projects yet"
+          subtitle="Create a project to group related tasks"
+          actionLabel="New Project"
+          onAction={openNewProject}
+        />
       ) : (
         <FlatList
           data={projects}
@@ -153,7 +158,7 @@ export function ProjectsScreen() {
                 style={styles.projectRow}
                 onPress={() => setSelectedProject(project)}
                 onLongPress={() => openEditProject(project)}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={[styles.projectIcon, { backgroundColor: project.color + '22' }]}>
                   <Ionicons name="folder" size={20} color={project.color} />
@@ -190,7 +195,6 @@ export function ProjectsScreen() {
               </TouchableOpacity>
             );
           }}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
         />
       )}
 
@@ -210,7 +214,7 @@ export function ProjectsScreen() {
               <TouchableOpacity
                 style={styles.detailTitleBtn}
                 onPress={() => openEditProject(selectedProject)}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={[styles.detailIcon, { backgroundColor: selectedProject.color + '22' }]}>
                   <Ionicons name="folder" size={16} color={selectedProject.color} />
@@ -268,9 +272,7 @@ export function ProjectsScreen() {
                   );
                 }}
                 ListEmptyComponent={
-                  <View style={styles.empty}>
-                    <Text style={styles.emptySubtext}>No active tasks in this project</Text>
-                  </View>
+                  <EmptyState icon="folder-open-outline" title="No active tasks" subtitle="No active tasks in this project" />
                 }
               />
             </View>
@@ -329,10 +331,13 @@ export function ProjectsScreen() {
                   <TouchableOpacity
                     key={c}
                     style={[styles.colorSwatch, { backgroundColor: c }, projectColor === c && styles.colorSwatchActive]}
-                    onPress={() => setProjectColor(c)}
+                    onPress={() => {
+                      haptics.tap();
+                      setProjectColor(c);
+                    }}
                   >
                     {projectColor === c && (
-                      <Ionicons name="checkmark" size={14} color="#fff" />
+                      <Ionicons name="checkmark" size={14} color={colors.onAccent} />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -346,7 +351,7 @@ export function ProjectsScreen() {
                   setPickerDate(projectDueDate ?? new Date());
                   setShowDatePicker(true);
                 }}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <Ionicons name="calendar" size={18} color={projectDueDate ? colors.accent : colors.textSecondary} />
                 <View style={styles.optionContent}>
@@ -401,22 +406,15 @@ export function ProjectsScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.sm,
-  },
-  title: {
-    color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5,
-  },
-  addBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.bgSecondary, alignItems: 'center', justifyContent: 'center',
-  },
   list: { paddingTop: spacing.sm },
+  // Same inset-grouped card footprint as TaskItem rows.
   projectRow: {
     flexDirection: 'row', alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md, marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md, paddingVertical: 12,
-    gap: spacing.md, backgroundColor: colors.bg,
+    gap: spacing.md,
   },
   projectIcon: {
     width: 40, height: 40, borderRadius: radius.sm,
@@ -434,22 +432,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   progressFill: { height: '100%', borderRadius: 2 },
   progressLabel: { color: colors.textTertiary, fontSize: font.xs, minWidth: 32, textAlign: 'right' },
   deleteBtn: { padding: 4 },
-  sep: {
-    height: StyleSheet.hairlineWidth, backgroundColor: colors.separator,
-    marginLeft: spacing.md + 40 + spacing.md,
-  },
-  empty: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm, paddingHorizontal: spacing.xl,
-  },
-  emptyText: {
-    color: colors.textSecondary, fontSize: font.lg, fontWeight: '600',
-  },
-  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center' },
-  emptyAction: {
-    marginTop: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm,
-    backgroundColor: colors.accent, borderRadius: radius.full,
-  },
-  emptyActionText: { color: '#fff', fontSize: font.sm, fontWeight: '600' },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
@@ -458,7 +440,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.backdrop,
     zIndex: 5,
   },
   detailRoot: { flex: 1, backgroundColor: colors.bg },
@@ -513,7 +495,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36, height: 36, borderRadius: 18,
     alignItems: 'center', justifyContent: 'center',
   },
-  colorSwatchActive: { borderWidth: 3, borderColor: '#fff' },
+  colorSwatchActive: { borderWidth: 3, borderColor: colors.onAccent },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',

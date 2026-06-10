@@ -15,8 +15,12 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import type { Task } from '../types';
 
@@ -47,17 +51,23 @@ export function TagsScreen() {
 
   const handleAddTag = () => {
     const trimmed = newTagText.trim().toLowerCase();
-    if (trimmed) addTag(trimmed);
+    if (trimmed) {
+      haptics.success();
+      animateLayout();
+      addTag(trimmed);
+    }
     setNewTagText('');
     setAddingTag(false);
   };
 
   const handleStartAdding = () => {
+    animateLayout();
     setAddingTag(true);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const handleDeleteTag = (tag: string) => {
+    haptics.warning();
     Alert.alert(
       'Delete Tag',
       `Remove "${tag}" from all tasks?`,
@@ -66,7 +76,10 @@ export function TagsScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteTag(tag),
+          onPress: () => {
+            animateLayout();
+            deleteTag(tag);
+          },
         },
       ]
     );
@@ -74,12 +87,10 @@ export function TagsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Tags</Text>
-        <TouchableOpacity onPress={handleStartAdding} style={styles.addButton} activeOpacity={0.7}>
-          <Ionicons name="add" size={24} color={colors.accent} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Tags"
+        actions={[{ icon: 'add', onPress: handleStartAdding }]}
+      />
 
       {addingTag && (
         <View style={styles.addRow}>
@@ -101,13 +112,13 @@ export function TagsScreen() {
               if (!newTagText.trim()) setAddingTag(false);
             }}
           />
-          <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewTagText(''); setAddingTag(false); }}
             style={styles.addCancel}
-            activeOpacity={0.7}
+            activeOpacity={interaction.activeOpacity}
           >
             <Ionicons name="close" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -115,11 +126,11 @@ export function TagsScreen() {
       )}
 
       {allTags.length === 0 && !addingTag ? (
-        <View style={styles.empty}>
-          <Ionicons name="pricetag" size={48} color={colors.bgQuaternary} />
-          <Text style={styles.emptyText}>No tags yet</Text>
-          <Text style={styles.emptySubtext}>Tap + to create a tag, or add tags to tasks</Text>
-        </View>
+        <EmptyState
+          icon="pricetag"
+          title="No tags yet"
+          subtitle="Tap + to create a tag, or add tags to tasks"
+        />
       ) : (
         <FlatList
           data={allTags}
@@ -132,7 +143,7 @@ export function TagsScreen() {
               <TouchableOpacity
                 style={styles.tagRow}
                 onPress={() => setSelectedTag(tag)}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
                   <Ionicons name="pricetag" size={18} color={color} />
@@ -142,7 +153,7 @@ export function TagsScreen() {
                 <TouchableOpacity
                   onPress={() => handleDeleteTag(tag)}
                   style={styles.deleteButton}
-                  activeOpacity={0.7}
+                  activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
@@ -151,7 +162,6 @@ export function TagsScreen() {
               </TouchableOpacity>
             );
           }}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
         />
       )}
 
@@ -212,9 +222,7 @@ export function TagsScreen() {
                 );
               }}
               ListEmptyComponent={
-                <View style={styles.empty}>
-                  <Text style={styles.emptySubtext}>No active tasks with this tag</Text>
-                </View>
+                <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="No active tasks with this tag" />
               }
             />
           </View>
@@ -235,31 +243,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  title: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.xxl,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  addButton: {
-    padding: 4,
-  },
+  // Mirrors the inset-grouped card footprint of the tag rows below.
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
   },
   addInput: {
     flex: 1,
@@ -277,13 +271,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
   },
+  // Same inset-grouped card footprint as TaskItem rows.
   tagRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     gap: spacing.md,
-    backgroundColor: colors.bg,
   },
   tagIcon: {
     width: 36,
@@ -296,7 +294,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontSize: font.md,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
   },
   tagCount: {
     color: colors.textTertiary,
@@ -304,28 +302,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   deleteButton: {
     padding: 4,
-  },
-  sep: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.separator,
-    marginLeft: spacing.md + 36 + spacing.md,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.lg,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
   },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
@@ -335,7 +311,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.backdrop,
     zIndex: 5,
   },
   detailRoot: {

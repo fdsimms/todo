@@ -8,15 +8,19 @@ import {
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { FocusSelector } from '../components/FocusSelector';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
+import { PressableScale } from '../components/PressableScale';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
 
 export function FocusScreen() {
@@ -47,7 +51,8 @@ export function FocusScreen() {
   };
 
   const enterSelection = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.impactHeavy();
+    animateLayout();
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
     setExpandedTaskId(null);
@@ -62,34 +67,37 @@ export function FocusScreen() {
   };
 
   const exitSelection = () => {
+    animateLayout();
     setSelectionMode(false);
     setSelectedIds(new Set());
   };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Focus</Text>
-          {focusedTasks.length > 0 && (
-            <Text style={styles.subtitle}>{focusedTasks.length} task{focusedTasks.length !== 1 ? 's' : ''}</Text>
-          )}
-        </View>
-        <View style={styles.headerButtons}>
-          {focusedTasks.length > 0 && (
-            <TouchableOpacity style={styles.clearBtn} onPress={clearAllFocus}>
-              <Text style={styles.clearText}>Clear</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity
-            style={styles.selectBtn}
-            onPress={() => setSelectorVisible(true)}
-          >
-            <Ionicons name="add" size={16} color={colors.text} />
-            <Text style={styles.selectText}>Select</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScreenHeader
+        title="Focus"
+        subtitle={focusedTasks.length > 0 ? `${focusedTasks.length} task${focusedTasks.length !== 1 ? 's' : ''}` : undefined}
+        right={
+          <>
+            {focusedTasks.length > 0 && (
+              <PressableScale
+                style={styles.clearBtn}
+                haptic
+                onPress={() => {
+                  animateLayout();
+                  clearAllFocus();
+                }}
+              >
+                <Text style={styles.clearText}>Clear</Text>
+              </PressableScale>
+            )}
+            <PressableScale style={styles.selectBtn} haptic onPress={() => setSelectorVisible(true)}>
+              <Ionicons name="add" size={16} color={colors.onAccent} />
+              <Text style={styles.selectText}>Select</Text>
+            </PressableScale>
+          </>
+        }
+      />
 
       {expandedTaskId !== null && !selectionMode && (
         <TouchableOpacity
@@ -101,20 +109,13 @@ export function FocusScreen() {
 
       <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
         {focusedTasks.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="star" size={52} color={colors.bgQuaternary} />
-            <Text style={styles.emptyTitle}>No focus set</Text>
-            <Text style={styles.emptyText}>
-              Tap "Select" to pick a few tasks to focus on.{'\n'}
-              Or star any task from the Today list.
-            </Text>
-            <TouchableOpacity
-              style={styles.emptyBtn}
-              onPress={() => setSelectorVisible(true)}
-            >
-              <Text style={styles.emptyBtnText}>Select tasks</Text>
-            </TouchableOpacity>
-          </View>
+          <EmptyState
+            icon="star"
+            title="No focus set"
+            subtitle={'Tap "Select" to pick a few tasks to focus on.\nOr star any task from the Today list.'}
+            actionLabel="Select tasks"
+            onAction={() => setSelectorVisible(true)}
+          />
         ) : (
           <DraggableFlatList
             data={focusedTasks}
@@ -191,42 +192,17 @@ export function FocusScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.sm,
-  },
-  title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
-  subtitle: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
-  headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
-  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  clearText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   selectBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
-  selectText: { color: colors.text, fontSize: font.sm, fontWeight: '600' },
-  empty: {
-    flex: 1,
-    alignItems: 'center', justifyContent: 'center', paddingHorizontal: spacing.xl,
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    color: colors.textSecondary, fontSize: font.lg, fontWeight: '600',
-  },
-  emptyText: {
-    color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', lineHeight: 21,
-  },
-  emptyBtn: {
-    marginTop: spacing.lg, paddingHorizontal: spacing.xl, paddingVertical: 13,
-    borderRadius: radius.full, backgroundColor: colors.accent,
-    shadowColor: colors.accent, shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
-  },
-  emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
+  selectText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
   listFooter: { height: 120 },
   listWrapper: { flex: 1 },
@@ -237,7 +213,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.backdrop,
     zIndex: 5,
   },
 });

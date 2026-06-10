@@ -17,7 +17,9 @@ import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { format } from 'date-fns';
 
 function HighlightedText({
@@ -73,7 +75,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     : null;
 
   return (
-    <TouchableOpacity style={styles.resultRow} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.resultRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
       <View style={styles.statusIcon}>
         {isCompleted
           ? <Ionicons name="checkmark-circle" size={22} color={colors.green} />
@@ -176,9 +178,7 @@ export function SearchScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Search</Text>
-      </View>
+      <ScreenHeader title="Search" />
 
       <View style={styles.searchBar}>
         <Ionicons name="search" size={16} color={colors.textTertiary} style={styles.searchIcon} />
@@ -202,17 +202,9 @@ export function SearchScreen() {
       </View>
 
       {showEmpty ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={48} color={colors.bgQuaternary} />
-          <Text style={styles.emptyText}>No results</Text>
-          <Text style={styles.emptySubtext}>No todos match "{query}"</Text>
-        </View>
+        <EmptyState icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} />
       ) : query.trim().length === 0 ? (
-        <View style={styles.emptyState}>
-          <Ionicons name="search-outline" size={48} color={colors.bgQuaternary} />
-          <Text style={styles.emptyText}>Find any todo</Text>
-          <Text style={styles.emptySubtext}>Search active and completed todos</Text>
-        </View>
+        <EmptyState icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" />
       ) : (
         <FlatList
           data={listData}
@@ -236,12 +228,6 @@ export function SearchScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
 
   searchBar: {
     flexDirection: 'row',
@@ -268,21 +254,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   sectionHeaderText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: '600',
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
   },
 
+  // Same inset-grouped card footprint as TaskItem rows.
   resultRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingVertical: 12,
     paddingRight: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
     gap: spacing.sm,
   },
   statusIcon: {
@@ -323,23 +311,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     flex: 1,
-  },
-
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.lg,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
-    paddingHorizontal: spacing.xl,
   },
 });

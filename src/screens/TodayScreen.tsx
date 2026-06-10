@@ -8,12 +8,10 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  ActivityIndicator,
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader } from '../utils/dateUtils';
@@ -29,8 +27,13 @@ import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
+import { PressableScale } from '../components/PressableScale';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 
 type ViewMode = 'today' | 'later';
 
@@ -104,7 +107,8 @@ export function TodayScreen() {
   };
 
   const enterSelection = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    haptics.impactHeavy();
+    animateLayout();
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
     setExpandedTaskId(null);
@@ -119,6 +123,7 @@ export function TodayScreen() {
   };
 
   const exitSelection = () => {
+    animateLayout();
     setSelectionMode(false);
     setSelectedIds(new Set());
   };
@@ -288,13 +293,11 @@ export function TodayScreen() {
   };
 
   const emptyComponent = (
-    <View style={styles.empty}>
-      <Ionicons name="checkmark-circle" size={52} color={colors.bgQuaternary} />
-      <Text style={styles.emptyText}>All clear</Text>
-      <Text style={styles.emptySubtext}>
-        {activeFilterCount > 0 ? 'No tasks match these filters' : 'Nothing to do right now'}
-      </Text>
-    </View>
+    <EmptyState
+      icon="checkmark-circle"
+      title="All clear"
+      subtitle={activeFilterCount > 0 ? 'No tasks match these filters' : 'Nothing to do right now'}
+    />
   );
 
   const today = format(new Date(), 'EEEE, MMMM d');
@@ -323,68 +326,43 @@ export function TodayScreen() {
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [deferredTasks]);
 
+  const headerActions: ScreenHeaderAction[] = [
+    ...(viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0
+      ? [{
+          icon: 'time-outline' as const,
+          onPress: () => setShowUpcoming(v => !v),
+          active: showUpcoming,
+          badge: showUpcoming ? undefined : upcomingTodayTasks.length,
+        }]
+      : []),
+    ...(viewMode === 'today'
+      ? [{
+          icon: 'options' as const,
+          onPress: () => setFilterVisible(true),
+          active: activeFilterCount > 0,
+          badge: activeFilterCount,
+        }]
+      : []),
+    ...(viewMode === 'today' && focusedTasks.length < 3 && visibleTasks.length > 0
+      ? [{
+          icon: 'sparkles' as const,
+          onPress: handleSuggestFocus,
+          active: focusedTasks.length === 0,
+          tint: 'orange' as const,
+          disabled: isSuggestingFocus,
+          loading: isSuggestingFocus,
+        }]
+      : []),
+    { icon: 'settings-outline' as const, onPress: () => setSettingsVisible(true) },
+  ];
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <View>
-          {viewMode === 'today' && <Text style={styles.dateLabel}>{today}</Text>}
-          <Text style={styles.title}>
-            {viewMode === 'today' ? 'Today' : 'Later'}
-          </Text>
-        </View>
-        <View style={styles.headerButtons}>
-          {viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0 && (
-            <TouchableOpacity
-              style={[styles.iconBtn, showUpcoming && styles.iconBtnAccent]}
-              onPress={() => setShowUpcoming(v => !v)}
-            >
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={showUpcoming ? colors.text : colors.textSecondary}
-              />
-              {!showUpcoming && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{upcomingTodayTasks.length}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-          {viewMode === 'today' && (
-            <TouchableOpacity
-              style={[styles.iconBtn, activeFilterCount > 0 && styles.iconBtnAccent]}
-              onPress={() => setFilterVisible(true)}
-            >
-              <Ionicons
-                name="options"
-                size={18}
-                color={activeFilterCount > 0 ? colors.text : colors.textSecondary}
-              />
-              {activeFilterCount > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{activeFilterCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
-          {viewMode === 'today' && focusedTasks.length < 3 && visibleTasks.length > 0 && (
-            <TouchableOpacity
-              style={[styles.iconBtn, focusedTasks.length === 0 && styles.iconBtnOrange]}
-              onPress={handleSuggestFocus}
-              disabled={isSuggestingFocus}
-              hitSlop={4}
-            >
-              {isSuggestingFocus
-                ? <ActivityIndicator size="small" color={focusedTasks.length === 0 ? colors.text : colors.textSecondary} />
-                : <Ionicons name="sparkles" size={16} color={focusedTasks.length === 0 ? colors.text : colors.textSecondary} />
-              }
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={styles.iconBtn} onPress={() => setSettingsVisible(true)}>
-            <Ionicons name="settings-outline" size={18} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ScreenHeader
+        title={viewMode === 'today' ? 'Today' : 'Later'}
+        overline={viewMode === 'today' ? today : undefined}
+        actions={headerActions}
+      />
 
       {/* View mode switcher */}
       <View style={styles.viewModePills}>
@@ -393,13 +371,13 @@ export function TodayScreen() {
             key={mode}
             style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
             onPress={() => {
-              Haptics.selectionAsync();
+              haptics.tap();
               setViewMode(mode);
               setExpandedTaskId(null);
               setSelectionMode(false);
               setSelectedIds(new Set());
             }}
-            activeOpacity={0.7}
+            activeOpacity={interaction.activeOpacity}
           >
             <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -460,11 +438,11 @@ export function TodayScreen() {
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="moon" size={52} color={colors.bgQuaternary} />
-              <Text style={styles.emptyText}>Nothing deferred</Text>
-              <Text style={styles.emptySubtext}>Swipe left on a task to defer it</Text>
-            </View>
+            <EmptyState
+              icon="moon"
+              title="Nothing deferred"
+              subtitle="Swipe left on a task to defer it"
+            />
           }
         />
       )}
@@ -497,7 +475,7 @@ export function TodayScreen() {
           onDragBegin={() => {
             setExpandedTaskId(null);
           }}
-          onHoverChange={() => Haptics.selectionAsync()}
+          onHoverChange={() => haptics.tap()}
           placeholderStyle={styles.dropSlot}
           onReorder={reordered => {
             // The draggable list only ever contains header + task items.
@@ -534,16 +512,16 @@ export function TodayScreen() {
       </View>
 
       {viewMode === 'today' && (
-        <TouchableOpacity
+        <PressableScale
           style={[styles.fab, { bottom: insets.bottom + 64 }]}
+          pressScale={0.9}
           onPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            haptics.impactLight();
             setQuickAddVisible(true);
           }}
-          activeOpacity={0.85}
         >
-          <Ionicons name="add" size={28} color={colors.text} />
-        </TouchableOpacity>
+          <Ionicons name="add" size={28} color={colors.onAccent} />
+        </PressableScale>
       )}
 
       <QuickAddModal
@@ -596,13 +574,6 @@ export function TodayScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm, paddingTop: spacing.xs,
-  },
-  dateLabel: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium, letterSpacing: 0.3, marginBottom: 2 },
-  title: { color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold, lineHeight: lineHeight.xxl, letterSpacing: -0.5 },
-  headerButtons: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center', paddingBottom: 2 },
   clearBtn: {
     paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
@@ -624,21 +595,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   viewModePillActive: { backgroundColor: colors.accent },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  viewModePillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
-  iconBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.bgSecondary,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  iconBtnActive: { backgroundColor: colors.bgTertiary },
-  iconBtnAccent: { backgroundColor: colors.accent },
-  iconBtnOrange: { backgroundColor: colors.orange },
-  badge: {
-    position: 'absolute', top: -3, right: -3,
-    width: 16, height: 16, borderRadius: 8,
-    backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
-  },
-  badgeText: { color: colors.text, fontSize: 9, fontWeight: '700' },
+  viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   sectionHeader: {
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
@@ -676,9 +633,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.55,
   },
   listFooter: { height: 120 },
-  empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
-  emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
-  emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
@@ -687,7 +641,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: colors.backdrop,
     zIndex: 5,
   },
   fab: {

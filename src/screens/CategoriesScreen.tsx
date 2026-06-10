@@ -19,8 +19,12 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, radius, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Category } from '../types';
 
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
@@ -95,6 +99,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
   };
 
   const toggleDay = (day: number) => {
+    haptics.tap();
     setSelectedDays(prev =>
       prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
     );
@@ -105,11 +110,13 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
       Alert.alert('Select at least one day');
       return;
     }
+    haptics.success();
     setCategorySchedule(category, selectedDays, startHHMM, endHHMM);
     onClose();
   };
 
   const handleRemove = () => {
+    haptics.warning();
     Alert.alert(
       'Remove Schedule',
       `Remove the visibility schedule from "${category}"? Tasks will always be visible.`,
@@ -154,9 +161,9 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
                     ? { backgroundColor: colors.accent }
                     : { backgroundColor: colors.bgTertiary },
                 ]}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
-                <Text style={[styles.dayPillText, { color: active ? '#fff' : colors.textTertiary }]}>
+                <Text style={[styles.dayPillText, { color: active ? colors.onAccent : colors.textTertiary }]}>
                   {label}
                 </Text>
               </TouchableOpacity>
@@ -167,7 +174,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
 
         <Text style={[styles.sectionLabel, { marginTop: spacing.xl }]}>VISIBLE BETWEEN</Text>
         <View style={styles.card}>
-          <TouchableOpacity style={styles.timeRow} onPress={() => openPicker('start')} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.timeRow} onPress={() => openPicker('start')} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="sunny-outline" size={18} color={colors.accent} />
             <Text style={styles.timeLabel}>Show from</Text>
             <Text style={styles.timeValue}>{fmtDisplay(startHHMM)}</Text>
@@ -187,7 +194,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
                   <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: colors.accent }]} onPress={confirmPicker}>
-                  <Text style={[styles.pickerBtnText, { color: '#fff' }]}>Set</Text>
+                  <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -195,7 +202,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
 
           <View style={styles.sep} />
 
-          <TouchableOpacity style={styles.timeRow} onPress={() => openPicker('end')} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.timeRow} onPress={() => openPicker('end')} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="moon-outline" size={18} color={colors.accent} />
             <Text style={styles.timeLabel}>Hide after</Text>
             <Text style={styles.timeValue}>{fmtDisplay(endHHMM)}</Text>
@@ -215,7 +222,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
                   <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.pickerBtn, { backgroundColor: colors.accent }]} onPress={confirmPicker}>
-                  <Text style={[styles.pickerBtnText, { color: '#fff' }]}>Set</Text>
+                  <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -223,7 +230,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
         </View>
 
         {cat?.scheduleDays && (
-          <TouchableOpacity style={styles.removeBtn} onPress={handleRemove} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.removeBtn} onPress={handleRemove} activeOpacity={interaction.activeOpacity}>
             <Text style={styles.removeBtnText}>Remove Schedule</Text>
           </TouchableOpacity>
         )}
@@ -263,17 +270,23 @@ export function CategoriesScreen() {
 
   const handleAddCategory = () => {
     const trimmed = newCategoryText.trim();
-    if (trimmed) addCategory(trimmed);
+    if (trimmed) {
+      haptics.success();
+      animateLayout();
+      addCategory(trimmed);
+    }
     setNewCategoryText('');
     setAddingCategory(false);
   };
 
   const handleStartAdding = () => {
+    animateLayout();
     setAddingCategory(true);
     setTimeout(() => inputRef.current?.focus(), 50);
   };
 
   const handleDeleteCategory = (name: string) => {
+    haptics.warning();
     Alert.alert(
       'Delete Category',
       `Remove "${name}" from all tasks? Tasks will become uncategorized.`,
@@ -284,6 +297,7 @@ export function CategoriesScreen() {
           style: 'destructive',
           onPress: () => {
             if (selectedCategory === name) setSelectedCategory(null);
+            animateLayout();
             deleteCategory(name);
           },
         },
@@ -293,12 +307,10 @@ export function CategoriesScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Categories</Text>
-        <TouchableOpacity onPress={handleStartAdding} style={styles.addButton} activeOpacity={0.7}>
-          <Ionicons name="add" size={24} color={colors.accent} />
-        </TouchableOpacity>
-      </View>
+      <ScreenHeader
+        title="Categories"
+        actions={[{ icon: 'add', onPress: handleStartAdding }]}
+      />
 
       {addingCategory && (
         <View style={styles.addRow}>
@@ -320,13 +332,13 @@ export function CategoriesScreen() {
               if (!newCategoryText.trim()) setAddingCategory(false);
             }}
           />
-          <TouchableOpacity onPress={handleAddCategory} style={styles.addConfirm} activeOpacity={0.7}>
+          <TouchableOpacity onPress={handleAddCategory} style={styles.addConfirm} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewCategoryText(''); setAddingCategory(false); }}
             style={styles.addCancel}
-            activeOpacity={0.7}
+            activeOpacity={interaction.activeOpacity}
           >
             <Ionicons name="close" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -334,11 +346,11 @@ export function CategoriesScreen() {
       )}
 
       {allCategories.length === 0 && !addingCategory ? (
-        <View style={styles.empty}>
-          <Ionicons name="folder-open-outline" size={48} color={colors.bgQuaternary} />
-          <Text style={styles.emptyText}>No categories yet</Text>
-          <Text style={styles.emptySubtext}>Tap + to create a category, or assign one when editing a task</Text>
-        </View>
+        <EmptyState
+          icon="folder-open-outline"
+          title="No categories yet"
+          subtitle="Tap + to create a category, or assign one when editing a task"
+        />
       ) : (
         <FlatList
           data={allCategories}
@@ -353,7 +365,7 @@ export function CategoriesScreen() {
               <TouchableOpacity
                 style={styles.catRow}
                 onPress={() => setSelectedCategory(cat)}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>
                   <Ionicons name="folder" size={18} color={colors.accent} />
@@ -368,7 +380,7 @@ export function CategoriesScreen() {
                 <TouchableOpacity
                   onPress={() => setScheduleCategory(cat)}
                   style={styles.scheduleButton}
-                  activeOpacity={0.7}
+                  activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons
@@ -380,7 +392,7 @@ export function CategoriesScreen() {
                 <TouchableOpacity
                   onPress={() => handleDeleteCategory(cat)}
                   style={styles.deleteButton}
-                  activeOpacity={0.7}
+                  activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
@@ -389,7 +401,6 @@ export function CategoriesScreen() {
               </TouchableOpacity>
             );
           }}
-          ItemSeparatorComponent={() => <View style={styles.sep} />}
         />
       )}
 
@@ -440,9 +451,7 @@ export function CategoriesScreen() {
               );
             }}
             ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptySubtext}>No active tasks in this category</Text>
-              </View>
+              <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
             }
           />
         </View>
@@ -477,31 +486,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  title: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.xxl,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  addButton: {
-    padding: 4,
-  },
+  // Mirrors the inset-grouped card footprint of the category rows below.
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
   },
   addInput: {
     flex: 1,
@@ -519,13 +514,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
   },
+  // Same inset-grouped card footprint as TaskItem rows.
   catRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.md,
-    backgroundColor: colors.bg,
   },
   catIcon: {
     width: 36,
@@ -557,28 +556,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   deleteButton: {
     padding: 4,
   },
+  // Hairline divider between rows inside a grouped card.
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,
-    marginLeft: spacing.md + 36 + spacing.md,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.lg,
-    fontWeight: '600',
-  },
-  emptySubtext: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
+    marginLeft: spacing.md,
   },
   detailRoot: {
     flex: 1,
