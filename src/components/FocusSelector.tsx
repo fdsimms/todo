@@ -10,7 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -126,7 +126,7 @@ function TaskSelectRow({
     <TouchableOpacity
       style={[styles.row, selected && styles.rowSelected]}
       onPress={onToggle}
-      activeOpacity={0.7}
+      activeOpacity={interaction.activeOpacity}
     >
       <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
         {selected && <Ionicons name="checkmark" size={14} color={colors.text} />}

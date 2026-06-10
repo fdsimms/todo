@@ -10,14 +10,14 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
   addMonths, subMonths, isSameMonth, isSameDay, isToday,
   format, addDays, startOfDay,
 } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import type { TimeOfDay, Effort } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -46,10 +46,10 @@ const CONFIRM_DELAY_MS = 320;
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name']; color: string }[] = [
-  { key: 'morning', label: 'Morning', icon: 'sunny-outline', color: '#FF9F0A' },
-  { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline', color: '#0A84FF' },
-  { key: 'evening', label: 'Evening', icon: 'moon-outline', color: '#BF5AF2' },
+const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
+  { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline' },
+  { key: 'evening', label: 'Evening', icon: 'moon-outline' },
 ];
 
 const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -98,6 +98,7 @@ export function WhenPicker({
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const today = useMemo(() => startOfDay(new Date()), [visible]);
   const tomorrow = useMemo(() => startOfDay(addDays(new Date(), 1)), [visible]);
   const tomorrowKey = dayKey(tomorrow);
 
@@ -131,7 +132,7 @@ export function WhenPicker({
     pendingRef.current = true;
     setPendingKey(key);
     if (date) setDisplayMonth(startOfMonth(date));
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    haptics.success();
     popAnim.setValue(0.7);
     Animated.spring(popAnim, {
       toValue: 1.16,
@@ -143,14 +144,10 @@ export function WhenPicker({
   };
 
   const handleDayPress = (day: Date) => {
-    if (isToday(day)) {
-      confirmWithFeedback(null, 'today');
-      return;
-    }
-    confirmWithFeedback(noonOf(day), dayKey(day));
+    confirmWithFeedback(noonOf(day), isToday(day) ? 'today' : dayKey(day));
   };
 
-  const handleToday = () => confirmWithFeedback(null, 'today');
+  const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => confirmWithFeedback(noonOf(tomorrow), tomorrowKey);
 
   const handleSuggest = async () => {
@@ -158,23 +155,23 @@ export function WhenPicker({
     setAiLoading(true);
     setSuggestion(null);
     setSuggestError(null);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    haptics.impactLight();
     try {
       const res = await suggestTaskDate(taskTitle ?? '', taskNotes ?? '', taskEffort ?? 0, tasks);
       const suggested = noonOf(new Date(`${res.date}T12:00:00`));
       setSuggestion({ key: res.date, reason: res.reason });
       setDisplayMonth(startOfMonth(suggested));
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      haptics.success();
     } catch (e) {
       setSuggestError(e instanceof Error ? e.message : 'Could not suggest a date.');
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+      haptics.error();
     } finally {
       setAiLoading(false);
     }
   };
 
   // Selection state for the Today / Tomorrow shortcuts (pending overrides current value).
-  const todaySelected = pendingKey ? pendingKey === 'today' : !value;
+  const todaySelected = pendingKey ? pendingKey === 'today' : (!value || isSameDay(value, today));
   const tomorrowSelected = pendingKey
     ? pendingKey === tomorrowKey
     : !!value && isSameDay(value, tomorrow);
@@ -208,19 +205,27 @@ export function WhenPicker({
             <View style={styles.segmentRow}>
               {SEGMENTS.map(seg => {
                 const active = segments.includes(seg.key);
+                const segColor = {
+                  morning: colors.timeMorning,
+                  afternoon: colors.timeAfternoon,
+                  evening: colors.timeEvening,
+                }[seg.key];
                 return (
                   <TouchableOpacity
                     key={seg.key}
-                    style={[styles.segmentPill, active && { backgroundColor: seg.color + '33' }]}
-                    onPress={() => toggleSegment(seg.key)}
-                    activeOpacity={0.7}
+                    style={[styles.segmentPill, active && { backgroundColor: segColor + '33' }]}
+                    onPress={() => {
+                      haptics.tap();
+                      toggleSegment(seg.key);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Ionicons
                       name={seg.icon}
                       size={14}
-                      color={active ? seg.color : colors.textSecondary}
+                      color={active ? segColor : colors.textSecondary}
                     />
-                    <Text style={[styles.segmentLabel, active && { color: seg.color, fontWeight: fontWeight.semibold }]}>
+                    <Text style={[styles.segmentLabel, active && { color: segColor, fontWeight: fontWeight.semibold }]}>
                       {seg.label}
                     </Text>
                   </TouchableOpacity>
@@ -250,7 +255,7 @@ export function WhenPicker({
                 styles={styles}
                 colors={colors}
                 icon="sunny"
-                iconColor="#FF9F0A"
+                iconColor={colors.timeMorning}
                 label="Tomorrow"
                 active={tomorrowSelected}
                 pending={pendingKey === tomorrowKey}
@@ -261,7 +266,7 @@ export function WhenPicker({
                 <TouchableOpacity
                   style={[styles.quickButton, styles.suggestButton]}
                   onPress={handleSuggest}
-                  activeOpacity={0.7}
+                  activeOpacity={interaction.activeOpacity}
                   disabled={aiLoading}
                 >
                   {aiLoading ? (
@@ -336,7 +341,7 @@ export function WhenPicker({
                     key={idx}
                     style={styles.dayCell}
                     onPress={() => handleDayPress(day)}
-                    activeOpacity={0.7}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Animated.View style={[
                       styles.dayCircle,
@@ -347,7 +352,7 @@ export function WhenPicker({
                       isPending && { transform: [{ scale: popAnim }] },
                     ]}>
                       {isPending ? (
-                        <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color="#FFFFFF" />
+                        <Ionicons name="checkmark-sharp" size={CELL_SIZE * 0.46} color={colors.onAccent} />
                       ) : (
                         <Text style={[
                           styles.dayText,
@@ -370,7 +375,7 @@ export function WhenPicker({
           {onClear && (
             <>
               <View style={styles.sectionGap} />
-              <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={0.75}>
+              <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
                 <Text style={styles.clearLabel}>Clear</Text>
               </TouchableOpacity>
             </>
@@ -398,7 +403,7 @@ function QuickButton({
     <TouchableOpacity
       style={[styles.quickButton, active && styles.quickButtonActive]}
       onPress={onPress}
-      activeOpacity={0.7}
+      activeOpacity={interaction.activeOpacity}
     >
       <Animated.View style={[styles.quickButtonInner, pending && { transform: [{ scale: popAnim }] }]}>
         <Ionicons
@@ -417,7 +422,7 @@ function QuickButton({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -632,7 +637,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
   },
   dayTextSelected: {
-    color: colors.bg,
+    color: colors.onAccent,
     fontWeight: fontWeight.semibold,
   },
   dayTextToday: {
@@ -652,7 +657,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   clearLabel: {
-    color: '#FFFFFF',
+    color: colors.onAccent,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },

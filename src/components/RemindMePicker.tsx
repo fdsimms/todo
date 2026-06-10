@@ -17,7 +17,7 @@ import {
   format, addDays,
 } from 'date-fns';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 
 interface Props {
@@ -190,7 +190,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
                       key={idx}
                       style={styles.dayCell}
                       onPress={() => onDayPress(day)}
-                      activeOpacity={0.7}
+                      activeOpacity={interaction.activeOpacity}
                     >
                       <View style={[
                         styles.dayCircle,
@@ -245,7 +245,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
               style={[styles.doneBtn, !selectedDate && styles.doneBtnDisabled]}
               onPress={confirm}
               disabled={!selectedDate}
-              activeOpacity={0.8}
+              activeOpacity={interaction.activeOpacity}
             >
               <Text style={styles.doneBtnLabel}>Done</Text>
             </TouchableOpacity>
@@ -254,7 +254,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
             {onClear && (
               <>
                 <View style={styles.sectionGapSm} />
-                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={0.75}>
+                <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
                   <Text style={styles.clearLabel}>Clear reminder</Text>
                 </TouchableOpacity>
               </>
@@ -271,7 +271,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -412,7 +412,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
   },
   dayTextSelected: {
-    color: colors.bg,
+    color: colors.onAccent,
     fontWeight: fontWeight.semibold,
   },
   dayTextToday: {
@@ -440,7 +440,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     opacity: 0.4,
   },
   doneBtnLabel: {
-    color: '#FFFFFF',
+    color: colors.onAccent,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },

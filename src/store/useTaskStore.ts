@@ -169,7 +169,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   completeTask(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task || task.completed) return;
 
     const now = new Date();
     const { dayResetTime } = useSettingsStore.getState();

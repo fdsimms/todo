@@ -325,6 +325,29 @@ describe('completeTask', () => {
     expect(dbUpdateTask).not.toHaveBeenCalled();
   });
 
+  it('is a no-op when called again on an already-completed task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: '2025-06-10T09:00:00.000Z' })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completedAt).toBe('2025-06-10T09:00:00.000Z');
+  });
+
+  it('does not create duplicate next tasks when a recurring task is completed twice', () => {
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+    useTaskStore.getState().completeTask('recurring');
+
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(dbInsertTask).toHaveBeenCalledTimes(1);
+  });
+
   describe('streak logic', () => {
     it('sets streak to 1 on first completion of a recurring task', () => {
       const task = makeTask({ recurrenceType: 'daily', streakCount: 0, streakDate: null });

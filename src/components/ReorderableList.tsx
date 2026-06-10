@@ -13,6 +13,7 @@ import {
   type RefreshControlProps,
 } from 'react-native';
 import { moveItem, dropIndexFromTranslation, rowDragOffset } from '../utils/reorder';
+import { useTheme } from '../theme/ThemeContext';
 
 const ROW_SHIFT_DURATION = 180;
 
@@ -78,6 +79,7 @@ export function ReorderableList<T>({
   ListFooterComponent,
   onScrollBeginDrag,
 }: Props<T>) {
+  const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
@@ -431,6 +433,7 @@ export function ReorderableList<T>({
           pointerEvents="none"
           style={[
             styles.overlay,
+            shadows.fab,
             {
               top: overlayBaseTop,
               transform: [{ translateY: overlayY }, { translateX: overlayX }, { scale: overlayScale }],
@@ -448,14 +451,12 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { flex: 1 },
   placeholder: { opacity: 0 },
+  // Shadow comes from the theme (shadows.fab) so the lifted card reads
+  // correctly in both light and dark mode.
   overlay: {
     position: 'absolute',
     left: 0,
     right: 0,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
   },
 });

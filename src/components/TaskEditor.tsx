@@ -20,7 +20,9 @@ import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,10 +31,21 @@ import { formatDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
 
+/** Pre-filled values carried over from the quick add modal when creating a new task. */
+export interface TaskDraft {
+  title: string;
+  priority: Priority;
+  effort: Effort;
+  dueDate: Date | null;
+  timeSegments: TimeOfDay[];
+  tags: string[];
+  category: string | null;
+}
+
 interface Props {
   visible: boolean;
   task?: Task | null;
-  initialTitle?: string;
+  initialDraft?: Partial<TaskDraft> | null;
   onClose: () => void;
 }
 
@@ -46,7 +59,7 @@ const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
+export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
@@ -118,10 +131,10 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       setCycleIndex(task.cycleIndex);
       setVacationPause(task.vacationPause ?? false);
     } else {
-      setTitle(initialTitle ?? ''); setNotes(''); setCategory(null); setTags([]);
-      setDueDate(null); setTimeSegments([]); setDeferUntil(null); setReminderTime(null);
+      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
+      setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
-      setPriority(0); setEffort(0); setFocused(false);
+      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
@@ -131,18 +144,18 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
     setAiLoading(false);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
-      title: task ? task.title : (initialTitle ?? ''),
+      title: task ? task.title : (initialDraft?.title ?? ''),
       notes: task ? task.notes : '',
-      category: task ? (task.category ?? null) : null,
-      tags: task ? task.tags : [],
-      dueDate: task?.dueDate ?? null,
+      category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
+      tags: task ? task.tags : (initialDraft?.tags ?? []),
+      dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       recurrenceType: task?.recurrenceType ?? 'none',
       recurrenceInterval: task?.recurrenceInterval ?? 1,
       recurrenceFromCompletion: task?.recurrenceFromCompletion ?? false,
-      priority: task?.priority ?? 0,
-      effort: task?.effort ?? 0,
+      priority: task ? task.priority : (initialDraft?.priority ?? 0),
+      effort: task ? task.effort : (initialDraft?.effort ?? 0),
       focused: task?.focused ?? false,
       cycleEnabled: task?.cycleEnabled ?? false,
       cycleItems: task?.cycleItems ?? [],
@@ -170,10 +183,12 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
       projectId: task?.projectId ?? null,
       vacationPause,
     };
+    haptics.success();
     if (task) {
       setLastEditSnapshot({ id: task.id, snapshot: { ...task } });
       updateTask(task.id, data);
     } else {
+      animateLayout();
       addTask(data);
     }
     onClose();
@@ -677,7 +692,7 @@ export function TaskEditor({ visible, task, initialTitle, onClose }: Props) {
 
           {/* Options */}
           <View style={styles.optionsCard}>
-            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={0.7}>
+            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={interaction.activeOpacity}>
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
@@ -837,7 +852,7 @@ function OptionRow({
   colors: Colors; styles: ReturnType<typeof makeStyles>;
 }) {
   return (
-    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
       <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
       <View style={styles.optionContent}>
         <Text style={styles.optionLabel}>{label}</Text>
@@ -874,8 +889,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   scrollContent: { paddingBottom: 320 },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
-    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.sm, minHeight: 60,
+    paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 68,
+    lineHeight: lineHeight.xl,
     letterSpacing: -0.3,
+    textAlignVertical: 'top',
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
