@@ -270,11 +270,12 @@ export function ReorderableList<T>({
       Animated.timing(overlayX, { toValue: 0, duration: 160, useNativeDriver: true }),
       Animated.timing(overlayScale, { toValue: 1, duration: 160, useNativeDriver: true }),
     ]).start(() => {
-      // Zero the row transforms in the SAME batch the committed order renders,
-      // so the rows (now in their new DOM positions) land exactly where they
-      // already sat visually — no FLIP flash. committedData makes that first
-      // frame show the new order regardless of parent/store timing.
-      settleRowOffsets();
+      // Commit in one atomic React render: new order (committedData) AND
+      // isDragging false, which switches rows from their animated transform to
+      // a plain (transform-free) style. Because no native animated value is
+      // involved at rest, there's no native-vs-JS race — the rows land exactly
+      // where the last drag frame left them. committedData also makes that
+      // first frame show the new order regardless of parent/store timing.
       if (result) setCommittedData(result);
       resetDrag();
       if (result) onReorderRef.current(result);
@@ -284,6 +285,9 @@ export function ReorderableList<T>({
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
     const rowTop = layoutYRef.current.get(key) ?? 0;
+    // Clear any leftover transform from the previous drag before these values
+    // become live again (rows only apply them while isDragging is true).
+    settleRowOffsets();
     activeIndexRef.current = index;
     hoverIndexRef.current = index;
     scrollOffsetAtStartRef.current = scrollOffsetRef.current;
@@ -366,7 +370,10 @@ export function ReorderableList<T>({
             <Animated.View
               key={key}
               pointerEvents={isPlaceholder ? 'none' : 'auto'}
-              style={{ transform: [{ translateY: getRowOffset(key) }] }}
+              // Animated transform ONLY while dragging. At rest the style is
+              // plain, so the commit render (new order + no transform) is one
+              // atomic React commit with no native animated value to race.
+              style={isDragging ? { transform: [{ translateY: getRowOffset(key) }] } : undefined}
               onLayout={e => {
                 heightsRef.current.set(key, e.nativeEvent.layout.height);
                 layoutYRef.current.set(key, e.nativeEvent.layout.y);
