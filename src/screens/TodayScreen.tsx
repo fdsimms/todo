@@ -25,7 +25,7 @@ import { SettingsScreen } from './SettingsScreen';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { ReorderableList } from '../components/ReorderableList';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
@@ -86,7 +86,7 @@ export function TodayScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [editorInitialTitle, setEditorInitialTitle] = useState('');
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
@@ -158,14 +158,14 @@ export function TodayScreen() {
 
   const openEditor = (task?: Task) => {
     setEditingTask(task ?? null);
-    setEditorInitialTitle('');
+    setEditorInitialDraft(null);
     setEditorVisible(true);
   };
 
-  const handleQuickAddOpenFull = (title: string) => {
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
     setQuickAddVisible(false);
     setEditingTask(null);
-    setEditorInitialTitle(title);
+    setEditorInitialDraft(draft);
     setEditorVisible(true);
   };
 
@@ -590,7 +590,7 @@ export function TodayScreen() {
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
-        initialTitle={editorInitialTitle}
+        initialDraft={editorInitialDraft}
         onClose={() => setEditorVisible(false)}
       />
 
