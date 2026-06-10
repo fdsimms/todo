@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -70,6 +71,14 @@ export function TodayScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [restExpanded, setRestExpanded] = useState(false);
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
+
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
 
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);

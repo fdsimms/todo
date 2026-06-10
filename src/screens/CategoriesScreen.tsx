@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -252,6 +253,14 @@ export function CategoriesScreen() {
   const [newCategoryText, setNewCategoryText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
+
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
@@ -352,7 +361,10 @@ export function CategoriesScreen() {
             return (
               <TouchableOpacity
                 style={styles.catRow}
-                onPress={() => setSelectedCategory(cat)}
+                onPress={() => {
+                  setExpandedTaskId(null);
+                  setSelectedCategory(cat);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>

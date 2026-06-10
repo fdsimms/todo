@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Modal,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -37,6 +38,14 @@ export function TagsScreen() {
   const [newTagText, setNewTagText] = useState('');
   const allTasks = useTaskStore(s => s.tasks);
   const inputRef = useRef<TextInput>(null);
+
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -131,7 +140,10 @@ export function TagsScreen() {
             return (
               <TouchableOpacity
                 style={styles.tagRow}
-                onPress={() => setSelectedTag(tag)}
+                onPress={() => {
+                  setExpandedTaskId(null);
+                  setSelectedTag(tag);
+                }}
                 activeOpacity={0.7}
               >
                 <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
