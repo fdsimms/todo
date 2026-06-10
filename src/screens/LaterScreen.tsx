@@ -16,7 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
-import { SpotlightOverlay } from '../components/SpotlightOverlay';
+import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, type Colors } from '../theme';
 import { getVisibleAt } from '../utils/visibilityUtils';
@@ -49,6 +49,9 @@ export function LaterScreen() {
       return () => setExpandedTaskId(null);
     }, [])
   );
+
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
+  const listElevated = useSpotlightElevation(spotlightActive);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -111,16 +114,16 @@ export function LaterScreen() {
       </View>
 
       <SpotlightOverlay
-        visible={expandedTaskId !== null && !selectionMode}
+        visible={spotlightActive}
         onPress={() => setExpandedTaskId(null)}
       />
 
       <View
-        style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
+        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
         // The list sits above the spotlight overlay, so the overlay can't see
         // taps here — catch any touch in the list area instead. The expanded
         // card stops propagation so its own controls keep working.
-        onTouchEnd={expandedTaskId !== null && !selectionMode ? () => setExpandedTaskId(null) : undefined}
+        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
       >
         <SectionList
           sections={sections}

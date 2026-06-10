@@ -39,6 +39,27 @@ export function SpotlightOverlay({ visible, onPress }: Props) {
   );
 }
 
+/**
+ * Keeps the screen's list wrapper elevated above the overlay until the
+ * overlay's fade-out completes. Dropping the elevation the instant the
+ * spotlight ends would put the still-visible overlay on top of every row,
+ * flashing the whole list dark for the duration of the fade.
+ */
+export function useSpotlightElevation(spotlightActive: boolean): boolean {
+  const [elevated, setElevated] = useState(spotlightActive);
+
+  useEffect(() => {
+    if (spotlightActive) {
+      setElevated(true);
+      return;
+    }
+    const timer = setTimeout(() => setElevated(false), animation.duration.fast);
+    return () => clearTimeout(timer);
+  }, [spotlightActive]);
+
+  return elevated;
+}
+
 const styles = StyleSheet.create({
   overlay: {
     position: 'absolute',

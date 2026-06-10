@@ -29,7 +29,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
-import { SpotlightOverlay } from '../components/SpotlightOverlay';
+import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
@@ -80,6 +80,9 @@ export function TodayScreen() {
       return () => setExpandedTaskId(null);
     }, [])
   );
+
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
+  const listElevated = useSpotlightElevation(spotlightActive);
 
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
@@ -408,16 +411,16 @@ export function TodayScreen() {
 
 
       <SpotlightOverlay
-        visible={expandedTaskId !== null && !selectionMode}
+        visible={spotlightActive}
         onPress={() => setExpandedTaskId(null)}
       />
 
       <View
-        style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
+        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
         // The list sits above the spotlight overlay, so the overlay can't see
         // taps here — catch any touch in the list area instead. The expanded
         // card stops propagation so its own controls keep working.
-        onTouchEnd={expandedTaskId !== null && !selectionMode ? () => setExpandedTaskId(null) : undefined}
+        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
       >
       {viewMode === 'later' && (
         <SectionList

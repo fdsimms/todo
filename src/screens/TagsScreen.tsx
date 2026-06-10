@@ -16,7 +16,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
-import { SpotlightOverlay } from '../components/SpotlightOverlay';
+import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
@@ -47,6 +47,9 @@ export function TagsScreen() {
       return () => setExpandedTaskId(null);
     }, [])
   );
+
+  const spotlightActive = expandedTaskId !== null;
+  const listElevated = useSpotlightElevation(spotlightActive);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -192,15 +195,15 @@ export function TagsScreen() {
           </View>
 
           <SpotlightOverlay
-            visible={expandedTaskId !== null}
+            visible={spotlightActive}
             onPress={() => setExpandedTaskId(null)}
           />
           <View
-            style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}
+            style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
             // The list sits above the spotlight overlay, so the overlay can't
             // see taps here — catch any touch in the list area instead. The
             // expanded card stops propagation so its own controls keep working.
-            onTouchEnd={expandedTaskId !== null ? () => setExpandedTaskId(null) : undefined}
+            onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
           >
             <FlatList
               data={tagTasks}
