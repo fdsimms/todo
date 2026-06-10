@@ -200,7 +200,12 @@ export function ReorderableList<T>({
       Animated.timing(getRowOffset(keyExtractor(item)), {
         toValue: target,
         duration: ROW_SHIFT_DURATION,
-        useNativeDriver: true,
+        // JS-driven on purpose: the row transform is removed (style → plain) in
+        // the same React render that commits the new order. A native-driven
+        // value can stay attached to the native view after its style prop is
+        // removed, leaving the row translated on top of another (overlap). A
+        // JS value is applied per render, so it clears cleanly and atomically.
+        useNativeDriver: false,
       }).start();
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
