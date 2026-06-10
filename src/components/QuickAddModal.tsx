@@ -28,11 +28,12 @@ import { WhenPicker } from './WhenPicker';
 import { tagColor } from '../utils/tagColor';
 import { format, addDays, startOfDay } from 'date-fns';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
+import type { TaskDraft } from './TaskEditor';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
-  onOpenFull: (title: string) => void;
+  onOpenFull: (draft: TaskDraft) => void;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | null;
@@ -114,7 +115,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   };
 
   const handleOpenFull = () => {
-    onOpenFull(title);
+    onOpenFull({ title, priority, effort, dueDate, timeSegments, tags, category });
   };
 
   const togglePanel = (panel: ActivePanel) => {
