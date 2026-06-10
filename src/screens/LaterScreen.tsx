@@ -4,6 +4,7 @@ import {
   Text,
   SectionList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -140,12 +141,13 @@ export function LaterScreen() {
             );
           }}
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
+            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
               <Text style={styles.sectionTitle}>{section.title}</Text>
-            </View>
+            </Pressable>
           )}
           stickySectionHeadersEnabled={false}
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={sections.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -206,8 +208,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginTop: 2,
   },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
-  listFooter: { height: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   emptyContainer: { flexGrow: 1 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },

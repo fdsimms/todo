@@ -124,6 +124,7 @@ export function FocusScreen() {
             keyboardDismissMode="on-drag"
             contentContainerStyle={styles.listContent}
             ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={styles.listFooterCell}
             onScrollBeginDrag={() => setExpandedTaskId(null)}
             renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
@@ -227,8 +228,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     shadowOpacity: 0.35, shadowRadius: 8, elevation: 6,
   },
   emptyBtnText: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
-  listFooter: { height: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   focusOverlay: {

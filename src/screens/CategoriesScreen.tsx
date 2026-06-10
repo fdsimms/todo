@@ -439,6 +439,8 @@ export function CategoriesScreen() {
                 />
               );
             }}
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={
               <View style={styles.empty}>
                 <Text style={styles.emptySubtext}>No active tasks in this category</Text>
@@ -570,6 +572,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.xl,
   },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   emptyText: {
     color: colors.textSecondary,
     fontSize: font.lg,

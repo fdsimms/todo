@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   Animated,
   StyleSheet,
   Alert,
@@ -436,7 +437,13 @@ export function TaskItem({
         spotlightDisabled && styles.itemWrapperDimmed,
         expanded && styles.itemWrapperElevated,
       ]}>
-        {selectionMode || spotlightDisabled ? (
+        {spotlightDisabled && !selectionMode ? (
+          // While another task is spotlighted this row must not react to
+          // touches itself — any tap on it just dismisses the spotlight.
+          <Pressable style={styles.swipeContainer} onPress={onPress}>
+            <View pointerEvents="none">{rowBody}</View>
+          </Pressable>
+        ) : selectionMode || spotlightDisabled ? (
           <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
             {rowBody}
           </View>

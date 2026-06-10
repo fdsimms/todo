@@ -211,6 +211,8 @@ export function TagsScreen() {
                   />
                 );
               }}
+              ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+              ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
               ListEmptyComponent={
                 <View style={styles.empty}>
                   <Text style={styles.emptySubtext}>No active tasks with this tag</Text>
@@ -329,6 +331,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   focusOverlay: {
     position: 'absolute',
     top: 0,

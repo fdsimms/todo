@@ -5,6 +5,7 @@ import {
   FlatList,
   SectionList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   RefreshControl,
   Alert,
@@ -209,7 +210,7 @@ export function TodayScreen() {
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     if (item.type === 'focus-header') {
       return (
-        <View style={styles.focusSectionHeader}>
+        <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
           <View style={styles.focusSectionTitleRow}>
             <Ionicons name="star" size={13} color={colors.orange} />
             <Text style={styles.focusSectionTitle}>Focus</Text>
@@ -217,14 +218,20 @@ export function TodayScreen() {
           <TouchableOpacity onPress={clearAllFocus} hitSlop={8}>
             <Text style={styles.clearText}>Clear</Text>
           </TouchableOpacity>
-        </View>
+        </Pressable>
       );
     }
     if (item.type === 'rest-header') {
       return (
         <TouchableOpacity
           style={styles.restSectionHeader}
-          onPress={() => setRestExpanded(e => !e)}
+          onPress={() => {
+            if (expandedTaskId !== null) {
+              setExpandedTaskId(null);
+              return;
+            }
+            setRestExpanded(e => !e);
+          }}
           activeOpacity={0.7}
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
@@ -234,9 +241,9 @@ export function TodayScreen() {
     }
     if (item.type === 'header') {
       return (
-        <View style={styles.sectionHeader}>
+        <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
           <Text style={styles.sectionHeaderText}>{item.label}</Text>
-        </View>
+        </Pressable>
       );
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
@@ -433,12 +440,13 @@ export function TodayScreen() {
             );
           }}
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
+            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
               <Text style={styles.sectionHeaderText}>{section.title}</Text>
-            </View>
+            </Pressable>
           )}
           stickySectionHeadersEnabled={false}
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={laterSections.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -466,6 +474,7 @@ export function TodayScreen() {
             />
           }
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
@@ -508,6 +517,7 @@ export function TodayScreen() {
           }
           ListEmptyComponent={emptyComponent}
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={filtered.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
@@ -645,8 +655,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   emptyContainer: { flexGrow: 1 },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
-  listFooter: { height: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
