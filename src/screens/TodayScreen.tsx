@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,8 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
-import DraggableFlatList, { ScaleDecorator } from 'react-native-draggable-flatlist';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -24,6 +24,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
+import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
@@ -32,6 +33,25 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
 
 type ViewMode = 'today' | 'later';
+
+// Category section header that fades + slides in on mount, so a section created
+// by a drop eases in rather than popping.
+function SectionHeader({ label, styles }: { label: string; styles: ReturnType<typeof makeStyles> }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+  }, [anim]);
+  return (
+    <Animated.View
+      style={[
+        styles.sectionHeader,
+        { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] },
+      ]}
+    >
+      <Text style={styles.sectionHeaderText}>{label}</Text>
+    </Animated.View>
+  );
+}
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
@@ -42,6 +62,7 @@ export function TodayScreen() {
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
@@ -166,12 +187,12 @@ export function TodayScreen() {
       const restTasks = filtered.filter(t => !t.focused);
       if (restTasks.length > 0) {
         items.push({ type: 'rest-header' });
-        if (restExpanded) items.push(...makeCategoryGroups(restTasks));
+        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
       return items;
     }
 
-    const items = makeCategoryGroups(filtered);
+    const items = makeCategoryGroups(filtered, allCategories);
     if (showUpcoming && upcomingTodayTasks.length > 0) {
       let upcomingFiltered = upcomingTodayTasks;
       if (filterPriorities.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterPriorities.includes(t.priority));
@@ -182,7 +203,7 @@ export function TodayScreen() {
       }
     }
     return items;
-  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts]);
+  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
@@ -233,11 +254,9 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'header') {
-      return (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionHeaderText}>{item.label}</Text>
-        </View>
-      );
+      // A newly-appearing category header mounts fresh (its row key is unique
+      // per label) and fades/slides in instead of popping after a drop.
+      return <SectionHeader label={item.label} styles={styles} />;
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
     const taskNode = (
@@ -265,7 +284,7 @@ export function TodayScreen() {
         hideTodayLabel
       />
     );
-    return drag ? <ScaleDecorator>{taskNode}</ScaleDecorator> : taskNode;
+    return taskNode;
   };
 
   const emptyComponent = (
@@ -471,16 +490,16 @@ export function TodayScreen() {
       )}
 
       {viewMode === 'today' && focusedTasks.length === 0 && (
-        <DraggableFlatList
+        <ReorderableList
           data={draggableData}
           keyExtractor={listItemKey}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          renderItem={renderItem as any}
+          renderItem={renderItem}
           onDragBegin={() => {
             setExpandedTaskId(null);
           }}
-          onDragEnd={({ data: reordered }) => {
+          onHoverChange={() => Haptics.selectionAsync()}
+          placeholderStyle={styles.dropSlot}
+          onReorder={reordered => {
             // The draggable list only ever contains header + task items.
             const dropped = reordered.filter(
               (item): item is { type: 'header'; label: string } | { type: 'task'; task: Task } =>
@@ -489,6 +508,7 @@ export function TodayScreen() {
             const { taskIds, categoryUpdates, settled } = resolveDrop(dropped, {
               isUpcoming: id => upcomingTaskIds.has(id),
               showUpcoming,
+              categoryOrder: allCategories,
             });
 
             // Show the final grouped layout immediately to avoid a flash; the
@@ -646,6 +666,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
+  // Subtle slot marking where a dragged task will land; mirrors the task
+  // card's footprint (margin + radius).
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
+  },
   listFooter: { height: 120 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.sm },
   emptyText: { color: colors.textSecondary, fontSize: font.lg, fontWeight: fontWeight.semibold },
