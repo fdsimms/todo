@@ -17,7 +17,7 @@ import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, type Colors } from '../theme';
 import { formatDueDate } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
@@ -90,8 +90,12 @@ export function TaskItem({
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
+  // Natural height of the expansion panel content, measured off-screen so the
+  // expansion can animate to the real height instead of an arbitrary cap.
+  const [panelHeight, setPanelHeight] = useState(0);
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
   const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
@@ -99,11 +103,20 @@ export function TaskItem({
   useEffect(() => {
     Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      damping: 26,
-      stiffness: 220,
+      ...animation.spring.smooth,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
+
+  useEffect(() => {
+    Animated.timing(dimAnim, {
+      toValue: spotlightDisabled ? 0.35 : 1,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [spotlightDisabled]);
+
+  const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
 
   useEffect(() => {
     if (isActive) {
@@ -299,11 +312,28 @@ export function TaskItem({
 
   const expandedPanel = (
     <Animated.View style={{
-      maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
-      // Fully hide at rest-closed so no hairline shows between row and panel
-      opacity: expansionAnim.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 1, 1] }),
+      // Animate to the measured content height — animating to an arbitrary
+      // cap makes the motion finish (or stall) long before the spring does.
+      height: expansionAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, panelHeight],
+        extrapolate: 'clamp',
+      }),
+      // Fade in over the first half of the expansion, out over the last half
+      // of the collapse.
+      opacity: expansionAnim.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0, 1, 1],
+        extrapolate: 'clamp',
+      }),
       overflow: 'hidden',
     }}>
+      {/* Absolutely positioned so it always lays out at natural height for
+          measurement, independent of the animated clipping height above. */}
+      <View
+        style={styles.panelMeasure}
+        onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}
+      >
       <View style={styles.expandedPanel}>
         {!selectionMode && (
           <>
@@ -425,6 +455,7 @@ export function TaskItem({
           </>
         )}
       </View>
+      </View>
     </Animated.View>
   );
 
@@ -434,8 +465,7 @@ export function TaskItem({
         style={[
           styles.itemWrapper,
           shadows.card,
-          { opacity: isActive ? 0.85 : rowOpacity },
-          spotlightDisabled && styles.itemWrapperDimmed,
+          { opacity: isActive ? 0.85 : wrapperOpacity },
           expanded && styles.itemWrapperElevated,
         ]}
         // Screens collapse the spotlight on any touch in the list area;
@@ -513,9 +543,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
-  },
-  itemWrapperDimmed: {
-    opacity: 0.35,
   },
   itemWrapperElevated: {
     zIndex: 10,
@@ -612,6 +639,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 5,
     borderTopLeftRadius: radius.md,
     borderBottomLeftRadius: radius.md,
+  },
+  panelMeasure: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   expandedPanel: {
     backgroundColor: colors.bgSecondary,

@@ -16,6 +16,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
+import { SpotlightOverlay } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, type Colors } from '../theme';
 import { tagColor } from '../utils/tagColor';
@@ -190,13 +191,10 @@ export function TagsScreen() {
             <View style={{ width: 24 }} />
           </View>
 
-          {expandedTaskId !== null && (
-            <TouchableOpacity
-              style={styles.focusOverlay}
-              activeOpacity={1}
-              onPress={() => setExpandedTaskId(null)}
-            />
-          )}
+          <SpotlightOverlay
+            visible={expandedTaskId !== null}
+            onPress={() => setExpandedTaskId(null)}
+          />
           <View
             style={[styles.listWrapper, expandedTaskId !== null && styles.listWrapperElevated]}
             // The list sits above the spotlight overlay, so the overlay can't
@@ -353,15 +351,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // anywhere under the list dismisses the expanded-task spotlight.
   listFooterCell: { flexGrow: 1 },
   listFooter: { flexGrow: 1, minHeight: 120 },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 5,
-  },
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,

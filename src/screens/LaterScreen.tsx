@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { SpotlightOverlay } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, type Colors } from '../theme';
 import { getVisibleAt } from '../utils/visibilityUtils';
@@ -109,13 +110,10 @@ export function LaterScreen() {
         <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
       </View>
 
-      {expandedTaskId !== null && !selectionMode && (
-        <TouchableOpacity
-          style={styles.focusOverlay}
-          activeOpacity={1}
-          onPress={() => setExpandedTaskId(null)}
-        />
-      )}
+      <SpotlightOverlay
+        visible={expandedTaskId !== null && !selectionMode}
+        onPress={() => setExpandedTaskId(null)}
+      />
 
       <View
         style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
@@ -231,15 +229,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyContainer: { flexGrow: 1 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 5,
-  },
   sectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,

@@ -29,6 +29,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { SpotlightOverlay } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
@@ -406,13 +407,10 @@ export function TodayScreen() {
       </View>
 
 
-      {expandedTaskId !== null && !selectionMode && (
-        <TouchableOpacity
-          style={styles.focusOverlay}
-          activeOpacity={1}
-          onPress={() => setExpandedTaskId(null)}
-        />
-      )}
+      <SpotlightOverlay
+        visible={expandedTaskId !== null && !selectionMode}
+        onPress={() => setExpandedTaskId(null)}
+      />
 
       <View
         style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
@@ -680,15 +678,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptySubtext: { color: colors.textTertiary, fontSize: font.sm, textAlign: 'center', paddingHorizontal: spacing.xl, lineHeight: lineHeight.sm },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 5,
-  },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,
