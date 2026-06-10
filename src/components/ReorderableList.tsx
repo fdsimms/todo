@@ -32,6 +32,8 @@ interface Props<T> {
   onDragBegin?: () => void;
   /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
   onHoverChange?: () => void;
+  /** Restricts how far the active row may move, e.g. to keep it within its own section. */
+  dragRange?: (data: T[], activeIndex: number) => [number, number];
   /** Style for the slot shown where the dragged item will land. */
   placeholderStyle?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
@@ -68,6 +70,7 @@ export function ReorderableList<T>({
   onReorder,
   onDragBegin,
   onHoverChange,
+  dragRange,
   placeholderStyle,
   contentContainerStyle,
   refreshControl,
@@ -101,6 +104,7 @@ export function ReorderableList<T>({
   const lastPageYRef = useRef(0);
   const startPageXRef = useRef(0);
   const onHoverChangeRef = useRef(onHoverChange);
+  const dragRangeRef = useRef(dragRange);
   const scrollOffsetRef = useRef(0);
   const scrollOffsetAtStartRef = useRef(0);
   const viewportHeightRef = useRef(0);
@@ -127,6 +131,7 @@ export function ReorderableList<T>({
   dataRef.current = renderData;
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
+  useEffect(() => { dragRangeRef.current = dragRange; }, [dragRange]);
 
   // Whenever the parent re-renders with data (the source of truth once it has
   // caught up after a drop), drop the local committed copy. Keyed on the data
@@ -233,7 +238,9 @@ export function ReorderableList<T>({
     if (ai === null) return;
     const fingerDelta = lastPageYRef.current - startPageYRef.current;
     const scrollDelta = scrollOffsetRef.current - scrollOffsetAtStartRef.current;
-    const next = dropIndexFromTranslation(currentHeights(), ai, fingerDelta + scrollDelta);
+    let next = dropIndexFromTranslation(currentHeights(), ai, fingerDelta + scrollDelta);
+    const range = dragRangeRef.current?.(dataRef.current, ai);
+    if (range) next = Math.max(range[0], Math.min(range[1], next));
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
       animateRowsForHover(next);

@@ -90,6 +90,19 @@ export function rowDragOffset(
 }
 
 /**
+ * Inclusive [min, max] index range the row at `activeIndex` may move to
+ * without crossing a "boundary" row (e.g. a section header) on either side.
+ * Used to keep drags confined to their own section.
+ */
+export function dragRange<T>(data: T[], activeIndex: number, isBoundary: (item: T) => boolean): [number, number] {
+  let lo = activeIndex;
+  while (lo > 0 && !isBoundary(data[lo - 1])) lo--;
+  let hi = activeIndex;
+  while (hi < data.length - 1 && !isBoundary(data[hi + 1])) hi++;
+  return [lo, hi];
+}
+
+/**
  * Top offset (in content coordinates) of the gap that opens for the dragged
  * item — i.e. where its placeholder slot should be drawn and where the
  * floating card should glide to on drop.

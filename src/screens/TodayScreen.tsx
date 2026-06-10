@@ -3,7 +3,6 @@ import {
   View,
   Text,
   FlatList,
-  SectionList,
   TouchableOpacity,
   Pressable,
   StyleSheet,
@@ -20,7 +19,15 @@ import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
-import { makeCategoryGroups, resolveDrop } from '../utils/taskGrouping';
+import {
+  makeCategoryGroups,
+  resolveDrop,
+  flattenLaterSections,
+  isLaterHeader,
+  laterTaskOrder,
+  type LaterListItem,
+} from '../utils/taskGrouping';
+import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
@@ -366,6 +373,12 @@ export function TodayScreen() {
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [deferredTasks]);
 
+  const laterData = useMemo(() => flattenLaterSections(laterSections), [laterSections]);
+  const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
+  useEffect(() => {
+    setLaterDraggableData(laterData);
+  }, [laterData]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <View style={styles.header}>
@@ -465,46 +478,53 @@ export function TodayScreen() {
         onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
       >
       {viewMode === 'later' && (
-        <SectionList
-          sections={laterSections}
-          keyExtractor={item => item.id}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
-          renderItem={({ item }) => {
-            const subs = allTasks.filter(t => t.parentId === item.id);
+        <ReorderableList
+          data={laterDraggableData}
+          keyExtractor={item => item.key}
+          renderItem={({ item, drag, isActive }) => {
+            if (item.type === 'header') {
+              return (
+                <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
+                  <Text style={styles.sectionHeaderText}>{item.label}</Text>
+                </Pressable>
+              );
+            }
+            const subs = subtasksByParent.get(item.task.id) ?? [];
             return (
               <TaskItem
-                task={item}
+                task={item.task}
                 onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                  if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
                     setExpandedTaskId(null);
                     return;
                   }
-                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
                 }}
-                expanded={expandedTaskId === item.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                onEdit={() => openEditor(item)}
+                expanded={expandedTaskId === item.task.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
+                onEdit={() => openEditor(item.task)}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
+                drag={selectionMode || !drag ? undefined : drag}
+                isActive={isActive}
                 selectionMode={selectionMode}
-                selected={selectedIds.has(item.id)}
-                onLongPress={() => enterSelection(item.id)}
-                onSelect={() => toggleSelection(item.id)}
+                selected={selectedIds.has(item.task.id)}
+                onLongPress={() => enterSelection(item.task.id)}
+                onSelect={() => toggleSelection(item.task.id)}
                 hideTodayLabel
               />
             );
           }}
-          renderSectionHeader={({ section }) => (
-            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
-              <Text style={styles.sectionHeaderText}>{section.title}</Text>
-            </Pressable>
-          )}
-          stickySectionHeadersEnabled={false}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          ListFooterComponentStyle={laterSections.length === 0 ? undefined : styles.listFooterCell}
+          onDragBegin={() => setExpandedTaskId(null)}
+          onHoverChange={dragHaptic}
+          dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
+          placeholderStyle={styles.dropSlot}
+          onReorder={reordered => {
+            setLaterDraggableData(reordered);
+            reorderTasks(laterTaskOrder(reordered));
+          }}
+          contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <View style={styles.empty}>
@@ -513,6 +533,7 @@ export function TodayScreen() {
               <Text style={styles.emptySubtext}>Swipe left on a task to defer it</Text>
             </View>
           }
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
         />
       )}
 

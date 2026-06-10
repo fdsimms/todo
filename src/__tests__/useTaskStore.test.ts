@@ -666,6 +666,35 @@ describe('focusedTasks', () => {
   });
 });
 
+describe('deferredTasks', () => {
+  it('returns deferred, non-subtask tasks sorted by sortOrder', () => {
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'b', sortOrder: 2, deferUntil: future.toISOString() }),
+        makeTask({ id: 'a', sortOrder: 1, deferUntil: future.toISOString() }),
+      ],
+    });
+    const deferred = useTaskStore.getState().deferredTasks();
+    expect(deferred.map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('excludes tasks that are not deferred', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', deferUntil: null })] });
+    expect(useTaskStore.getState().deferredTasks()).toHaveLength(0);
+  });
+
+  it('excludes subtasks', () => {
+    const future = new Date();
+    future.setFullYear(future.getFullYear() + 1);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', parentId: 'parent', deferUntil: future.toISOString() })],
+    });
+    expect(useTaskStore.getState().deferredTasks()).toHaveLength(0);
+  });
+});
+
 describe('completedTasks', () => {
   it('returns only completed non-subtask tasks with a completedAt', () => {
     useTaskStore.setState({
