@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -259,6 +260,14 @@ export function CategoriesScreen() {
   const [newCategoryText, setNewCategoryText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
+
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
@@ -364,7 +373,10 @@ export function CategoriesScreen() {
             return (
               <TouchableOpacity
                 style={styles.catRow}
-                onPress={() => setSelectedCategory(cat)}
+                onPress={() => {
+                  setExpandedTaskId(null);
+                  setSelectedCategory(cat);
+                }}
                 activeOpacity={interaction.activeOpacity}
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>
@@ -425,6 +437,13 @@ export function CategoriesScreen() {
             <View style={{ width: 24 }} />
           </View>
 
+          <View
+            style={{ flex: 1 }}
+            // Catch any touch in the list area to dismiss the expanded-task
+            // spotlight; the expanded card stops propagation so its own
+            // controls keep working.
+            onTouchEnd={expandedTaskId !== null ? () => setExpandedTaskId(null) : undefined}
+          >
           <FlatList
             data={categoryTasks}
             keyExtractor={t => t.id}
@@ -450,10 +469,13 @@ export function CategoriesScreen() {
                 />
               );
             }}
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={
               <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
             }
           />
+          </View>
         </View>
       </Modal>
 
@@ -562,6 +584,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
   },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,

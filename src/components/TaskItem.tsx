@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  Pressable,
   Animated,
   StyleSheet,
   Alert,
@@ -90,9 +91,13 @@ export function TaskItem({
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
+  // Natural height of the expansion panel content, measured off-screen so the
+  // expansion can animate to the real height instead of an arbitrary cap.
+  const [panelHeight, setPanelHeight] = useState(0);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
   const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
@@ -100,11 +105,20 @@ export function TaskItem({
   useEffect(() => {
     Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      damping: 26,
-      stiffness: 220,
+      ...animation.spring.smooth,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
+
+  useEffect(() => {
+    Animated.timing(dimAnim, {
+      toValue: spotlightDisabled ? 0.35 : 1,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [spotlightDisabled]);
+
+  const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
 
   useEffect(() => {
     if (isActive) {
@@ -311,11 +325,30 @@ export function TaskItem({
 
   const expandedPanel = (
     <Animated.View style={{
-      maxHeight: expansionAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 600], extrapolate: 'clamp' }),
-      // Fully hide at rest-closed so no hairline shows between row and panel
-      opacity: expansionAnim.interpolate({ inputRange: [0, 0.01, 1], outputRange: [0, 1, 1] }),
+      // Animate to the measured content height — animating to an arbitrary
+      // cap makes the motion finish (or stall) long before the spring does.
+      height: expansionAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, panelHeight],
+        extrapolate: 'clamp',
+      }),
+      // Fade in over the first half of the expansion, out over the last half
+      // of the collapse.
+      opacity: expansionAnim.interpolate({
+        inputRange: [0, 0.5, 1],
+        outputRange: [0, 1, 1],
+        extrapolate: 'clamp',
+      }),
       overflow: 'hidden',
     }}>
+      {/* Absolutely positioned so it always lays out at natural height for
+          measurement, independent of the animated clipping height above.
+          Top-anchored: the growing card uncovers the content in place, and
+          cardClip keeps the slice edge's corners rounded. */}
+      <View
+        style={styles.panelMeasure}
+        onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}
+      >
       <View style={styles.expandedPanel}>
         {!selectionMode && (
           <>
@@ -440,30 +473,43 @@ export function TaskItem({
           </>
         )}
       </View>
+      </View>
     </Animated.View>
   );
 
   return (
     <>
-      <Animated.View style={[
-        styles.itemWrapper,
-        shadows.card,
-        { opacity: isActive ? 1 : rowOpacity },
-        isActive && styles.itemWrapperActive,
-        spotlightDisabled && styles.itemWrapperDimmed,
-        expanded && styles.itemWrapperElevated,
-      ]}>
-        {selectionMode || spotlightDisabled ? (
-          <View style={[styles.swipeContainer, expanded && styles.swipeContainerExpanded]}>
+      <Animated.View
+        style={[
+          styles.itemWrapper,
+          shadows.card,
+          { opacity: isActive ? 1 : wrapperOpacity },
+          isActive && styles.itemWrapperActive,
+          expanded && styles.itemWrapperElevated,
+        ]}
+        // Screens collapse the spotlight on any touch in the list area;
+        // touches inside the expanded card must not bubble up to that.
+        onTouchEnd={expanded ? e => e.stopPropagation() : undefined}
+      >
+        {/* Clips the row + panel together as one card. Because this view is
+            never shorter than the row, its corner radius never clamps, so
+            the card silhouette stays rounded at every animation frame.
+            (Separate from itemWrapper: overflow hidden there would clip the
+            card shadow on iOS.) */}
+        <View style={styles.cardClip}>
+        {spotlightDisabled && !selectionMode ? (
+          // While another task is spotlighted this row must not react to
+          // touches itself — any tap on it just dismisses the spotlight.
+          <Pressable style={styles.swipeContainer} onPress={onPress}>
+            <View pointerEvents="none">{rowBody}</View>
+          </Pressable>
+        ) : selectionMode || spotlightDisabled ? (
+          <View style={styles.swipeContainer}>
             {rowBody}
           </View>
         ) : (
           <Swipeable
             ref={swipeableRef}
-            containerStyle={[
-              styles.swipeContainer,
-              expanded && styles.swipeContainerExpanded,
-            ]}
             renderRightActions={renderRightActions}
             renderLeftActions={renderLeftActions}
             overshootRight={false}
@@ -484,6 +530,7 @@ export function TaskItem({
           </Swipeable>
         )}
         {expandedPanel}
+        </View>
       </Animated.View>
 
       {!selectionMode && (
@@ -519,9 +566,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
-  itemWrapperDimmed: {
-    opacity: 0.35,
-  },
   // Lifted look while being dragged: elevated background so the floating card
   // reads as clearly distinct from the resting rows.
   itemWrapperActive: {
@@ -534,13 +578,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     zIndex: 10,
     elevation: 10,
   },
-  swipeContainer: {
+  cardClip: {
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  swipeContainerExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
+  swipeContainer: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   row: {
     flexDirection: 'row',
@@ -625,6 +669,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 5,
     borderTopLeftRadius: radius.md,
     borderBottomLeftRadius: radius.md,
+  },
+  panelMeasure: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
   },
   expandedPanel: {
     backgroundColor: colors.bgSecondary,

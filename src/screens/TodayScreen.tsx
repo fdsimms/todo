@@ -5,11 +5,13 @@ import {
   FlatList,
   SectionList,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
   RefreshControl,
   Alert,
   Animated,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -26,6 +28,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -93,6 +96,17 @@ export function TodayScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [restExpanded, setRestExpanded] = useState(false);
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
+
+  // Collapse any expanded task when navigating away from this tab so it
+  // isn't still expanded when the user comes back.
+  useFocusEffect(
+    useCallback(() => {
+      return () => setExpandedTaskId(null);
+    }, [])
+  );
+
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
+  const listElevated = useSpotlightElevation(spotlightActive);
 
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
@@ -216,7 +230,7 @@ export function TodayScreen() {
     : item.type === 'header' ? `h-${item.label}`
     : item.task.id;
 
-  // Local copy of data fed to DraggableFlatList. onDragEnd writes the settled
+  // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
   // pre-drag order while the store write propagates; the effect below then
   // reconciles to the store-derived `data` on the next render.
@@ -235,7 +249,7 @@ export function TodayScreen() {
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     if (item.type === 'focus-header') {
       return (
-        <View style={styles.focusSectionHeader}>
+        <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
           <View style={styles.focusSectionTitleRow}>
             <Ionicons name="star" size={13} color={colors.orange} />
             <Text style={styles.focusSectionTitle}>Focus</Text>
@@ -243,14 +257,20 @@ export function TodayScreen() {
           <TouchableOpacity onPress={clearAllFocus} hitSlop={8}>
             <Text style={styles.clearText}>Clear</Text>
           </TouchableOpacity>
-        </View>
+        </Pressable>
       );
     }
     if (item.type === 'rest-header') {
       return (
         <TouchableOpacity
           style={styles.restSectionHeader}
-          onPress={() => setRestExpanded(e => !e)}
+          onPress={() => {
+            if (expandedTaskId !== null) {
+              setExpandedTaskId(null);
+              return;
+            }
+            setRestExpanded(e => !e);
+          }}
           activeOpacity={interaction.activeOpacity}
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
@@ -261,6 +281,8 @@ export function TodayScreen() {
     if (item.type === 'header') {
       // A newly-appearing category header mounts fresh (its row key is unique
       // per label) and fades/slides in instead of popping after a drop.
+      // (Tapping it while a task is expanded still collapses the spotlight,
+      // via the list wrapper's onTouchEnd.)
       return <SectionHeader label={item.label} styles={styles} />;
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
@@ -387,15 +409,18 @@ export function TodayScreen() {
       </View>
 
 
-      {expandedTaskId !== null && !selectionMode && (
-        <TouchableOpacity
-          style={styles.focusOverlay}
-          activeOpacity={1}
-          onPress={() => setExpandedTaskId(null)}
-        />
-      )}
+      <SpotlightOverlay
+        visible={spotlightActive}
+        onPress={() => setExpandedTaskId(null)}
+      />
 
-      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+      <View
+        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+        // The list sits above the spotlight overlay, so the overlay can't see
+        // taps here — catch any touch in the list area instead. The expanded
+        // card stops propagation so its own controls keep working.
+        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
+      >
       {viewMode === 'later' && (
         <SectionList
           sections={laterSections}
@@ -430,12 +455,13 @@ export function TodayScreen() {
             );
           }}
           renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
+            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
               <Text style={styles.sectionHeaderText}>{section.title}</Text>
-            </View>
+            </Pressable>
           )}
           stickySectionHeadersEnabled={false}
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={laterSections.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <EmptyState
@@ -463,6 +489,7 @@ export function TodayScreen() {
             />
           }
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
@@ -505,7 +532,16 @@ export function TodayScreen() {
             />
           }
           ListEmptyComponent={emptyComponent}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponent={
+            // Direct child of the scroll content (no cell wrapper), so its own
+            // flexGrow stretches it; pinned when empty so the empty state
+            // stays centered.
+            <TouchableOpacity
+              style={[styles.listFooter, filtered.length === 0 && styles.listFooterFixed]}
+              activeOpacity={1}
+              onPress={() => setExpandedTaskId(null)}
+            />
+          }
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
@@ -622,7 +658,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   emptyContainer: { flexGrow: 1 },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
   // Subtle slot marking where a dragged task will land; mirrors the task
   // card's footprint (margin + radius).
   dropSlot: {
@@ -632,18 +668,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
   },
-  listFooter: { height: 120 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
+  listFooterFixed: { flexGrow: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  focusOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: colors.backdrop,
-    zIndex: 5,
-  },
   fab: {
     position: 'absolute', right: spacing.lg,
     width: 56, height: 56, borderRadius: 28,

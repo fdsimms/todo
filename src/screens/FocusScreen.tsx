@@ -107,7 +107,13 @@ export function FocusScreen() {
         />
       )}
 
-      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+      <View
+        style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
+        // The list sits above the spotlight overlay, so the overlay can't see
+        // taps here — catch any touch in the list area instead. The expanded
+        // card stops propagation so its own controls keep working.
+        onTouchEnd={expandedTaskId !== null && !selectionMode ? () => setExpandedTaskId(null) : undefined}
+      >
         {focusedTasks.length === 0 ? (
           <EmptyState
             icon="star"
@@ -125,6 +131,7 @@ export function FocusScreen() {
             keyboardDismissMode="on-drag"
             contentContainerStyle={styles.listContent}
             ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={styles.listFooterCell}
             onScrollBeginDrag={() => setExpandedTaskId(null)}
             renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
@@ -203,8 +210,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
   selectText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
-  listContent: { paddingTop: spacing.sm, paddingBottom: 20 },
-  listFooter: { height: 120 },
+  listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  // The footer stretches to fill any space left below the last task so a tap
+  // anywhere under the list dismisses the expanded-task spotlight.
+  listFooterCell: { flexGrow: 1 },
+  listFooter: { flexGrow: 1, minHeight: 120 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   focusOverlay: {
