@@ -93,6 +93,7 @@ export function TaskItem({
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
   const [panelHeight, setPanelHeight] = useState(0);
+  const completingRef = useRef(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
@@ -152,6 +153,8 @@ export function TaskItem({
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
 
   const handleComplete = async () => {
+    if (completingRef.current) return;
+    completingRef.current = true;
     await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setCompleting(true);
     Animated.sequence([
@@ -233,6 +236,7 @@ export function TaskItem({
 
       <TouchableOpacity
         onPress={selectionMode ? onSelect : handleComplete}
+        disabled={!selectionMode && completing}
         hitSlop={10}
         style={styles.circleWrapper}
       >
