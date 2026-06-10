@@ -103,9 +103,14 @@ export function TaskItem({
   const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    Animated.spring(expansionAnim, {
+    // Timing rather than a spring: this drives `height` on the JS thread and
+    // re-lays-out every row below it each frame. A spring is underdamped, so it
+    // oscillates around the target and overshoots past 0 on collapse (clamped
+    // by the height interpolation), which reads as a jitter at the end of the
+    // animation — worse the more tasks are below it. Timing settles cleanly.
+    Animated.timing(expansionAnim, {
       toValue: expanded ? 1 : 0,
-      ...animation.spring.smooth,
+      duration: animation.duration.normal,
       useNativeDriver: false,
     }).start();
   }, [expanded]);
