@@ -276,7 +276,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: 'rgba(120,120,128,0.5)',
+    backgroundColor: colors.bgQuaternary,
   },
   optionsCard: {
     backgroundColor: colors.bgSecondary,

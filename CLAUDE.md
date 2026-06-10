@@ -55,9 +55,33 @@ Cycle items (`cycleItems[]` / `cycleIndex`) rotate the task's sub-title on each 
 
 `src/navigation/AppNavigator.tsx` uses a bottom tab bar with only 3 visible tabs (Today, Search, More). The remaining screens (Later, Tags, Categories, Logbook, Stats) are registered as hidden tabs and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left.
 
-### Theme
+### Design system
 
-`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `border`, `animation`, etc.) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` from `src/theme/ThemeContext.tsx` — never reference a raw hex directly. The top-level `colors` export is kept only for non-themed static uses.
+`src/theme/index.ts` exports design tokens (`spacing`, `radius`, `font`, `fontWeight`, `border`, `iconSize`, `animation`, `interaction`) and two color palettes (`darkColors`, `lightColors`). Components consume colors via `useColors()` or `useTheme()` (which also exposes theme-aware `shadows`) from `src/theme/ThemeContext.tsx`. The top-level `colors` export is kept only for non-themed static uses.
+
+**Never hardcode** hex/rgba colors, shadow styles, spring params, `activeOpacity`, or `delayLongPress`. The tokens to reach for:
+
+- `colors.backdrop` — every modal/sheet dim layer
+- `colors.blurFallback` — tint overlay behind `SafeBlurView` content
+- `colors.onAccent` — text/icons on filled accent/green/red surfaces (always white, both themes)
+- `colors.timeMorning/timeAfternoon/timeEvening` — time-of-day segment colors
+- `interaction.activeOpacity` (0.7), `interaction.pressScale`, `interaction.delayLongPress` — press behavior
+- `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
+- `getShadows(isDark)` via `useTheme().shadows` (`card`, `fab`, `sheet`) — every shadow
+
+**Shared primitives** (use these instead of hand-rolling):
+
+- `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
+- `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
+- `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
+- `src/utils/haptics.ts` — semantic haptics (`tap`, `success`, `warning`, `error`, `impactLight/Medium/Heavy`). Never import `expo-haptics` directly; pick by meaning so intensities stay consistent.
+- `src/utils/layoutAnimation.ts` — `animateLayout()` immediately before a state change that inserts/removes list rows (complete, delete, add, selection-mode toggle). **Never call it on a drag-reorder commit path** (`ReorderableList.onReorder`, `DraggableFlatList.onDragEnd`) — those drive their own row animations.
+
+**List rows** use the iOS inset-grouped card treatment app-wide: `backgroundColor: bgSecondary`, `marginHorizontal: spacing.md`, `marginVertical: 2`, `borderRadius: radius.md` (see `TaskItem.itemWrapper`; Search/Logbook/Tags/Categories/Projects rows match it). Section headers are uppercase `font.xs` semibold `textTertiary` with `letterSpacing: 0.8`.
+
+### Drag and drop — handle with care
+
+`src/components/ReorderableList.tsx` (+ math in `src/utils/reorder.ts`, tests in `reorder.test.ts`) is deliberately built so rows are plain flow-layout views with **no transforms at rest**; the dragged row becomes an invisible placeholder under a floating overlay. Row offset animations are **JS-driven (`useNativeDriver: false`) by design** — native-driven values orphan on the commit render. Do not change the render order of rows, the animation driver, or the PanResponder lifecycle, and don't add gestures that compete with it. Safe to touch: overlay styling (shadow/scale/radius), autoscroll params, durations, and haptics via the `onHoverChange` prop. FocusScreen uses `react-native-draggable-flatlist` and TaskEditor uses `SortableList` — same rule: styling only.
 
 ### Database schema / migrations
 
