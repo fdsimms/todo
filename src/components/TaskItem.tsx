@@ -430,13 +430,18 @@ export function TaskItem({
 
   return (
     <>
-      <Animated.View style={[
-        styles.itemWrapper,
-        shadows.card,
-        { opacity: isActive ? 0.85 : rowOpacity },
-        spotlightDisabled && styles.itemWrapperDimmed,
-        expanded && styles.itemWrapperElevated,
-      ]}>
+      <Animated.View
+        style={[
+          styles.itemWrapper,
+          shadows.card,
+          { opacity: isActive ? 0.85 : rowOpacity },
+          spotlightDisabled && styles.itemWrapperDimmed,
+          expanded && styles.itemWrapperElevated,
+        ]}
+        // Screens collapse the spotlight on any touch in the list area;
+        // touches inside the expanded card must not bubble up to that.
+        onTouchEnd={expanded ? e => e.stopPropagation() : undefined}
+      >
         {spotlightDisabled && !selectionMode ? (
           // While another task is spotlighted this row must not react to
           // touches itself — any tap on it just dismisses the spotlight.

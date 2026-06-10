@@ -414,6 +414,13 @@ export function CategoriesScreen() {
             <View style={{ width: 24 }} />
           </View>
 
+          <View
+            style={{ flex: 1 }}
+            // Catch any touch in the list area to dismiss the expanded-task
+            // spotlight; the expanded card stops propagation so its own
+            // controls keep working.
+            onTouchEnd={expandedTaskId !== null ? () => setExpandedTaskId(null) : undefined}
+          >
           <FlatList
             data={categoryTasks}
             keyExtractor={t => t.id}
@@ -447,6 +454,7 @@ export function CategoriesScreen() {
               </View>
             }
           />
+          </View>
         </View>
       </Modal>
 

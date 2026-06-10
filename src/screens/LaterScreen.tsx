@@ -108,7 +108,13 @@ export function LaterScreen() {
         />
       )}
 
-      <View style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}>
+      <View
+        style={[styles.listWrapper, expandedTaskId !== null && !selectionMode && styles.listWrapperElevated]}
+        // The list sits above the spotlight overlay, so the overlay can't see
+        // taps here — catch any touch in the list area instead. The expanded
+        // card stops propagation so its own controls keep working.
+        onTouchEnd={expandedTaskId !== null && !selectionMode ? () => setExpandedTaskId(null) : undefined}
+      >
         <SectionList
           sections={sections}
           keyExtractor={item => item.id}
