@@ -226,7 +226,7 @@ export function TaskItem({
   );
 
   const rowBody = (
-    <View style={styles.row}>
+    <View style={[styles.row, isActive && styles.rowActive]}>
       {task.priority > 0 && (
         <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
       )}
@@ -467,7 +467,8 @@ export function TaskItem({
         style={[
           styles.itemWrapper,
           shadows.card,
-          { opacity: isActive ? 0.85 : wrapperOpacity },
+          { opacity: isActive ? 1 : wrapperOpacity },
+          isActive && styles.itemWrapperActive,
           expanded && styles.itemWrapperElevated,
         ]}
         // Screens collapse the spotlight on any touch in the list area;
@@ -548,6 +549,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
+  },
+  // Lifted look while being dragged: elevated background so the floating card
+  // reads as clearly distinct from the resting rows.
+  itemWrapperActive: {
+    backgroundColor: colors.bgTertiary,
+  },
+  rowActive: {
+    backgroundColor: colors.bgTertiary,
   },
   itemWrapperElevated: {
     zIndex: 10,
