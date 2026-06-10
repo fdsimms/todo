@@ -122,3 +122,43 @@ export function resolveDrop(
 
   return { taskIds, categoryUpdates, settled };
 }
+
+export type LaterListItem =
+  | { type: 'header'; label: string; key: string }
+  | { type: 'task'; task: Task; key: string };
+
+/**
+ * Flatten Later-view sections (grouped by visibility date/time-segment) into
+ * a single header+task list for ReorderableList.
+ *
+ * A task with multiple timeSegments appears once per matching section, so the
+ * same task id can occur more than once — each occurrence after the first
+ * gets a suffixed key to keep list keys unique.
+ */
+export function flattenLaterSections(sections: { title: string; data: Task[] }[]): LaterListItem[] {
+  const items: LaterListItem[] = [];
+  const seen = new Map<string, number>();
+  sections.forEach(section => {
+    items.push({ type: 'header', label: section.title, key: `h-${section.title}` });
+    section.data.forEach(task => {
+      const count = (seen.get(task.id) ?? 0) + 1;
+      seen.set(task.id, count);
+      items.push({ type: 'task', task, key: count === 1 ? task.id : `${task.id}-${count}` });
+    });
+  });
+  return items;
+}
+
+export const isLaterHeader = (item: LaterListItem): boolean => item.type === 'header';
+
+/** Task ids in flattened order, deduped (a multi-segment task keeps its first position). */
+export function laterTaskOrder(items: LaterListItem[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.type !== 'task' || seen.has(item.task.id)) continue;
+    seen.add(item.task.id);
+    ids.push(item.task.id);
+  }
+  return ids;
+}

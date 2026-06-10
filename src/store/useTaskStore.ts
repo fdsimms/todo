@@ -469,7 +469,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deferredTasks() {
-    return get().tasks.filter(t => !t.parentId && isTaskDeferred(t));
+    return get().tasks
+      .filter(t => !t.parentId && isTaskDeferred(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   focusedTasks() {

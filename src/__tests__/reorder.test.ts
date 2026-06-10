@@ -4,6 +4,7 @@ import {
   cumulativeOffsets,
   rowDragOffset,
   dropSlotY,
+  dragRange,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -119,6 +120,27 @@ describe('rowDragOffset', () => {
   it('moves nothing when hovering its own slot', () => {
     expect(rowDragOffset(0, 2, 2, Ha)).toBe(0);
     expect(rowDragOffset(3, 2, 2, Ha)).toBe(0);
+  });
+});
+
+describe('dragRange', () => {
+  // Layout: H, a, b, c, H, d, H, e
+  const layout = ['H', 'a', 'b', 'c', 'H', 'd', 'H', 'e'];
+  const isHeader = (item: string) => item === 'H';
+
+  it('confines a row to the task rows within its section', () => {
+    expect(dragRange(layout, 1, isHeader)).toEqual([1, 3]); // 'a' -> within [a,b,c]
+    expect(dragRange(layout, 2, isHeader)).toEqual([1, 3]); // 'b' -> within [a,b,c]
+    expect(dragRange(layout, 3, isHeader)).toEqual([1, 3]); // 'c' -> within [a,b,c]
+  });
+
+  it('confines a lone row in a section to itself', () => {
+    expect(dragRange(layout, 5, isHeader)).toEqual([5, 5]); // 'd' is alone between headers
+    expect(dragRange(layout, 7, isHeader)).toEqual([7, 7]); // 'e' is alone at the end
+  });
+
+  it('handles a row with no header before or after', () => {
+    expect(dragRange(['a', 'b', 'c'], 1, isHeader)).toEqual([0, 2]);
   });
 });
 

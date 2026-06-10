@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  SectionList,
   TouchableOpacity,
   Pressable,
   StyleSheet,
@@ -12,17 +11,25 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
+import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor } from '../components/TaskEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import { formatGroupHeader } from '../utils/dateUtils';
+import { dragRange } from '../utils/reorder';
+import {
+  flattenLaterSections,
+  isLaterHeader,
+  laterTaskOrder,
+  type LaterListItem,
+} from '../utils/taskGrouping';
 import type { Task } from '../types';
 
 export function LaterScreen() {
@@ -35,6 +42,7 @@ export function LaterScreen() {
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkDefer = useTaskStore(s => s.bulkDefer);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const reorderTasks = useTaskStore(s => s.reorderTasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -95,20 +103,34 @@ export function LaterScreen() {
 
   // Group by the date (and time segment) they'll become visible
   // Tasks with multiple segments appear in each segment's group
-  const grouped = new Map<string, Task[]>();
-  [...deferredTasks]
-    .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
-    .forEach(task => {
-      for (const key of getGroupKeys(task)) {
-        if (!grouped.has(key)) grouped.set(key, []);
-        grouped.get(key)!.push(task);
-      }
-    });
+  const sections = useMemo(() => {
+    const grouped = new Map<string, Task[]>();
+    [...deferredTasks]
+      .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
+      .forEach(task => {
+        for (const key of getGroupKeys(task)) {
+          if (!grouped.has(key)) grouped.set(key, []);
+          grouped.get(key)!.push(task);
+        }
+      });
+    return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
+  }, [deferredTasks]);
 
-  const sections = Array.from(grouped.entries()).map(([title, data]) => ({
-    title,
-    data,
-  }));
+  const laterData = useMemo(() => flattenLaterSections(sections), [sections]);
+  const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
+  useEffect(() => {
+    setLaterDraggableData(laterData);
+  }, [laterData]);
+
+  // A fast drag can cross several rows between frames; spacing the selection
+  // ticks out keeps them from piling up into one long buzz.
+  const lastDragHapticRef = useRef(0);
+  const dragHaptic = () => {
+    const now = Date.now();
+    if (now - lastDragHapticRef.current < 80) return;
+    lastDragHapticRef.current = now;
+    haptics.tap();
+  };
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -126,45 +148,52 @@ export function LaterScreen() {
         // card stops propagation so its own controls keep working.
         onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
       >
-        <SectionList
-          sections={sections}
-          keyExtractor={item => item.id}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
-          renderItem={({ item }) => {
-            const subs = allTasks.filter(t => t.parentId === item.id);
+        <ReorderableList
+          data={laterDraggableData}
+          keyExtractor={item => item.key}
+          renderItem={({ item, drag, isActive }) => {
+            if (item.type === 'header') {
+              return (
+                <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
+                  <Text style={styles.sectionTitle}>{item.label}</Text>
+                </Pressable>
+              );
+            }
+            const subs = allTasks.filter(t => t.parentId === item.task.id);
             return (
               <TaskItem
-                task={item}
+                task={item.task}
                 onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                  if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
                     setExpandedTaskId(null);
                     return;
                   }
-                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
                 }}
-                expanded={expandedTaskId === item.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                onEdit={() => openEditor(item)}
+                expanded={expandedTaskId === item.task.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
+                onEdit={() => openEditor(item.task)}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
+                drag={selectionMode || !drag ? undefined : drag}
+                isActive={isActive}
                 selectionMode={selectionMode}
-                selected={selectedIds.has(item.id)}
-                onLongPress={() => enterSelection(item.id)}
-                onSelect={() => toggleSelection(item.id)}
+                selected={selectedIds.has(item.task.id)}
+                onLongPress={() => enterSelection(item.task.id)}
+                onSelect={() => toggleSelection(item.task.id)}
               />
             );
           }}
-          renderSectionHeader={({ section }) => (
-            <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
-              <Text style={styles.sectionTitle}>{section.title}</Text>
-            </Pressable>
-          )}
-          stickySectionHeadersEnabled={false}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          ListFooterComponentStyle={sections.length === 0 ? undefined : styles.listFooterCell}
+          onDragBegin={() => setExpandedTaskId(null)}
+          onHoverChange={dragHaptic}
+          dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
+          placeholderStyle={styles.dropSlot}
+          onReorder={reordered => {
+            setLaterDraggableData(reordered);
+            reorderTasks(laterTaskOrder(reordered));
+          }}
+          contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <EmptyState
@@ -173,6 +202,7 @@ export function LaterScreen() {
               subtitle="Swipe left on a task to defer it, or set a time of day in the task editor"
             />
           }
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
         />
       </View>
 
@@ -210,7 +240,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.
-  listFooterCell: { flexGrow: 1 },
   listFooter: { flexGrow: 1, minHeight: 120 },
   emptyContainer: { flexGrow: 1 },
   listWrapper: { flex: 1 },
@@ -227,5 +256,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+  // Subtle slot marking where a dragged task will land; mirrors the task
+  // card's footprint (margin + radius).
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
   },
 });

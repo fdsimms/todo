@@ -1,4 +1,11 @@
-import { makeCategoryGroups, resolveDrop, type CategoryListItem } from '../utils/taskGrouping';
+import {
+  makeCategoryGroups,
+  resolveDrop,
+  flattenLaterSections,
+  laterTaskOrder,
+  isLaterHeader,
+  type CategoryListItem,
+} from '../utils/taskGrouping';
 import type { Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
@@ -173,5 +180,56 @@ describe('resolveDrop', () => {
     // The store will end up with these task objects, in this order:
     const fromStore = makeCategoryGroups([workout, test]);
     expect(layoutSeq(settled)).toEqual(layoutSeq(fromStore));
+  });
+});
+
+// Readable view of a flattened Later layout.
+const laterSeq = (items: ReturnType<typeof flattenLaterSections>) =>
+  items.map(item => (item.type === 'header' ? `#${item.label}` : item.task.id));
+
+describe('flattenLaterSections', () => {
+  it('flattens sections into header + task items in order', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const c = makeTask({ id: 'c' });
+    const flattened = flattenLaterSections([
+      { title: 'TODAY — EVENING', data: [a, b] },
+      { title: 'TOMORROW — MORNING', data: [c] },
+    ]);
+    expect(laterSeq(flattened)).toEqual(['#TODAY — EVENING', 'a', 'b', '#TOMORROW — MORNING', 'c']);
+  });
+
+  it('gives a unique key to each occurrence of a multi-segment task', () => {
+    const a = makeTask({ id: 'a' });
+    const flattened = flattenLaterSections([
+      { title: 'TOMORROW — MORNING', data: [a] },
+      { title: 'TOMORROW — EVENING', data: [a] },
+    ]);
+    const keys = flattened.filter(i => i.type === 'task').map(i => i.key);
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('marks header items with isLaterHeader', () => {
+    const flattened = flattenLaterSections([{ title: 'TODAY — EVENING', data: [makeTask({ id: 'a' })] }]);
+    expect(flattened.map(isLaterHeader)).toEqual([true, false]);
+  });
+});
+
+describe('laterTaskOrder', () => {
+  it('returns task ids in flattened order, skipping headers', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const flattened = flattenLaterSections([{ title: 'TODAY — EVENING', data: [a, b] }]);
+    expect(laterTaskOrder(flattened)).toEqual(['a', 'b']);
+  });
+
+  it('dedupes a task that appears in multiple sections, keeping its first position', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const flattened = flattenLaterSections([
+      { title: 'TOMORROW — MORNING', data: [a, b] },
+      { title: 'TOMORROW — EVENING', data: [a] },
+    ]);
+    expect(laterTaskOrder(flattened)).toEqual(['a', 'b']);
   });
 });
