@@ -246,6 +246,27 @@ export function TodayScreen() {
     setDraggableData(data);
   }, [data]);
 
+  // A fast drag can cross several rows between frames; spacing the selection
+  // ticks out keeps them from piling up into one long buzz.
+  const lastDragHapticRef = useRef(0);
+  const dragHaptic = () => {
+    const now = Date.now();
+    if (now - lastDragHapticRef.current < 80) return;
+    lastDragHapticRef.current = now;
+    haptics.tap();
+  };
+
+  const subtasksByParent = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if (!t.parentId) continue;
+      const list = map.get(t.parentId);
+      if (list) list.push(t);
+      else map.set(t.parentId, [t]);
+    }
+    return map;
+  }, [allTasks]);
+
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     if (item.type === 'focus-header') {
       return (
@@ -285,7 +306,7 @@ export function TodayScreen() {
       // via the list wrapper's onTouchEnd.)
       return <SectionHeader label={item.label} styles={styles} />;
     }
-    const subs = allTasks.filter(t => t.parentId === item.task.id);
+    const subs = subtasksByParent.get(item.task.id) ?? [];
     const taskNode = (
       <TaskItem
         task={item.task}
@@ -502,7 +523,7 @@ export function TodayScreen() {
           onDragBegin={() => {
             setExpandedTaskId(null);
           }}
-          onHoverChange={() => haptics.tap()}
+          onHoverChange={dragHaptic}
           placeholderStyle={styles.dropSlot}
           onReorder={reordered => {
             // The draggable list only ever contains header + task items.

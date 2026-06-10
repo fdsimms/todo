@@ -78,7 +78,6 @@ export function ReorderableList<T>({
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
   // the overlay disappears is guaranteed to show the new order — the parent's
@@ -113,6 +112,9 @@ export function ReorderableList<T>({
   // translateY per row, owned here so they can be reset synchronously on commit
   // (a child-owned value would reset a frame late and flash). Rows rest at 0.
   const rowOffsetsRef = useRef<Map<string, Animated.Value>>(new Map());
+  // The offset each row is currently animating toward, so a hover change only
+  // restarts the animations whose targets actually moved.
+  const rowTargetsRef = useRef<Map<string, number>>(new Map());
   const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Guards against commitDrag re-entry while the drop animation runs (it can
   // be invoked from both onTouchEnd and onPanResponderRelease).
@@ -157,7 +159,6 @@ export function ReorderableList<T>({
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
     setActiveIndex(null);
-    setHoverIndex(null);
     // Do NOT reset the overlay's animated values here: the native view obeys
     // setValue immediately, while React unmounts the overlay a frame later —
     // zeroing the translates snapped the card back to its drag-start position
@@ -179,6 +180,7 @@ export function ReorderableList<T>({
 
   const settleRowOffsets = () => {
     rowOffsetsRef.current.forEach(v => v.setValue(0));
+    rowTargetsRef.current.clear();
   };
 
   // Measured content-Y of the gap the dragged item will drop into (matches the
@@ -194,18 +196,28 @@ export function ReorderableList<T>({
   // and the (invisible) placeholder row glides to the gap carrying the slot
   // marker. The placeholder moving via its own transform keeps the marker in
   // normal flow, so it can't be thrown off by list padding.
-  useEffect(() => {
-    if (activeIndex === null) return;
+  //
+  // Driven imperatively from updateHover rather than via React state: a hover
+  // change re-rendering the whole list (every row's renderItem) made long
+  // lists visibly stutter during a drag. Rows the change doesn't displace are
+  // skipped, so crossing one slot animates only the row(s) that swap, not all
+  // of them.
+  const animateRowsForHover = (t: number) => {
+    const ai = activeIndexRef.current;
+    if (ai === null) return;
     const heights = currentHeights();
-    const activeHeight = heights[activeIndex] ?? DEFAULT_ROW_HEIGHT;
-    const t = hoverIndex ?? activeIndex;
-    const activeKey = keyExtractor(renderData[activeIndex]!);
+    const activeHeight = heights[ai] ?? DEFAULT_ROW_HEIGHT;
+    const activeKey = keyExtractor(dataRef.current[ai]!);
     const activeY = layoutYRef.current.get(activeKey) ?? 0;
-    const gapY = gapContentY(activeIndex, t);
-    renderData.forEach((item, i) => {
-      const target =
-        i === activeIndex ? gapY - activeY : rowDragOffset(i, activeIndex, t, activeHeight);
-      Animated.timing(getRowOffset(keyExtractor(item)), {
+    const gapY = gapContentY(ai, t);
+    dataRef.current.forEach((item, i) => {
+      const key = keyExtractor(item);
+      const target = i === ai ? gapY - activeY : rowDragOffset(i, ai, t, activeHeight);
+      // Rows rest at 0 (settleRowOffsets runs at drag start), so a missing
+      // entry means the row hasn't been displaced yet.
+      if ((rowTargetsRef.current.get(key) ?? 0) === target) return;
+      rowTargetsRef.current.set(key, target);
+      Animated.timing(getRowOffset(key), {
         toValue: target,
         duration: ROW_SHIFT_DURATION,
         // JS-driven on purpose: the row transform is removed (style → plain) in
@@ -216,8 +228,7 @@ export function ReorderableList<T>({
         useNativeDriver: false,
       }).start();
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeIndex, hoverIndex]);
+  };
 
   const updateHover = () => {
     const ai = activeIndexRef.current;
@@ -227,7 +238,7 @@ export function ReorderableList<T>({
     const next = dropIndexFromTranslation(currentHeights(), ai, fingerDelta + scrollDelta);
     if (next !== hoverIndexRef.current) {
       hoverIndexRef.current = next;
-      setHoverIndex(next);
+      animateRowsForHover(next);
       onHoverChangeRef.current?.();
     }
   };
@@ -316,7 +327,6 @@ export function ReorderableList<T>({
     overlayX.setValue(0);
     overlayScale.setValue(1.03);
     setActiveIndex(index);
-    setHoverIndex(index);
     onDragBegin?.();
   };
 
