@@ -11,14 +11,15 @@ import {
   Keyboard,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate } from '../utils/dateUtils';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 
@@ -95,6 +96,7 @@ export function TaskItem({
   const [panelHeight, setPanelHeight] = useState(0);
   const completingRef = useRef(false);
   const circleScale = useRef(new Animated.Value(1)).current;
+  const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
   const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
@@ -121,7 +123,7 @@ export function TaskItem({
 
   useEffect(() => {
     if (isActive) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      haptics.impactMedium();
     }
   }, [isActive]);
 
@@ -155,15 +157,20 @@ export function TaskItem({
   const handleComplete = async () => {
     if (completingRef.current) return;
     completingRef.current = true;
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await haptics.success();
     setCompleting(true);
+    // Checkmark springs in while the circle pops, then the row fades and the
+    // surrounding list closes the gap via LayoutAnimation.
+    checkScale.setValue(0);
+    Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     Animated.sequence([
-      Animated.spring(circleScale, { toValue: 1.35, damping: 22, stiffness: 300, useNativeDriver: true }),
-      Animated.spring(circleScale, { toValue: 1, damping: 22, stiffness: 300, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.delay(120),
       Animated.timing(rowOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]).start(() => {
       setCompleting(false);
+      animateLayout();
       completeTask(task.id);
     });
   };
@@ -178,10 +185,11 @@ export function TaskItem({
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(
-              () => deleteTask(task.id)
-            );
+            await haptics.impactHeavy();
+            Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+              animateLayout();
+              deleteTask(task.id);
+            });
           },
         },
       ]
@@ -207,7 +215,7 @@ export function TaskItem({
     <TouchableOpacity
       style={styles.deleteAction}
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        haptics.impactHeavy();
         confirmDelete();
       }}
     >
@@ -219,7 +227,7 @@ export function TaskItem({
     <TouchableOpacity
       style={styles.deferAction}
       onPress={() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        haptics.impactMedium();
         swipeableRef.current?.close();
         setShowWhenPicker(true);
       }}
@@ -246,8 +254,13 @@ export function TaskItem({
           selectionMode && selected && styles.circleSelected,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
-          {((selectionMode && selected) || (!selectionMode && completing)) && (
-            <Ionicons name="checkmark" size={14} color={colors.bg} />
+          {selectionMode && selected && (
+            <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+          )}
+          {!selectionMode && completing && (
+            <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+              <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+            </Animated.View>
           )}
         </Animated.View>
       </TouchableOpacity>
@@ -256,8 +269,8 @@ export function TaskItem({
         style={styles.content}
         onPress={selectionMode ? onSelect : onPress}
         onLongPress={drag ?? onLongPress}
-        delayLongPress={200}
-        activeOpacity={0.7}
+        delayLongPress={interaction.delayLongPress}
+        activeOpacity={interaction.activeOpacity}
       >
         {isEditingTitle ? (
           <TextInput
@@ -276,7 +289,7 @@ export function TaskItem({
           <View style={styles.titleRow}>
             {expanded ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps
-              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={0.6}>
+              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity}>
                 <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
               </TouchableOpacity>
             ) : (
@@ -297,7 +310,7 @@ export function TaskItem({
       {!selectionMode && (
         <TouchableOpacity
           onPress={() => {
-            Haptics.selectionAsync();
+            haptics.tap();
             toggleFocus(task.id);
           }}
           hitSlop={8}
@@ -356,12 +369,15 @@ export function TaskItem({
                   <TouchableOpacity
                     key={sub.id}
                     style={styles.subtaskRow}
-                    onPress={() => toggleSubtask(sub.id)}
-                    activeOpacity={0.7}
+                    onPress={() => {
+                      haptics.tap();
+                      toggleSubtask(sub.id);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                       {sub.completed && (
-                        <Ionicons name="checkmark" size={9} color={colors.bg} />
+                        <Ionicons name="checkmark" size={9} color={colors.onAccent} />
                       )}
                     </View>
                     <Text style={[
@@ -422,10 +438,10 @@ export function TaskItem({
                     <TouchableOpacity
                       style={styles.editBtn}
                       onPress={async () => {
-                        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        await haptics.impactMedium();
                         skipNextRecurrence(task.id);
                       }}
-                      activeOpacity={0.7}
+                      activeOpacity={interaction.activeOpacity}
                     >
                       <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
                       <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
@@ -436,7 +452,7 @@ export function TaskItem({
                   <TouchableOpacity
                     style={styles.editBtn}
                     onPress={() => setShowWhenPicker(true)}
-                    activeOpacity={0.7}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Ionicons
                       name="calendar-outline"
@@ -450,7 +466,7 @@ export function TaskItem({
                   <TouchableOpacity
                     style={styles.editBtn}
                     onPress={onEdit}
-                    activeOpacity={0.7}
+                    activeOpacity={interaction.activeOpacity}
                   >
                     <Ionicons name="pencil-outline" size={13} color={colors.accent} />
                     <Text style={styles.editBtnText}>Edit</Text>
@@ -503,7 +519,7 @@ export function TaskItem({
             overshootRight={false}
             overshootLeft={false}
             onSwipeableWillOpen={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              haptics.impactMedium();
             }}
             onSwipeableOpen={(direction) => {
               if (direction === 'right') {

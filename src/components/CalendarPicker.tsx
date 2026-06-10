@@ -16,7 +16,7 @@ import {
   format, addDays,
 } from 'date-fns';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 
 interface Props {
@@ -191,7 +191,7 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
                 key={idx}
                 style={styles.dayCell}
                 onPress={() => onDayPress(day)}
-                activeOpacity={0.7}
+                activeOpacity={interaction.activeOpacity}
               >
                 <View style={[
                   styles.dayCircle,

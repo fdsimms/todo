@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, TouchableOpacity } from 'react-native';
 import { animation } from '../theme';
+import { useColors } from '../theme/ThemeContext';
 
 interface Props {
   visible: boolean;
@@ -13,6 +14,7 @@ interface Props {
  * Sits at zIndex 5; the screen elevates its task list above it (zIndex 10).
  */
 export function SpotlightOverlay({ visible, onPress }: Props) {
+  const colors = useColors();
   const opacity = useRef(new Animated.Value(0)).current;
   const [rendered, setRendered] = useState(visible);
 
@@ -31,7 +33,7 @@ export function SpotlightOverlay({ visible, onPress }: Props) {
 
   return (
     <Animated.View
-      style={[styles.overlay, { opacity }]}
+      style={[styles.overlay, { opacity, backgroundColor: colors.backdrop }]}
       pointerEvents={visible ? 'auto' : 'none'}
     >
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onPress} />
@@ -67,7 +69,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     zIndex: 5,
   },
 });

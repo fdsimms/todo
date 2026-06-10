@@ -12,7 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 
 interface Props {
   visible: boolean;
@@ -97,8 +98,11 @@ export function SortFilterSheet({
             <TouchableOpacity
               key={opt.value}
               style={[styles.sortRow, sort === opt.value && styles.sortRowActive]}
-              onPress={() => onSortChange(opt.value)}
-              activeOpacity={0.7}
+              onPress={() => {
+                haptics.tap();
+                onSortChange(opt.value);
+              }}
+              activeOpacity={interaction.activeOpacity}
             >
               <Ionicons
                 name={opt.icon as never}
@@ -126,7 +130,10 @@ export function SortFilterSheet({
                     styles.chip,
                     active && { backgroundColor: PRIORITY_COLORS[p] },
                   ]}
-                  onPress={() => onPrioritiesChange(toggle(priorities, p))}
+                  onPress={() => {
+                    haptics.tap();
+                    onPrioritiesChange(toggle(priorities, p));
+                  }}
                 >
                   {!active && (
                     <View style={[styles.chipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />
@@ -148,7 +155,10 @@ export function SortFilterSheet({
                 <TouchableOpacity
                   key={e}
                   style={[styles.chip, active && styles.chipActive]}
-                  onPress={() => onEffortsChange(toggle(efforts, e))}
+                  onPress={() => {
+                    haptics.tap();
+                    onEffortsChange(toggle(efforts, e));
+                  }}
                 >
                   <Text style={[styles.chipText, active && styles.chipTextActive]}>
                     {EFFORT_LABELS[e]}
@@ -167,7 +177,7 @@ export function SortFilterSheet({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  overlay: { flex: 1, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,
@@ -216,7 +226,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipActive: { backgroundColor: colors.accent },
   chipDot: { width: 7, height: 7, borderRadius: 4 },
   chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  chipTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
+  chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   chipHint: { color: colors.textTertiary, fontSize: 10 },
-  chipHintActive: { color: colors.text + 'aa' },
+  chipHintActive: { color: colors.onAccent + 'aa' },
 });
