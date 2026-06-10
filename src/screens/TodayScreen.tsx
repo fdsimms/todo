@@ -34,7 +34,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -107,6 +107,18 @@ export function TodayScreen() {
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
+
+  // Fade the FAB out while a task is spotlighted. The elevated list (zIndex 10)
+  // otherwise renders rows on top of the FAB, which looks broken; hiding it
+  // also makes it non-interactive in this state, matching the dimmed list.
+  const fabOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(fabOpacity, {
+      toValue: spotlightActive ? 0 : 1,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [spotlightActive, fabOpacity]);
 
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
@@ -569,16 +581,21 @@ export function TodayScreen() {
       </View>
 
       {viewMode === 'today' && (
-        <PressableScale
-          style={[styles.fab, { bottom: insets.bottom + 64 }]}
-          pressScale={0.9}
-          onPress={() => {
-            haptics.impactLight();
-            setQuickAddVisible(true);
-          }}
+        <Animated.View
+          style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
+          pointerEvents={spotlightActive ? 'none' : 'box-none'}
         >
-          <Ionicons name="add" size={28} color={colors.onAccent} />
-        </PressableScale>
+          <PressableScale
+            style={styles.fab}
+            pressScale={0.9}
+            onPress={() => {
+              haptics.impactLight();
+              setQuickAddVisible(true);
+            }}
+          >
+            <Ionicons name="add" size={28} color={colors.onAccent} />
+          </PressableScale>
+        </Animated.View>
       )}
 
       <QuickAddModal
@@ -696,8 +713,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listFooterFixed: { flexGrow: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  fab: {
+  // Sits above the spotlight-elevated list (zIndex 10) so the FAB is never
+  // covered by rows; while a task is spotlighted it's faded out and
+  // pointerEvents-disabled by the screen.
+  fabContainer: {
     position: 'absolute', right: spacing.lg,
+    zIndex: 20,
+  },
+  fab: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
     shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
