@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,25 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, type Colors } from '../theme';
 
 type ViewMode = 'today' | 'later';
+
+// Category section header that fades + slides in on mount, so a section created
+// by a drop eases in rather than popping.
+function SectionHeader({ label, styles }: { label: string; styles: ReturnType<typeof makeStyles> }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
+  }, [anim]);
+  return (
+    <Animated.View
+      style={[
+        styles.sectionHeader,
+        { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] },
+      ]}
+    >
+      <Text style={styles.sectionHeaderText}>{label}</Text>
+    </Animated.View>
+  );
+}
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
@@ -236,11 +256,9 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'header') {
-      return (
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionHeaderText}>{item.label}</Text>
-        </View>
-      );
+      // A newly-appearing category header mounts fresh (its row key is unique
+      // per label) and fades/slides in instead of popping after a drop.
+      return <SectionHeader label={item.label} styles={styles} />;
     }
     const subs = allTasks.filter(t => t.parentId === item.task.id);
     const taskNode = (

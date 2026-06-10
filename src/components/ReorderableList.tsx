@@ -126,12 +126,18 @@ export function ReorderableList<T>({
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
 
-  // The parent caught up (or changed the data externally): drop the local
-  // committed copy, and cancel any in-progress drag rather than committing
-  // against a stale order.
+  // Whenever the parent re-renders with data (the source of truth once it has
+  // caught up after a drop), drop the local committed copy. Keyed on the data
+  // reference, NOT its key sequence: a drop whose regrouped result has the same
+  // sequence it started with (e.g. a task dragged out and snapping back) still
+  // needs the raw committed copy cleared, or the list stays stuck on it.
+  useEffect(() => {
+    if (activeIndexRef.current === null) setCommittedData(null);
+  }, [data]);
+
+  // Cancel an in-progress drag only if the actual items changed underneath it.
   const dataKeySignature = data.map(keyExtractor).join('\u0000');
   useEffect(() => {
-    setCommittedData(null);
     if (activeIndexRef.current !== null && !committingRef.current) resetDrag();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKeySignature]);

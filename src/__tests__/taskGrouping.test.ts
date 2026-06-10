@@ -41,15 +41,14 @@ const seq = (tasks: Task[], categoryOrder?: string[]) =>
   );
 
 describe('makeCategoryGroups', () => {
-  // Every group always gets a header — including the uncategorized group — so
-  // a task is never rendered in a header-less region and the headings can't
-  // all disappear once every task is uncategorized.
-  it('always heads the uncategorized group with "Uncategorized", even with no named category', () => {
+  // Uncategorized tasks are a header-less group at the top, so an all-
+  // uncategorized list is simply a flat list with no headers.
+  it('renders uncategorized tasks header-less', () => {
     const tasks = [
       makeTask({ id: 'a', category: null }),
       makeTask({ id: 'b', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['#Uncategorized', 'a', 'b']);
+    expect(seq(tasks)).toEqual(['a', 'b']);
   });
 
   it('emits a header per named category, preserving task order within each', () => {
@@ -61,12 +60,12 @@ describe('makeCategoryGroups', () => {
     expect(seq(tasks)).toEqual(['#health', 'a', 'b', '#work', 'c']);
   });
 
-  it('renders the Uncategorized group first, before named categories', () => {
+  it('renders the header-less uncategorized group first, before named categories', () => {
     const tasks = [
       makeTask({ id: 'a', category: 'health' }),
       makeTask({ id: 'b', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['#Uncategorized', 'b', '#health', 'a']);
+    expect(seq(tasks)).toEqual(['b', '#health', 'a']);
   });
 
   // Regression: groups used to render in first-task-appearance order, which
@@ -78,7 +77,7 @@ describe('makeCategoryGroups', () => {
       makeTask({ id: 'h', category: 'health' }),
       makeTask({ id: 'u', category: null }),
     ];
-    expect(seq(tasks)).toEqual(['#Uncategorized', 'u', '#health', 'h', '#work', 'w']);
+    expect(seq(tasks)).toEqual(['u', '#health', 'h', '#work', 'w']);
   });
 
   it('orders named categories by the provided categoryOrder, with unknowns alphabetical after', () => {
@@ -96,7 +95,7 @@ describe('makeCategoryGroups', () => {
       makeTask({ id: 'b', category: null }),
       makeTask({ id: 'c', category: 'health' }),
     ];
-    expect(seq(tasks)).toEqual(['#Uncategorized', 'b', '#health', 'a', 'c']);
+    expect(seq(tasks)).toEqual(['b', '#health', 'a', 'c']);
   });
 });
 
@@ -133,8 +132,8 @@ describe('resolveDrop', () => {
   });
 
   // Dragging a task above every header deliberately uncategorizes it, and the
-  // Uncategorized group renders first, so the task stays where it was dropped.
-  it('uncategorizes a task dragged above the first header', () => {
+  // the loose top group renders first, so the task stays where it was dropped.
+  it('uncategorizes a task dragged above every named header', () => {
     const reordered: CategoryListItem[] = [
       { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
       { type: 'header', label: 'health' },
@@ -142,19 +141,7 @@ describe('resolveDrop', () => {
     ];
     const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
     expect(categoryUpdates).toEqual([{ id: 'workout', category: null }]);
-    expect(layoutSeq(settled)).toEqual(['#Uncategorized', 'workout', '#health', 'test']);
-  });
-
-  it('uncategorizes a task dropped under the "Uncategorized" header', () => {
-    const reordered: CategoryListItem[] = [
-      { type: 'header', label: 'Uncategorized' },
-      { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
-      { type: 'header', label: 'health' },
-      { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
-    ];
-    const { categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
-    expect(categoryUpdates).toEqual([{ id: 'test', category: null }]);
-    expect(layoutSeq(settled)).toEqual(['#Uncategorized', 'test', '#health', 'workout']);
+    expect(layoutSeq(settled)).toEqual(['workout', '#health', 'test']);
   });
 
   it('keeps upcoming "Later Today" tasks in their own section, never recategorized', () => {
@@ -178,10 +165,9 @@ describe('resolveDrop', () => {
     const workout = makeTask({ id: 'workout', category: 'health' });
     const test = makeTask({ id: 'test', category: null });
     const reordered: CategoryListItem[] = [
+      { type: 'task', task: test },
       { type: 'header', label: 'health' },
       { type: 'task', task: workout },
-      { type: 'header', label: 'Uncategorized' },
-      { type: 'task', task: test },
     ];
     const { settled } = resolveDrop(reordered, noUpcoming);
     // The store will end up with these task objects, in this order:

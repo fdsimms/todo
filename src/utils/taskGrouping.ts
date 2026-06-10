@@ -6,25 +6,20 @@ export type CategoryListItem =
 
 const UNCATEGORIZED = '';
 
-/** Header label for tasks with no category. */
-export const OTHER_LABEL = 'Uncategorized';
 export const LATER_TODAY_LABEL = 'Later Today';
 
 /**
  * Group tasks into category sections for the Today list.
  *
- * Groups render in a FIXED order so dragging tasks around can never reorder
- * the categories themselves: the Uncategorized group first (when it has
- * tasks), then named categories in `categoryOrder`, then any categories
- * present on tasks but missing from `categoryOrder`, alphabetically.
- * Uncategorized sits first so that dropping a task above every section (which
- * uncategorizes it — see resolveDrop) renders it right where it was dropped
- * instead of teleporting it down the list.
+ * Uncategorized tasks render first as a HEADER-LESS group at the top; named
+ * categories follow, each with a header, in a FIXED order so dragging tasks
+ * around can never reorder the categories themselves (the order is
+ * `categoryOrder`, then any leftover categories alphabetically).
  *
- * Every group — including the uncategorized group — always gets a header. That
- * guarantees a task is never rendered in a header-less region and the headings
- * can't all disappear (e.g. once every task is uncategorized), which were both
- * reachable broken states before.
+ * There is intentionally no "Uncategorized" header: a task with no category is
+ * simply one of the loose items at the top, which is also what a task dragged
+ * above every section becomes (see resolveDrop). That keeps the top of the
+ * list from having a header a task can be stranded "above".
  */
 export function makeCategoryGroups(
   tasks: Task[],
@@ -49,7 +44,7 @@ export function makeCategoryGroups(
 
   const items: CategoryListItem[] = [];
   order.forEach(key => {
-    items.push({ type: 'header', label: key === UNCATEGORIZED ? OTHER_LABEL : key });
+    if (key !== UNCATEGORIZED) items.push({ type: 'header', label: key });
     byCategory.get(key)!.forEach(task => items.push({ type: 'task', task }));
   });
   return items;
@@ -73,9 +68,8 @@ export interface DropResolution {
  *
  * Category rules — a task adopts the category of the nearest section header
  * above it:
- *   - A task above the FIRST header becomes uncategorized: dragging a task to
- *     the very top of the list deliberately clears its category, and the
- *     Uncategorized group renders first so it stays where it was dropped.
+ *   - A task above every named header becomes uncategorized (the loose group
+ *     at the top): dragging a task there deliberately clears its category.
  *   - The "Later Today" header is not a category; upcoming tasks under it keep
  *     their own category and stay in their own section.
  *
@@ -103,7 +97,7 @@ export function resolveDrop(
       if (item.label === LATER_TODAY_LABEL) {
         inLaterToday = true;
       } else {
-        currentSection = item.label === OTHER_LABEL ? null : item.label;
+        currentSection = item.label;
       }
       continue;
     }
