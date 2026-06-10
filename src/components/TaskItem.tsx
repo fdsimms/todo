@@ -118,16 +118,6 @@ export function TaskItem({
 
   const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
 
-  // The row's bottom corners square off over the first ~15% of the
-  // expansion (and round back over the last ~15% of the collapse). By the
-  // time they're square, the emerging panel's own rounded bottom has taken
-  // over the card's silhouette, so the outline reads as rounded throughout.
-  const rowCornerRadius = expansionAnim.interpolate({
-    inputRange: [0, 0.15],
-    outputRange: [radius.md, 0],
-    extrapolate: 'clamp',
-  });
-
   useEffect(() => {
     if (isActive) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -340,10 +330,8 @@ export function TaskItem({
     }}>
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
-          Anchored to the bottom so the visible part is always the bottom of
-          the panel: its painted rounded corners never deform, whereas a
-          clip-edge radius collapses when the clipped height is small. The
-          sliced-off top is invisible against the row's identical background. */}
+          Top-anchored: the growing card uncovers the content in place, and
+          cardClip keeps the slice edge's corners rounded. */}
       <View
         style={styles.panelMeasure}
         onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}
@@ -486,35 +474,23 @@ export function TaskItem({
         // touches inside the expanded card must not bubble up to that.
         onTouchEnd={expanded ? e => e.stopPropagation() : undefined}
       >
+        {/* Clips the row + panel together as one card. Because this view is
+            never shorter than the row, its corner radius never clamps, so
+            the card silhouette stays rounded at every animation frame.
+            (Separate from itemWrapper: overflow hidden there would clip the
+            card shadow on iOS.) */}
+        <View style={styles.cardClip}>
         {spotlightDisabled && !selectionMode ? (
           // While another task is spotlighted this row must not react to
           // touches itself — any tap on it just dismisses the spotlight.
-          <Animated.View
-            style={[styles.swipeContainer, {
-              borderBottomLeftRadius: rowCornerRadius,
-              borderBottomRightRadius: rowCornerRadius,
-            }]}
-          >
-            <Pressable onPress={onPress}>
-              <View pointerEvents="none">{rowBody}</View>
-            </Pressable>
-          </Animated.View>
+          <Pressable style={styles.swipeContainer} onPress={onPress}>
+            <View pointerEvents="none">{rowBody}</View>
+          </Pressable>
         ) : selectionMode || spotlightDisabled ? (
-          <Animated.View
-            style={[styles.swipeContainer, {
-              borderBottomLeftRadius: rowCornerRadius,
-              borderBottomRightRadius: rowCornerRadius,
-            }]}
-          >
+          <View style={styles.swipeContainer}>
             {rowBody}
-          </Animated.View>
+          </View>
         ) : (
-          <Animated.View
-            style={[styles.swipeContainer, {
-              borderBottomLeftRadius: rowCornerRadius,
-              borderBottomRightRadius: rowCornerRadius,
-            }]}
-          >
           <Swipeable
             ref={swipeableRef}
             renderRightActions={renderRightActions}
@@ -535,9 +511,9 @@ export function TaskItem({
           >
             {rowBody}
           </Swipeable>
-          </Animated.View>
         )}
         {expandedPanel}
+        </View>
       </Animated.View>
 
       {!selectionMode && (
@@ -576,6 +552,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapperElevated: {
     zIndex: 10,
     elevation: 10,
+  },
+  cardClip: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   swipeContainer: {
     borderRadius: radius.md,
@@ -667,7 +647,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   panelMeasure: {
     position: 'absolute',
-    bottom: 0,
+    top: 0,
     left: 0,
     right: 0,
   },
