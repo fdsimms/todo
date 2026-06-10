@@ -231,7 +231,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 color={dueDate ? colors.accent : colors.textTertiary}
               />
               <Text style={[styles.toolChipText, dueDate != null && styles.toolChipTextSet]}>
-                {dueDate ? formatDate(dueDate) : 'Date'}
+                {dueDate ? formatDate(dueDate) : 'Today'}
               </Text>
             </TouchableOpacity>
 
