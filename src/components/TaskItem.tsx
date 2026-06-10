@@ -236,7 +236,11 @@ export function TaskItem({
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
       {task.priority > 0 && (
-        <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
+        <View style={[
+          styles.priorityBar,
+          expanded && styles.priorityBarExpanded,
+          { backgroundColor: priorityColor },
+        ]} />
       )}
 
       <TouchableOpacity
@@ -341,6 +345,13 @@ export function TaskItem({
       }),
       overflow: 'hidden',
     }}>
+      {/* Continues the urgency bar from the row down through the expanded
+          panel, so it reads as one strip along the whole card's left edge
+          instead of stopping at the collapsed row's height. Sized against
+          this view's own animated height, so it grows/shrinks in lockstep. */}
+      {task.priority > 0 && (
+        <View style={[styles.priorityBarPanel, { backgroundColor: priorityColor }]} />
+      )}
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
           Top-anchored: the growing card uncovers the content in place, and
@@ -601,6 +612,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     bottom: 4,
     width: 3,
     borderTopRightRadius: 2,
+    borderBottomRightRadius: 2,
+  },
+  // When expanded, the row's bar meets the panel's bar flush (no gap or
+  // radius) so together they read as one continuous strip.
+  priorityBarExpanded: {
+    bottom: 0,
+    borderBottomRightRadius: 0,
+  },
+  priorityBarPanel: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 4,
+    width: 3,
     borderBottomRightRadius: 2,
   },
   circleWrapper: {
