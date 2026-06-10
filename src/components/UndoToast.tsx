@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTaskStore } from '../store/useTaskStore';
-import { useColors } from '../theme/ThemeContext';
-import { font, radius, spacing } from '../theme';
+import { useTheme } from '../theme/ThemeContext';
+import { animation, font, fontWeight, radius, spacing } from '../theme';
+import { haptics } from '../utils/haptics';
 
 const VISIBLE_MS = 4000;
 
@@ -11,18 +12,26 @@ export function UndoToast() {
   const lastEditSnapshot = useTaskStore(s => s.lastEditSnapshot);
   const undoTaskEdit = useTaskStore(s => s.undoTaskEdit);
   const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
-  const colors = useColors();
+  const { colors, shadows } = useTheme();
 
   const opacity = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(16)).current;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const dismiss = () => {
     if (timer.current) clearTimeout(timer.current);
-    Animated.timing(opacity, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => setLastEditSnapshot(null));
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(translateY, {
+        toValue: 16,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setLastEditSnapshot(null));
   };
 
   useEffect(() => {
@@ -30,11 +39,19 @@ export function UndoToast() {
 
     if (timer.current) clearTimeout(timer.current);
 
-    Animated.timing(opacity, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: true,
-    }).start();
+    translateY.setValue(16);
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.spring(translateY, {
+        toValue: 0,
+        ...animation.spring.smooth,
+        useNativeDriver: true,
+      }),
+    ]).start();
 
     timer.current = setTimeout(dismiss, VISIBLE_MS);
 
@@ -48,13 +65,18 @@ export function UndoToast() {
 
   return (
     <Animated.View
-      style={[styles.container, { opacity, backgroundColor: colors.bgSecondary }]}
+      style={[
+        styles.container,
+        shadows.sheet,
+        { opacity, transform: [{ translateY }], backgroundColor: colors.bgSecondary },
+      ]}
       pointerEvents="box-none"
     >
       <Ionicons name="checkmark-circle" size={16} color={colors.green} />
       <Text style={[styles.label, { color: colors.text }]}>Edit saved</Text>
       <TouchableOpacity
         onPress={() => {
+          haptics.tap();
           undoTaskEdit();
           dismiss();
         }}
@@ -78,15 +100,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     borderRadius: radius.full,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 6,
   },
   label: {
     fontSize: font.sm,
-    fontWeight: '500',
+    fontWeight: fontWeight.medium,
     flex: 1,
   },
   undoBtn: {
@@ -97,6 +114,6 @@ const styles = StyleSheet.create({
   },
   undoBtnText: {
     fontSize: font.sm,
-    fontWeight: '600',
+    fontWeight: fontWeight.semibold,
   },
 });

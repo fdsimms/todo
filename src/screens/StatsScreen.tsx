@@ -1,20 +1,46 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
+  Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays, isToday, startOfWeek, isSameDay } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 
 const BAR_HEIGHT = 96;
 const HABIT_DAYS = 30;
+
+// Sections cascade in on mount: each fades and rises with a small delay.
+function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: animation.duration.normal,
+      delay: index * 60,
+      useNativeDriver: true,
+    }).start();
+  }, [anim, index]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
 
 function expectedCount(recurrenceType: string, interval: number): number {
   switch (recurrenceType) {
@@ -64,6 +90,18 @@ export function StatsScreen() {
 
   const barMax = useMemo(() => Math.max(1, ...chartBars.map(b => b.count)), [chartBars]);
 
+  // Bars grow up from the baseline once on mount (height isn't supported by
+  // the native driver, so this one runs on the JS thread).
+  const chartProgress = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(chartProgress, {
+      toValue: 1,
+      duration: animation.duration.slow,
+      delay: 150,
+      useNativeDriver: false,
+    }).start();
+  }, [chartProgress]);
+
   const streaks = useMemo(
     () =>
       tasks
@@ -95,21 +133,19 @@ export function StatsScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Stats</Text>
-        <Text style={styles.subtitle}>{done.length} completed</Text>
-      </View>
+      <ScreenHeader title="Stats" subtitle={`${done.length} completed`} />
 
       {done.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="bar-chart-outline" size={52} color={colors.bgQuaternary} />
-          <Text style={styles.emptyTitle}>No data yet</Text>
-          <Text style={styles.emptySubtext}>Complete tasks to see your stats here</Text>
-        </View>
+        <EmptyState
+          icon="bar-chart-outline"
+          title="No data yet"
+          subtitle="Complete tasks to see your stats here"
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* Summary cards */}
+          <StaggerIn index={0}>
           <View style={styles.summaryRow}>
             <View style={styles.summaryCard}>
               <Text style={[styles.summaryValue, { color: colors.accent }]}>{todayCount}</Text>
@@ -124,8 +160,10 @@ export function StatsScreen() {
               <Text style={styles.summaryLabel}>Active streaks</Text>
             </View>
           </View>
+          </StaggerIn>
 
           {/* Completed per day — last 7 days */}
+          <StaggerIn index={1}>
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>COMPLETED PER DAY</Text>
             <View style={styles.card}>
@@ -134,17 +172,20 @@ export function StatsScreen() {
                   <View key={key} style={styles.chartCol}>
                     <Text style={styles.barCount}>{count > 0 ? count : ' '}</Text>
                     <View style={styles.barTrack}>
-                      <View
+                      <Animated.View
                         style={[
                           styles.bar,
                           {
-                            height: `${Math.max(3, Math.round((count / barMax) * 100))}%` as `${number}%`,
+                            height: chartProgress.interpolate({
+                              inputRange: [0, 1],
+                              outputRange: ['0%', `${Math.max(3, Math.round((count / barMax) * 100))}%`],
+                            }),
                             backgroundColor: today ? colors.accent : colors.bgQuaternary,
                           },
                         ]}
                       />
                     </View>
-                    <Text style={[styles.barLabel, today && { color: colors.accent, fontWeight: '600' as const }]}>
+                    <Text style={[styles.barLabel, today && { color: colors.accent, fontWeight: fontWeight.semibold }]}>
                       {label}
                     </Text>
                   </View>
@@ -152,9 +193,11 @@ export function StatsScreen() {
               </View>
             </View>
           </View>
+          </StaggerIn>
 
           {/* Streak leaderboard */}
           {streaks.length > 0 && (
+            <StaggerIn index={2}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>STREAK LEADERBOARD</Text>
               <View style={styles.card}>
@@ -170,10 +213,12 @@ export function StatsScreen() {
                 ))}
               </View>
             </View>
+            </StaggerIn>
           )}
 
           {/* Habit completion rates */}
           {habits.length > 0 && (
+            <StaggerIn index={3}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>HABIT COMPLETION (LAST 30 DAYS)</Text>
               <View style={styles.card}>
@@ -201,6 +246,7 @@ export function StatsScreen() {
                 ))}
               </View>
             </View>
+            </StaggerIn>
           )}
 
         </ScrollView>
@@ -212,36 +258,7 @@ export function StatsScreen() {
 const makeStyles = (colors: Colors) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.bg },
-    header: {
-      flexDirection: 'row',
-      alignItems: 'flex-end',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.sm,
-      paddingBottom: spacing.md,
-    },
-    title: { color: colors.text, fontSize: font.xxl, fontWeight: '700', letterSpacing: -0.5 },
-    subtitle: { color: colors.textTertiary, fontSize: font.sm, fontWeight: '500', paddingBottom: 4 },
-    scroll: { paddingHorizontal: spacing.md, paddingBottom: 40 },
-    empty: {
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-    },
-    emptyTitle: {
-      color: colors.textSecondary,
-      fontSize: font.lg,
-      fontWeight: '600',
-      marginTop: spacing.md,
-    },
-    emptySubtext: {
-      color: colors.textTertiary,
-      fontSize: font.sm,
-      textAlign: 'center',
-      paddingHorizontal: spacing.xl,
-      lineHeight: 20,
-    },
+    scroll: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: 40 },
     summaryRow: {
       flexDirection: 'row',
       gap: spacing.sm,

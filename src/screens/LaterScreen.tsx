@@ -9,16 +9,18 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, type Colors } from '../theme';
+import { spacing, font, fontWeight, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import { formatGroupHeader } from '../utils/dateUtils';
 import type { Task } from '../types';
@@ -59,7 +61,8 @@ export function LaterScreen() {
   };
 
   const enterSelection = (id: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.impactHeavy();
+    animateLayout();
     setSelectionMode(true);
     setSelectedIds(new Set([id]));
     setExpandedTaskId(null);
@@ -74,6 +77,7 @@ export function LaterScreen() {
   };
 
   const exitSelection = () => {
+    animateLayout();
     setSelectionMode(false);
     setSelectedIds(new Set());
   };
@@ -108,10 +112,7 @@ export function LaterScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Later</Text>
-        <Text style={styles.subtitle}>{deferredTasks.length} waiting</Text>
-      </View>
+      <ScreenHeader title="Later" subtitle={`${deferredTasks.length} waiting`} />
 
       <SpotlightOverlay
         visible={spotlightActive}
@@ -166,13 +167,11 @@ export function LaterScreen() {
           ListFooterComponentStyle={sections.length === 0 ? undefined : styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="moon" size={48} color={colors.bgQuaternary} />
-              <Text style={styles.emptyText}>Nothing deferred</Text>
-              <Text style={styles.emptySubtext}>
-                Swipe left on a task to defer it, or set a time of day in the task editor
-              </Text>
-            </View>
+            <EmptyState
+              icon="moon"
+              title="Nothing deferred"
+              subtitle="Swipe left on a task to defer it, or set a time of day in the task editor"
+            />
           }
         />
       </View>
@@ -208,22 +207,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    paddingTop: spacing.sm,
-  },
-  title: {
-    color: colors.text,
-    fontSize: font.xxl,
-    fontWeight: '700',
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    marginTop: 2,
-  },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.
@@ -241,27 +224,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionTitle: {
     color: colors.textTertiary,
     fontSize: font.xs,
-    fontWeight: '700',
+    fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
-  },
-  empty: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-  },
-  emptyText: {
-    color: colors.textSecondary,
-    fontSize: font.lg,
-    fontWeight: '600',
-    marginTop: spacing.sm,
-  },
-  emptySubtext: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
-    lineHeight: 20,
   },
 });
