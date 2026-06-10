@@ -12,14 +12,9 @@ import {
   type NativeScrollEvent,
   type RefreshControlProps,
 } from 'react-native';
-import Reanimated, { LinearTransition } from 'react-native-reanimated';
-import { moveItem, dropIndexFromTranslation } from '../utils/reorder';
+import { moveItem, dropIndexFromTranslation, rowDragOffset } from '../utils/reorder';
 
-// Subtle slide for rows displaced by the dragged item. Reanimated layout
-// transitions (not RN's LayoutAnimation, which silently no-ops on the New
-// Architecture) animate each row to its new layout position; rows still rest
-// transform-free once the transition completes.
-const ROW_SHIFT = LinearTransition.duration(180);
+const ROW_SHIFT_DURATION = 180;
 
 export interface ReorderableRenderInfo<T> {
   item: T;
@@ -113,6 +108,9 @@ export function ReorderableList<T>({
   const contentHeightRef = useRef(0);
   const heightsRef = useRef<Map<string, number>>(new Map());
   const layoutYRef = useRef<Map<string, number>>(new Map());
+  // translateY per row, owned here so they can be reset synchronously on commit
+  // (a child-owned value would reset a frame late and flash). Rows rest at 0.
+  const rowOffsetsRef = useRef<Map<string, Animated.Value>>(new Map());
   const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Guards against commitDrag re-entry while the drop animation runs (it can
   // be invoked from both onTouchEnd and onPanResponderRelease).
@@ -161,6 +159,52 @@ export function ReorderableList<T>({
 
   const currentHeights = (): number[] =>
     dataRef.current.map(item => heightsRef.current.get(keyExtractor(item)) ?? DEFAULT_ROW_HEIGHT);
+
+  const getRowOffset = (key: string): Animated.Value => {
+    let v = rowOffsetsRef.current.get(key);
+    if (!v) {
+      v = new Animated.Value(0);
+      rowOffsetsRef.current.set(key, v);
+    }
+    return v;
+  };
+
+  const settleRowOffsets = () => {
+    rowOffsetsRef.current.forEach(v => v.setValue(0));
+  };
+
+  // Measured content-Y of the gap the dragged item will drop into (matches the
+  // real laid-out positions, so it's correct regardless of list padding).
+  const gapContentY = (a: number, t: number): number => {
+    const key = (i: number) => keyExtractor(dataRef.current[i]!);
+    const y = (i: number) => layoutYRef.current.get(key(i)) ?? 0;
+    const h = (i: number) => heightsRef.current.get(key(i)) ?? DEFAULT_ROW_HEIGHT;
+    return t >= a ? y(t) + h(t) - h(a) : y(t);
+  };
+
+  // Slide rows as the hover target moves: the resting rows open/close the gap,
+  // and the (invisible) placeholder row glides to the gap carrying the slot
+  // marker. The placeholder moving via its own transform keeps the marker in
+  // normal flow, so it can't be thrown off by list padding.
+  useEffect(() => {
+    if (activeIndex === null) return;
+    const heights = currentHeights();
+    const activeHeight = heights[activeIndex] ?? DEFAULT_ROW_HEIGHT;
+    const t = hoverIndex ?? activeIndex;
+    const activeKey = keyExtractor(renderData[activeIndex]!);
+    const activeY = layoutYRef.current.get(activeKey) ?? 0;
+    const gapY = gapContentY(activeIndex, t);
+    renderData.forEach((item, i) => {
+      const target =
+        i === activeIndex ? gapY - activeY : rowDragOffset(i, activeIndex, t, activeHeight);
+      Animated.timing(getRowOffset(keyExtractor(item)), {
+        toValue: target,
+        duration: ROW_SHIFT_DURATION,
+        useNativeDriver: true,
+      }).start();
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, hoverIndex]);
 
   const updateHover = () => {
     const ai = activeIndexRef.current;
@@ -213,13 +257,10 @@ export function ReorderableList<T>({
     const hi = hoverIndexRef.current;
     const result = hi !== null && hi !== ai ? moveItem(dataRef.current, ai, hi) : null;
 
-    // Glide the floating card into the open slot before committing. The slot
-    // is the placeholder row, whose current position onLayout has recorded, so
-    // the card lands exactly where the real row will appear. Committing only
-    // after the card covers the destination also masks the frame where the
-    // overlay swaps for the real row.
-    const activeKey = keyExtractor(dataRef.current[ai]!);
-    const slotTop = (layoutYRef.current.get(activeKey) ?? 0) - scrollOffsetRef.current;
+    // Glide the floating card into the open gap (the same content position the
+    // displaced rows opened up), then commit underneath it. Committing only
+    // after the card covers the destination masks the overlay→row swap.
+    const slotTop = gapContentY(ai, hi ?? ai) - scrollOffsetRef.current;
     Animated.parallel([
       Animated.timing(overlayY, {
         toValue: slotTop - overlayBaseTopRef.current,
@@ -229,9 +270,11 @@ export function ReorderableList<T>({
       Animated.timing(overlayX, { toValue: 0, duration: 160, useNativeDriver: true }),
       Animated.timing(overlayScale, { toValue: 1, duration: 160, useNativeDriver: true }),
     ]).start(() => {
-      // Render the committed order locally in the same state batch as the
-      // reset, so the first frame without the overlay already shows the new
-      // order (see committedData).
+      // Zero the row transforms in the SAME batch the committed order renders,
+      // so the rows (now in their new DOM positions) land exactly where they
+      // already sat visually — no FLIP flash. committedData makes that first
+      // frame show the new order regardless of parent/store timing.
+      settleRowOffsets();
       if (result) setCommittedData(result);
       resetDrag();
       if (result) onReorderRef.current(result);
@@ -293,10 +336,6 @@ export function ReorderableList<T>({
   };
 
   const isDragging = activeIndex !== null;
-  const displayData =
-    isDragging && hoverIndex !== null && hoverIndex !== activeIndex
-      ? moveItem(renderData, activeIndex, hoverIndex)
-      : renderData;
   const activeKey = isDragging ? keyExtractor(renderData[activeIndex]!) : null;
   const activeItem = isDragging ? renderData[activeIndex]! : null;
 
@@ -316,45 +355,39 @@ export function ReorderableList<T>({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {renderData.length === 0
-          ? ListEmptyComponent
-          : displayData.map(item => {
-              const key = keyExtractor(item);
-              const isPlaceholder = key === activeKey;
-              return (
-                <Reanimated.View
-                  key={key}
-                  layout={ROW_SHIFT}
-                  pointerEvents={isPlaceholder ? 'none' : 'auto'}
-                  onLayout={e => {
-                    // Record unconditionally: rows that move during a drag are
-                    // already in their final positions when it commits, so no
-                    // post-drop onLayout would fire to refresh a "rest only"
-                    // cache — leaving stale anchors that made the next drag's
-                    // overlay float away from the finger. A cancelled drag
-                    // shifts rows back, re-firing onLayout, so the cache
-                    // self-corrects in every path.
-                    heightsRef.current.set(key, e.nativeEvent.layout.height);
-                    layoutYRef.current.set(key, e.nativeEvent.layout.y);
-                  }}
-                >
-                  {/* Subtle slot marker where the dragged item will land. */}
-                  {isPlaceholder && (
-                    <View style={[StyleSheet.absoluteFill, placeholderStyle]} />
-                  )}
-                  <View style={isPlaceholder ? styles.placeholder : undefined}>
-                    {renderItem({
-                      item,
-                      drag: () => {
-                        const idx = dataRef.current.findIndex(d => keyExtractor(d) === key);
-                        if (idx >= 0) startDrag(idx, key);
-                      },
-                      isActive: false,
-                    })}
-                  </View>
-                </Reanimated.View>
-              );
-            })}
+        {renderData.length === 0 && ListEmptyComponent}
+        {renderData.map(item => {
+          const key = keyExtractor(item);
+          // Rows render in their ORIGINAL order; displacement is purely a
+          // transform, which keeps the scroll layout stable (so the transforms
+          // animate) and onLayout reporting true resting positions.
+          const isPlaceholder = key === activeKey;
+          return (
+            <Animated.View
+              key={key}
+              pointerEvents={isPlaceholder ? 'none' : 'auto'}
+              style={{ transform: [{ translateY: getRowOffset(key) }] }}
+              onLayout={e => {
+                heightsRef.current.set(key, e.nativeEvent.layout.height);
+                layoutYRef.current.set(key, e.nativeEvent.layout.y);
+              }}
+            >
+              {/* The dragged row is hidden in place (the floating card stands in
+                  for it) and shows the drop-slot marker instead. */}
+              {isPlaceholder && <View style={[StyleSheet.absoluteFill, placeholderStyle]} pointerEvents="none" />}
+              <View style={isPlaceholder ? styles.placeholder : undefined}>
+                {renderItem({
+                  item,
+                  drag: () => {
+                    const idx = dataRef.current.findIndex(d => keyExtractor(d) === key);
+                    if (idx >= 0) startDrag(idx, key);
+                  },
+                  isActive: false,
+                })}
+              </View>
+            </Animated.View>
+          );
+        })}
         {ListFooterComponent}
       </ScrollView>
 

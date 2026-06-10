@@ -1,4 +1,10 @@
-import { moveItem, dropIndexFromTranslation, cumulativeOffsets } from '../utils/reorder';
+import {
+  moveItem,
+  dropIndexFromTranslation,
+  cumulativeOffsets,
+  rowDragOffset,
+  dropSlotY,
+} from '../utils/reorder';
 
 describe('moveItem', () => {
   it('moves an item down', () => {
@@ -84,5 +90,53 @@ describe('cumulativeOffsets', () => {
 
   it('returns empty for an empty list', () => {
     expect(cumulativeOffsets([])).toEqual([]);
+  });
+});
+
+describe('rowDragOffset', () => {
+  const Ha = 52;
+
+  it('does not move the dragged row itself', () => {
+    expect(rowDragOffset(2, 2, 4, Ha)).toBe(0);
+  });
+
+  it('shifts rows between origin and target up when dragging down', () => {
+    // Active 1, hovering 3: rows 2 and 3 slide up by Ha, others stay.
+    expect(rowDragOffset(0, 1, 3, Ha)).toBe(0);
+    expect(rowDragOffset(2, 1, 3, Ha)).toBe(-Ha);
+    expect(rowDragOffset(3, 1, 3, Ha)).toBe(-Ha);
+    expect(rowDragOffset(4, 1, 3, Ha)).toBe(0);
+  });
+
+  it('shifts rows between target and origin down when dragging up', () => {
+    // Active 4, hovering 1: rows 1,2,3 slide down by Ha.
+    expect(rowDragOffset(0, 4, 1, Ha)).toBe(0);
+    expect(rowDragOffset(1, 4, 1, Ha)).toBe(Ha);
+    expect(rowDragOffset(3, 4, 1, Ha)).toBe(Ha);
+    expect(rowDragOffset(4, 4, 1, Ha)).toBe(0);
+  });
+
+  it('moves nothing when hovering its own slot', () => {
+    expect(rowDragOffset(0, 2, 2, Ha)).toBe(0);
+    expect(rowDragOffset(3, 2, 2, Ha)).toBe(0);
+  });
+});
+
+describe('dropSlotY', () => {
+  const heights = [36, 52, 52, 36, 52];
+
+  it('is the row top when hovering its own slot', () => {
+    // offsets: [0, 36, 88, 140, 176]
+    expect(dropSlotY(heights, 2, 2)).toBe(88);
+  });
+
+  it('tracks the gap below when dragging down', () => {
+    // Active 1 (h=52), hover 3: offsets[3] + heights[3] - 52 = 140 + 36 - 52.
+    expect(dropSlotY(heights, 1, 3)).toBe(124);
+  });
+
+  it('tracks the gap above when dragging up', () => {
+    // Active 4, hover 1: offsets[1] = 36.
+    expect(dropSlotY(heights, 4, 1)).toBe(36);
   });
 });
