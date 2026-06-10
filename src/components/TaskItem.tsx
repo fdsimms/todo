@@ -100,21 +100,12 @@ export function TaskItem({
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
 
-  // The row's bottom corners must stay square for as long as any of the
-  // panel is still visible (i.e. through the whole collapse animation), so
-  // the row + panel read as a single card; keying this off `expanded` alone
-  // would snap the corners round the instant the collapse starts.
-  const [panelVisible, setPanelVisible] = useState(expanded);
-
   useEffect(() => {
-    if (expanded) setPanelVisible(true);
     Animated.spring(expansionAnim, {
       toValue: expanded ? 1 : 0,
       ...animation.spring.smooth,
       useNativeDriver: false,
-    }).start(({ finished }) => {
-      if (finished && !expanded) setPanelVisible(false);
-    });
+    }).start();
   }, [expanded]);
 
   useEffect(() => {
@@ -126,6 +117,16 @@ export function TaskItem({
   }, [spotlightDisabled]);
 
   const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
+
+  // The row's bottom corners square off over the first ~15% of the
+  // expansion (and round back over the last ~15% of the collapse). By the
+  // time they're square, the emerging panel's own rounded bottom has taken
+  // over the card's silhouette, so the outline reads as rounded throughout.
+  const rowCornerRadius = expansionAnim.interpolate({
+    inputRange: [0, 0.15],
+    outputRange: [radius.md, 0],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     if (isActive) {
@@ -336,13 +337,13 @@ export function TaskItem({
         extrapolate: 'clamp',
       }),
       overflow: 'hidden',
-      // Round the clip edge itself — otherwise the panel shows square
-      // corners wherever the animated height slices through the content.
-      borderBottomLeftRadius: radius.md,
-      borderBottomRightRadius: radius.md,
     }}>
       {/* Absolutely positioned so it always lays out at natural height for
-          measurement, independent of the animated clipping height above. */}
+          measurement, independent of the animated clipping height above.
+          Anchored to the bottom so the visible part is always the bottom of
+          the panel: its painted rounded corners never deform, whereas a
+          clip-edge radius collapses when the clipped height is small. The
+          sliced-off top is invisible against the row's identical background. */}
       <View
         style={styles.panelMeasure}
         onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}
@@ -488,20 +489,34 @@ export function TaskItem({
         {spotlightDisabled && !selectionMode ? (
           // While another task is spotlighted this row must not react to
           // touches itself — any tap on it just dismisses the spotlight.
-          <Pressable style={styles.swipeContainer} onPress={onPress}>
-            <View pointerEvents="none">{rowBody}</View>
-          </Pressable>
+          <Animated.View
+            style={[styles.swipeContainer, {
+              borderBottomLeftRadius: rowCornerRadius,
+              borderBottomRightRadius: rowCornerRadius,
+            }]}
+          >
+            <Pressable onPress={onPress}>
+              <View pointerEvents="none">{rowBody}</View>
+            </Pressable>
+          </Animated.View>
         ) : selectionMode || spotlightDisabled ? (
-          <View style={[styles.swipeContainer, panelVisible && styles.swipeContainerExpanded]}>
+          <Animated.View
+            style={[styles.swipeContainer, {
+              borderBottomLeftRadius: rowCornerRadius,
+              borderBottomRightRadius: rowCornerRadius,
+            }]}
+          >
             {rowBody}
-          </View>
+          </Animated.View>
         ) : (
+          <Animated.View
+            style={[styles.swipeContainer, {
+              borderBottomLeftRadius: rowCornerRadius,
+              borderBottomRightRadius: rowCornerRadius,
+            }]}
+          >
           <Swipeable
             ref={swipeableRef}
-            containerStyle={[
-              styles.swipeContainer,
-              panelVisible && styles.swipeContainerExpanded,
-            ]}
             renderRightActions={renderRightActions}
             renderLeftActions={renderLeftActions}
             overshootRight={false}
@@ -520,6 +535,7 @@ export function TaskItem({
           >
             {rowBody}
           </Swipeable>
+          </Animated.View>
         )}
         {expandedPanel}
       </Animated.View>
@@ -564,10 +580,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   swipeContainer: {
     borderRadius: radius.md,
     overflow: 'hidden',
-  },
-  swipeContainerExpanded: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
   },
   row: {
     flexDirection: 'row',
@@ -655,7 +667,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   panelMeasure: {
     position: 'absolute',
-    top: 0,
+    bottom: 0,
     left: 0,
     right: 0,
   },
