@@ -170,12 +170,6 @@ export function WhenPicker({
     }
   };
 
-  // Selection state for the Today / Tomorrow shortcuts (pending overrides current value).
-  const todaySelected = pendingKey ? pendingKey === 'today' : (!value || isSameDay(value, today));
-  const tomorrowSelected = pendingKey
-    ? pendingKey === tomorrowKey
-    : !!value && isSameDay(value, tomorrow);
-
   const suggestionLabel = suggestion
     ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`
     : null;
@@ -246,7 +240,6 @@ export function WhenPicker({
                 icon="star"
                 iconColor="#FFD60A"
                 label="Today"
-                active={todaySelected}
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
                 onPress={handleToday}
@@ -257,7 +250,6 @@ export function WhenPicker({
                 icon="sunny"
                 iconColor={colors.timeMorning}
                 label="Tomorrow"
-                active={tomorrowSelected}
                 pending={pendingKey === tomorrowKey}
                 popAnim={popAnim}
                 onPress={handleTomorrow}
@@ -387,21 +379,20 @@ export function WhenPicker({
 }
 
 function QuickButton({
-  styles, colors, icon, iconColor, label, active, pending, popAnim, onPress,
+  styles, colors, icon, iconColor, label, pending, popAnim, onPress,
 }: {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   iconColor: string;
   label: string;
-  active: boolean;
   pending: boolean;
   popAnim: Animated.Value;
   onPress: () => void;
 }) {
   return (
     <TouchableOpacity
-      style={[styles.quickButton, active && styles.quickButtonActive]}
+      style={styles.quickButton}
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
     >
@@ -411,7 +402,7 @@ function QuickButton({
           size={15}
           color={pending ? colors.accent : iconColor}
         />
-        <Text style={[styles.quickButtonLabel, (active || pending) && styles.quickButtonLabelActive]}>
+        <Text style={[styles.quickButtonLabel, pending && styles.quickButtonLabelActive]}>
           {label}
         </Text>
       </Animated.View>
@@ -521,9 +512,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 4,
     borderRadius: radius.sm,
     backgroundColor: colors.bgQuaternary,
-  },
-  quickButtonActive: {
-    backgroundColor: colors.accentSubtle,
   },
   quickButtonInner: {
     flexDirection: 'row',
