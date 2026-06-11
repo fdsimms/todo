@@ -39,6 +39,7 @@ interface Props {
   onSelect?: () => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
+  showCategory?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -77,6 +78,7 @@ export function TaskItem({
   onSelect,
   spotlightDisabled = false,
   hideTodayLabel = false,
+  showCategory = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -312,6 +314,12 @@ export function TaskItem({
                 <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
               </View>
             )}
+          </View>
+        )}
+        {showCategory && task.category && (
+          <View style={styles.categoryRow}>
+            <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
           </View>
         )}
       </TouchableOpacity>
@@ -682,6 +690,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   titleFlex: {
     flexShrink: 1,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  categoryLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   starBtn: {
     padding: 4,

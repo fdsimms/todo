@@ -503,6 +503,7 @@ export function TodayScreen() {
                 onLongPress={() => enterSelection(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
                 hideTodayLabel
+                showCategory
               />
             );
           }}

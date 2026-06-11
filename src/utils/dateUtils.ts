@@ -54,12 +54,23 @@ export function formatDeferUntil(iso: string): string {
   return format(d, 'MMM d');
 }
 
+/**
+ * Formats a Later-list section header.
+ *
+ * Dates within the next week (today + 6 days) get their own header, with the
+ * date alongside the relative label so headers remain unambiguous. Dates
+ * further out are batched together by month (with a year suffix when it
+ * differs from the current year) so the list doesn't grow one header per day.
+ */
 export function formatGroupHeader(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return 'Today';
-  if (isTomorrow(d)) return 'Tomorrow';
-  if (isThisWeek(d)) return format(d, 'EEEE');
-  return format(d, 'MMMM d');
+  const diff = differenceInCalendarDays(d, new Date());
+  if (diff < 7) {
+    if (isToday(d)) return `Today · ${format(d, 'MMM d')}`;
+    if (isTomorrow(d)) return `Tomorrow · ${format(d, 'MMM d')}`;
+    return format(d, 'EEEE · MMM d');
+  }
+  return d.getFullYear() === new Date().getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
 }
 
 export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
