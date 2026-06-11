@@ -486,12 +486,14 @@ export function CategoriesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setScheduleCategory(null)}
       >
-        {scheduleCategory !== null && (
-          <CategoryScheduleEditor
-            category={scheduleCategory}
-            onClose={() => setScheduleCategory(null)}
-          />
-        )}
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {scheduleCategory !== null && (
+            <CategoryScheduleEditor
+              category={scheduleCategory}
+              onClose={() => setScheduleCategory(null)}
+            />
+          )}
+        </View>
       </Modal>
 
       <TaskEditor
