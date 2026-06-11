@@ -21,6 +21,7 @@ import {
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
+import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation } from '../utils/visibilityUtils';
@@ -85,6 +86,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   initialize() {
     initDatabase();
     useCategoryStore.getState().initialize();
+    useTemplateStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
     set({ tasks, tagRegistry, initialized: true });

@@ -64,6 +64,32 @@ export interface Task {
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
 
+// One task definition inside a TaskTemplate. Item ids are stable so future
+// wizard rules can reference items; `optional` items start unchecked in the
+// apply sheet. Offsets are days relative to the anchor date picked at apply
+// time (negative = before, 0 = day of); null = no date.
+export interface TemplateItem {
+  id: string;
+  title: string;
+  notes: string;
+  optional: boolean;
+  dueOffsetDays: number | null;
+  deferOffsetDays: number | null;
+  timeSegments: TimeOfDay[];
+  tags: string[];
+  category: string | null;
+  priority: Priority;
+  effort: Effort;
+}
+
+export interface TaskTemplate {
+  id: string;
+  name: string;
+  items: TemplateItem[];
+  createdAt: string;
+  sortOrder: number;
+}
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',
