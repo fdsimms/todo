@@ -29,8 +29,12 @@ import {
   dbAddToCategoryRegistry,
   dbRemoveFromCategoryRegistry,
   dbRemoveCategoryFromAllTasks,
+  dbGetAllTemplates,
+  dbInsertTemplate,
+  dbUpdateTemplate,
+  dbDeleteTemplate,
 } from '../db/database';
-import type { Task } from '../types';
+import type { Task, TaskTemplate, TemplateItem } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -116,7 +120,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings;');
+  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates;');
 });
 
 // ---------------------------------------------------------------------------
@@ -629,5 +633,84 @@ describe('Category Registry', () => {
     dbInsertTask(makeTask({ id: 'a', category: 'Other' }));
     expect(() => dbRemoveCategoryFromAllTasks('NonExistent')).not.toThrow();
     expect(dbGetAllTasks()[0].category).toBe('Other');
+  });
+});
+
+describe('Templates', () => {
+  const makeTemplateItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
+    id: 'item-1',
+    title: 'Pack bags',
+    notes: '',
+    optional: false,
+    dueOffsetDays: null,
+    deferOffsetDays: null,
+    timeSegments: [],
+    tags: [],
+    category: null,
+    priority: 0,
+    effort: 0,
+    ...overrides,
+  });
+
+  const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
+    id: 'tpl-1',
+    name: 'Pre-vacation',
+    items: [],
+    createdAt: '2025-01-01T00:00:00.000Z',
+    sortOrder: 1,
+    ...overrides,
+  });
+
+  it('insert → getAll round-trips items JSON', () => {
+    const items = [
+      makeTemplateItem({ id: 'a', title: 'Trash', dueOffsetDays: 0, timeSegments: ['morning'], tags: ['home'] }),
+      makeTemplateItem({ id: 'b', title: 'Rental car', dueOffsetDays: -1, optional: true, priority: 2 }),
+    ];
+    dbInsertTemplate(makeTemplate({ items }));
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.name).toBe('Pre-vacation');
+    expect(tpl.items).toEqual(items);
+  });
+
+  it('orders by sort_order then created_at', () => {
+    dbInsertTemplate(makeTemplate({ id: 'b', name: 'B', sortOrder: 2 }));
+    dbInsertTemplate(makeTemplate({ id: 'a', name: 'A', sortOrder: 1 }));
+    expect(dbGetAllTemplates().map(t => t.name)).toEqual(['A', 'B']);
+  });
+
+  it('dbUpdateTemplate updates name and items', () => {
+    dbInsertTemplate(makeTemplate());
+    dbUpdateTemplate(makeTemplate({ name: 'Trip prep', items: [makeTemplateItem()] }));
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.name).toBe('Trip prep');
+    expect(tpl.items).toHaveLength(1);
+  });
+
+  it('dbDeleteTemplate removes the row', () => {
+    dbInsertTemplate(makeTemplate());
+    dbDeleteTemplate('tpl-1');
+    expect(dbGetAllTemplates()).toHaveLength(0);
+  });
+
+  it('returns [] items for corrupted JSON', () => {
+    dbInsertTemplate(makeTemplate());
+    mockRawDb.prepare('UPDATE templates SET items = ? WHERE id = ?').run('not json', 'tpl-1');
+    expect(dbGetAllTemplates()[0].items).toEqual([]);
+  });
+
+  it('fills defaults for items missing fields (forward compat)', () => {
+    dbInsertTemplate(makeTemplate());
+    mockRawDb
+      .prepare('UPDATE templates SET items = ? WHERE id = ?')
+      .run(JSON.stringify([{ id: 'x', title: 'Old item', futureField: 123 }]), 'tpl-1');
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.items[0]).toMatchObject({
+      id: 'x',
+      title: 'Old item',
+      optional: false,
+      dueOffsetDays: null,
+      tags: [],
+      priority: 0,
+    });
   });
 });

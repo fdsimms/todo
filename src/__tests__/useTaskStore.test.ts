@@ -40,6 +40,10 @@ jest.mock('../db/database', () => ({
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
   dbBulkAddTags: jest.fn(),
+  dbGetAllTemplates: jest.fn().mockReturnValue([]),
+  dbInsertTemplate: jest.fn(),
+  dbUpdateTemplate: jest.fn(),
+  dbDeleteTemplate: jest.fn(),
 }));
 
 jest.mock('../store/useCategoryStore', () => ({

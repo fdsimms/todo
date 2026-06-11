@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TimeOfDay } from '../types';
+import type { Task, Category, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
+import { normalizeTemplateItem } from '../utils/templateUtils';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
   if (!raw) return [];
@@ -57,6 +58,14 @@ export function initDatabase(): void {
       schedule_days TEXT,
       schedule_start TEXT,
       schedule_end TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS templates (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      items TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0
     );
   `);
 
@@ -354,4 +363,51 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 export function dbDeleteCategory(name: string): void {
   db.runSync('DELETE FROM categories WHERE name = ?', [name]);
   db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
+}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+function parseTemplateItems(raw: unknown): TemplateItem[] {
+  try {
+    const parsed = JSON.parse((raw as string) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeTemplateItem);
+  } catch {
+    return [];
+  }
+}
+
+function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    items: parseTemplateItems(row.items),
+    createdAt: row.created_at as string,
+    sortOrder: row.sort_order as number,
+  };
+}
+
+export function dbGetAllTemplates(): TaskTemplate[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM templates ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToTemplate);
+}
+
+export function dbInsertTemplate(template: TaskTemplate): void {
+  db.runSync(
+    'INSERT INTO templates (id, name, items, created_at, sort_order) VALUES (?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), template.createdAt, template.sortOrder]
+  );
+}
+
+export function dbUpdateTemplate(template: TaskTemplate): void {
+  db.runSync(
+    'UPDATE templates SET name = ?, items = ?, sort_order = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), template.sortOrder, template.id]
+  );
+}
+
+export function dbDeleteTemplate(id: string): void {
+  db.runSync('DELETE FROM templates WHERE id = ?', [id]);
 }
