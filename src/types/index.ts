@@ -44,6 +44,7 @@ export interface Task {
   focused: boolean;
   priority: Priority;
   effort: Effort;
+  estimatedMinutes: number | null; // precise time estimate; effort is the derived coarse bucket
 
   reminderTime: string | null; // ISO datetime for scheduled notification
 

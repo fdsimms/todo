@@ -573,6 +573,7 @@ export function TaskItem({
           taskTitle={task.title}
           taskNotes={task.notes}
           taskEffort={task.effort}
+          taskEstimatedMinutes={task.estimatedMinutes}
           onConfirm={(date, segs) => {
             updateTask(task.id, {
               dueDate: date ? date.toISOString() : null,

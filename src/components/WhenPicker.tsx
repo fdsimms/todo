@@ -32,6 +32,7 @@ interface Props {
   taskTitle?: string;
   taskNotes?: string;
   taskEffort?: Effort;
+  taskEstimatedMinutes?: number | null;
   onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
@@ -79,7 +80,7 @@ function buildCalendarGrid(displayMonth: Date): Date[] {
 
 export function WhenPicker({
   visible, value, timeSegments: initialSegments,
-  taskTitle, taskNotes, taskEffort,
+  taskTitle, taskNotes, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
 }: Props) {
   const colors = useColors();
@@ -160,7 +161,7 @@ export function WhenPicker({
     setSuggestError(null);
     haptics.impactLight();
     try {
-      const res = await suggestTaskDate(taskTitle ?? '', taskNotes ?? '', taskEffort ?? 0, tasks);
+      const res = await suggestTaskDate(taskTitle ?? '', taskNotes ?? '', taskEffort ?? 0, tasks, taskEstimatedMinutes ?? null);
       const suggested = noonOf(new Date(`${res.date}T12:00:00`));
       setSuggestion({ key: res.date, reason: res.reason });
       setDisplayMonth(startOfMonth(suggested));

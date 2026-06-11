@@ -8,6 +8,7 @@
 import {
   suggestTaskAttributes,
   suggestTaskDate,
+  suggestTaskEffort,
   suggestFocusTasks,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
@@ -48,6 +49,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   focused: false,
   priority: 0,
   effort: 0,
+  estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
   parentId: null,
@@ -261,6 +263,45 @@ describe('suggestTaskAttributes', () => {
 });
 
 // ============================================================================
+// suggestTaskEffort
+// ============================================================================
+
+describe('suggestTaskEffort', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns null minutes when the model is not confident', async () => {
+    mockFetchOnce(toolUseResponse('estimate', { confident: false, minutes: 120, reason: 'Too vague to estimate.' }));
+    const result = await suggestTaskEffort('do the thing', '');
+    expect(result.minutes).toBeNull();
+    expect(result.reason).toBe('Too vague to estimate.');
+  });
+
+  it('returns the estimated minutes when confident', async () => {
+    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 45, reason: 'Short focused task.' }));
+    const result = await suggestTaskEffort('Reply to 3 emails', '');
+    expect(result.minutes).toBe(45);
+    expect(result.reason).toBe('Short focused task.');
+  });
+
+  it('clamps an absurdly large estimate to the daily cap', async () => {
+    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 99999, reason: 'Huge.' }));
+    const result = await suggestTaskEffort('Build an OS', '');
+    expect(result.minutes).toBe(1440);
+  });
+
+  it('treats a non-positive estimate as an abstain', async () => {
+    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 0, reason: 'n/a' }));
+    const result = await suggestTaskEffort('x', '');
+    expect(result.minutes).toBeNull();
+  });
+
+  it('throws without an API error response', async () => {
+    mockFetchOnce({}, 500);
+    await expect(suggestTaskEffort('x', '')).rejects.toThrow('API error 500');
+  });
+});
+
+// ============================================================================
 // suggestTaskDate
 // ============================================================================
 
@@ -341,9 +382,10 @@ describe('suggestTaskDate', () => {
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
-    // 2025-06-10 should show load 3 (only the open task), not 8 (all three)
+    // 2025-06-10 should reflect only the open task's time (effort 3 → 90min → 1.5h),
+    // not the completed/no-date tasks.
     expect(content).toContain('2025-06-10');
-    expect(content).toContain('load 3');
+    expect(content).toContain('load 1.5h');
   });
 
   it('ignores tasks due outside the 7-day horizon', async () => {
@@ -359,8 +401,8 @@ describe('suggestTaskDate', () => {
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
-    // 2025-06-10 should show load 0, not 5
-    expect(content).toMatch(/2025-06-10.*load 0/);
+    // 2025-06-10 should show no load (0m), since the far-future task is out of window
+    expect(content).toMatch(/2025-06-10.*load 0m/);
   });
 });
 

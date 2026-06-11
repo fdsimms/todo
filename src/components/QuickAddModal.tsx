@@ -28,7 +28,8 @@ import { WhenPicker } from './WhenPicker';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
-import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import type { TaskDraft } from './TaskEditor';
 
@@ -68,6 +69,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
+  const [customEffortText, setCustomEffortText] = useState('');
+  const [effortNote, setEffortNote] = useState<string | null>(null);
+  const [effortAiLoading, setEffortAiLoading] = useState(false);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -83,6 +88,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setTitle('');
       setPriority(0);
       setEffort(0);
+      setEstimatedMinutes(null);
+      setCustomEffortText('');
+      setEffortNote(null);
+      setEffortAiLoading(false);
       setDueDate(getLogicalToday(dayResetTime));
       setTimeSegments([]);
       setTags([]);
@@ -112,6 +121,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       title: title.trim(),
       priority,
       effort,
+      estimatedMinutes,
       dueDate: dueDate?.toISOString() ?? null,
       timeSegments,
       tags,
@@ -121,7 +131,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   };
 
   const handleOpenFull = () => {
-    onOpenFull({ title, priority, effort, dueDate, timeSegments, tags, category });
+    onOpenFull({ title, priority, effort, estimatedMinutes, dueDate, timeSegments, tags, category });
   };
 
   const togglePanel = (panel: ActivePanel) => {
@@ -156,7 +166,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     setAiLoading(true);
     try {
       const result = await suggestTaskAttributes(title.trim(), '', allTags, allCategories);
-      if (result.effort > 0 && effort === 0) setEffort(result.effort);
+      if (result.effort > 0 && effort === 0) { setEffort(result.effort); setEstimatedMinutes(EFFORT_MINUTES[result.effort]); }
       if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
       if (result.category && !category) setCategory(result.category);
       else if (result.newCategory && !category) setPendingCategory(result.newCategory);
@@ -164,6 +174,56 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       // silent fail
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+
+  const applyEffortPreset = (e: Effort) => {
+    haptics.tap();
+    setEffortNote(null);
+    setCustomEffortText('');
+    // Tapping the active preset clears the estimate.
+    if (!customEffortActive && effort === e) {
+      setEffort(0);
+      setEstimatedMinutes(null);
+    } else {
+      setEffort(e);
+      setEstimatedMinutes(EFFORT_MINUTES[e]);
+    }
+  };
+
+  const applyCustomEffort = (text: string) => {
+    setCustomEffortText(text);
+    setEffortNote(null);
+    const n = parseInt(text, 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      setEstimatedMinutes(null);
+      setEffort(0);
+      return;
+    }
+    setEstimatedMinutes(n);
+    setEffort(minutesToEffort(n));
+  };
+
+  const handleEstimateEffort = async () => {
+    if (!title.trim()) return;
+    setEffortAiLoading(true);
+    setEffortNote(null);
+    try {
+      const result = await suggestTaskEffort(title.trim(), '');
+      if (result.minutes != null) {
+        setEstimatedMinutes(result.minutes);
+        setEffort(minutesToEffort(result.minutes));
+        setCustomEffortText('');
+        setEffortNote(result.reason);
+      } else {
+        setEffortNote(result.reason);
+      }
+    } catch {
+      setEffortNote('Could not estimate right now.');
+    } finally {
+      setEffortAiLoading(false);
     }
   };
 
@@ -266,7 +326,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 color={effort > 0 ? colors.accent : colors.textTertiary}
               />
               <Text style={[styles.toolChipText, effort > 0 && styles.toolChipTextSet]}>
-                {effort > 0 ? EFFORT_LABELS[effort] : 'Effort'}
+                {estimatedMinutes != null ? formatDuration(estimatedMinutes) : effort > 0 ? EFFORT_LABELS[effort] : 'Effort'}
               </Text>
             </TouchableOpacity>
 
@@ -354,22 +414,52 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           {activePanel === 'effort' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
-                {([1, 2, 3, 4, 5] as Effort[]).map(e => (
+                {([1, 2, 3, 4, 5] as Effort[]).map(e => {
+                  const active = !customEffortActive && effort === e;
+                  return (
+                    <TouchableOpacity
+                      key={e}
+                      style={[styles.presetChip, active && styles.presetChipActive]}
+                      onPress={() => applyEffortPreset(e)}
+                      activeOpacity={interaction.activeOpacity}
+                    >
+                      <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
+                        {EFFORT_LABELS[e]}
+                      </Text>
+                      <Text style={styles.presetChipHint}>{formatDuration(EFFORT_MINUTES[e]!)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <View style={styles.effortCustomRow}>
+                <TextInput
+                  style={styles.effortCustomInput}
+                  value={customEffortText}
+                  onChangeText={applyCustomEffort}
+                  keyboardType="number-pad"
+                  placeholder="custom min"
+                  placeholderTextColor={colors.textTertiary}
+                />
+                {!!anthropicApiKey && (
                   <TouchableOpacity
-                    key={e}
-                    style={[styles.presetChip, effort === e && styles.presetChipActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setEffort(prev => prev === e ? 0 : e);
-                    }}
+                    style={styles.effortAiBtn}
+                    onPress={handleEstimateEffort}
+                    disabled={effortAiLoading || !title.trim()}
                     activeOpacity={interaction.activeOpacity}
                   >
-                    <Text style={[styles.presetChipText, effort === e && styles.presetChipTextActive]}>
-                      {EFFORT_LABELS[e]}
-                    </Text>
+                    {effortAiLoading
+                      ? <ActivityIndicator size="small" color={colors.purple} />
+                      : (
+                        <>
+                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                          <Text style={styles.effortAiBtnText}>AI estimate</Text>
+                        </>
+                      )
+                    }
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
+              {effortNote ? <Text style={styles.effortNote}>{effortNote}</Text> : null}
             </View>
           )}
 
@@ -592,6 +682,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 6,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
   },
   presetChipActive: {
     backgroundColor: colors.accent,
@@ -604,6 +695,45 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   presetChipTextActive: {
     color: colors.onAccent,
     fontWeight: fontWeight.semibold,
+  },
+  presetChipHint: {
+    color: colors.textTertiary,
+    fontSize: 10,
+    marginTop: 1,
+  },
+  effortCustomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  effortCustomInput: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    minWidth: 110,
+  },
+  effortAiBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+  },
+  effortAiBtnText: {
+    color: colors.purple,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  effortNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.sm,
   },
   clearChip: {
     width: 26,

@@ -96,6 +96,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   focused: false,
   priority: 0,
   effort: 0,
+  estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
   parentId: null,
@@ -146,7 +147,7 @@ describe('initDatabase', () => {
       'focused', 'priority', 'effort', 'streak_count', 'streak_date',
       'recurrence_from_completion', 'parent_id', 'reminder_time',
       'cycle_enabled', 'cycle_index', 'cycle_items',
-      'time_of_day', 'category', 'vacation_pause',
+      'time_of_day', 'category', 'vacation_pause', 'estimated_minutes',
     ]) {
       expect(cols).toContain(col);
     }
@@ -211,6 +212,18 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(result.title).toBe('My Task');
     expect(result.notes).toBe('some notes');
     expect(result.sortOrder).toBe(5);
+  });
+
+  it('round-trips estimatedMinutes (precise time estimate)', () => {
+    dbInsertTask(makeTask({ id: 'est', estimatedMinutes: 75 }));
+    const [t] = dbGetAllTasks();
+    expect(t.estimatedMinutes).toBe(75);
+  });
+
+  it('returns null estimatedMinutes when unset', () => {
+    dbInsertTask(makeTask({ id: 'noest' }));
+    const [t] = dbGetAllTasks();
+    expect(t.estimatedMinutes).toBeNull();
   });
 
   it('deserialises boolean columns back to JS booleans', () => {
@@ -327,6 +340,7 @@ describe('dbUpdateTask', () => {
       focused: true,
       priority: 3,
       effort: 2,
+      estimatedMinutes: 75,
       streakCount: 5,
       cycleEnabled: true,
       cycleItems: [{ id: 'ci', title: 'C', notes: '' }],
@@ -341,6 +355,7 @@ describe('dbUpdateTask', () => {
     expect(result.tags).toEqual(['updated']);
     expect(result.priority).toBe(3);
     expect(result.effort).toBe(2);
+    expect(result.estimatedMinutes).toBe(75);
     expect(result.streakCount).toBe(5);
     expect(result.vacationPause).toBe(true);
   });
