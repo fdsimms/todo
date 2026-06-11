@@ -30,6 +30,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
@@ -76,6 +77,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [aiLoading, setAiLoading] = useState(false);
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -142,6 +144,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
+    setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
@@ -250,6 +253,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       const newTags = result.tags.filter(t => !tags.includes(t));
       if (newTags.length > 0) setTags(prev => [...prev, ...newTags]);
       if (result.category && !category) setCategory(result.category);
+      else if (result.newCategory && !category) setPendingCategory(result.newCategory);
     } catch {
       // silently fail — no API key or network issue
     } finally {
@@ -837,6 +841,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}
+        />
+        <SuggestedCategorySheet
+          visible={pendingCategory !== null}
+          categoryName={pendingCategory ?? ''}
+          onConfirm={() => {
+            if (pendingCategory) {
+              addCategory(pendingCategory);
+              setCategory(pendingCategory);
+              haptics.success();
+            }
+            setPendingCategory(null);
+          }}
+          onDismiss={() => setPendingCategory(null)}
         />
       </KeyboardAvoidingView>
 
