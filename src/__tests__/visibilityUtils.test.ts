@@ -1,4 +1,4 @@
-import { isTaskVisible, isTaskDeferred, getVisibleAt } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, getVisibleAt, isHiddenForVacation } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
@@ -401,5 +401,40 @@ describe('category hide-on-vacation', () => {
     mockSettingsState.vacationMode = true;
     expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
     expect(isTaskVisible({ ...baseTask, category: null })).toBe(true);
+  });
+});
+
+// ─── isHiddenForVacation ──────────────────────────────────────────────────────
+
+describe('isHiddenForVacation', () => {
+  afterEach(() => {
+    mockCategorySchedule(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('is false when vacation mode is off, even for a paused task', () => {
+    mockSettingsState.vacationMode = false;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true })).toBe(false);
+  });
+
+  it('is true for a vacation-paused task while vacation mode is on', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true })).toBe(true);
+  });
+
+  it('is true for a task in a hide-on-vacation category', () => {
+    mockSettingsState.vacationMode = true;
+    mockCategorySchedule(errandsCategory);
+    expect(isHiddenForVacation({ ...baseTask, category: 'Errands' })).toBe(true);
+  });
+
+  it('is false for an unrelated task during vacation mode', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation(baseTask)).toBe(false);
+  });
+
+  it('is false for a completed paused task', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true, completed: true })).toBe(false);
   });
 });

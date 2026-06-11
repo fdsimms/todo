@@ -66,12 +66,52 @@ function SectionHeader({ label, styles }: { label: string; styles: ReturnType<ty
   );
 }
 
+// Collapsible reveal for tasks hidden by vacation mode (vacation-paused tasks
+// and tasks in categories set to hide on vacation). Defaults to collapsed,
+// always shows the hidden count, and renders the tasks inline when expanded.
+function VacationHiddenSection({
+  tasks,
+  expanded,
+  onToggle,
+  renderHiddenTask,
+  styles,
+  colors,
+}: {
+  tasks: Task[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderHiddenTask: (task: Task) => React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons name="airplane" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {expanded ? 'Hide' : 'Show'} {tasks.length} hidden on vacation
+        </Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {expanded && tasks.map(task => (
+        <React.Fragment key={task.id}>{renderHiddenTask(task)}</React.Fragment>
+      ))}
+    </View>
+  );
+}
+
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
+  const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -102,6 +142,7 @@ export function TodayScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [restExpanded, setRestExpanded] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
 
   // Collapse any expanded task when navigating away from this tab so it
@@ -354,6 +395,56 @@ export function TodayScreen() {
     return taskNode;
   };
 
+  // Revealed vacation-hidden tasks are peek-only: no drag, no selection.
+  const renderHiddenTask = (task: Task) => {
+    const subs = subtasksByParent.get(task.id) ?? [];
+    return (
+      <TaskItem
+        task={task}
+        onPress={() => {
+          if (expandedTaskId !== null && expandedTaskId !== task.id) {
+            setExpandedTaskId(null);
+            return;
+          }
+          setExpandedTaskId(prev => prev === task.id ? null : task.id);
+        }}
+        expanded={expandedTaskId === task.id}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+        onEdit={() => openEditor(task)}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        hideTodayLabel
+      />
+    );
+  };
+
+  // Footer shared by every list variant: the vacation-hidden reveal (when any)
+  // followed by the tap-to-dismiss spacer. `fixedWhenEmpty` keeps the empty
+  // state centered by stopping the spacer from growing.
+  const listFooter = (fixedWhenEmpty = false) => (
+    <>
+      <VacationHiddenSection
+        tasks={vacationHiddenTasks}
+        expanded={showHidden}
+        onToggle={() => {
+          haptics.tap();
+          animateLayout();
+          setExpandedTaskId(null);
+          setShowHidden(v => !v);
+        }}
+        renderHiddenTask={renderHiddenTask}
+        styles={styles}
+        colors={colors}
+      />
+      <TouchableOpacity
+        style={[styles.listFooter, fixedWhenEmpty && styles.listFooterFixed]}
+        activeOpacity={1}
+        onPress={() => setExpandedTaskId(null)}
+      />
+    </>
+  );
+
   const emptyComponent = (
     <EmptyState
       icon="checkmark-circle"
@@ -523,7 +614,7 @@ export function TodayScreen() {
               subtitle="Swipe left on a task to defer it"
             />
           }
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponent={listFooter(laterSections.length === 0)}
         />
       )}
 
@@ -542,7 +633,7 @@ export function TodayScreen() {
               tintColor={colors.textSecondary}
             />
           }
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponent={listFooter()}
           ListFooterComponentStyle={styles.listFooterCell}
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
@@ -587,14 +678,10 @@ export function TodayScreen() {
           }
           ListEmptyComponent={emptyComponent}
           ListFooterComponent={
-            // Direct child of the scroll content (no cell wrapper), so its own
-            // flexGrow stretches it; pinned when empty so the empty state
-            // stays centered.
-            <TouchableOpacity
-              style={[styles.listFooter, filtered.length === 0 && styles.listFooterFixed]}
-              activeOpacity={1}
-              onPress={() => setExpandedTaskId(null)}
-            />
+            // Direct child of the scroll content (no cell wrapper), so the
+            // spacer's own flexGrow stretches it; pinned when empty so the
+            // empty state stays centered.
+            listFooter(filtered.length === 0)
           }
           onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
@@ -718,6 +805,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyContainer: { flexGrow: 1 },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
+  hiddenSection: { paddingTop: spacing.sm },
+  hiddenToggle: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.md,
+  },
+  hiddenToggleText: {
+    color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium,
+  },
   // Subtle slot marking where a dragged task will land; mirrors the task
   // card's footprint (margin + radius).
   dropSlot: {

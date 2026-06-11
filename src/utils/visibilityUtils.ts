@@ -23,6 +23,17 @@ function isCategoryHiddenOnVacation(category: string | null): boolean {
   return !!cat?.hideOnVacation;
 }
 
+// True when a task is hidden *specifically* because vacation mode is on — either
+// it's individually vacation-paused or it belongs to a category set to hide on
+// vacation. These tasks are absent from both Today and Later; the screens can
+// surface them behind a "show hidden" reveal.
+export function isHiddenForVacation(task: Task): boolean {
+  if (task.completed) return false;
+  if (!useSettingsStore.getState().vacationMode) return false;
+  if (task.vacationPause) return true;
+  return isCategoryHiddenOnVacation(task.category);
+}
+
 function isCategoryScheduleActive(category: string | null): boolean {
   if (!category) return true;
   const cat = useCategoryStore.getState().getCategoryByName(category);
