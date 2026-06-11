@@ -1,15 +1,18 @@
-import { isTaskVisible, isTaskDeferred, getVisibleAt } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, getVisibleAt, isHiddenForVacation } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
+const mockSettingsState = {
+  dayResetTime: '00:00',
+  morningStart: '06:00',
+  afternoonStart: '12:00',
+  eveningStart: '18:00',
+  vacationMode: false,
+};
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({
-      dayResetTime: '00:00',
-      morningStart: '06:00',
-      afternoonStart: '12:00',
-      eveningStart: '18:00',
-    }),
+    getState: () => mockSettingsState,
   },
 }));
 
@@ -36,6 +39,7 @@ const workCategory: Category = {
   scheduleDays: [1, 2, 3, 4, 5],
   scheduleStart: '09:00',
   scheduleEnd: '18:00',
+  hideOnVacation: false,
 };
 
 const baseTask: Task = {
@@ -350,5 +354,86 @@ describe('category schedule — getVisibleAt', () => {
     const result = getVisibleAt({ ...baseTask, category: 'Work' });
     expect(result.getDay()).toBe(3); // Wednesday
     expect(result.getHours()).toBe(9);
+  });
+});
+
+// ─── Category hidden on vacation ──────────────────────────────────────────────
+
+const errandsCategory: Category = {
+  id: 'cat-errands',
+  name: 'Errands',
+  scheduleDays: null,
+  scheduleStart: null,
+  scheduleEnd: null,
+  hideOnVacation: true,
+};
+
+describe('category hide-on-vacation', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    mockCategorySchedule(errandsCategory);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('hides tasks in a hidden category while vacation mode is on', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isTaskVisible({ ...baseTask, category: 'Errands' })).toBe(false);
+  });
+
+  it('shows tasks in a hidden category when vacation mode is off', () => {
+    mockSettingsState.vacationMode = false;
+    expect(isTaskVisible({ ...baseTask, category: 'Errands' })).toBe(true);
+  });
+
+  it('does not treat the task as deferred (hidden everywhere, not surfaced on Later)', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isTaskDeferred({ ...baseTask, category: 'Errands' })).toBe(false);
+  });
+
+  it('leaves tasks in other categories visible during vacation mode', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: null })).toBe(true);
+  });
+});
+
+// ─── isHiddenForVacation ──────────────────────────────────────────────────────
+
+describe('isHiddenForVacation', () => {
+  afterEach(() => {
+    mockCategorySchedule(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('is false when vacation mode is off, even for a paused task', () => {
+    mockSettingsState.vacationMode = false;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true })).toBe(false);
+  });
+
+  it('is true for a vacation-paused task while vacation mode is on', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true })).toBe(true);
+  });
+
+  it('is true for a task in a hide-on-vacation category', () => {
+    mockSettingsState.vacationMode = true;
+    mockCategorySchedule(errandsCategory);
+    expect(isHiddenForVacation({ ...baseTask, category: 'Errands' })).toBe(true);
+  });
+
+  it('is false for an unrelated task during vacation mode', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation(baseTask)).toBe(false);
+  });
+
+  it('is false for a completed paused task', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isHiddenForVacation({ ...baseTask, vacationPause: true, completed: true })).toBe(false);
   });
 });

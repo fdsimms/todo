@@ -10,6 +10,7 @@ export interface Category {
   scheduleDays: number[] | null;   // 0=Sun … 6=Sat, null = no restriction
   scheduleStart: string | null;    // "HH:MM"
   scheduleEnd: string | null;      // "HH:MM"
+  hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
 }
 
 export interface CycleItem {

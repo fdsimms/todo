@@ -5,6 +5,7 @@ import {
   dbInsertCategory,
   dbUpdateCategory,
   dbDeleteCategory,
+  dbSetCategoryHideOnVacation,
 } from '../db/database';
 
 interface CategoryStore {
@@ -15,6 +16,7 @@ interface CategoryStore {
   deleteCategory: (name: string) => void;
   setCategorySchedule: (name: string, scheduleDays: number[], scheduleStart: string, scheduleEnd: string) => void;
   removeCategorySchedule: (name: string) => void;
+  setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   getCategoryByName: (name: string) => Category | null;
 }
 
@@ -58,6 +60,17 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     set(s => ({
       categories: s.categories.map(c =>
         c.name === name ? { ...c, scheduleDays: null, scheduleStart: null, scheduleEnd: null } : c
+      ),
+    }));
+  },
+
+  setCategoryHideOnVacation(name, hide) {
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return;
+    dbSetCategoryHideOnVacation(cat.id, hide);
+    set(s => ({
+      categories: s.categories.map(c =>
+        c.name === name ? { ...c, hideOnVacation: hide } : c
       ),
     }));
   },
