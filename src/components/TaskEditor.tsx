@@ -180,7 +180,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       cycleEnabled: cycleEnabled && cycleItems.length > 0,
       cycleItems,
       cycleIndex,
-      projectId: task?.projectId ?? null,
       vacationPause,
     };
     haptics.success();

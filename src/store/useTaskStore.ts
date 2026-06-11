@@ -73,7 +73,6 @@ interface TaskStore {
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
-  tasksByProject: (projectId: string) => Task[];
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -122,7 +121,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleEnabled: draft.cycleEnabled ?? false,
       cycleIndex: draft.cycleIndex ?? 0,
       cycleItems: draft.cycleItems ?? [],
-      projectId: draft.projectId ?? null,
       vacationPause: draft.vacationPause ?? false,
     };
     dbInsertTask(task);
@@ -359,7 +357,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleEnabled: false,
       cycleIndex: 0,
       cycleItems: [],
-      projectId: null,
       vacationPause: false,
     };
     dbInsertTask(subtask);
@@ -541,9 +538,5 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   tasksByCategory(category) {
     return get().tasks.filter(t => !t.completed && !t.parentId && t.category === category);
-  },
-
-  tasksByProject(projectId) {
-    return get().tasks.filter(t => !t.completed && !t.parentId && t.projectId === projectId);
   },
 }));

@@ -29,13 +29,8 @@ import {
   dbAddToCategoryRegistry,
   dbRemoveFromCategoryRegistry,
   dbRemoveCategoryFromAllTasks,
-  dbGetAllProjects,
-  dbInsertProject,
-  dbUpdateProject,
-  dbDeleteProject,
-  dbBatchUpdateProjectOrders,
 } from '../db/database';
-import type { Task, Project } from '../types';
+import type { Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -108,19 +103,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
-  projectId: null,
   vacationPause: false,
-  ...overrides,
-});
-
-const makeProject = (overrides: Partial<Project> = {}): Project => ({
-  id: 'proj-1',
-  name: 'Test Project',
-  notes: '',
-  dueDate: null,
-  color: '#FF0000',
-  order: 1,
-  createdAt: '2025-01-01T00:00:00.000Z',
   ...overrides,
 });
 
@@ -133,7 +116,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockRawDb.exec('DELETE FROM tasks; DELETE FROM projects; DELETE FROM settings;');
+  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings;');
 });
 
 // ---------------------------------------------------------------------------
@@ -155,13 +138,6 @@ describe('initDatabase', () => {
     expect(row?.name).toBe('settings');
   });
 
-  it('creates the projects table', () => {
-    const row = mockRawDb
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='projects'")
-      .get() as { name: string } | undefined;
-    expect(row?.name).toBe('projects');
-  });
-
   it('adds all migration columns to tasks', () => {
     const cols = (
       mockRawDb.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
@@ -169,7 +145,7 @@ describe('initDatabase', () => {
     for (const col of [
       'focused', 'priority', 'effort', 'streak_count', 'streak_date',
       'recurrence_from_completion', 'parent_id', 'reminder_time',
-      'cycle_enabled', 'cycle_index', 'cycle_items', 'project_id',
+      'cycle_enabled', 'cycle_index', 'cycle_items',
       'time_of_day', 'category', 'vacation_pause',
     ]) {
       expect(cols).toContain(col);
@@ -307,7 +283,6 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.streakDate).toBeNull();
     expect(t.parentId).toBeNull();
     expect(t.reminderTime).toBeNull();
-    expect(t.projectId).toBeNull();
     expect(t.category).toBeNull();
   });
 
@@ -321,7 +296,6 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       streakDate: '2025-06-09T00:00:00.000Z',
       parentId: 'parent-id',
       reminderTime: '2025-06-10T08:00:00.000Z',
-      projectId: 'proj-99',
       category: 'Work',
     });
     dbInsertTask(task);
@@ -329,7 +303,6 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.dueDate).toBe(task.dueDate);
     expect(t.deferUntil).toBe(task.deferUntil);
     expect(t.reminderTime).toBe(task.reminderTime);
-    expect(t.projectId).toBe(task.projectId);
     expect(t.category).toBe(task.category);
   });
 });
@@ -357,7 +330,6 @@ describe('dbUpdateTask', () => {
       streakCount: 5,
       cycleEnabled: true,
       cycleItems: [{ id: 'ci', title: 'C', notes: '' }],
-      projectId: 'proj-1',
       vacationPause: true,
     };
     dbUpdateTask(updated);
@@ -657,105 +629,5 @@ describe('Category Registry', () => {
     dbInsertTask(makeTask({ id: 'a', category: 'Other' }));
     expect(() => dbRemoveCategoryFromAllTasks('NonExistent')).not.toThrow();
     expect(dbGetAllTasks()[0].category).toBe('Other');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Projects — CRUD
-// ---------------------------------------------------------------------------
-
-describe('dbGetAllProjects', () => {
-  it('returns an empty array when no projects exist', () => {
-    expect(dbGetAllProjects()).toEqual([]);
-  });
-
-  it('returns projects ordered by sort_order ASC then created_at ASC', () => {
-    dbInsertProject(makeProject({ id: 'a', order: 2, createdAt: '2025-01-01T00:00:00.000Z' }));
-    dbInsertProject(makeProject({ id: 'b', order: 1, createdAt: '2025-01-02T00:00:00.000Z' }));
-    dbInsertProject(makeProject({ id: 'c', order: 1, createdAt: '2025-01-01T00:00:00.000Z' }));
-    expect(dbGetAllProjects().map((p) => p.id)).toEqual(['c', 'b', 'a']);
-  });
-});
-
-describe('dbInsertProject + rowToProject round-trip', () => {
-  it('persists and restores all project fields', () => {
-    const project = makeProject({
-      id: 'p1',
-      name: 'My Project',
-      notes: 'some notes',
-      dueDate: '2025-12-31T00:00:00.000Z',
-      color: '#123456',
-      order: 3,
-    });
-    dbInsertProject(project);
-    expect(dbGetAllProjects()[0]).toEqual(project);
-  });
-
-  it('handles null dueDate', () => {
-    dbInsertProject(makeProject({ id: 'p1', dueDate: null }));
-    expect(dbGetAllProjects()[0].dueDate).toBeNull();
-  });
-});
-
-describe('dbUpdateProject', () => {
-  it('updates all mutable fields', () => {
-    dbInsertProject(makeProject({ id: 'p1' }));
-    dbUpdateProject(
-      makeProject({ id: 'p1', name: 'Updated', color: '#ABCDEF', dueDate: '2026-01-01T00:00:00.000Z', order: 99 }),
-    );
-    const [result] = dbGetAllProjects();
-    expect(result.name).toBe('Updated');
-    expect(result.color).toBe('#ABCDEF');
-    expect(result.order).toBe(99);
-  });
-
-  it('does not modify other projects', () => {
-    dbInsertProject(makeProject({ id: 'p1', name: 'Keep' }));
-    dbInsertProject(makeProject({ id: 'p2', name: 'Edit' }));
-    dbUpdateProject(makeProject({ id: 'p2', name: 'Edited' }));
-    expect(dbGetAllProjects().find((p) => p.id === 'p1')?.name).toBe('Keep');
-  });
-});
-
-describe('dbDeleteProject', () => {
-  it('removes the project', () => {
-    dbInsertProject(makeProject({ id: 'p1' }));
-    dbDeleteProject('p1');
-    expect(dbGetAllProjects()).toHaveLength(0);
-  });
-
-  it('nullifies project_id on tasks that belonged to the project', () => {
-    dbInsertProject(makeProject({ id: 'p1' }));
-    dbInsertTask(makeTask({ id: 'task', projectId: 'p1' }));
-    dbDeleteProject('p1');
-    expect(dbGetAllTasks()[0].projectId).toBeNull();
-  });
-
-  it('leaves tasks belonging to other projects unchanged', () => {
-    dbInsertProject(makeProject({ id: 'p1' }));
-    dbInsertProject(makeProject({ id: 'p2' }));
-    dbInsertTask(makeTask({ id: 'task', projectId: 'p2' }));
-    dbDeleteProject('p1');
-    expect(dbGetAllTasks()[0].projectId).toBe('p2');
-  });
-});
-
-describe('dbBatchUpdateProjectOrders', () => {
-  it('updates sort_order for each specified project', () => {
-    dbInsertProject(makeProject({ id: 'a', order: 1 }));
-    dbInsertProject(makeProject({ id: 'b', order: 2 }));
-    dbBatchUpdateProjectOrders([
-      { id: 'a', order: 10 },
-      { id: 'b', order: 5 },
-    ]);
-    const projects = dbGetAllProjects();
-    expect(projects.find((p) => p.id === 'a')?.order).toBe(10);
-    expect(projects.find((p) => p.id === 'b')?.order).toBe(5);
-  });
-
-  it('is a no-op for an empty array', () => {
-    dbInsertProject(makeProject({ id: 'a', order: 42 }));
-    dbBatchUpdateProjectOrders([]);
-    expect(dbGetAllProjects()[0].order).toBe(42);
   });
 });

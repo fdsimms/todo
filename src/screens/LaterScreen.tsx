@@ -68,11 +68,11 @@ export function LaterScreen() {
     setEditorVisible(true);
   };
 
-  const enterSelection = (id: string) => {
+  const enterSelectionMode = () => {
     haptics.impactHeavy();
     animateLayout();
     setSelectionMode(true);
-    setSelectedIds(new Set([id]));
+    setSelectedIds(new Set());
     setExpandedTaskId(null);
   };
 
@@ -134,7 +134,15 @@ export function LaterScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Later" subtitle={`${deferredTasks.length} waiting`} />
+      <ScreenHeader
+        title="Later"
+        subtitle={`${deferredTasks.length} waiting`}
+        actions={[{
+          icon: 'checkmark-circle-outline',
+          onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+          active: selectionMode,
+        }]}
+      />
 
       <SpotlightOverlay
         visible={spotlightActive}
@@ -180,7 +188,6 @@ export function LaterScreen() {
                 isActive={isActive}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(item.task.id)}
-                onLongPress={() => enterSelection(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
               />
             );
