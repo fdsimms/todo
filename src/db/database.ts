@@ -37,6 +37,7 @@ export function initDatabase(): void {
       focused INTEGER NOT NULL DEFAULT 0,
       priority INTEGER NOT NULL DEFAULT 0,
       effort INTEGER NOT NULL DEFAULT 0,
+      estimated_minutes INTEGER,
       streak_count INTEGER NOT NULL DEFAULT 0,
       streak_date TEXT,
       parent_id TEXT,
@@ -87,6 +88,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
     'ALTER TABLE tasks ADD COLUMN category TEXT',
     'ALTER TABLE tasks ADD COLUMN vacation_pause INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -138,6 +140,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     focused: Boolean(row.focused),
     priority: ((row.priority as number) ?? 0) as Task['priority'],
     effort: ((row.effort as number) ?? 0) as Task['effort'],
+    estimatedMinutes: (row.estimated_minutes as number | null) ?? null,
     streakCount: (row.streak_count as number) ?? 0,
     streakDate: (row.streak_date as string) ?? null,
     parentId: (row.parent_id as string) ?? null,
@@ -163,9 +166,9 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
-      tags, category, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
+      tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, project_id, vacation_pause
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -173,7 +176,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort,
+      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.projectId ?? null, task.vacationPause ? 1 : 0,
@@ -187,7 +190,7 @@ export function dbUpdateTask(task: Task): void {
       title=?, notes=?, completed=?, completed_at=?,
       due_date=?, defer_until=?, time_of_day=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
-      tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?,
+      tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?, vacation_pause=?
     WHERE id=?`,
@@ -198,7 +201,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort,
+      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.projectId ?? null, task.vacationPause ? 1 : 0,

@@ -1,6 +1,13 @@
 import { addDays, differenceInCalendarDays, isSameDay, isThisWeek, format } from 'date-fns';
 import type { Task } from '../types';
 import { getNextDueDate } from './dateUtils';
+import { minutesToEffort } from './effort';
+
+// Effort on the coarse 0–5 scale, derived from a precise time estimate when the
+// task has one so workload balancing reflects the real estimate.
+function effortUnits(t: Task): number {
+  return t.estimatedMinutes != null ? minutesToEffort(t.estimatedMinutes) : t.effort;
+}
 
 export interface SnoozeSuggestion {
   date: Date;
@@ -63,7 +70,7 @@ export function computeSnoozeSuggestion(
       const existing = recurringByDay.get(dateStr) ?? { count: 0, effort: 0 };
       recurringByDay.set(dateStr, {
         count: existing.count + 1,
-        effort: existing.effort + t.effort,
+        effort: existing.effort + effortUnits(t),
       });
     }
   }
@@ -118,7 +125,7 @@ export function computeSnoozeSuggestion(
         (t.dueDate != null && isSameDay(new Date(t.dueDate), d)) ||
         (t.deferUntil != null && isSameDay(new Date(t.deferUntil), d))
       )
-      .reduce((sum, t) => sum + t.effort, 0);
+      .reduce((sum, t) => sum + effortUnits(t), 0);
     const effortOnDay = explicitEffort + recurringDay.effort;
     const effortPenalty = effortOnDay * 0.5;
 

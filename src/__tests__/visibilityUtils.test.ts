@@ -57,6 +57,7 @@ const baseTask: Task = {
   focused: false,
   priority: 0,
   effort: 0,
+  estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
   recurrenceFromCompletion: false,

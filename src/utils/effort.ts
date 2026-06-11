@@ -1,0 +1,33 @@
+import type { Effort } from '../types';
+
+// Canonical minutes per effort bucket. Index = Effort value; 0 = unknown (null).
+// These are the times shown on the preset chips and used as the fallback when a
+// task has no precise estimate.
+export const EFFORT_MINUTES: readonly (number | null)[] = [null, 15, 30, 90, 240, 480];
+
+/** The canonical minute value for an effort bucket (null for "unknown"). */
+export function effortToMinutes(e: Effort): number | null {
+  return EFFORT_MINUTES[e] ?? null;
+}
+
+/**
+ * Derive the coarse effort bucket from a precise minute estimate. Thresholds are
+ * centered on the canonical values so a preset round-trips to itself. null → 0.
+ */
+export function minutesToEffort(min: number | null): Effort {
+  if (min == null || min <= 0) return 0;
+  if (min <= 20) return 1;   // XS ~15
+  if (min <= 45) return 2;   // S ~30
+  if (min <= 150) return 3;  // M ~90
+  if (min <= 330) return 4;  // L ~240
+  return 5;                  // XL ~480+
+}
+
+/** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */
+export function formatDuration(min: number): string {
+  if (min < 60) return `${min}m`;
+  const hours = min / 60;
+  // Drop a trailing ".0" (2h, not 2.0h); keep one decimal otherwise (1.5h).
+  const label = Number.isInteger(hours) ? String(hours) : hours.toFixed(1);
+  return `${label}h`;
+}

@@ -18,7 +18,7 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
+import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -29,13 +29,15 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
-import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
   title: string;
   priority: Priority;
   effort: Effort;
+  estimatedMinutes: number | null;
   dueDate: Date | null;
   timeSegments: TimeOfDay[];
   tags: string[];
@@ -90,6 +92,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
+  const [customEffortOpen, setCustomEffortOpen] = useState(false);
+  const [customEffortText, setCustomEffortText] = useState('');
+  const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
+  const [effortNote, setEffortNote] = useState<string | null>(null);
+  const [effortAiLoading, setEffortAiLoading] = useState(false);
   const [focused, setFocused] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
 
@@ -126,7 +134,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
-      setPriority(task.priority); setEffort(task.effort); setFocused(task.focused);
+      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
       setVacationPause(task.vacationPause ?? false);
@@ -134,7 +142,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
-      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setFocused(false);
+      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
@@ -142,6 +150,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
+    setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
+    setEffortNote(null); setEffortAiLoading(false);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
@@ -156,6 +166,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion: task?.recurrenceFromCompletion ?? false,
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
+      estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       focused: task?.focused ?? false,
       cycleEnabled: task?.cycleEnabled ?? false,
       cycleItems: task?.cycleItems ?? [],
@@ -176,7 +187,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      focused, priority, effort,
+      focused, priority, effort, estimatedMinutes,
       cycleEnabled: cycleEnabled && cycleItems.length > 0,
       cycleItems,
       cycleIndex,
@@ -254,6 +265,68 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // silently fail — no API key or network issue
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  // Whether the current estimate is a precise value that isn't one of the presets.
+  const customEffortActive = estimatedMinutes != null && estimatedMinutes !== effortToMinutes(effort);
+
+  const applyEffortPreset = (e: Effort) => {
+    setEffort(e);
+    setEstimatedMinutes(EFFORT_MINUTES[e]);
+    setCustomEffortOpen(false);
+    setEffortNote(null);
+  };
+
+  const openCustomEffort = () => {
+    // Prefill from the current precise estimate, if any.
+    if (estimatedMinutes != null) {
+      if (estimatedMinutes % 60 === 0) {
+        setCustomEffortUnit('hr');
+        setCustomEffortText(String(estimatedMinutes / 60));
+      } else {
+        setCustomEffortUnit('min');
+        setCustomEffortText(String(estimatedMinutes));
+      }
+    } else {
+      setCustomEffortText('');
+      setCustomEffortUnit('min');
+    }
+    setEffortNote(null);
+    setCustomEffortOpen(true);
+  };
+
+  const applyCustomEffort = (text: string, unit: 'min' | 'hr') => {
+    const n = parseFloat(text);
+    if (!Number.isFinite(n) || n <= 0) {
+      // Empty/invalid clears the estimate back to unknown.
+      setEstimatedMinutes(null);
+      setEffort(0);
+      return;
+    }
+    const minutes = Math.round(unit === 'hr' ? n * 60 : n);
+    setEstimatedMinutes(minutes);
+    setEffort(minutesToEffort(minutes));
+  };
+
+  const handleEstimateEffort = async () => {
+    setEffortAiLoading(true);
+    setEffortNote(null);
+    try {
+      const result = await suggestTaskEffort(title.trim(), notes);
+      if (result.minutes != null) {
+        setEstimatedMinutes(result.minutes);
+        setEffort(minutesToEffort(result.minutes));
+        setCustomEffortOpen(false);
+        setEffortNote(result.reason);
+      } else {
+        // The model abstained — surface why and leave the estimate untouched.
+        setEffortNote(result.reason);
+      }
+    } catch {
+      setEffortNote('Could not estimate right now.');
+    } finally {
+      setEffortAiLoading(false);
     }
   };
 
@@ -448,26 +521,83 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <View style={styles.cardSep} />
 
             <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Effort</Text>
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => (
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>Effort</Text>
+                {!!anthropicApiKey && (
                   <TouchableOpacity
-                    key={e}
-                    style={[
-                      styles.pill,
-                      effort === e && styles.pillActiveNeutral,
-                    ]}
-                    onPress={() => setEffort(e)}
+                    style={styles.suggestBtn}
+                    onPress={handleEstimateEffort}
+                    disabled={effortAiLoading || !title.trim()}
+                    hitSlop={8}
                   >
-                    <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {EFFORT_HINTS[e] ? (
-                      <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
-                    ) : null}
+                    {effortAiLoading
+                      ? <ActivityIndicator size="small" color={colors.purple} />
+                      : (
+                        <>
+                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                          <Text style={styles.suggestBtnText}>AI estimate</Text>
+                        </>
+                      )
+                    }
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
+              <View style={styles.pillRow}>
+                {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => {
+                  const active = !customEffortActive && effort === e;
+                  const presetMins = EFFORT_MINUTES[e];
+                  return (
+                    <TouchableOpacity
+                      key={e}
+                      style={[styles.pill, active && styles.pillActiveNeutral]}
+                      onPress={() => applyEffortPreset(e)}
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {e === 0 ? '—' : EFFORT_LABELS[e]}
+                      </Text>
+                      {presetMins != null ? (
+                        <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+                <TouchableOpacity
+                  style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
+                  onPress={openCustomEffort}
+                >
+                  <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
+                    {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
+                  </Text>
+                  <Text style={styles.pillHint}>exact</Text>
+                </TouchableOpacity>
+              </View>
+              {customEffortOpen && (
+                <View style={styles.customEffortRow}>
+                  <TextInput
+                    style={styles.customEffortInput}
+                    value={customEffortText}
+                    onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                  />
+                  <View style={styles.unitToggle}>
+                    {(['min', 'hr'] as const).map(u => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
+                        onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                      >
+                        <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {effortNote ? (
+                <Text style={styles.effortNote}>{effortNote}</Text>
+              ) : null}
             </View>
           </View>
 
@@ -820,6 +950,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           taskTitle={title}
           taskNotes={notes}
           taskEffort={effort}
+          taskEstimatedMinutes={estimatedMinutes}
           onConfirm={(date, segs) => {
             if (date) {
               const noon = new Date(date);
@@ -955,6 +1086,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
+  customEffortRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm,
+  },
+  customEffortInput: {
+    color: colors.text, fontSize: font.md, fontWeight: '600',
+    backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
+    paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+  },
+  unitToggle: { flexDirection: 'row', gap: 4 },
+  unitChip: {
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  unitChipActive: { backgroundColor: colors.bgQuaternary },
+  unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  unitChipTextActive: { color: colors.text, fontWeight: '600' },
+  effortNote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
