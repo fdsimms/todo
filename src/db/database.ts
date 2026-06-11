@@ -87,6 +87,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
     'ALTER TABLE tasks ADD COLUMN category TEXT',
     'ALTER TABLE tasks ADD COLUMN vacation_pause INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE categories ADD COLUMN hide_on_vacation INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -331,6 +332,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleDays: row.schedule_days ? JSON.parse(row.schedule_days as string) as number[] : null,
     scheduleStart: (row.schedule_start as string) ?? null,
     scheduleEnd: (row.schedule_end as string) ?? null,
+    hideOnVacation: Boolean(row.hide_on_vacation),
   };
 }
 
@@ -342,7 +344,11 @@ export function dbGetAllCategories(): Category[] {
 export function dbInsertCategory(name: string): Category {
   const id = generateId();
   db.runSync('INSERT INTO categories (id, name) VALUES (?, ?)', [id, name]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false };
+}
+
+export function dbSetCategoryHideOnVacation(id: string, hide: boolean): void {
+  db.runSync('UPDATE categories SET hide_on_vacation = ? WHERE id = ?', [hide ? 1 : 0, id]);
 }
 
 export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'scheduleDays' | 'scheduleStart' | 'scheduleEnd'>>): void {

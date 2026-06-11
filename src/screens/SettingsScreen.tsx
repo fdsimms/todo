@@ -271,7 +271,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
               </TouchableOpacity>
             </View>
             <Text style={styles.sectionFooter}>
-              While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. Turn it off when you return and streaks will be forgiven automatically.
+              While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically.
             </Text>
           </View>
 
