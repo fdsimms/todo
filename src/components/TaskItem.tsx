@@ -345,13 +345,6 @@ export function TaskItem({
       }),
       overflow: 'hidden',
     }}>
-      {/* Continues the urgency bar from the row down through the expanded
-          panel, so it reads as one strip along the whole card's left edge
-          instead of stopping at the collapsed row's height. Sized against
-          this view's own animated height, so it grows/shrinks in lockstep. */}
-      {task.priority > 0 && (
-        <View style={[styles.priorityBarPanel, { backgroundColor: priorityColor }]} />
-      )}
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
           Top-anchored: the growing card uncovers the content in place, and
@@ -485,6 +478,14 @@ export function TaskItem({
         )}
       </View>
       </View>
+      {/* Continues the urgency bar from the row down through the expanded
+          panel, so it reads as one strip along the whole card's left edge
+          instead of stopping at the collapsed row's height. Sized against
+          this view's own animated height, so it grows/shrinks in lockstep.
+          Rendered last so it draws on top of the panel's opaque background. */}
+      {task.priority > 0 && (
+        <View style={[styles.priorityBarPanel, { backgroundColor: priorityColor }]} />
+      )}
     </Animated.View>
   );
 
