@@ -7,6 +7,7 @@ import {
   isToday,
   isTomorrow,
   isThisWeek,
+  startOfDay,
   differenceInCalendarDays,
 } from 'date-fns';
 import type { Task } from '../types';
@@ -35,6 +36,29 @@ export function getCurrentDayStart(): Date {
   return getDayStart(new Date());
 }
 
+/**
+ * The calendar date of the current logical day — i.e. the date a task needs
+ * to fall on to be visible right now. Normally today's date, but in the
+ * early-morning window before dayResetTime it's still yesterday's date.
+ */
+export function getLogicalToday(dayResetTime?: string): Date {
+  return startOfDay(getDayStart(new Date(), dayResetTime));
+}
+
+export function getLogicalTomorrow(dayResetTime?: string): Date {
+  return addDays(getLogicalToday(dayResetTime), 1);
+}
+
+/**
+ * True during the early-morning window (after midnight, before
+ * dayResetTime) — when "today" by the wall clock is still part of
+ * yesterday's logical day, so "Today"/"Tomorrow" need clarifying with
+ * actual dates.
+ */
+export function isBeforeDayReset(dayResetTime?: string): boolean {
+  return getLogicalToday(dayResetTime).getTime() !== startOfDay(new Date()).getTime();
+}
+
 export function formatDueDate(iso: string): string {
   const d = new Date(iso);
   if (isToday(d)) return 'Today';
@@ -54,12 +78,23 @@ export function formatDeferUntil(iso: string): string {
   return format(d, 'MMM d');
 }
 
+/**
+ * Formats a Later-list section header.
+ *
+ * Dates within the next week (today + 6 days) get their own header, with the
+ * date alongside the relative label so headers remain unambiguous. Dates
+ * further out are batched together by month (with a year suffix when it
+ * differs from the current year) so the list doesn't grow one header per day.
+ */
 export function formatGroupHeader(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return 'Today';
-  if (isTomorrow(d)) return 'Tomorrow';
-  if (isThisWeek(d)) return format(d, 'EEEE');
-  return format(d, 'MMMM d');
+  const diff = differenceInCalendarDays(d, new Date());
+  if (diff < 7) {
+    if (isToday(d)) return `Today · ${format(d, 'MMM d')}`;
+    if (isTomorrow(d)) return `Tomorrow · ${format(d, 'MMM d')}`;
+    return format(d, 'EEEE · MMM d');
+  }
+  return d.getFullYear() === new Date().getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
 }
 
 export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {

@@ -4,25 +4,14 @@ export type Effort = 0 | 1 | 2 | 3 | 4 | 5;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 
-export interface Project {
-  id: string;
-  name: string;
-  notes: string;
-  dueDate: string | null;
-  color: string;
-  order: number;
-  createdAt: string;
-}
-
 export interface Category {
   id: string;
   name: string;
   scheduleDays: number[] | null;   // 0=Sun … 6=Sat, null = no restriction
   scheduleStart: string | null;    // "HH:MM"
   scheduleEnd: string | null;      // "HH:MM"
+  hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
 }
-
-export type ProjectDraft = Omit<Project, 'id' | 'createdAt'>;
 
 export interface CycleItem {
   id: string;
@@ -64,7 +53,6 @@ export interface Task {
   streakDate: string | null; // logical-day ISO string of last completion
 
   parentId: string | null;   // null = root task; set = subtask of that id
-  projectId: string | null;  // null = no project; set = belongs to a project
 
   // Cyclical recurrence — rotates through items on each recurrence
   cycleEnabled: boolean;

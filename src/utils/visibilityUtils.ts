@@ -14,6 +14,26 @@ function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   return t;
 }
 
+// True when the task's category is set to hide while vacation mode is on.
+// Mirrors per-task `vacationPause`: the task is hidden everywhere (Today and Later).
+function isCategoryHiddenOnVacation(category: string | null): boolean {
+  if (!category) return false;
+  if (!useSettingsStore.getState().vacationMode) return false;
+  const cat = useCategoryStore.getState().getCategoryByName(category);
+  return !!cat?.hideOnVacation;
+}
+
+// True when a task is hidden *specifically* because vacation mode is on — either
+// it's individually vacation-paused or it belongs to a category set to hide on
+// vacation. These tasks are absent from both Today and Later; the screens can
+// surface them behind a "show hidden" reveal.
+export function isHiddenForVacation(task: Task): boolean {
+  if (task.completed) return false;
+  if (!useSettingsStore.getState().vacationMode) return false;
+  if (task.vacationPause) return true;
+  return isCategoryHiddenOnVacation(task.category);
+}
+
 function isCategoryScheduleActive(category: string | null): boolean {
   if (!category) return true;
   const cat = useCategoryStore.getState().getCategoryByName(category);
@@ -68,6 +88,8 @@ export function isTaskVisible(task: Task): boolean {
 
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
 
+  if (isCategoryHiddenOnVacation(task.category)) return false;
+
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
@@ -96,6 +118,7 @@ export function isTaskVisible(task: Task): boolean {
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+  if (isCategoryHiddenOnVacation(task.category)) return false;
   return !isTaskVisible(task);
 }
 
@@ -104,6 +127,7 @@ export function isTaskDeferred(task: Task): boolean {
 export function isUpcomingToday(task: Task): boolean {
   if (task.completed || !task.timeOfDay) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+  if (isCategoryHiddenOnVacation(task.category)) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();

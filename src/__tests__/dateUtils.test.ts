@@ -5,6 +5,9 @@ import {
   formatGroupHeader,
   getNextDueDate,
   getStreakDisplay,
+  getLogicalToday,
+  getLogicalTomorrow,
+  isBeforeDayReset,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -39,7 +42,6 @@ const baseTask: Task = {
   recurrenceFromCompletion: false,
   reminderTime: null,
   parentId: null,
-  projectId: null,
   category: null,
   cycleEnabled: false,
   cycleIndex: 0,
@@ -171,21 +173,76 @@ describe('formatGroupHeader', () => {
     jest.useRealTimers();
   });
 
-  it('returns "Today" for today', () => {
-    expect(formatGroupHeader(new Date(2025, 5, 10, 20, 0, 0).toISOString())).toBe('Today');
+  it('returns "Today · MMM d" for today', () => {
+    expect(formatGroupHeader(new Date(2025, 5, 10, 20, 0, 0).toISOString())).toBe('Today · Jun 10');
   });
 
-  it('returns "Tomorrow" for tomorrow', () => {
-    expect(formatGroupHeader(new Date(2025, 5, 11, 8, 0, 0).toISOString())).toBe('Tomorrow');
+  it('returns "Tomorrow · MMM d" for tomorrow', () => {
+    expect(formatGroupHeader(new Date(2025, 5, 11, 8, 0, 0).toISOString())).toBe('Tomorrow · Jun 11');
   });
 
-  it('returns a day name within this week', () => {
-    // June 14 is Saturday — still this week
-    expect(formatGroupHeader(new Date(2025, 5, 14, 8, 0, 0).toISOString())).toBe('Saturday');
+  it('returns "EEEE · MMM d" for a day within the next week', () => {
+    // June 14 is Saturday, 4 days out — within the rolling next-week window
+    expect(formatGroupHeader(new Date(2025, 5, 14, 8, 0, 0).toISOString())).toBe('Saturday · Jun 14');
   });
 
-  it('returns "MMMM d" beyond this week', () => {
-    expect(formatGroupHeader(new Date(2025, 6, 1, 8, 0, 0).toISOString())).toBe('July 1');
+  it('still gives the 6th day out its own header', () => {
+    // June 16 is Monday, 6 days out — last day of the rolling window
+    expect(formatGroupHeader(new Date(2025, 5, 16, 8, 0, 0).toISOString())).toBe('Monday · Jun 16');
+  });
+
+  it('batches dates 7+ days out by month name', () => {
+    // June 17 is 7 days out — first date to be batched
+    expect(formatGroupHeader(new Date(2025, 5, 17, 8, 0, 0).toISOString())).toBe('June');
+    expect(formatGroupHeader(new Date(2025, 6, 1, 8, 0, 0).toISOString())).toBe('July');
+  });
+
+  it('includes the year for batched dates in a different year', () => {
+    expect(formatGroupHeader(new Date(2026, 0, 1, 8, 0, 0).toISOString())).toBe('January 2026');
+  });
+});
+
+// ─── getLogicalToday / getLogicalTomorrow / isBeforeDayReset ─────────────────
+
+describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches the calendar date when well after the reset hour', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+
+    const today = getLogicalToday('02:00');
+    expect(today.getFullYear()).toBe(2025);
+    expect(today.getMonth()).toBe(5);
+    expect(today.getDate()).toBe(10);
+
+    const tomorrow = getLogicalTomorrow('02:00');
+    expect(tomorrow.getDate()).toBe(11);
+
+    expect(isBeforeDayReset('02:00')).toBe(false);
+  });
+
+  it('stays on the previous calendar day during the early-morning grace window', () => {
+    // 1:30 AM on June 11 — before the 2:00 AM reset, so still "June 10" logically
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+    const today = getLogicalToday('02:00');
+    expect(today.getDate()).toBe(10);
+
+    const tomorrow = getLogicalTomorrow('02:00');
+    expect(tomorrow.getDate()).toBe(11);
+
+    expect(isBeforeDayReset('02:00')).toBe(true);
+  });
+
+  it('is never "before reset" when dayResetTime is midnight', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
+
+    expect(isBeforeDayReset('00:00')).toBe(false);
   });
 });
 

@@ -23,7 +23,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface TaskStore {
@@ -68,12 +68,12 @@ interface TaskStore {
   visibleTasks: () => Task[];
   upcomingTodayTasks: () => Task[];
   deferredTasks: () => Task[];
+  vacationHiddenTasks: () => Task[];
   focusedTasks: () => Task[];
   completedTasks: () => Task[];
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
-  tasksByProject: (projectId: string) => Task[];
 }
 
 export const useTaskStore = create<TaskStore>((set, get) => ({
@@ -123,7 +123,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleEnabled: draft.cycleEnabled ?? false,
       cycleIndex: draft.cycleIndex ?? 0,
       cycleItems: draft.cycleItems ?? [],
-      projectId: draft.projectId ?? null,
       vacationPause: draft.vacationPause ?? false,
     };
     dbInsertTask(task);
@@ -361,7 +360,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleEnabled: false,
       cycleIndex: 0,
       cycleItems: [],
-      projectId: null,
       vacationPause: false,
     };
     dbInsertTask(subtask);
@@ -476,6 +474,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
+  vacationHiddenTasks() {
+    return get().tasks
+      .filter(t => !t.parentId && isHiddenForVacation(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
   focusedTasks() {
     const { vacationMode } = useSettingsStore.getState();
     return get().tasks
@@ -543,9 +547,5 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   tasksByCategory(category) {
     return get().tasks.filter(t => !t.completed && !t.parentId && t.category === category);
-  },
-
-  tasksByProject(projectId) {
-    return get().tasks.filter(t => !t.completed && !t.parentId && t.projectId === projectId);
   },
 }));

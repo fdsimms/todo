@@ -57,7 +57,6 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
-  projectId: null,
   vacationPause: false,
   ...overrides,
 });
@@ -201,6 +200,65 @@ describe('suggestTaskAttributes', () => {
     const content = body.messages[0].content as string;
     expect(content).toContain('work');
     expect(content).toContain('Work');
+  });
+
+  it('returns newCategory when the model proposes a name not in availableCategories', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: 'Errands' }),
+    );
+    const result = await suggestTaskAttributes('Renew passport', '', [], ['Work', 'Home']);
+    expect(result.category).toBeNull();
+    expect(result.newCategory).toBe('Errands');
+  });
+
+  it('suppresses newCategory when an existing category was also chosen', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest', { tags: [], effort: 0, category: 'Work', newCategory: 'Errands' }),
+    );
+    const result = await suggestTaskAttributes('task', '', [], ['Work']);
+    expect(result.category).toBe('Work');
+    expect(result.newCategory).toBeNull();
+  });
+
+  it('promotes a case-insensitive collision to the existing category', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: 'work' }),
+    );
+    const result = await suggestTaskAttributes('task', '', [], ['Work']);
+    expect(result.category).toBe('Work');
+    expect(result.newCategory).toBeNull();
+  });
+
+  it('returns null newCategory for a whitespace-only proposal', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: '   ' }),
+    );
+    const result = await suggestTaskAttributes('task', '', [], ['Work']);
+    expect(result.category).toBeNull();
+    expect(result.newCategory).toBeNull();
+  });
+
+  it('returns null newCategory when the field is missing', async () => {
+    mockFetchOnce(
+      toolUseResponse('suggest', { tags: [], effort: 0, category: '' }),
+    );
+    const result = await suggestTaskAttributes('task', '', [], ['Work']);
+    expect(result.newCategory).toBeNull();
+  });
+
+  it('instructs the model to prefer existing categories over inventing one', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '', newCategory: '' })),
+    } as Response);
+
+    await suggestTaskAttributes('task', '', [], ['Work']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('newCategory');
+    expect(content).toContain('Strongly prefer an existing category');
   });
 });
 

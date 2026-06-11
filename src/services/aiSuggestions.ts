@@ -7,6 +7,8 @@ export interface AISuggestions {
   tags: string[];
   effort: Effort;
   category: string | null;
+  /** A brand-new category to propose when none of the existing ones fit; null otherwise. */
+  newCategory: string | null;
 }
 
 export async function suggestTaskAttributes(
@@ -55,16 +57,20 @@ export async function suggestTaskAttributes(
             },
             category: {
               type: 'string',
-              description: 'The single most relevant category from the available list. Empty string if none fit.',
+              description: 'The single most relevant category from the available list. Empty string if none fit — in that case consider proposing newCategory instead.',
+            },
+            newCategory: {
+              type: 'string',
+              description: 'A short (1-2 word) brand-new category to propose ONLY when no available category fits. Must NOT duplicate any available category. Empty string otherwise.',
             },
           },
-          required: ['tags', 'effort', 'category'],
+          required: ['tags', 'effort', 'category', 'newCategory'],
         },
       }],
       tool_choice: { type: 'tool', name: 'suggest' },
       messages: [{
         role: 'user',
-        content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}\n${categoryPart}`,
+        content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}\n${categoryPart}\nStrongly prefer an existing category. Only if none of the existing categories reasonably fit, propose one short new category (1-2 words) matching the user's existing naming style; otherwise leave newCategory blank. Never invent a new category when an existing one fits.`,
       }],
     }),
   });
@@ -74,17 +80,33 @@ export async function suggestTaskAttributes(
   }
 
   const data = await response.json() as {
-    content?: Array<{ type: string; input?: { tags: string[]; effort: number; category: string } }>;
+    content?: Array<{ type: string; input?: { tags: string[]; effort: number; category: string; newCategory?: string } }>;
   };
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   if (!toolUse?.input) throw new Error('No suggestion returned');
 
-  const { tags: rawTags, effort: rawEffort, category: rawCategory } = toolUse.input;
+  const { tags: rawTags, effort: rawEffort, category: rawCategory, newCategory: rawNewCategory } = toolUse.input;
   const suggestedCategory = rawCategory && availableCategories.includes(rawCategory) ? rawCategory : null;
+
+  // A proposed new category only survives when it's genuinely new: trimmed,
+  // non-empty, and no existing category was already chosen. If it collides
+  // (case-insensitively) with an existing category, promote it to that existing
+  // category rather than dropping a real match to a casing mismatch.
+  const trimmedNew = (rawNewCategory ?? '').trim();
+  const existingMatch = trimmedNew
+    ? availableCategories.find(c => c.toLowerCase() === trimmedNew.toLowerCase()) ?? null
+    : null;
+  const category = suggestedCategory ?? existingMatch;
+  const newCategory =
+    category === null && trimmedNew.length > 0 && existingMatch === null
+      ? trimmedNew
+      : null;
+
   return {
     tags: (rawTags ?? []).filter(t => availableTags.includes(t)),
     effort: Math.max(0, Math.min(5, rawEffort ?? 0)) as Effort,
-    category: suggestedCategory,
+    category,
+    newCategory,
   };
 }
 

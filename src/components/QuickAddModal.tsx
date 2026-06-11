@@ -26,9 +26,11 @@ import type { Priority, Effort, TimeOfDay } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
 import { tagColor } from '../utils/tagColor';
-import { format, addDays, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
+import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import type { TaskDraft } from './TaskEditor';
 
 interface Props {
@@ -42,9 +44,11 @@ type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | null;
 
 export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addTask = useTaskStore(s => s.addTask);
+  const addCategory = useTaskStore(s => s.addCategory);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -77,6 +81,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
@@ -87,7 +92,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setCustomEffortText('');
       setEffortNote(null);
       setEffortAiLoading(false);
-      setDueDate(startOfDay(new Date()));
+      setDueDate(getLogicalToday(dayResetTime));
       setTimeSegments([]);
       setTags([]);
       setCategory(null);
@@ -95,6 +100,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setActivePanel(null);
       setWhenPickerVisible(false);
       setAiLoading(false);
+      setPendingCategory(null);
       scaleAnim.setValue(0.95);
       sheetOpacity.setValue(0);
       backdropOpacity.setValue(0);
@@ -163,6 +169,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       if (result.effort > 0 && effort === 0) { setEffort(result.effort); setEstimatedMinutes(EFFORT_MINUTES[result.effort]); }
       if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
       if (result.category && !category) setCategory(result.category);
+      else if (result.newCategory && !category) setPendingCategory(result.newCategory);
     } catch {
       // silent fail
     } finally {
@@ -223,8 +230,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
   const formatDate = (d: Date) => {
-    const today = startOfDay(new Date());
-    const tomorrow = addDays(today, 1);
+    const today = getLogicalToday(dayResetTime);
+    const tomorrow = getLogicalTomorrow(dayResetTime);
     if (d.toDateString() === today.toDateString()) return 'Today';
     if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
     return format(d, 'MMM d');
@@ -569,6 +576,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           setWhenPickerVisible(false);
         }}
         onCancel={() => setWhenPickerVisible(false)}
+      />
+      <SuggestedCategorySheet
+        visible={pendingCategory !== null}
+        categoryName={pendingCategory ?? ''}
+        onConfirm={() => {
+          if (pendingCategory) {
+            addCategory(pendingCategory);
+            setCategory(pendingCategory);
+            haptics.success();
+          }
+          setPendingCategory(null);
+        }}
+        onDismiss={() => setPendingCategory(null)}
       />
     </Modal>
 

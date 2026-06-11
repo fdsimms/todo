@@ -248,6 +248,7 @@ export function CategoriesScreen() {
   const deleteCategory = useTaskStore(s => s.deleteCategory);
   const allTasks = useTaskStore(s => s.tasks);
   const categories = useCategoryStore(useShallow(s => s.categories));
+  const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -370,6 +371,14 @@ export function CategoriesScreen() {
             const catObj = getCategoryObj(cat);
             const scheduleLabel = catObj ? formatScheduleLabel(catObj) : null;
             const hasSchedule = !!scheduleLabel;
+            const hideOnVacation = !!catObj?.hideOnVacation;
+            const hint = [scheduleLabel, hideOnVacation ? 'Hidden on vacation' : null]
+              .filter(Boolean)
+              .join(' · ');
+            const toggleVacation = () => {
+              haptics.tap();
+              setCategoryHideOnVacation(cat, !hideOnVacation);
+            };
             return (
               <TouchableOpacity
                 style={styles.catRow}
@@ -384,11 +393,23 @@ export function CategoriesScreen() {
                 </View>
                 <View style={styles.catInfo}>
                   <Text style={styles.catName}>{cat}</Text>
-                  {scheduleLabel && (
-                    <Text style={styles.scheduleHint} numberOfLines={1}>{scheduleLabel}</Text>
+                  {hint.length > 0 && (
+                    <Text style={styles.scheduleHint} numberOfLines={1}>{hint}</Text>
                   )}
                 </View>
                 <Text style={styles.catCount}>{count}</Text>
+                <TouchableOpacity
+                  onPress={toggleVacation}
+                  style={styles.scheduleButton}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={hideOnVacation ? 'airplane' : 'airplane-outline'}
+                    size={16}
+                    color={hideOnVacation ? colors.accent : colors.textTertiary}
+                  />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setScheduleCategory(cat)}
                   style={styles.scheduleButton}
@@ -486,12 +507,14 @@ export function CategoriesScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setScheduleCategory(null)}
       >
-        {scheduleCategory !== null && (
-          <CategoryScheduleEditor
-            category={scheduleCategory}
-            onClose={() => setScheduleCategory(null)}
-          />
-        )}
+        <View style={{ flex: 1, backgroundColor: colors.bg }}>
+          {scheduleCategory !== null && (
+            <CategoryScheduleEditor
+              category={scheduleCategory}
+              onClose={() => setScheduleCategory(null)}
+            />
+          )}
+        </View>
       </Modal>
 
       <TaskEditor

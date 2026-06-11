@@ -10,6 +10,14 @@ import {
   Alert,
   Keyboard,
 } from 'react-native';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  interpolate,
+  Easing,
+  Extrapolation,
+} from 'react-native-reanimated';
 import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import type { Task } from '../types';
@@ -35,10 +43,10 @@ interface Props {
   isActive?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
-  onLongPress?: () => void;
   onSelect?: () => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
+  showCategory?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -73,10 +81,10 @@ export function TaskItem({
   isActive = false,
   selectionMode = false,
   selected = false,
-  onLongPress,
   onSelect,
   spotlightDisabled = false,
   hideTodayLabel = false,
+  showCategory = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -99,22 +107,35 @@ export function TaskItem({
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
-  const expansionAnim = useRef(new Animated.Value(expanded ? 1 : 0)).current;
+  // Reanimated (UI-thread) shared value drives the expand/collapse. The panel
+  // animates `height`, which forces a re-layout of every row below it on each
+  // frame — doing that from a JS-thread Animated.Value stutters once the list
+  // is long and the JS thread is busy, which is what made the collapse read as
+  // two discrete steps. Running it on the UI thread keeps it smooth regardless
+  // of how many tasks sit below.
+  const expansionProgress = useSharedValue(expanded ? 1 : 0);
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
-    // Timing rather than a spring: this drives `height` on the JS thread and
-    // re-lays-out every row below it each frame. A spring is underdamped, so it
-    // oscillates around the target and overshoots past 0 on collapse (clamped
-    // by the height interpolation), which reads as a jitter at the end of the
-    // animation — worse the more tasks are below it. Timing settles cleanly.
-    Animated.timing(expansionAnim, {
-      toValue: expanded ? 1 : 0,
+    // Timing rather than a spring: a spring is underdamped, so it overshoots
+    // past 0 on collapse (clamped by the height interpolation), which reads as
+    // a jitter at the end. inOut easing accelerates and decelerates so the
+    // height change settles as one continuous motion.
+    expansionProgress.value = withTiming(expanded ? 1 : 0, {
       duration: animation.duration.normal,
-      useNativeDriver: false,
-    }).start();
+      easing: Easing.inOut(Easing.cubic),
+    });
   }, [expanded]);
+
+  // Height interpolates to the measured panel height; opacity fades only in the
+  // first sliver next to the closed state, so the bulk of the motion is a clean
+  // height change rather than a half-duration cross-fade overlapping the shrink
+  // (the latter is what made collapse look like two separate phases).
+  const expandedPanelStyle = useAnimatedStyle(() => ({
+    height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight], Extrapolation.CLAMP),
+    opacity: interpolate(expansionProgress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
+  }));
 
   useEffect(() => {
     Animated.timing(dimAnim, {
@@ -277,7 +298,7 @@ export function TaskItem({
       <TouchableOpacity
         style={styles.content}
         onPress={selectionMode ? onSelect : onPress}
-        onLongPress={drag ?? onLongPress}
+        onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
       >
@@ -314,6 +335,12 @@ export function TaskItem({
             )}
           </View>
         )}
+        {showCategory && task.category && (
+          <View style={styles.categoryRow}>
+            <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       {!selectionMode && (
@@ -337,30 +364,7 @@ export function TaskItem({
   );
 
   const expandedPanel = (
-    <Animated.View style={{
-      // Animate to the measured content height — animating to an arbitrary
-      // cap makes the motion finish (or stall) long before the spring does.
-      height: expansionAnim.interpolate({
-        inputRange: [0, 1],
-        outputRange: [0, panelHeight],
-        extrapolate: 'clamp',
-      }),
-      // Fade in over the first half of the expansion, out over the last half
-      // of the collapse.
-      opacity: expansionAnim.interpolate({
-        inputRange: [0, 0.5, 1],
-        outputRange: [0, 1, 1],
-        extrapolate: 'clamp',
-      }),
-      overflow: 'hidden',
-    }}>
-      {/* Continues the urgency bar from the row down through the expanded
-          panel, so it reads as one strip along the whole card's left edge
-          instead of stopping at the collapsed row's height. Sized against
-          this view's own animated height, so it grows/shrinks in lockstep. */}
-      {task.priority > 0 && (
-        <View style={[styles.priorityBarPanel, { backgroundColor: priorityColor }]} />
-      )}
+    <Reanimated.View style={[expandedPanelStyle, styles.expandedPanelClip]}>
       {/* Absolutely positioned so it always lays out at natural height for
           measurement, independent of the animated clipping height above.
           Top-anchored: the growing card uncovers the content in place, and
@@ -494,7 +498,15 @@ export function TaskItem({
         )}
       </View>
       </View>
-    </Animated.View>
+      {/* Continues the urgency bar from the row down through the expanded
+          panel, so it reads as one strip along the whole card's left edge
+          instead of stopping at the collapsed row's height. Sized against
+          this view's own animated height, so it grows/shrinks in lockstep.
+          Rendered last so it draws on top of the panel's opaque background. */}
+      {task.priority > 0 && (
+        <View style={[styles.priorityBarPanel, { backgroundColor: priorityColor }]} />
+      )}
+    </Reanimated.View>
   );
 
   return (
@@ -684,6 +696,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleFlex: {
     flexShrink: 1,
   },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  categoryLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
   starBtn: {
     padding: 4,
   },
@@ -704,6 +725,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 5,
     borderTopLeftRadius: radius.md,
     borderBottomLeftRadius: radius.md,
+  },
+  expandedPanelClip: {
+    overflow: 'hidden',
   },
   panelMeasure: {
     position: 'absolute',
