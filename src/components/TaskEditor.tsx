@@ -16,6 +16,7 @@ import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
+import { WeekdaySelector } from './WeekdaySelector';
 import { format } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -43,6 +44,10 @@ export interface TaskDraft {
   timeSegments: TimeOfDay[];
   tags: string[];
   category: string | null;
+  recurrenceType: RecurrenceType;
+  recurrenceInterval: number;
+  recurrenceDays: number[];
+  recurrenceFromCompletion: boolean;
 }
 
 interface Props {
@@ -54,7 +59,7 @@ interface Props {
 
 type PickerMode = 'none' | 'reminder';
 
-const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
+export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
   daily: 'Daily',
   weekly: 'Weekly',
@@ -91,6 +96,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
@@ -135,6 +141,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
+      setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
@@ -143,7 +150,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setDeferUntil(null); setReminderTime(null);
-      setRecurrenceType('none'); setRecurrenceInterval(1); setRecurrenceFromCompletion(false);
+      setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
+      setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
+      setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
@@ -164,9 +173,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
-      recurrenceType: task?.recurrenceType ?? 'none',
-      recurrenceInterval: task?.recurrenceInterval ?? 1,
-      recurrenceFromCompletion: task?.recurrenceFromCompletion ?? false,
+      recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
+      recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
+      recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
+      recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
@@ -186,7 +196,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timeSegments, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
-      recurrenceDays: task?.recurrenceDays ?? [],
+      recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
       recurrenceEndDate: null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
@@ -238,8 +248,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       dueDate: dueDate?.toISOString() ?? null,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
-      recurrenceType, recurrenceInterval, recurrenceFromCompletion,
-      priority, effort, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
+      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
+      priority, effort, estimatedMinutes, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -916,6 +926,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </TouchableOpacity>
                   <Text style={styles.intervalLabel}>{RECURRENCE_LABELS[recurrenceType].toLowerCase()}</Text>
                 </View>
+                {recurrenceType === 'weekly' && (
+                  <View style={styles.weekdayRow}>
+                    <WeekdaySelector value={recurrenceDays} onChange={setRecurrenceDays} />
+                  </View>
+                )}
                 <View style={styles.scheduleRow}>
                   <TouchableOpacity
                     style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
@@ -1149,6 +1164,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   intervalLabel: { color: colors.textSecondary, fontSize: font.sm },
+  weekdayRow: {
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
   scheduleRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
