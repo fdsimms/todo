@@ -22,16 +22,18 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay } from '../types';
+import type { Priority, Effort, TimeOfDay, RecurrenceType } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
+import { WeekdaySelector } from './WeekdaySelector';
+import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import type { TaskDraft } from './TaskEditor';
+import { RECURRENCE_LABELS, type TaskDraft } from './TaskEditor';
 
 interface Props {
   visible: boolean;
@@ -39,7 +41,15 @@ interface Props {
   onOpenFull: (draft: TaskDraft) => void;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | null;
+
+// Singular/plural units for the interval stepper ("Every 2 weeks").
+const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]> = {
+  daily: ['day', 'days'],
+  weekly: ['week', 'weeks'],
+  monthly: ['month', 'months'],
+  yearly: ['year', 'years'],
+};
 
 
 export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
@@ -79,6 +89,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  // Natural-language parse bookkeeping: manual edits beat the parse, and a
+  // dismissed phrase stays dismissed while the user keeps typing it.
+  const [dateManuallySet, setDateManuallySet] = useState(false);
+  const [recurrenceManuallySet, setRecurrenceManuallySet] = useState(false);
+  const [dismissedMatch, setDismissedMatch] = useState<string | null>(null);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
@@ -98,6 +117,13 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setCategory(null);
       setTagInput('');
       setActivePanel(null);
+      setRecurrenceType('none');
+      setRecurrenceInterval(1);
+      setRecurrenceDays([]);
+      setRecurrenceFromCompletion(false);
+      setDateManuallySet(false);
+      setRecurrenceManuallySet(false);
+      setDismissedMatch(null);
       setWhenPickerVisible(false);
       setAiLoading(false);
       setPendingCategory(null);
@@ -113,12 +139,59 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     }
   }, [visible]);
 
+  // Natural-language scheduling: detect a trailing date/recurrence phrase
+  // in the title ("go for a run on tuesday", "water plants every 3 days").
+  const parsed = useMemo(() => (title.trim() ? parseTaskInput(title) : null), [title]);
+  const parseDismissed =
+    parsed != null &&
+    dismissedMatch != null &&
+    (parsed.matchedText.startsWith(dismissedMatch) || dismissedMatch.startsWith(parsed.matchedText));
+  const parseActive = parsed != null && !parseDismissed;
+  // Invariant: chip visible ⇔ the phrase is stripped from the title on submit.
+  // Once manual edits override everything the parse controls, it's inert.
+  const chipVisible =
+    parseActive &&
+    (!dateManuallySet || (parsed!.schedule.recurrenceType !== 'none' && !recurrenceManuallySet));
+
+  useEffect(() => {
+    if (!visible) return;
+    if (!dateManuallySet) {
+      if (parseActive && parsed) {
+        setDueDate(parsed.schedule.dueDate);
+        setTimeSegments(parsed.schedule.timeSegments);
+      } else {
+        setDueDate(getLogicalToday(dayResetTime));
+        setTimeSegments([]);
+      }
+    }
+    if (!recurrenceManuallySet) {
+      if (parseActive && parsed) {
+        setRecurrenceType(parsed.schedule.recurrenceType);
+        setRecurrenceInterval(parsed.schedule.recurrenceInterval);
+        setRecurrenceDays(parsed.schedule.recurrenceDays);
+      } else {
+        setRecurrenceType('none');
+        setRecurrenceInterval(1);
+        setRecurrenceDays([]);
+      }
+    }
+  }, [parsed, parseActive]);
+
+  const dismissParse = () => {
+    if (!parsed) return;
+    haptics.tap();
+    animateLayout();
+    setDismissedMatch(parsed.matchedText);
+  };
+
+  const effectiveTitle = (chipVisible && parsed ? parsed.cleanTitle : title).trim();
+
   const handleAdd = () => {
-    if (!title.trim()) return;
+    if (!effectiveTitle) return;
     haptics.success();
     animateLayout();
     addTask({
-      title: title.trim(),
+      title: effectiveTitle,
       priority,
       effort,
       estimatedMinutes,
@@ -126,12 +199,29 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       timeSegments,
       tags,
       category,
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      recurrenceFromCompletion,
     });
     dismiss();
   };
 
   const handleOpenFull = () => {
-    onOpenFull({ title, priority, effort, estimatedMinutes, dueDate, timeSegments, tags, category });
+    onOpenFull({
+      title: effectiveTitle,
+      priority,
+      effort,
+      estimatedMinutes,
+      dueDate,
+      timeSegments,
+      tags,
+      category,
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      recurrenceFromCompletion,
+    });
   };
 
   const togglePanel = (panel: ActivePanel) => {
@@ -284,6 +374,23 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             </TouchableOpacity>
           </View>
 
+          {/* Parsed schedule chip */}
+          {chipVisible && parsed && (
+            <View style={styles.parseRow}>
+              <View style={styles.parseChip}>
+                <Ionicons
+                  name={parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+                  size={13}
+                  color={colors.accent}
+                />
+                <Text style={styles.parseChipText}>{describeSchedule(parsed.schedule)}</Text>
+                <TouchableOpacity onPress={dismissParse} hitSlop={8}>
+                  <Ionicons name="close" size={13} color={colors.accent} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           {/* Attribute toolbar */}
           <View style={styles.toolbar}>
             {/* Due date chip */}
@@ -299,6 +406,22 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               />
               <Text style={[styles.toolChipText, dueDate != null && styles.toolChipTextSet]}>
                 {dueDate ? formatDate(dueDate) : 'Date'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Repeat chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'repeat' && styles.toolChipActive, recurrenceType !== 'none' && styles.toolChipSet]}
+              onPress={() => togglePanel('repeat')}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <Ionicons
+                name="repeat"
+                size={13}
+                color={recurrenceType !== 'none' ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, recurrenceType !== 'none' && styles.toolChipTextSet]}>
+                {recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : 'Repeat'}
               </Text>
             </TouchableOpacity>
 
@@ -408,6 +531,99 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                   </TouchableOpacity>
                 ))}
               </View>
+            </View>
+          )}
+
+          {activePanel === 'repeat' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {(['none', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(t => (
+                  <TouchableOpacity
+                    key={t}
+                    style={[styles.presetChip, recurrenceType === t && styles.presetChipActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceType(t);
+                      setRecurrenceManuallySet(true);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.presetChipText, recurrenceType === t && styles.presetChipTextActive]}>
+                      {RECURRENCE_LABELS[t]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              {recurrenceType !== 'none' && (
+                <View style={styles.intervalRow}>
+                  <Text style={styles.intervalLabel}>Every</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceInterval(Math.max(1, recurrenceInterval - 1));
+                      setRecurrenceManuallySet(true);
+                    }}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceInterval(recurrenceInterval + 1);
+                      setRecurrenceManuallySet(true);
+                    }}
+                  >
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalLabel}>
+                    {RECURRENCE_UNITS[recurrenceType][recurrenceInterval === 1 ? 0 : 1]}
+                  </Text>
+                </View>
+              )}
+              {recurrenceType === 'weekly' && (
+                <View style={styles.weekdayRow}>
+                  <WeekdaySelector
+                    value={recurrenceDays}
+                    onChange={days => {
+                      setRecurrenceDays(days);
+                      setRecurrenceManuallySet(true);
+                    }}
+                  />
+                </View>
+              )}
+              {recurrenceType !== 'none' && (
+                <View style={styles.scheduleRow}>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceFromCompletion(false);
+                      setRecurrenceManuallySet(true);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.schedulePillText, !recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      On schedule
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceFromCompletion(true);
+                      setRecurrenceManuallySet(true);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      After completion
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           )}
 
@@ -568,11 +784,13 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         onConfirm={(date, segs) => {
           setDueDate(date);
           setTimeSegments(segs);
+          setDateManuallySet(true);
           setWhenPickerVisible(false);
         }}
         onClear={() => {
           setDueDate(null);
           setTimeSegments([]);
+          setDateManuallySet(true);
           setWhenPickerVisible(false);
         }}
         onCancel={() => setWhenPickerVisible(false)}
@@ -666,6 +884,74 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
+  },
+  parseRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  parseChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent + '22',
+  },
+  parseChipText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  intervalLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  intervalBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  intervalValue: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  weekdayRow: {
+    marginTop: spacing.sm,
+  },
+  scheduleRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  schedulePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  schedulePillActive: {
+    backgroundColor: colors.accent,
+  },
+  schedulePillText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  schedulePillTextActive: {
+    color: colors.onAccent,
   },
   panel: {
     marginBottom: spacing.sm,

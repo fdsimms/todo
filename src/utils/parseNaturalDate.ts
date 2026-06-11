@@ -30,7 +30,7 @@ import {
  * can fall back to the date picker.
  */
 
-const WEEKDAYS: Record<string, Day> = {
+export const WEEKDAYS: Record<string, Day> = {
   sunday: 0, sun: 0,
   monday: 1, mon: 1,
   tuesday: 2, tue: 2, tues: 2,
@@ -65,7 +65,7 @@ const DAY_PARTS: Record<string, number> = {
 
 const DEFAULT_HOUR = 9; // applied to date-only input ("tomorrow", "next monday")
 
-interface TimeOfDay {
+export interface ClockTime {
   h: number;
   m: number;
 }
@@ -75,14 +75,14 @@ function atTime(date: Date, h: number, m: number): Date {
 }
 
 /** Remove a regex match from a string and tidy up whitespace. */
-function strip(text: string, match: RegExpMatchArray): string {
+export function strip(text: string, match: RegExpMatchArray): string {
   return (text.slice(0, match.index) + text.slice(match.index! + match[0].length))
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 /** Pull a clock time ("3pm", "3:30pm", "15:00", "noon", "midnight") out of the text. */
-function extractTime(text: string): { time: TimeOfDay; rest: string } | null {
+export function extractTime(text: string): { time: ClockTime; rest: string } | null {
   let m: RegExpMatchArray | null;
 
   if ((m = text.match(/\bnoon\b/))) return { time: { h: 12, m: 0 }, rest: strip(text, m) };
@@ -111,13 +111,13 @@ function extractTime(text: string): { time: TimeOfDay; rest: string } | null {
 }
 
 /** Pull a named day-part ("morning", "evening", …) out of the text. */
-function extractDayPart(text: string): { time: TimeOfDay; rest: string } | null {
+export function extractDayPart(text: string): { time: ClockTime; rest: string; part: string } | null {
   const m = text.match(/\b(morning|afternoon|evening|night)\b/);
   if (!m) return null;
-  return { time: { h: DAY_PARTS[m[1]], m: 0 }, rest: strip(text, m) };
+  return { time: { h: DAY_PARTS[m[1]], m: 0 }, rest: strip(text, m), part: m[1] };
 }
 
-interface DatePart {
+export interface DatePart {
   date: Date; // at start-of-day unless explicitTime is true
   explicitTime: boolean;
 }
@@ -144,7 +144,7 @@ function monthDay(month: number, day: number, year: number | null, now: Date): D
   return { date, explicitTime: false };
 }
 
-function parseDatePart(input: string, now: Date): DatePart | null {
+export function parseDatePart(input: string, now: Date): DatePart | null {
   const text = input.trim();
   if (text === '') return null;
 
@@ -253,7 +253,7 @@ export function parseNaturalDate(input: string, now: Date = new Date()): Date | 
   if (!text) return null;
 
   // Peel off a time-of-day first, so what's left is purely the date phrase.
-  let time: TimeOfDay | null = null;
+  let time: ClockTime | null = null;
   const clock = extractTime(text);
   if (clock) {
     time = clock.time;
