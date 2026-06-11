@@ -97,7 +97,6 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
-  projectId: null,
   ...overrides,
 });
 
@@ -775,20 +774,5 @@ describe('tasksByTag', () => {
     });
     const tagged = useTaskStore.getState().tasksByTag('work');
     expect(tagged.map(t => t.id)).toEqual(['a']);
-  });
-});
-
-describe('tasksByProject', () => {
-  it('returns non-completed, non-subtask tasks for the given project', () => {
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 'a', projectId: 'proj-1' }),
-        makeTask({ id: 'b', projectId: 'proj-2' }),
-        makeTask({ id: 'c', projectId: 'proj-1', completed: true, completedAt: 'now' }),
-        makeTask({ id: 'd', projectId: 'proj-1', parentId: 'a' }),
-      ],
-    });
-    const tasks = useTaskStore.getState().tasksByProject('proj-1');
-    expect(tasks.map(t => t.id)).toEqual(['a']);
   });
 });

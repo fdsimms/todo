@@ -62,7 +62,6 @@ const baseTask: Task = {
   recurrenceFromCompletion: false,
   reminderTime: null,
   parentId: null,
-  projectId: null,
   category: null,
   cycleEnabled: false,
   cycleIndex: 0,

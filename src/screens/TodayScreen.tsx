@@ -139,11 +139,11 @@ export function TodayScreen() {
     }
   };
 
-  const enterSelection = (id: string) => {
+  const enterSelectionMode = () => {
     haptics.impactHeavy();
     animateLayout();
     setSelectionMode(true);
-    setSelectedIds(new Set([id]));
+    setSelectedIds(new Set());
     setExpandedTaskId(null);
   };
 
@@ -346,7 +346,6 @@ export function TodayScreen() {
         isActive={isActive}
         selectionMode={selectionMode}
         selected={selectedIds.has(item.task.id)}
-        onLongPress={() => enterSelection(item.task.id)}
         onSelect={() => toggleSelection(item.task.id)}
         hideTodayLabel
       />
@@ -395,6 +394,11 @@ export function TodayScreen() {
   }, [laterData]);
 
   const headerActions: ScreenHeaderAction[] = [
+    {
+      icon: 'checkmark-circle-outline',
+      onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+      active: selectionMode,
+    },
     ...(viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0
       ? [{
           icon: 'time-outline' as const,
@@ -500,7 +504,6 @@ export function TodayScreen() {
                 isActive={isActive}
                 selectionMode={selectionMode}
                 selected={selectedIds.has(item.task.id)}
-                onLongPress={() => enterSelection(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
                 hideTodayLabel
               />

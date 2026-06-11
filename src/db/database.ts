@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Project, Category, TimeOfDay } from '../types';
+import type { Task, Category, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
@@ -51,16 +51,6 @@ export function initDatabase(): void {
       value TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY NOT NULL,
-      name TEXT NOT NULL DEFAULT '',
-      notes TEXT NOT NULL DEFAULT '',
-      due_date TEXT,
-      color TEXT NOT NULL DEFAULT '#0A84FF',
-      sort_order REAL NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS categories (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL UNIQUE,
@@ -83,7 +73,6 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN cycle_enabled INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN cycle_index INTEGER NOT NULL DEFAULT 0',
     "ALTER TABLE tasks ADD COLUMN cycle_items TEXT NOT NULL DEFAULT '[]'",
-    'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE tasks ADD COLUMN time_of_day TEXT',
     'ALTER TABLE tasks ADD COLUMN category TEXT',
     'ALTER TABLE tasks ADD COLUMN vacation_pause INTEGER NOT NULL DEFAULT 0',
@@ -145,7 +134,6 @@ function rowToTask(row: Record<string, unknown>): Task {
     cycleEnabled: Boolean(row.cycle_enabled),
     cycleIndex: (row.cycle_index as number) ?? 0,
     cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
-    projectId: (row.project_id as string) ?? null,
     vacationPause: Boolean(row.vacation_pause),
   };
 }
@@ -164,8 +152,8 @@ export function dbInsertTask(task: Task): void {
       due_date, defer_until, time_of_day,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, streak_count, streak_date, parent_id, reminder_time,
-      cycle_enabled, cycle_index, cycle_items, project_id, vacation_pause
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, vacation_pause
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -176,7 +164,7 @@ export function dbInsertTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null, task.vacationPause ? 1 : 0,
+      task.vacationPause ? 1 : 0,
     ]
   );
 }
@@ -189,7 +177,7 @@ export function dbUpdateTask(task: Task): void {
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
-      cycle_enabled=?, cycle_index=?, cycle_items=?, project_id=?, vacation_pause=?
+      cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -201,7 +189,7 @@ export function dbUpdateTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.projectId ?? null, task.vacationPause ? 1 : 0,
+      task.vacationPause ? 1 : 0,
       task.id,
     ]
   );
@@ -360,52 +348,4 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 export function dbDeleteCategory(name: string): void {
   db.runSync('DELETE FROM categories WHERE name = ?', [name]);
   db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
-}
-
-// ─── Projects ─────────────────────────────────────────────────────────────────
-
-function rowToProject(row: Record<string, unknown>): Project {
-  return {
-    id: row.id as string,
-    name: row.name as string,
-    notes: row.notes as string,
-    dueDate: (row.due_date as string) ?? null,
-    color: row.color as string,
-    order: row.sort_order as number,
-    createdAt: row.created_at as string,
-  };
-}
-
-export function dbGetAllProjects(): Project[] {
-  const rows = db.getAllSync<Record<string, unknown>>(
-    'SELECT * FROM projects ORDER BY sort_order ASC, created_at ASC'
-  );
-  return rows.map(rowToProject);
-}
-
-export function dbInsertProject(project: Project): void {
-  db.runSync(
-    'INSERT INTO projects (id, name, notes, due_date, color, sort_order, created_at) VALUES (?,?,?,?,?,?,?)',
-    [project.id, project.name, project.notes, project.dueDate, project.color, project.order, project.createdAt]
-  );
-}
-
-export function dbUpdateProject(project: Project): void {
-  db.runSync(
-    'UPDATE projects SET name=?, notes=?, due_date=?, color=?, sort_order=? WHERE id=?',
-    [project.name, project.notes, project.dueDate, project.color, project.order, project.id]
-  );
-}
-
-export function dbDeleteProject(id: string): void {
-  db.runSync('DELETE FROM projects WHERE id = ?', [id]);
-  db.runSync('UPDATE tasks SET project_id = NULL WHERE project_id = ?', [id]);
-}
-
-export function dbBatchUpdateProjectOrders(updates: { id: string; order: number }[]): void {
-  db.withTransactionSync(() => {
-    for (const { id, order } of updates) {
-      db.runSync('UPDATE projects SET sort_order = ? WHERE id = ?', [order, id]);
-    }
-  });
 }

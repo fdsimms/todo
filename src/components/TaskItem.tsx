@@ -35,7 +35,6 @@ interface Props {
   isActive?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
-  onLongPress?: () => void;
   onSelect?: () => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
@@ -73,7 +72,6 @@ export function TaskItem({
   isActive = false,
   selectionMode = false,
   selected = false,
-  onLongPress,
   onSelect,
   spotlightDisabled = false,
   hideTodayLabel = false,
@@ -277,7 +275,7 @@ export function TaskItem({
       <TouchableOpacity
         style={styles.content}
         onPress={selectionMode ? onSelect : onPress}
-        onLongPress={drag ?? onLongPress}
+        onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
       >

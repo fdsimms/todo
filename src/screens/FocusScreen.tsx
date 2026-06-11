@@ -50,11 +50,11 @@ export function FocusScreen() {
     setEditorVisible(true);
   };
 
-  const enterSelection = (id: string) => {
+  const enterSelectionMode = () => {
     haptics.impactHeavy();
     animateLayout();
     setSelectionMode(true);
-    setSelectedIds(new Set([id]));
+    setSelectedIds(new Set());
     setExpandedTaskId(null);
   };
 
@@ -77,6 +77,11 @@ export function FocusScreen() {
       <ScreenHeader
         title="Focus"
         subtitle={focusedTasks.length > 0 ? `${focusedTasks.length} task${focusedTasks.length !== 1 ? 's' : ''}` : undefined}
+        actions={[{
+          icon: 'checkmark-circle-outline',
+          onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+          active: selectionMode,
+        }]}
         right={
           <>
             {focusedTasks.length > 0 && (
@@ -156,7 +161,6 @@ export function FocusScreen() {
                     isActive={isActive}
                     selectionMode={selectionMode}
                     selected={selectedIds.has(item.id)}
-                    onLongPress={() => enterSelection(item.id)}
                     onSelect={() => toggleSelection(item.id)}
                   />
                 </ScaleDecorator>
