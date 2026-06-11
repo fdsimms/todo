@@ -189,6 +189,7 @@ export function LaterScreen() {
                 selectionMode={selectionMode}
                 selected={selectedIds.has(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
+                showCategory
               />
             );
           }}

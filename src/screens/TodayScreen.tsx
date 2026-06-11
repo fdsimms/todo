@@ -506,6 +506,7 @@ export function TodayScreen() {
                 selected={selectedIds.has(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
                 hideTodayLabel
+                showCategory
               />
             );
           }}

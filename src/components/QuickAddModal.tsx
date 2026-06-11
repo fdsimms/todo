@@ -26,7 +26,8 @@ import type { Priority, Effort, TimeOfDay } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
 import { tagColor } from '../utils/tagColor';
-import { format, addDays, startOfDay } from 'date-fns';
+import { format } from 'date-fns';
+import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { suggestTaskAttributes } from '../services/aiSuggestions';
 import type { TaskDraft } from './TaskEditor';
 
@@ -44,6 +45,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -78,7 +80,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setTitle('');
       setPriority(0);
       setEffort(0);
-      setDueDate(startOfDay(new Date()));
+      setDueDate(getLogicalToday(dayResetTime));
       setTimeSegments([]);
       setTags([]);
       setCategory(null);
@@ -163,8 +165,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
   const formatDate = (d: Date) => {
-    const today = startOfDay(new Date());
-    const tomorrow = addDays(today, 1);
+    const today = getLogicalToday(dayResetTime);
+    const tomorrow = getLogicalTomorrow(dayResetTime);
     if (d.toDateString() === today.toDateString()) return 'Today';
     if (d.toDateString() === tomorrow.toDateString()) return 'Tomorrow';
     return format(d, 'MMM d');

@@ -12,12 +12,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import {
   startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  addMonths, subMonths, isSameMonth, isSameDay, isToday,
-  format, addDays, startOfDay,
+  addMonths, subMonths, isSameMonth, isSameDay,
+  format, addDays,
 } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { getLogicalToday, getLogicalTomorrow, isBeforeDayReset } from '../utils/dateUtils';
 import type { TimeOfDay, Effort } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -85,6 +86,7 @@ export function WhenPicker({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
@@ -98,9 +100,10 @@ export function WhenPicker({
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const today = useMemo(() => startOfDay(new Date()), [visible]);
-  const tomorrow = useMemo(() => startOfDay(addDays(new Date(), 1)), [visible]);
+  const today = useMemo(() => getLogicalToday(dayResetTime), [visible, dayResetTime]);
+  const tomorrow = useMemo(() => getLogicalTomorrow(dayResetTime), [visible, dayResetTime]);
   const tomorrowKey = dayKey(tomorrow);
+  const dateClarification = useMemo(() => isBeforeDayReset(dayResetTime), [visible, dayResetTime]);
 
   useEffect(() => {
     if (visible) {
@@ -144,7 +147,7 @@ export function WhenPicker({
   };
 
   const handleDayPress = (day: Date) => {
-    confirmWithFeedback(noonOf(day), isToday(day) ? 'today' : dayKey(day));
+    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKey(day));
   };
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
@@ -239,7 +242,7 @@ export function WhenPicker({
                 colors={colors}
                 icon="star"
                 iconColor="#FFD60A"
-                label="Today"
+                label={dateClarification ? `Today · ${format(today, 'MMM d')}` : 'Today'}
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
                 onPress={handleToday}
@@ -249,7 +252,7 @@ export function WhenPicker({
                 colors={colors}
                 icon="sunny"
                 iconColor={colors.timeMorning}
-                label="Tomorrow"
+                label={dateClarification ? `Tomorrow · ${format(tomorrow, 'MMM d')}` : 'Tomorrow'}
                 pending={pendingKey === tomorrowKey}
                 popAnim={popAnim}
                 onPress={handleTomorrow}
@@ -323,7 +326,7 @@ export function WhenPicker({
               {calendarDays.map((day, idx) => {
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
-                const todayDay = isToday(day);
+                const todayDay = isSameDay(day, today);
                 const key = todayDay ? 'today' : dayKey(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKey(day);
@@ -402,7 +405,7 @@ function QuickButton({
           size={15}
           color={pending ? colors.accent : iconColor}
         />
-        <Text style={[styles.quickButtonLabel, pending && styles.quickButtonLabelActive]}>
+        <Text style={[styles.quickButtonLabel, pending && styles.quickButtonLabelActive]} numberOfLines={1}>
           {label}
         </Text>
       </Animated.View>
