@@ -10,6 +10,7 @@ import {
   suggestTaskDate,
   suggestTaskEffort,
   suggestFocusTasks,
+  suggestTemplateItems,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
 
@@ -609,5 +610,86 @@ describe('co-completion hints in suggestFocusTasks prompt', () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
     expect(content).not.toContain('historically completed together');
+  });
+});
+
+// ============================================================================
+// suggestTemplateItems
+// ============================================================================
+
+describe('suggestTemplateItems', () => {
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValueOnce({ anthropicApiKey: '' });
+
+    await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('No API key');
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 500);
+    await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('API error 500');
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
+    await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('No suggestions returned');
+  });
+
+  it('returns normalized suggestions from the tool payload', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: '  Pack passport  ', notes: 'Check expiry', effort: 1 },
+        { title: 'Stop the mail', notes: '', effort: 2 },
+      ],
+    }));
+
+    const result = await suggestTemplateItems('Vacation prep', []);
+    expect(result).toEqual([
+      { title: 'Pack passport', notes: 'Check expiry', effort: 1 },
+      { title: 'Stop the mail', notes: '', effort: 2 },
+    ]);
+  });
+
+  it('drops blank titles and clamps effort into range', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: '   ', notes: 'nothing', effort: 3 },
+        { title: 'Water the plants', notes: '', effort: 99 },
+      ],
+    }));
+
+    const result = await suggestTemplateItems('Home checklist', []);
+    expect(result).toEqual([{ title: 'Water the plants', notes: '', effort: 5 }]);
+  });
+
+  it('filters out duplicates of existing items and repeated suggestions (case-insensitively)', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: 'Pack Passport', notes: '', effort: 1 }, // dup of existing
+        { title: 'Buy sunscreen', notes: '', effort: 1 },
+        { title: 'buy sunscreen', notes: '', effort: 2 }, // dup of prior suggestion
+      ],
+    }));
+
+    const result = await suggestTemplateItems('Vacation prep', ['pack passport']);
+    expect(result).toEqual([{ title: 'Buy sunscreen', notes: '', effort: 1 }]);
+  });
+
+  it('passes the template name and existing titles to the model', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('suggest_tasks', { tasks: [] })),
+    } as Response);
+
+    await suggestTemplateItems('Camping trip', ['Pitch the tent']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Camping trip');
+    expect(content).toContain('Pitch the tent');
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
   });
 });

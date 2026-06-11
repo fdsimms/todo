@@ -1,4 +1,5 @@
 import type { Effort, Task } from '../types';
+import { TITLE_MAX_LENGTH } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { addDays, startOfDay, format } from 'date-fns';
 import { effortToMinutes, formatDuration } from '../utils/effort';
@@ -414,4 +415,114 @@ export async function suggestFocusTasks(
 
   const validIds = new Set(candidates.map(t => t.id));
   return toolUse.input.task_ids.filter(id => validIds.has(id)).slice(0, needed);
+}
+
+export interface TemplateItemSuggestion {
+  title: string;
+  notes: string;
+  effort: Effort;
+}
+
+const MIN_TEMPLATE_SUGGESTIONS = 4;
+const MAX_TEMPLATE_SUGGESTIONS = 8;
+
+/**
+ * Ask the AI to draft a checklist of tasks for a template, given its name and
+ * the tasks it already contains. Returns concrete, de-duplicated task titles
+ * (with an optional one-line note and effort bucket) that the user can accept
+ * or reject before they're added to the template.
+ */
+export async function suggestTemplateItems(
+  templateName: string,
+  existingTitles: string[],
+): Promise<TemplateItemSuggestion[]> {
+  const apiKey = useSettingsStore.getState().anthropicApiKey;
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+
+  const existingPart = existingTitles.length > 0
+    ? `The template already contains these tasks — do NOT repeat or rephrase them:\n${existingTitles.map(t => `- ${t}`).join('\n')}`
+    : 'The template is currently empty.';
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 800,
+      tools: [{
+        name: 'suggest_tasks',
+        description: 'Return a list of suggested tasks for a reusable task template',
+        input_schema: {
+          type: 'object',
+          properties: {
+            tasks: {
+              type: 'array',
+              description: `Between ${MIN_TEMPLATE_SUGGESTIONS} and ${MAX_TEMPLATE_SUGGESTIONS} suggested tasks that fit the template's purpose.`,
+              items: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: `A short, concrete, actionable task title (under ${TITLE_MAX_LENGTH} characters).`,
+                  },
+                  notes: {
+                    type: 'string',
+                    description: 'An optional one-line clarifying detail, or an empty string if none is needed.',
+                  },
+                  effort: {
+                    type: 'integer',
+                    description: '0=unknown, 1=XS ~15min, 2=S ~30min, 3=M ~1-2hr, 4=L ~4hr, 5=XL day+',
+                    minimum: 0,
+                    maximum: 5,
+                  },
+                },
+                required: ['title', 'notes', 'effort'],
+              },
+            },
+          },
+          required: ['tasks'],
+        },
+      }],
+      tool_choice: { type: 'tool', name: 'suggest_tasks' },
+      messages: [{
+        role: 'user',
+        content: [
+          `Suggest a checklist of tasks for a reusable task template named "${templateName}".`,
+          `Each task should be a concrete, actionable step someone would genuinely want in this checklist. Keep titles short and skip vague filler. Aim for ${MIN_TEMPLATE_SUGGESTIONS}–${MAX_TEMPLATE_SUGGESTIONS} tasks.`,
+          existingPart,
+        ].join('\n\n'),
+      }],
+    }),
+  });
+
+  if (!response.ok) throw new Error(`API error ${response.status}`);
+
+  const data = await response.json() as {
+    content?: Array<{ type: string; input?: { tasks?: Array<{ title?: string; notes?: string; effort?: number }> } }>;
+  };
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  if (!toolUse?.input?.tasks) throw new Error('No suggestions returned');
+
+  // Drop blanks and anything that collides (case-insensitively) with an existing
+  // item or an earlier suggestion, so the user only sees genuinely new tasks.
+  const existingLower = new Set(existingTitles.map(t => t.trim().toLowerCase()));
+  const seen = new Set<string>();
+  const result: TemplateItemSuggestion[] = [];
+  for (const t of toolUse.input.tasks) {
+    const title = (t.title ?? '').trim().slice(0, TITLE_MAX_LENGTH);
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (existingLower.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      title,
+      notes: (t.notes ?? '').trim(),
+      effort: Math.max(0, Math.min(5, t.effort ?? 0)) as Effort,
+    });
+  }
+  return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);
 }

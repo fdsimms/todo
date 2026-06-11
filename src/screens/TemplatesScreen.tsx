@@ -16,7 +16,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
+import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -45,6 +47,7 @@ export function TemplatesScreen() {
   const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
   const addItem = useTemplateStore(s => s.addItem);
   const deleteItem = useTemplateStore(s => s.deleteItem);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [newTemplateText, setNewTemplateText] = useState('');
@@ -52,6 +55,7 @@ export function TemplatesScreen() {
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TemplateItem | null>(null);
   const [itemEditorVisible, setItemEditorVisible] = useState(false);
+  const [suggestVisible, setSuggestVisible] = useState(false);
   const [newItemText, setNewItemText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
@@ -237,21 +241,31 @@ export function TemplatesScreen() {
               </View>
               <Text style={styles.detailTitleText}>{selectedTemplate?.name}</Text>
             </View>
-            <TouchableOpacity
-              onPress={() => {
-                if (!selectedTemplate || selectedTemplate.items.length === 0) return;
-                haptics.tap();
-                setApplyTemplateId(selectedTemplate.id);
-              }}
-              disabled={!selectedTemplate || selectedTemplate.items.length === 0}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons
-                name="arrow-down-circle-outline"
-                size={24}
-                color={selectedTemplate && selectedTemplate.items.length > 0 ? colors.accent : colors.textTertiary}
-              />
-            </TouchableOpacity>
+            <View style={styles.detailHeaderActions}>
+              {!!anthropicApiKey && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setSuggestVisible(true); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="sparkles-outline" size={22} color={colors.purple} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => {
+                  if (!selectedTemplate || selectedTemplate.items.length === 0) return;
+                  haptics.tap();
+                  setApplyTemplateId(selectedTemplate.id);
+                }}
+                disabled={!selectedTemplate || selectedTemplate.items.length === 0}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name="arrow-down-circle-outline"
+                  size={24}
+                  color={selectedTemplate && selectedTemplate.items.length > 0 ? colors.accent : colors.textTertiary}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* Quick title-only item entry */}
@@ -308,6 +322,8 @@ export function TemplatesScreen() {
                 icon="list-outline"
                 title="No items yet"
                 subtitle="Add tasks above — tap one after adding to set dates, tags and more"
+                actionLabel={anthropicApiKey ? 'Suggest tasks with AI' : undefined}
+                onAction={anthropicApiKey ? () => { haptics.tap(); setSuggestVisible(true); } : undefined}
               />
             }
           />
@@ -318,6 +334,16 @@ export function TemplatesScreen() {
               templateId={selectedTemplate.id}
               item={editingItem}
               onClose={() => setItemEditorVisible(false)}
+            />
+          )}
+
+          {selectedTemplate && (
+            <TemplateSuggestionsSheet
+              visible={suggestVisible}
+              templateId={selectedTemplate.id}
+              templateName={selectedTemplate.name}
+              existingTitles={selectedTemplate.items.map(i => i.title)}
+              onClose={() => setSuggestVisible(false)}
             />
           )}
         </View>
@@ -418,6 +444,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  detailHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   detailTitleText: {
     color: colors.text,
