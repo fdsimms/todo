@@ -5,6 +5,9 @@ import {
   formatGroupHeader,
   getNextDueDate,
   getStreakDisplay,
+  getLogicalToday,
+  getLogicalTomorrow,
+  isBeforeDayReset,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -196,6 +199,50 @@ describe('formatGroupHeader', () => {
 
   it('includes the year for batched dates in a different year', () => {
     expect(formatGroupHeader(new Date(2026, 0, 1, 8, 0, 0).toISOString())).toBe('January 2026');
+  });
+});
+
+// ─── getLogicalToday / getLogicalTomorrow / isBeforeDayReset ─────────────────
+
+describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches the calendar date when well after the reset hour', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+
+    const today = getLogicalToday('02:00');
+    expect(today.getFullYear()).toBe(2025);
+    expect(today.getMonth()).toBe(5);
+    expect(today.getDate()).toBe(10);
+
+    const tomorrow = getLogicalTomorrow('02:00');
+    expect(tomorrow.getDate()).toBe(11);
+
+    expect(isBeforeDayReset('02:00')).toBe(false);
+  });
+
+  it('stays on the previous calendar day during the early-morning grace window', () => {
+    // 1:30 AM on June 11 — before the 2:00 AM reset, so still "June 10" logically
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+
+    const today = getLogicalToday('02:00');
+    expect(today.getDate()).toBe(10);
+
+    const tomorrow = getLogicalTomorrow('02:00');
+    expect(tomorrow.getDate()).toBe(11);
+
+    expect(isBeforeDayReset('02:00')).toBe(true);
+  });
+
+  it('is never "before reset" when dayResetTime is midnight', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
+
+    expect(isBeforeDayReset('00:00')).toBe(false);
   });
 });
 
