@@ -56,6 +56,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceEndDate: null,
+  recurrenceCount: null,
   tags: [],
   sortOrder: 0,
   focused: false,

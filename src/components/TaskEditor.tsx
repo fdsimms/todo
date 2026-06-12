@@ -16,8 +16,9 @@ import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
+import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
-import { format } from 'date-fns';
+import { format, addMonths } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -98,6 +99,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
+  const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
@@ -143,6 +147,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
+      setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
+      setRecurrenceCount(task.recurrenceCount ?? null);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
@@ -153,11 +159,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
+      setRecurrenceEndDate(null);
+      setRecurrenceCount(null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
-    setPickerMode('none'); setShowWhenPicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setShowWhenPicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
@@ -177,6 +185,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
+      recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : null,
+      recurrenceCount: task ? (task.recurrenceCount ?? null) : null,
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
@@ -197,7 +207,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
-      recurrenceEndDate: null,
+      recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
+      recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       focused, priority, effort, estimatedMinutes,
@@ -242,6 +253,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceType(types[(types.indexOf(recurrenceType) + 1) % types.length]);
   };
 
+  const recurrenceEndMode: 'never' | 'date' | 'count' =
+    recurrenceEndDate ? 'date' : recurrenceCount !== null ? 'count' : 'never';
+
+  const setRecurrenceEndNever = () => {
+    setRecurrenceEndDate(null);
+    setRecurrenceCount(null);
+  };
+
+  const setRecurrenceEndOnDate = () => {
+    setRecurrenceCount(null);
+    if (!recurrenceEndDate) setRecurrenceEndDate(addMonths(dueDate ?? new Date(), 1));
+    setShowEndDatePicker(true);
+  };
+
+  const setRecurrenceEndAfterCount = () => {
+    setRecurrenceEndDate(null);
+    if (recurrenceCount === null) setRecurrenceCount(5);
+  };
+
   const handleCancel = () => {
     const current = JSON.stringify({
       title, notes, category, tags,
@@ -249,6 +279,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
+      recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
+      recurrenceCount,
       priority, effort, estimatedMinutes, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
@@ -949,6 +981,66 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   </TouchableOpacity>
                 </View>
+                <View style={styles.scheduleRow}>
+                  <Text style={[styles.intervalLabel, styles.endsLabel]}>Ends</Text>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceEndMode === 'never' && styles.schedulePillActive]}
+                    onPress={setRecurrenceEndNever}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'never' && styles.schedulePillTextActive]}>
+                      Never
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceEndMode === 'date' && styles.schedulePillActive]}
+                    onPress={setRecurrenceEndOnDate}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'date' && styles.schedulePillTextActive]}>
+                      On date
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceEndMode === 'count' && styles.schedulePillActive]}
+                    onPress={setRecurrenceEndAfterCount}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'count' && styles.schedulePillTextActive]}>
+                      After
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {recurrenceEndMode === 'date' && recurrenceEndDate && (
+                  <View style={styles.endDateRow}>
+                    <TouchableOpacity
+                      style={styles.endDateChip}
+                      onPress={() => setShowEndDatePicker(true)}
+                      activeOpacity={interaction.activeOpacity}
+                    >
+                      <Ionicons name="calendar-outline" size={14} color={colors.accent} />
+                      <Text style={styles.endDateChipText}>{format(recurrenceEndDate, 'MMM d, yyyy')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {recurrenceEndMode === 'count' && (
+                  <View style={styles.intervalRow}>
+                    <Text style={styles.intervalLabel}>After</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceCount(c => Math.max(1, (c ?? 1) - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{recurrenceCount ?? 1}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceCount(c => (c ?? 0) + 1)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>
+                      {(recurrenceCount ?? 1) === 1 ? 'occurrence' : 'occurrences'}
+                    </Text>
+                  </View>
+                )}
               </>
             )}
           </View>
@@ -986,6 +1078,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}
+        />
+        <CalendarPicker
+          visible={showEndDatePicker}
+          value={recurrenceEndDate}
+          mode="date"
+          title="End Date"
+          onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
+          onCancel={() => setShowEndDatePicker(false)}
         />
         <SuggestedCategorySheet
           visible={pendingCategory !== null}
@@ -1178,6 +1278,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   schedulePillActive: { backgroundColor: colors.accent },
   schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   schedulePillTextActive: { color: colors.bg },
+  endsLabel: { marginRight: spacing.xs },
+  endDateRow: {
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  endDateChip: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  endDateChipText: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
   intervalBtn: {
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',

@@ -93,6 +93,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceEndDate: null,
+  recurrenceCount: null,
   recurrenceFromCompletion: false,
   tags: [],
   category: null,
@@ -297,6 +298,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.deferUntil).toBeNull();
     expect(t.completedAt).toBeNull();
     expect(t.recurrenceEndDate).toBeNull();
+    expect(t.recurrenceCount).toBeNull();
     expect(t.streakDate).toBeNull();
     expect(t.parentId).toBeNull();
     expect(t.reminderTime).toBeNull();
@@ -310,6 +312,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       deferUntil: '2025-06-15T00:00:00.000Z',
       completedAt: '2025-06-10T10:00:00.000Z',
       recurrenceEndDate: '2025-12-31T00:00:00.000Z',
+      recurrenceCount: 5,
       streakDate: '2025-06-09T00:00:00.000Z',
       parentId: 'parent-id',
       reminderTime: '2025-06-10T08:00:00.000Z',
@@ -321,6 +324,8 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.deferUntil).toBe(task.deferUntil);
     expect(t.reminderTime).toBe(task.reminderTime);
     expect(t.category).toBe(task.category);
+    expect(t.recurrenceEndDate).toBe(task.recurrenceEndDate);
+    expect(t.recurrenceCount).toBe(task.recurrenceCount);
   });
 });
 

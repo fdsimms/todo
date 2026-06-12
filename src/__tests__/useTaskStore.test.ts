@@ -87,6 +87,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceEndDate: null,
+  recurrenceCount: null,
   recurrenceFromCompletion: false,
   tags: [],
   category: null,
@@ -323,6 +324,35 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(1);
   });
 
+  it('decrements recurrenceCount on the next occurrence', () => {
+    const task = makeTask({
+      id: 'counted',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 3,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('counted');
+
+    const { tasks } = useTaskStore.getState();
+    const next = tasks.find(t => t.id !== 'counted');
+    expect(next?.recurrenceCount).toBe(2);
+  });
+
+  it('does not create a next task when recurrenceCount reaches 0', () => {
+    const task = makeTask({
+      id: 'last-one',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('last-one');
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
   it('does nothing when task id is not found', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('nonexistent');
@@ -427,6 +457,51 @@ describe('deferTask', () => {
     useTaskStore.getState().deferTask('t1', until);
     const task = useTaskStore.getState().tasks[0];
     expect(task.deferUntil).toBe(until.toISOString());
+  });
+});
+
+// ─── skipNextRecurrence ─────────────────────────────────────────────────────
+
+describe('skipNextRecurrence', () => {
+  it('advances dueDate to the next occurrence', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+  });
+
+  it('decrements recurrenceCount', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 3,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    expect(useTaskStore.getState().tasks[0].recurrenceCount).toBe(2);
+  });
+
+  it('does nothing when recurrenceCount is already 1 (no next occurrence)', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(1);
   });
 });
 
