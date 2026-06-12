@@ -1,4 +1,4 @@
-import { addDays, format, isSameDay, startOfDay } from 'date-fns';
+import { addDays, format, isSameDay, setHours, startOfDay } from 'date-fns';
 import type { Day } from 'date-fns';
 import type { RecurrenceType, TimeOfDay } from '../types';
 import { extractDayPart, extractTime, parseDatePart, WEEKDAYS } from './parseNaturalDate';
@@ -17,7 +17,12 @@ import { extractDayPart, extractTime, parseDatePart, WEEKDAYS } from './parseNat
  */
 
 export interface ParsedSchedule {
-  /** Start-of-day; the first occurrence for recurrences. */
+  /**
+   * Noon on the due day; the first occurrence for recurrences. Noon — not
+   * midnight — so the date can't slip into the previous logical day for users
+   * whose dayResetTime is after midnight (getDayStart reassigns a 00:00
+   * timestamp to the day before). WhenPicker stores noon for the same reason.
+   */
   dueDate: Date;
   timeSegments: TimeOfDay[];
   /** 'none' for one-off dates. */
@@ -30,8 +35,10 @@ export interface ParsedSchedule {
 export interface ParsedTaskInput {
   /** Input minus the matched phrase, original casing, trailing punctuation trimmed. */
   cleanTitle: string;
-  /** The exact matched substring — chip label identity and dismissal key. */
+  /** The exact matched substring, original casing. */
   matchedText: string;
+  /** Index of matchedText within the original input — drives the inline highlight. */
+  matchStart: number;
   schedule: ParsedSchedule;
 }
 
@@ -62,9 +69,14 @@ function segmentForHour(h: number): TimeOfDay {
   return 'evening';
 }
 
+/** Noon on the given day — see ParsedSchedule.dueDate. */
+function dueAt(day: Date): Date {
+  return setHours(startOfDay(day), 12);
+}
+
 /** Earliest day from today (inclusive) whose weekday is in `days`. */
 function firstOccurrence(days: number[], now: Date): Date {
-  const today = startOfDay(now);
+  const today = dueAt(now);
   if (days.length === 0) return today;
   for (let i = 0; i < 7; i++) {
     const d = addDays(today, i);
@@ -226,13 +238,13 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
 
   let due: Date;
   if (datePart) {
-    due = startOfDay(datePart.date);
+    due = dueAt(datePart.date);
     if (datePart.explicitTime && segments.length === 0) {
       // "tonight", "in 1 hour" — the embedded time implies a segment.
       segments = [segmentForHour(datePart.date.getHours())];
     }
   } else {
-    due = startOfDay(now); // time-only input ("at 3pm") → today
+    due = dueAt(now); // time-only input ("at 3pm") → today
   }
 
   return {
@@ -262,7 +274,7 @@ export function parseTaskInput(input: string, now: Date = new Date()): ParsedTas
     if (schedule) {
       const cleanTitle = input.slice(0, start).replace(/[\s,;:\-–—]+$/, '');
       if (!cleanTitle) return null;
-      return { cleanTitle, matchedText: input.slice(start).trim(), schedule };
+      return { cleanTitle, matchedText: input.slice(start).trim(), matchStart: start, schedule };
     }
   }
   return null;

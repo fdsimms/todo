@@ -26,6 +26,7 @@ import type { Priority, Effort, TimeOfDay, RecurrenceType } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
+import { PressableScale } from './PressableScale';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
@@ -93,11 +94,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
-  // Natural-language parse bookkeeping: manual edits beat the parse, and a
-  // dismissed phrase stays dismissed while the user keeps typing it.
-  const [dateManuallySet, setDateManuallySet] = useState(false);
-  const [recurrenceManuallySet, setRecurrenceManuallySet] = useState(false);
-  const [dismissedMatch, setDismissedMatch] = useState<string | null>(null);
+  // Natural-language suggestion measurements: mirror-text widths locate the
+  // highlighted phrase so the tooltip can point at it.
+  const [inputW, setInputW] = useState(0);
+  const [prefixW, setPrefixW] = useState<number | null>(null);
+  const [matchW, setMatchW] = useState<number | null>(null);
+  const [tooltipRowW, setTooltipRowW] = useState(0);
+  const [bubbleW, setBubbleW] = useState(0);
+  const tooltipAnim = useRef(new Animated.Value(0)).current;
+  const hadParse = useRef(false);
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
@@ -121,9 +126,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setRecurrenceInterval(1);
       setRecurrenceDays([]);
       setRecurrenceFromCompletion(false);
-      setDateManuallySet(false);
-      setRecurrenceManuallySet(false);
-      setDismissedMatch(null);
+      setPrefixW(null);
+      setMatchW(null);
+      tooltipAnim.setValue(0);
+      hadParse.current = false;
       setWhenPickerVisible(false);
       setAiLoading(false);
       setPendingCategory(null);
@@ -139,59 +145,58 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     }
   }, [visible]);
 
-  // Natural-language scheduling: detect a trailing date/recurrence phrase
-  // in the title ("go for a run on tuesday", "water plants every 3 days").
+  // Natural-language scheduling: detect a trailing date/recurrence phrase in
+  // the title ("go for a run on tuesday", "water plants every 3 days"). The
+  // phrase is highlighted in the input and described in a tooltip; nothing is
+  // applied until the user taps the tooltip.
   const parsed = useMemo(() => (title.trim() ? parseTaskInput(title) : null), [title]);
-  const parseDismissed =
-    parsed != null &&
-    dismissedMatch != null &&
-    (parsed.matchedText.startsWith(dismissedMatch) || dismissedMatch.startsWith(parsed.matchedText));
-  const parseActive = parsed != null && !parseDismissed;
-  // Invariant: chip visible ⇔ the phrase is stripped from the title on submit.
-  // Once manual edits override everything the parse controls, it's inert.
-  const chipVisible =
-    parseActive &&
-    (!dateManuallySet || (parsed!.schedule.recurrenceType !== 'none' && !recurrenceManuallySet));
+  const matchEnd = parsed ? parsed.matchStart + parsed.matchedText.length : 0;
 
+  // Pop the tooltip in when a phrase is first detected (not on every keystroke
+  // that merely extends it).
   useEffect(() => {
-    if (!visible) return;
-    if (!dateManuallySet) {
-      if (parseActive && parsed) {
-        setDueDate(parsed.schedule.dueDate);
-        setTimeSegments(parsed.schedule.timeSegments);
-      } else {
-        setDueDate(getLogicalToday(dayResetTime));
-        setTimeSegments([]);
-      }
+    if (parsed && !hadParse.current) {
+      tooltipAnim.setValue(0);
+      Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     }
-    if (!recurrenceManuallySet) {
-      if (parseActive && parsed) {
-        setRecurrenceType(parsed.schedule.recurrenceType);
-        setRecurrenceInterval(parsed.schedule.recurrenceInterval);
-        setRecurrenceDays(parsed.schedule.recurrenceDays);
-      } else {
-        setRecurrenceType('none');
-        setRecurrenceInterval(1);
-        setRecurrenceDays([]);
-      }
-    }
-  }, [parsed, parseActive]);
+    hadParse.current = parsed != null;
+  }, [parsed]);
 
-  const dismissParse = () => {
+  // Tooltip geometry: center the bubble under the highlighted phrase and aim
+  // the caret at it, clamped to the row. Mirror-text widths land a frame after
+  // the parse appears; until then the tooltip is still fading in from 0.
+  const CARET_W = 12;
+  let bubbleLeft = 0;
+  let caretLeft = 14;
+  if (parsed && prefixW != null && matchW != null) {
+    const center = Math.min((prefixW + matchW) / 2, Math.max(inputW - 8, 0));
+    bubbleLeft = Math.min(Math.max(center - bubbleW / 2, 0), Math.max(tooltipRowW - bubbleW, 0));
+    caretLeft = Math.min(
+      Math.max(center - bubbleLeft - CARET_W / 2, 10),
+      Math.max(bubbleW - CARET_W - 10, 10),
+    );
+  }
+
+  // Apply the suggested schedule and strip the phrase from the title.
+  const applyParse = () => {
     if (!parsed) return;
-    haptics.tap();
+    haptics.success();
     animateLayout();
-    setDismissedMatch(parsed.matchedText);
+    setTitle(parsed.cleanTitle);
+    setDueDate(parsed.schedule.dueDate);
+    setTimeSegments(parsed.schedule.timeSegments);
+    setRecurrenceType(parsed.schedule.recurrenceType);
+    setRecurrenceInterval(parsed.schedule.recurrenceInterval);
+    setRecurrenceDays(parsed.schedule.recurrenceDays);
   };
 
-  const effectiveTitle = (chipVisible && parsed ? parsed.cleanTitle : title).trim();
-
   const handleAdd = () => {
-    if (!effectiveTitle) return;
+    const finalTitle = title.trim();
+    if (!finalTitle) return;
     haptics.success();
     animateLayout();
     addTask({
-      title: effectiveTitle,
+      title: finalTitle,
       priority,
       effort,
       estimatedMinutes,
@@ -209,7 +214,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
 
   const handleOpenFull = () => {
     onOpenFull({
-      title: effectiveTitle,
+      title: title.trim(),
       priority,
       effort,
       estimatedMinutes,
@@ -353,18 +358,43 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }] }]}>
           {/* Title input row */}
           <View style={styles.row}>
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="New task…"
-              placeholderTextColor={colors.textTertiary}
-              value={title}
-              onChangeText={setTitle}
-              onSubmitEditing={handleAdd}
-              returnKeyType="done"
-              maxLength={TITLE_MAX_LENGTH}
-              blurOnSubmit={false}
-            />
+            <View style={styles.inputWrap}>
+              <TextInput
+                ref={inputRef}
+                style={styles.input}
+                placeholder="New task…"
+                placeholderTextColor={colors.textTertiary}
+                onChangeText={setTitle}
+                onSubmitEditing={handleAdd}
+                returnKeyType="done"
+                maxLength={TITLE_MAX_LENGTH}
+                blurOnSubmit={false}
+                onLayout={e => setInputW(e.nativeEvent.layout.width)}
+              >
+                {parsed ? (
+                  <Text>
+                    {title.slice(0, parsed.matchStart)}
+                    <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
+                    {title.slice(matchEnd)}
+                  </Text>
+                ) : (
+                  title
+                )}
+              </TextInput>
+              {/* Invisible mirrors of the input text — their widths locate the
+                  highlighted phrase so the tooltip can point at it. */}
+              {parsed && (
+                <View style={styles.measureWrap} pointerEvents="none">
+                  <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
+                    {title.slice(0, parsed.matchStart)}
+                  </Text>
+                  <Text style={styles.measureText} onLayout={e => setMatchW(e.nativeEvent.layout.width)}>
+                    {title.slice(0, parsed.matchStart)}
+                    <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
+                  </Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
               style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
               onPress={handleAdd}
@@ -374,21 +404,36 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             </TouchableOpacity>
           </View>
 
-          {/* Parsed schedule chip */}
-          {chipVisible && parsed && (
-            <View style={styles.parseRow}>
-              <View style={styles.parseChip}>
-                <Ionicons
-                  name={parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
-                  size={13}
-                  color={colors.accent}
-                />
-                <Text style={styles.parseChipText}>{describeSchedule(parsed.schedule)}</Text>
-                <TouchableOpacity onPress={dismissParse} hitSlop={8}>
-                  <Ionicons name="close" size={13} color={colors.accent} />
-                </TouchableOpacity>
+          {/* Schedule tooltip — points at the highlighted phrase; tap to apply */}
+          {parsed && (
+            <Animated.View
+              style={[styles.tooltipRow, {
+                opacity: tooltipAnim,
+                transform: [
+                  { translateY: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+                  { scale: tooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] }) },
+                ],
+              }]}
+              onLayout={e => setTooltipRowW(e.nativeEvent.layout.width)}
+            >
+              <View style={[styles.tooltipAnchor, { marginLeft: bubbleLeft }]}>
+                <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
+                <PressableScale
+                  style={styles.tooltipBubble}
+                  onPress={applyParse}
+                  onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                >
+                  <Ionicons
+                    name={parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+                    size={14}
+                    color={colors.onAccent}
+                  />
+                  <Text style={styles.tooltipText}>{describeSchedule(parsed.schedule)}</Text>
+                  <View style={styles.tooltipDot} />
+                  <Text style={styles.tooltipHint}>Tap to set</Text>
+                </PressableScale>
               </View>
-            </View>
+            </Animated.View>
           )}
 
           {/* Attribute toolbar */}
@@ -544,7 +589,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceType(t);
-                      setRecurrenceManuallySet(true);
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
@@ -562,7 +606,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceInterval(Math.max(1, recurrenceInterval - 1));
-                      setRecurrenceManuallySet(true);
                     }}
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
@@ -573,7 +616,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceInterval(recurrenceInterval + 1);
-                      setRecurrenceManuallySet(true);
                     }}
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
@@ -587,10 +629,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 <View style={styles.weekdayRow}>
                   <WeekdaySelector
                     value={recurrenceDays}
-                    onChange={days => {
-                      setRecurrenceDays(days);
-                      setRecurrenceManuallySet(true);
-                    }}
+                    onChange={setRecurrenceDays}
                   />
                 </View>
               )}
@@ -601,7 +640,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceFromCompletion(false);
-                      setRecurrenceManuallySet(true);
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
@@ -614,7 +652,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceFromCompletion(true);
-                      setRecurrenceManuallySet(true);
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
@@ -784,13 +821,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         onConfirm={(date, segs) => {
           setDueDate(date);
           setTimeSegments(segs);
-          setDateManuallySet(true);
           setWhenPickerVisible(false);
         }}
         onClear={() => {
           setDueDate(null);
           setTimeSegments([]);
-          setDateManuallySet(true);
           setWhenPickerVisible(false);
         }}
         onCancel={() => setWhenPickerVisible(false)}
@@ -834,11 +869,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  input: {
+  inputWrap: {
     flex: 1,
+  },
+  input: {
     fontSize: font.md,
     color: colors.text,
     paddingVertical: spacing.sm,
+  },
+  inputHighlight: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+    backgroundColor: colors.accent + '26',
+  },
+  // Offscreen mirrors of the input text used purely for width measurement.
+  measureWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    opacity: 0,
+  },
+  measureText: {
+    fontSize: font.md,
   },
   addBtn: {
     width: 34,
@@ -885,23 +937,50 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: 8,
     borderRadius: 4,
   },
-  parseRow: {
-    flexDirection: 'row',
+  tooltipRow: {
+    marginTop: -4,
     marginBottom: spacing.sm,
   },
-  parseChip: {
+  tooltipAnchor: {
+    alignSelf: 'flex-start',
+  },
+  tooltipCaret: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 6,
+    borderRightWidth: 6,
+    borderBottomWidth: 6,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: colors.accent,
+  },
+  tooltipBubble: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    backgroundColor: colors.accent + '22',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
   },
-  parseChipText: {
-    color: colors.accent,
-    fontSize: font.xs,
+  tooltipText: {
+    color: colors.onAccent,
+    fontSize: font.sm,
     fontWeight: fontWeight.semibold,
+  },
+  tooltipDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: colors.onAccent,
+    opacity: 0.6,
+  },
+  tooltipHint: {
+    color: colors.onAccent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+    opacity: 0.75,
   },
   intervalRow: {
     flexDirection: 'row',

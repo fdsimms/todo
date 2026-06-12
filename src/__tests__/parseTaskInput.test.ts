@@ -69,10 +69,29 @@ describe('parseTaskInput — one-off dates', () => {
     expect(r.schedule.timeSegments).toEqual(['evening']);
   });
 
-  it('emits date-only due dates (start of day)', () => {
+  it('anchors due dates at noon so they stay in the intended logical day', () => {
+    // Midnight due dates get reassigned to the previous logical day by
+    // getDayStart when dayResetTime is after midnight; noon is immune.
     const r = parseTaskInput('call mom tomorrow', NOW)!;
-    expect(r.schedule.dueDate.getHours()).toBe(0);
+    expect(r.schedule.dueDate.getHours()).toBe(12);
     expect(r.schedule.dueDate.getMinutes()).toBe(0);
+
+    const rec = parseTaskInput('stretch every tuesday', NOW)!;
+    expect(rec.schedule.dueDate.getHours()).toBe(12);
+  });
+
+  it('always lands a bare weekday on that weekday', () => {
+    // Regression: "Run Sunday" must never resolve to a Saturday.
+    const thursday = new Date(2026, 5, 11, 10, 0, 0); // Thu, Jun 11 2026
+    const r = parseTaskInput('Run Sunday', thursday)!;
+    expect(r.cleanTitle).toBe('Run');
+    expectDay(r.schedule.dueDate, 2026, 5, 14);
+    expect(r.schedule.dueDate.getDay()).toBe(0);
+  });
+
+  it('reports where the matched phrase starts', () => {
+    expect(parseTaskInput('go for a run on tuesday', NOW)!.matchStart).toBe(13);
+    expect(parseTaskInput('review tuesday notes on friday', NOW)!.matchStart).toBe(21);
   });
 
   it('matches only the rightmost phrase', () => {
