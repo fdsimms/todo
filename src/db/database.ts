@@ -32,6 +32,7 @@ export function initDatabase(): void {
       recurrence_interval INTEGER NOT NULL DEFAULT 1,
       recurrence_days TEXT NOT NULL DEFAULT '[]',
       recurrence_end_date TEXT,
+      recurrence_count INTEGER,
       recurrence_from_completion INTEGER NOT NULL DEFAULT 0,
       tags TEXT NOT NULL DEFAULT '[]',
       sort_order REAL NOT NULL DEFAULT 0,
@@ -88,6 +89,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN vacation_pause INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER',
     'ALTER TABLE categories ADD COLUMN hide_on_vacation INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN recurrence_count INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -132,6 +134,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceInterval: (row.recurrence_interval as number) ?? 1,
     recurrenceDays: JSON.parse((row.recurrence_days as string) ?? '[]') as number[],
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
+    recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
@@ -163,15 +166,15 @@ export function dbInsertTask(task: Task): void {
     `INSERT INTO tasks (
       id, title, notes, completed, completed_at, created_at,
       due_date, defer_until, time_of_day,
-      recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_from_completion,
+      recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
       task.timeSegments.length ? JSON.stringify(task.timeSegments) : null, task.recurrenceType, task.recurrenceInterval,
-      JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
+      JSON.stringify(task.recurrenceDays), task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
@@ -187,7 +190,7 @@ export function dbUpdateTask(task: Task): void {
     `UPDATE tasks SET
       title=?, notes=?, completed=?, completed_at=?,
       due_date=?, defer_until=?, time_of_day=?,
-      recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_from_completion=?,
+      recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?
@@ -196,7 +199,7 @@ export function dbUpdateTask(task: Task): void {
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
       task.dueDate, task.deferUntil, task.timeSegments.length ? JSON.stringify(task.timeSegments) : null,
       task.recurrenceType, task.recurrenceInterval,
-      JSON.stringify(task.recurrenceDays), task.recurrenceEndDate,
+      JSON.stringify(task.recurrenceDays), task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,

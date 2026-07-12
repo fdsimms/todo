@@ -31,6 +31,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceEndDate: null,
+  recurrenceCount: null,
   tags: [],
   sortOrder: 0,
   focused: false,
@@ -378,6 +379,36 @@ describe('getNextDueDate', () => {
       recurrenceEndDate: new Date(2025, 5, 11, 23, 59, 59).toISOString(),
     };
     expect(getNextDueDate(task, '00:00')).toBeNull();
+  });
+
+  it('returns null when recurrenceCount is 1 (this is the last occurrence)', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: 1,
+    };
+    expect(getNextDueDate(task, '00:00')).toBeNull();
+  });
+
+  it('returns a date when recurrenceCount has more than one occurrence remaining', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: 2,
+    };
+    expect(getNextDueDate(task, '00:00')).not.toBeNull();
+  });
+
+  it('treats recurrenceCount null as unlimited', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: null,
+    };
+    expect(getNextDueDate(task, '00:00')).not.toBeNull();
   });
 });
 

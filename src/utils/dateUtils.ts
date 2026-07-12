@@ -126,6 +126,9 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   if (task.recurrenceEndDate && next > new Date(task.recurrenceEndDate)) {
     return null;
   }
+  if (task.recurrenceCount !== null && task.recurrenceCount <= 1) {
+    return null;
+  }
   return next;
 }
 

@@ -35,6 +35,7 @@ export interface Task {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceEndDate: string | null;
+  recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
 
   tags: string[];

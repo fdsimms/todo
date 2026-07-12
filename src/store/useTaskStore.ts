@@ -110,6 +110,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: draft.recurrenceInterval ?? 1,
       recurrenceDays: draft.recurrenceDays ?? [],
       recurrenceEndDate: draft.recurrenceEndDate ?? null,
+      recurrenceCount: draft.recurrenceCount ?? null,
       recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
       tags: draft.tags ?? [],
       category: draft.category ?? null,
@@ -232,6 +233,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           streakDate: getCurrentDayStart().toISOString(),
           reminderTime: nextReminderTime,
           cycleIndex: nextCycleIndex,
+          recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
           // vacationPause carries over so recurring tasks stay paused across occurrences
         };
         dbInsertTask(nextTask);
@@ -281,6 +283,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deferUntil: null,
       reminderTime: nextReminderTime,
       cycleIndex: nextCycleIndex,
+      recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
     });
   },
 
@@ -347,6 +350,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceInterval: 1,
       recurrenceDays: [],
       recurrenceEndDate: null,
+      recurrenceCount: null,
       recurrenceFromCompletion: false,
       tags: [],
       category: null,
