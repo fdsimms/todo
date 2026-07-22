@@ -102,7 +102,7 @@ export function TagsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Tags"
-        actions={[{ icon: 'add', onPress: handleStartAdding }]}
+        actions={[{ icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add tag' }]}
       />
 
       {addingTag && (
@@ -125,13 +125,15 @@ export function TagsScreen() {
               if (!newTagText.trim()) setAddingTag(false);
             }}
           />
-          <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={interaction.activeOpacity}>
+          <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new tag">
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewTagText(''); setAddingTag(false); }}
             style={styles.addCancel}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
           >
             <Ionicons name="close" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -160,6 +162,9 @@ export function TagsScreen() {
                   setSelectedTag(tag);
                 }}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${tag}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
+                accessibilityHint="Double tap to view tasks with this tag"
               >
                 <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
                   <Ionicons name="pricetag" size={18} color={color} />
@@ -171,6 +176,8 @@ export function TagsScreen() {
                   style={styles.deleteButton}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete tag ${tag}`}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -190,7 +197,7 @@ export function TagsScreen() {
       >
         <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
           <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedTag(null)}>
+            <TouchableOpacity onPress={() => setSelectedTag(null)} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             <View style={styles.detailTitle}>

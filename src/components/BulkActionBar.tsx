@@ -105,7 +105,7 @@ export function BulkActionBar({
                 </Text>
               </TouchableOpacity>
               <Text style={styles.countText}>{selectedCount} selected</Text>
-              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={onCancel} hitSlop={8} accessibilityRole="button" accessibilityLabel="Cancel selection">
                 <Ionicons name="close" size={18} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -152,7 +152,7 @@ export function BulkActionBar({
         {panel === 'priority' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Set Priority</Text>
@@ -186,7 +186,7 @@ export function BulkActionBar({
         {panel === 'tags' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <Text style={styles.subTitle}>Add Tags</Text>

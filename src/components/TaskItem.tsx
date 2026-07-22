@@ -277,6 +277,8 @@ export function TaskItem({
         haptics.impactHeavy();
         confirmDelete();
       }}
+      accessibilityRole="button"
+      accessibilityLabel={`Delete ${task.title}`}
     >
       <Ionicons name="trash" size={iconSize.md} color={colors.text} />
     </TouchableOpacity>
@@ -290,6 +292,8 @@ export function TaskItem({
         swipeableRef.current?.close();
         setShowWhenPicker(true);
       }}
+      accessibilityRole="button"
+      accessibilityLabel={`Reschedule ${task.title}`}
     >
       <Ionicons name="time" size={iconSize.md} color={colors.text} />
     </TouchableOpacity>
@@ -310,6 +314,13 @@ export function TaskItem({
         disabled={!selectionMode && completing}
         hitSlop={10}
         style={styles.circleWrapper}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: selectionMode ? selected : false }}
+        accessibilityLabel={
+          selectionMode
+            ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
+            : `Complete ${task.title}`
+        }
       >
         <Animated.View style={[
           styles.circle,
@@ -334,6 +345,16 @@ export function TaskItem({
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
+        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+        accessibilityState={selectionMode ? { checked: selected } : { expanded }}
+        accessibilityLabel={task.title}
+        accessibilityHint={
+          selectionMode
+            ? undefined
+            : expanded
+              ? 'Double tap to collapse details'
+              : 'Double tap to expand details'
+        }
       >
         {isEditingTitle ? (
           <TextInput
@@ -399,6 +420,9 @@ export function TaskItem({
             hitSlop={8}
             style={styles.timerPill}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Stop timer for ${task.title}`}
+            accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
           >
             <Ionicons name="stop" size={10} color={colors.onAccent} />
             <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
@@ -408,6 +432,8 @@ export function TaskItem({
             onPress={handleTimerToggle}
             hitSlop={8}
             style={styles.timerBtn}
+            accessibilityRole="button"
+            accessibilityLabel={`Start timer for ${task.title}`}
           >
             <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -422,6 +448,11 @@ export function TaskItem({
           }}
           hitSlop={8}
           style={styles.starBtn}
+          accessibilityRole="button"
+          accessibilityState={{ selected: task.focused }}
+          accessibilityLabel={
+            task.focused ? `Remove ${task.title} from focus` : `Add ${task.title} to focus`
+          }
         >
           <Ionicons
             name={task.focused ? 'star' : 'star-outline'}
@@ -465,6 +496,9 @@ export function TaskItem({
                       toggleSubtask(sub.id);
                     }}
                     activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: sub.completed }}
+                    accessibilityLabel={sub.title}
                   >
                     <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                       {sub.completed && (

@@ -141,6 +141,7 @@ export function LaterScreen() {
           icon: 'checkmark-circle-outline',
           onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
           active: selectionMode,
+          accessibilityLabel: selectionMode ? 'Exit selection mode' : 'Select tasks',
         }]}
       />
 

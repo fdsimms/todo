@@ -115,6 +115,7 @@ export default function AppNavigator() {
             component={TodayScreen}
             listeners={tabPressHaptic}
             options={{
+              tabBarAccessibilityLabel: 'Today',
               tabBarIcon: ({ color, size }) => <Ionicons name="sunny" size={size} color={color} />,
             }}
           />
@@ -123,6 +124,7 @@ export default function AppNavigator() {
             component={SearchScreen}
             listeners={tabPressHaptic}
             options={{
+              tabBarAccessibilityLabel: 'Search',
               tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
             }}
           />
@@ -137,6 +139,7 @@ export default function AppNavigator() {
               },
             }}
             options={{
+              tabBarAccessibilityLabel: 'More, opens menu',
               tabBarIcon: ({ color }) => (
                 <Ionicons name="menu" size={24} color={menuOpen ? colors.accent : color} />
               ),

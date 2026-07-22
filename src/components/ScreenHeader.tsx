@@ -14,6 +14,18 @@ export interface ScreenHeaderAction {
   badge?: number;
   disabled?: boolean;
   loading?: boolean;
+  /**
+   * Spoken label for screen readers. These buttons are icon-only, so without
+   * this a screen reader just announces "button". Falls back to a readable
+   * form of the icon name when omitted.
+   */
+  accessibilityLabel?: string;
+}
+
+// "settings-outline" -> "settings", "time-outline" -> "time". A last-resort
+// label when a call site doesn't provide an explicit one.
+function labelFromIcon(icon: string): string {
+  return icon.replace(/-(outline|sharp)$/, '').replace(/-/g, ' ');
 }
 
 interface Props {
@@ -53,6 +65,9 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
               disabled={action.disabled}
               haptic
               hitSlop={4}
+              accessibilityRole="button"
+              accessibilityState={{ selected: action.active, disabled: action.disabled, busy: action.loading }}
+              accessibilityLabel={action.accessibilityLabel ?? labelFromIcon(action.icon)}
             >
               {action.loading ? (
                 <ActivityIndicator size="small" color={iconColor} />

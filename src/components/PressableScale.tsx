@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { animation, interaction } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -37,13 +38,16 @@ export function PressableScale({
   children,
   ...rest
 }: Props) {
+  const reduceMotion = useReduceMotion();
   const scale = useRef(new Animated.Value(1)).current;
   const opacity = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = (e: GestureResponderEvent) => {
     Animated.parallel([
+      // Reduce Motion: hold the scale steady (skip the movement) but keep the
+      // opacity dip, so pressing still gives feedback without the pop.
       Animated.spring(scale, {
-        toValue: pressScale,
+        toValue: reduceMotion ? 1 : pressScale,
         ...animation.spring.snappy,
         useNativeDriver: true,
       }),
@@ -79,6 +83,7 @@ export function PressableScale({
 
   return (
     <AnimatedPressable
+      accessibilityRole="button"
       style={[style, { transform: [{ scale }], opacity }]}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
