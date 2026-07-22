@@ -128,7 +128,7 @@ export function TemplatesScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Templates"
-        actions={[{ icon: 'add', onPress: handleStartAdding }]}
+        actions={[{ icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add template' }]}
       />
 
       {addingTemplate && (
@@ -151,13 +151,15 @@ export function TemplatesScreen() {
               if (!newTemplateText.trim()) setAddingTemplate(false);
             }}
           />
-          <TouchableOpacity onPress={handleAddTemplate} style={styles.addConfirm} activeOpacity={interaction.activeOpacity}>
+          <TouchableOpacity onPress={handleAddTemplate} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new template">
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewTemplateText(''); setAddingTemplate(false); }}
             style={styles.addCancel}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
           >
             <Ionicons name="close" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -182,6 +184,9 @@ export function TemplatesScreen() {
               style={styles.tplRow}
               onPress={() => setSelectedTemplateId(tpl.id)}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`${tpl.name}, ${tpl.items.length === 0 ? 'no items' : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}`}
+              accessibilityHint="Double tap to edit template"
             >
               <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
                 <Ionicons name="copy" size={18} color={colors.accent} />
@@ -206,6 +211,8 @@ export function TemplatesScreen() {
                 style={styles.rowButton}
                 activeOpacity={interaction.activeOpacity}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Apply template ${tpl.name}`}
               >
                 <Ionicons name="arrow-down-circle-outline" size={18} color={colors.accent} />
               </TouchableOpacity>
@@ -214,6 +221,8 @@ export function TemplatesScreen() {
                 style={styles.rowButton}
                 activeOpacity={interaction.activeOpacity}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Delete template ${tpl.name}`}
               >
                 <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -232,7 +241,7 @@ export function TemplatesScreen() {
       >
         <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
           <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedTemplateId(null)}>
+            <TouchableOpacity onPress={() => setSelectedTemplateId(null)} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             <View style={styles.detailTitle}>
@@ -246,6 +255,8 @@ export function TemplatesScreen() {
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); setSuggestVisible(true); }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest tasks with AI"
                 >
                   <Ionicons name="sparkles-outline" size={22} color={colors.purple} />
                 </TouchableOpacity>
@@ -258,6 +269,9 @@ export function TemplatesScreen() {
                 }}
                 disabled={!selectedTemplate || selectedTemplate.items.length === 0}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel="Apply template"
+                accessibilityState={{ disabled: !selectedTemplate || selectedTemplate.items.length === 0 }}
               >
                 <Ionicons
                   name="arrow-down-circle-outline"
@@ -295,6 +309,9 @@ export function TemplatesScreen() {
                   style={styles.itemRow}
                   onPress={() => openItemEditor(item)}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${item.title}${item.optional ? ', optional' : ''}`}
+                  accessibilityHint="Double tap to edit item"
                 >
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
@@ -310,6 +327,8 @@ export function TemplatesScreen() {
                     style={styles.rowButton}
                     activeOpacity={interaction.activeOpacity}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Delete item ${item.title}`}
                   >
                     <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>

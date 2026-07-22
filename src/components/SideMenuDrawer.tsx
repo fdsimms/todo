@@ -16,6 +16,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -168,6 +169,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
                   ]}
                   onPress={() => handleNavigate(item.name)}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={item.label}
                 >
                   <View
                     style={[
@@ -207,15 +211,21 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
 // left with a small per-row delay. The drawer unmounts when closed, so the
 // mount animation replays on every open.
 function DrawerItemAppear({ index, children }: { index: number; children: React.ReactNode }) {
+  const reduceMotion = useReduceMotion();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    // Reduce Motion: skip the staggered slide-in.
+    if (reduceMotion) {
+      anim.setValue(1);
+      return;
+    }
     Animated.timing(anim, {
       toValue: 1,
       duration: animation.duration.normal,
       delay: 60 + index * 35,
       useNativeDriver: true,
     }).start();
-  }, [anim, index]);
+  }, [anim, index, reduceMotion]);
   return (
     <Animated.View
       style={{

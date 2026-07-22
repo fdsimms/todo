@@ -214,6 +214,9 @@ export function LogbookScreen() {
                 uncompleteTask(item.id);
               }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: true }}
+              accessibilityLabel={`Mark ${item.title} as not done`}
             >
               <Ionicons name="checkmark" size={14} color={colors.green} />
             </TouchableOpacity>
@@ -221,6 +224,7 @@ export function LogbookScreen() {
               style={styles.rowContent}
               onLongPress={() => startDrag(item)}
               delayLongPress={interaction.delayLongPress}
+              accessibilityLabel={`${item.title}, completed ${formatTime(item.completedAt!)}`}
             >
               <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
@@ -229,6 +233,8 @@ export function LogbookScreen() {
               style={styles.menuButton}
               onPress={() => setMenuTask(item)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`More options for ${item.title}`}
             >
               <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>

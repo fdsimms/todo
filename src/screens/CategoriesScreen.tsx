@@ -29,6 +29,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Category } from '../types';
 
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 function formatScheduleLabel(cat: Category): string | null {
   if (!cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return null;
@@ -163,6 +164,9 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
                     : { backgroundColor: colors.bgTertiary },
                 ]}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: active }}
+                accessibilityLabel={FULL_DAY_NAMES[day]}
               >
                 <Text style={[styles.dayPillText, { color: active ? colors.onAccent : colors.textTertiary }]}>
                   {label}
@@ -319,7 +323,7 @@ export function CategoriesScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Categories"
-        actions={[{ icon: 'add', onPress: handleStartAdding }]}
+        actions={[{ icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add category' }]}
       />
 
       {addingCategory && (
@@ -342,13 +346,15 @@ export function CategoriesScreen() {
               if (!newCategoryText.trim()) setAddingCategory(false);
             }}
           />
-          <TouchableOpacity onPress={handleAddCategory} style={styles.addConfirm} activeOpacity={interaction.activeOpacity}>
+          <TouchableOpacity onPress={handleAddCategory} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new category">
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => { setNewCategoryText(''); setAddingCategory(false); }}
             style={styles.addCancel}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel"
           >
             <Ionicons name="close" size={20} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -387,6 +393,9 @@ export function CategoriesScreen() {
                   setSelectedCategory(cat);
                 }}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${cat}, ${count} ${count === 1 ? 'task' : 'tasks'}${hint ? `. ${hint}` : ''}`}
+                accessibilityHint="Double tap to view tasks in this category"
               >
                 <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>
                   <Ionicons name="folder" size={18} color={colors.accent} />
@@ -403,6 +412,9 @@ export function CategoriesScreen() {
                   style={styles.scheduleButton}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: hideOnVacation }}
+                  accessibilityLabel={`Hide ${cat} on vacation`}
                 >
                   <Ionicons
                     name={hideOnVacation ? 'airplane' : 'airplane-outline'}
@@ -415,6 +427,9 @@ export function CategoriesScreen() {
                   style={styles.scheduleButton}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: hasSchedule }}
+                  accessibilityLabel={`Visibility schedule for ${cat}`}
                 >
                   <Ionicons
                     name="time-outline"
@@ -427,6 +442,8 @@ export function CategoriesScreen() {
                   style={styles.deleteButton}
                   activeOpacity={interaction.activeOpacity}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete category ${cat}`}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -446,7 +463,7 @@ export function CategoriesScreen() {
       >
         <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
           <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedCategory(null)}>
+            <TouchableOpacity onPress={() => setSelectedCategory(null)} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             <View style={styles.detailTitle}>

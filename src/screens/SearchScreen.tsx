@@ -74,8 +74,21 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     ? format(new Date(task.completedAt), 'MMM d')
     : null;
 
+  const a11yLabel = [
+    task.title,
+    isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
+    !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
+  ].filter(Boolean).join(', ');
+
   return (
-    <TouchableOpacity style={styles.resultRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint="Double tap to open task"
+    >
       <View style={styles.statusIcon}>
         {isCompleted
           ? <Ionicons name="checkmark-circle" size={22} color={colors.green} />
@@ -195,7 +208,7 @@ export function SearchScreen() {
           clearButtonMode="while-editing"
         />
         {query.length > 0 && Platform.OS !== 'ios' && (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8}>
+          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         )}
