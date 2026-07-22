@@ -27,7 +27,7 @@ import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -101,6 +101,7 @@ interface TaskStore {
 
   visibleTasks: () => Task[];
   upcomingTodayTasks: () => Task[];
+  inboxTasks: () => Task[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
@@ -730,6 +731,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isUpcomingToday(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  inboxTasks() {
+    return get().tasks
+      .filter(isInboxTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

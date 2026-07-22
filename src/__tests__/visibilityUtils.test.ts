@@ -7,6 +7,7 @@ import {
   isHiddenForVacation,
   isRecurrenceNotYetDue,
   isTaskNew,
+  isInboxTask,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -681,5 +682,49 @@ describe('isHiddenForVacation', () => {
   it('is false for a completed paused task', () => {
     mockSettingsState.vacationMode = true;
     expect(isHiddenForVacation({ ...baseTask, vacationPause: true, completed: true })).toBe(false);
+  });
+});
+
+// ─── isInboxTask ──────────────────────────────────────────────────────────────
+
+describe('isInboxTask', () => {
+  it('is true for a title-only task (all defaults)', () => {
+    expect(isInboxTask(baseTask)).toBe(true);
+  });
+
+  it('is false once the task has a category', () => {
+    expect(isInboxTask({ ...baseTask, category: 'Work' })).toBe(false);
+  });
+
+  it('is false once the task has a tag', () => {
+    expect(isInboxTask({ ...baseTask, tags: ['home'] })).toBe(false);
+  });
+
+  it('is false with a due date, deadline, defer date or reminder', () => {
+    const d = new Date(2025, 5, 12).toISOString();
+    expect(isInboxTask({ ...baseTask, dueDate: d })).toBe(false);
+    expect(isInboxTask({ ...baseTask, deadline: d })).toBe(false);
+    expect(isInboxTask({ ...baseTask, deferUntil: d })).toBe(false);
+    expect(isInboxTask({ ...baseTask, reminderTime: '09:00' })).toBe(false);
+  });
+
+  it('is false with a time segment or time window', () => {
+    expect(isInboxTask({ ...baseTask, timeSegments: ['morning'] })).toBe(false);
+    expect(isInboxTask({ ...baseTask, windowStart: '09:00' })).toBe(false);
+    expect(isInboxTask({ ...baseTask, windowEnd: '17:00' })).toBe(false);
+  });
+
+  it('is false with recurrence or a non-default priority', () => {
+    expect(isInboxTask({ ...baseTask, recurrenceType: 'daily' })).toBe(false);
+    expect(isInboxTask({ ...baseTask, priority: 2 })).toBe(false);
+  });
+
+  it('is false for completed tasks and subtasks', () => {
+    expect(isInboxTask({ ...baseTask, completed: true })).toBe(false);
+    expect(isInboxTask({ ...baseTask, parentId: 'p1' })).toBe(false);
+  });
+
+  it('stays true for notes/effort/focus (they do not file a task)', () => {
+    expect(isInboxTask({ ...baseTask, notes: 'a note', effort: 3, focused: true })).toBe(true);
   });
 });

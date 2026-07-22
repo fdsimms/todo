@@ -8,6 +8,7 @@ import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions } from './src/utils/notifications';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
+import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
@@ -35,6 +36,11 @@ export default function App() {
     // Request notification permissions
     requestNotificationPermissions();
   }, [initTasks, initSettings]);
+
+  // Handle `todo://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
+  // Runs after the init effect above, so the SQLite DB exists before any
+  // incoming link tries to insert a task.
+  useTaskDeepLinks();
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
