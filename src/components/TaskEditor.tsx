@@ -110,6 +110,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [effortNote, setEffortNote] = useState<string | null>(null);
   const [effortAiLoading, setEffortAiLoading] = useState(false);
+  const [actualMinutes, setActualMinutes] = useState<number | null>(null);
+  const [logTimeOpen, setLogTimeOpen] = useState(false);
+  const [logTimeText, setLogTimeText] = useState('');
+  const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [focused, setFocused] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
 
@@ -150,6 +154,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
+      setActualMinutes(task.actualMinutes ?? null);
       setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
       setCycleIndex(task.cycleIndex);
       setVacationPause(task.vacationPause ?? false);
@@ -162,6 +167,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
+      setActualMinutes(null);
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
@@ -170,6 +176,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
+    setLogTimeOpen(false); setLogTimeText(''); setLogTimeUnit('min');
     setEffortNote(null); setEffortAiLoading(false);
     setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
@@ -190,6 +197,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
+      actualMinutes: task?.actualMinutes ?? null,
       focused: task?.focused ?? false,
       cycleEnabled: task?.cycleEnabled ?? false,
       cycleItems: task?.cycleItems ?? [],
@@ -211,7 +219,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      focused, priority, effort, estimatedMinutes,
+      focused, priority, effort, estimatedMinutes, actualMinutes,
       cycleEnabled: cycleEnabled && cycleItems.length > 0,
       cycleItems,
       cycleIndex,
@@ -281,7 +289,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -350,6 +358,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       return;
     }
     const minutes = Math.round(unit === 'hr' ? n * 60 : n);
+    setEstimatedMinutes(minutes);
+    setEffort(minutesToEffort(minutes));
+  };
+
+  // Manually log how long the task actually took. The measured time becomes the
+  // recorded actual and also drives the estimate/effort, matching the stopwatch.
+  const applyLoggedTime = (text: string, unit: 'min' | 'hr') => {
+    const n = parseFloat(text);
+    if (!Number.isFinite(n) || n <= 0) {
+      setActualMinutes(null);
+      return;
+    }
+    const minutes = Math.max(1, Math.round(unit === 'hr' ? n * 60 : n));
+    setActualMinutes(minutes);
     setEstimatedMinutes(minutes);
     setEffort(minutesToEffort(minutes));
   };
@@ -643,6 +665,64 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               {effortNote ? (
                 <Text style={styles.effortNote}>{effortNote}</Text>
               ) : null}
+            </View>
+
+            <View style={styles.cardSep} />
+
+            <View style={styles.cardSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionLabel}>Time spent</Text>
+                <TouchableOpacity
+                  style={styles.suggestBtn}
+                  onPress={() => {
+                    if (!logTimeOpen) {
+                      if (actualMinutes != null && actualMinutes % 60 === 0) {
+                        setLogTimeUnit('hr');
+                        setLogTimeText(String(actualMinutes / 60));
+                      } else {
+                        setLogTimeUnit('min');
+                        setLogTimeText(actualMinutes != null ? String(actualMinutes) : '');
+                      }
+                    }
+                    setLogTimeOpen(o => !o);
+                  }}
+                  hitSlop={8}
+                >
+                  <Ionicons name="stopwatch-outline" size={12} color={colors.accent} />
+                  <Text style={[styles.suggestBtnText, { color: colors.accent }]}>
+                    {actualMinutes != null ? formatDuration(actualMinutes) : 'Log time'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {logTimeOpen && (
+                <View style={styles.customEffortRow}>
+                  <TextInput
+                    style={styles.customEffortInput}
+                    value={logTimeText}
+                    onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                  />
+                  <View style={styles.unitToggle}>
+                    {(['min', 'hr'] as const).map(u => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
+                        onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
+                      >
+                        <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+              <Text style={styles.effortNote}>
+                {actualMinutes != null
+                  ? 'How long it actually took — also sets the estimate.'
+                  : 'Time this task with the stopwatch on its row, or log it here.'}
+              </Text>
             </View>
           </View>
 

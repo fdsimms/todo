@@ -26,6 +26,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate } from '../utils/dateUtils';
+import { formatDuration, formatStopwatch } from '../utils/effort';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -91,6 +92,8 @@ export function TaskItem({
   const updateTask = useTaskStore(s => s.updateTask);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
+  const startTimer = useTaskStore(s => s.startTimer);
+  const stopTimer = useTaskStore(s => s.stopTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const colors = useColors();
   const { shadows } = useTheme();
@@ -102,6 +105,10 @@ export function TaskItem({
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
   const [panelHeight, setPanelHeight] = useState(0);
+  // Drives the live-counting timer display. We only re-render on a 1s tick while
+  // this task's timer is actually running, so idle rows never spin an interval.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -152,6 +159,29 @@ export function TaskItem({
       haptics.impactMedium();
     }
   }, [isActive]);
+
+  // Tick once a second only while this task's timer runs, so the elapsed clock
+  // updates live without keeping an interval alive on every idle row.
+  useEffect(() => {
+    if (!timerRunning) return;
+    setNowTick(Date.now());
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [timerRunning, task.timerStartedAt]);
+
+  const elapsedSeconds = timerRunning
+    ? Math.max(0, (nowTick - new Date(task.timerStartedAt as string).getTime()) / 1000)
+    : 0;
+
+  const handleTimerToggle = async () => {
+    if (timerRunning) {
+      await haptics.success();
+      stopTimer(task.id);
+    } else {
+      await haptics.impactMedium();
+      startTimer(task.id);
+    }
+  };
 
   // Save and dismiss keyboard whenever the task collapses while title is being edited
   useEffect(() => {
@@ -343,6 +373,28 @@ export function TaskItem({
         )}
       </TouchableOpacity>
 
+      {!selectionMode && !isEditingTitle && (
+        timerRunning ? (
+          <TouchableOpacity
+            onPress={handleTimerToggle}
+            hitSlop={8}
+            style={styles.timerPill}
+            activeOpacity={interaction.activeOpacity}
+          >
+            <Ionicons name="stop" size={10} color={colors.onAccent} />
+            <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            onPress={handleTimerToggle}
+            hitSlop={8}
+            style={styles.timerBtn}
+          >
+            <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )
+      )}
+
       {!selectionMode && (
         <TouchableOpacity
           onPress={() => {
@@ -447,10 +499,20 @@ export function TaskItem({
               </View>
             )}
 
+            {task.actualMinutes != null && (
+              <View style={[
+                styles.recurrenceRow,
+                hasExpandContent && styles.sectionDivider,
+              ]}>
+                <Ionicons name="stopwatch-outline" size={12} color={colors.textTertiary} />
+                <Text style={styles.expandMeta}>Timed · {formatDuration(task.actualMinutes)}</Text>
+              </View>
+            )}
+
             {onEdit && (
               <View style={[
                 styles.editSection,
-                hasExpandContent && styles.sectionDivider,
+                (hasExpandContent || task.actualMinutes != null) && styles.sectionDivider,
                 { justifyContent: 'space-between' },
               ]}>
                 <View style={styles.editSectionLeft}>
@@ -707,6 +769,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   starBtn: {
     padding: 4,
+  },
+  timerBtn: {
+    padding: 4,
+  },
+  timerPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  timerPillText: {
+    color: colors.onAccent,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums'],
   },
   deleteAction: {
     backgroundColor: colors.red,

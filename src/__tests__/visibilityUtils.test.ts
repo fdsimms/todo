@@ -72,6 +72,8 @@ const baseTask: Task = {
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
+  timerStartedAt: null,
+  actualMinutes: null,
 };
 
 // June 10, 2025 at 10:00 AM

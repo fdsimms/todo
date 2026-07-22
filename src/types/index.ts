@@ -61,6 +61,10 @@ export interface Task {
   cycleItems: CycleItem[];
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
+
+  // Time tracking — measure how long a task actually takes
+  timerStartedAt: string | null; // ISO timestamp while a live timer runs; null when stopped
+  actualMinutes: number | null;  // measured duration once timed/logged; null = never timed
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
