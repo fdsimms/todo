@@ -6,7 +6,7 @@ export interface SearchResult {
   titleMatches: [number, number][]; // [start, end] ranges to highlight
 }
 
-function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
+export function scoreSubstring(haystack: string, needle: string): { score: number; ranges: [number, number][] } {
   if (!needle) return { score: 0, ranges: [] };
   const h = haystack.toLowerCase();
   const n = needle.toLowerCase();
