@@ -50,6 +50,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
+    autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
@@ -272,6 +273,38 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </View>
             <Text style={styles.sectionFooter}>
               While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically.
+            </Text>
+          </View>
+
+          {/* Time-limited tasks */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Time-limited tasks</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setAutoRemoveExpiredTasks(!autoRemoveExpiredTasks)}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={18}
+                  color={autoRemoveExpiredTasks ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Auto-remove expired tasks</Text>
+                  <Text style={styles.rowHint}>
+                    {autoRemoveExpiredTasks
+                      ? 'On — tasks are deleted once their time window closes'
+                      : 'Off — expired tasks stay in an Expired section until you delete them'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, autoRemoveExpiredTasks && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, autoRemoveExpiredTasks && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.
             </Text>
           </View>
 

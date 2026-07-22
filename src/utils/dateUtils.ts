@@ -36,6 +36,24 @@ export function getCurrentDayStart(): Date {
   return getDayStart(new Date());
 }
 
+/** Applies an "HH:MM" clock time to today's (or a given base) date. */
+export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const d = new Date(base);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+/** Formats an "HH:MM" clock time for display, e.g. "8:00 AM". */
+export function formatHHMM(hhmm: string): string {
+  return format(hhmmToDate(hhmm), 'h:mm a');
+}
+
+/** Inverse of hhmmToDate — extracts "HH:MM" from a Date's clock time. */
+export function dateToHHMM(d: Date): string {
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+}
+
 /**
  * The calendar date of the current logical day — i.e. the date a task needs
  * to fall on to be visible right now. Normally today's date, but in the

@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
-import { formatGroupHeader } from '../utils/dateUtils';
+import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
 import { getVisibleAt } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
@@ -105,12 +105,52 @@ function VacationHiddenSection({
   );
 }
 
+// Collapsible reveal for tasks whose time window has closed. Stays put until
+// the user deletes it (or, for a recurring task, skips it) — expiring never
+// deletes automatically unless the "auto-remove" setting is on.
+function ExpiredSection({
+  tasks,
+  expanded,
+  onToggle,
+  renderExpiredTask,
+  styles,
+  colors,
+}: {
+  tasks: Task[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderExpiredTask: (task: Task) => React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons name="time-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {expanded ? 'Hide' : 'Show'} {tasks.length} expired
+        </Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {expanded && tasks.map(task => (
+        <React.Fragment key={task.id}>{renderExpiredTask(task)}</React.Fragment>
+      ))}
+    </View>
+  );
+}
+
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
+  const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
@@ -143,6 +183,7 @@ export function TodayScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const [showExpired, setShowExpired] = useState(false);
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
 
   // Collapse any expanded task when navigating away from this tab so it
@@ -423,6 +464,19 @@ export function TodayScreen() {
   // state centered by stopping the spacer from growing.
   const listFooter = (fixedWhenEmpty = false) => (
     <>
+      <ExpiredSection
+        tasks={expiredTasks}
+        expanded={showExpired}
+        onToggle={() => {
+          haptics.tap();
+          animateLayout();
+          setExpandedTaskId(null);
+          setShowExpired(v => !v);
+        }}
+        renderExpiredTask={renderHiddenTask}
+        styles={styles}
+        colors={colors}
+      />
       <VacationHiddenSection
         tasks={vacationHiddenTasks}
         expanded={showHidden}
@@ -461,6 +515,12 @@ export function TodayScreen() {
     const dayLabel = formatGroupHeader(visibleAt.toISOString());
     if (task.timeSegments.length > 0) {
       return task.timeSegments.map(seg => `${dayLabel} — ${SEG_LABELS[seg]}`);
+    }
+    if (task.windowStart) {
+      const windowLabel = task.windowEnd
+        ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
+        : formatHHMM(task.windowStart);
+      return [`${dayLabel} — ${windowLabel}`];
     }
     return [dayLabel];
   };

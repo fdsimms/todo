@@ -18,13 +18,14 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
+  dbGetSetting,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface TaskStore {
@@ -69,6 +70,7 @@ interface TaskStore {
   visibleTasks: () => Task[];
   upcomingTodayTasks: () => Task[];
   deferredTasks: () => Task[];
+  expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
   focusedTasks: () => Task[];
   completedTasks: () => Task[];
@@ -87,8 +89,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     initDatabase();
     useCategoryStore.getState().initialize();
     useTemplateStore.getState().initialize();
-    const tasks = dbGetAllTasks();
+    let tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
+
+    // Read the setting straight from the DB rather than useSettingsStore —
+    // this runs before useSettingsStore.initialize() (see App.tsx), so the
+    // store would still be holding its default value at this point.
+    if (dbGetSetting('autoRemoveExpiredTasks') === 'true') {
+      const expiredIds = tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
+      if (expiredIds.length > 0) {
+        dbBulkDeleteTasks(expiredIds);
+        tasks = tasks.filter(t => !expiredIds.includes(t.id) && (t.parentId === null || !expiredIds.includes(t.parentId)));
+      }
+    }
+
     set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
   },
@@ -106,6 +120,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: draft.dueDate ?? null,
       deferUntil: draft.deferUntil ?? null,
       timeSegments: draft.timeSegments ?? [],
+      windowStart: draft.windowStart ?? null,
+      windowEnd: draft.windowEnd ?? null,
       recurrenceType: draft.recurrenceType ?? 'none',
       recurrenceInterval: draft.recurrenceInterval ?? 1,
       recurrenceDays: draft.recurrenceDays ?? [],
@@ -346,6 +362,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: null,
       deferUntil: null,
       timeSegments: [],
+      windowStart: null,
+      windowEnd: null,
       recurrenceType: 'none',
       recurrenceInterval: 1,
       recurrenceDays: [],
@@ -477,6 +495,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   deferredTasks() {
     return get().tasks
       .filter(t => !t.parentId && isTaskDeferred(t))
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  expiredTasks() {
+    return get().tasks
+      .filter(t => !t.parentId && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

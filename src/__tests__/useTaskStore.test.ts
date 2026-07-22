@@ -1,6 +1,7 @@
 import { useTaskStore } from '../store/useTaskStore';
 import {
   initDatabase,
+  dbGetSetting,
   dbGetAllTasks,
   dbGetTagRegistry,
   dbInsertTask,
@@ -23,6 +24,7 @@ import type { Task } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
+  dbGetSetting: jest.fn().mockReturnValue(null),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
   dbGetTagRegistry: jest.fn().mockReturnValue([]),
   dbGetCategoryRegistry: jest.fn().mockReturnValue([]),
@@ -83,6 +85,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   dueDate: null,
   deferUntil: null,
   timeSegments: [],
+  windowStart: null,
+  windowEnd: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -794,6 +798,71 @@ describe('deferredTasks', () => {
       tasks: [makeTask({ id: 't1', parentId: 'parent', deferUntil: future.toISOString() })],
     });
     expect(useTaskStore.getState().deferredTasks()).toHaveLength(0);
+  });
+});
+
+describe('expiredTasks', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0)); // 2:00 PM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns non-subtask tasks whose time window has closed, sorted by sortOrder', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', sortOrder: 2, windowEnd: '13:00' }),
+        makeTask({ id: 'b', sortOrder: 1, windowEnd: '13:00' }),
+      ],
+    });
+    expect(useTaskStore.getState().expiredTasks().map(t => t.id)).toEqual(['b', 'a']);
+  });
+
+  it('excludes tasks whose window has not closed yet', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', windowEnd: '18:00' })] });
+    expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
+  });
+
+  it('excludes subtasks', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', parentId: 'parent', windowEnd: '13:00' })],
+    });
+    expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
+  });
+});
+
+describe('initialize — auto-remove expired tasks', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0)); // 2:00 PM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('leaves expired tasks in place when the setting is off', () => {
+    (dbGetSetting as jest.Mock).mockReturnValue(null);
+    (dbGetAllTasks as jest.Mock).mockReturnValue([makeTask({ id: 'expired', windowEnd: '13:00' })]);
+    useTaskStore.getState().initialize();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('deletes expired tasks on load when the setting is on, leaving active ones', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'autoRemoveExpiredTasks' ? 'true' : null,
+    );
+    (dbGetAllTasks as jest.Mock).mockReturnValue([
+      makeTask({ id: 'expired', windowEnd: '13:00' }),
+      makeTask({ id: 'active', windowEnd: '18:00' }),
+    ]);
+    useTaskStore.getState().initialize();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['active']);
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['expired']);
   });
 });
 
