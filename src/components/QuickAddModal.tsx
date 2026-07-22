@@ -27,6 +27,8 @@ import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
+import { HighlightedText } from './HighlightedText';
+import { suggestTitles } from '../utils/titleSuggestions';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
@@ -58,6 +60,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addCategory = useTaskStore(s => s.addCategory);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
@@ -151,6 +154,20 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   // applied until the user taps the tooltip.
   const parsed = useMemo(() => (title.trim() ? parseTaskInput(title) : null), [title]);
   const matchEnd = parsed ? parsed.matchStart + parsed.matchedText.length : 0;
+
+  // Suggest previously-used titles that match what's being typed. Suppressed
+  // while a schedule phrase is detected so the list doesn't fight the tooltip
+  // that renders just below the input row.
+  const suggestions = useMemo(
+    () => (parsed ? [] : suggestTitles(tasks, title)),
+    [tasks, title, parsed]
+  );
+
+  const applySuggestion = (suggestion: string) => {
+    haptics.tap();
+    setTitle(suggestion);
+    inputRef.current?.focus();
+  };
 
   // Pop the tooltip in when a phrase is first detected (not on every keystroke
   // that merely extends it).
@@ -403,6 +420,31 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
             </TouchableOpacity>
           </View>
+
+          {/* Autosuggest — previously-used titles matching the current input */}
+          {suggestions.length > 0 && (
+            <View style={styles.suggestionsBox}>
+              {suggestions.map((s, i) => (
+                <TouchableOpacity
+                  key={s.title}
+                  style={[styles.suggestionItem, i > 0 && styles.suggestionItemDivider]}
+                  onPress={() => applySuggestion(s.title)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Use previous task: ${s.title}`}
+                >
+                  <Ionicons name="time-outline" size={15} color={colors.textTertiary} />
+                  <HighlightedText
+                    text={s.title}
+                    ranges={s.ranges}
+                    style={styles.suggestionTitle}
+                    highlightStyle={styles.suggestionTitleHighlight}
+                    numberOfLines={1}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Schedule tooltip — points at the highlighted phrase; tap to apply */}
           {parsed && (
@@ -881,6 +923,32 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontWeight: fontWeight.semibold,
     backgroundColor: colors.accent + '26',
+  },
+  suggestionsBox: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  suggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  suggestionItemDivider: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+  },
+  suggestionTitle: {
+    flex: 1,
+    fontSize: font.sm,
+    color: colors.textSecondary,
+  },
+  suggestionTitleHighlight: {
+    color: colors.text,
+    fontWeight: fontWeight.semibold,
   },
   // Offscreen mirrors of the input text used purely for width measurement.
   measureWrap: {
