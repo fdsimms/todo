@@ -11,6 +11,7 @@ interface SettingsStore {
   anthropicApiKey: string;
   vacationMode: boolean;
   vacationStart: string | null;
+  autoRemoveExpiredTasks: boolean;
   initialized: boolean;
   initialize: () => void;
   setDayResetTime: (time: string) => void;
@@ -20,6 +21,7 @@ interface SettingsStore {
   setThemeMode: (mode: ThemeMode) => void;
   setAnthropicApiKey: (key: string) => void;
   setVacationMode: (on: boolean) => void;
+  setAutoRemoveExpiredTasks: (on: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsStore>(set => ({
@@ -31,6 +33,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   anthropicApiKey: '',
   vacationMode: false,
   vacationStart: null,
+  autoRemoveExpiredTasks: false,
   initialized: false,
 
   initialize() {
@@ -42,7 +45,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, initialized: true });
+    const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -86,5 +90,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('vacationMode', 'false');
       set({ vacationMode: false, vacationStart: null });
     }
+  },
+
+  setAutoRemoveExpiredTasks(on: boolean) {
+    dbSetSetting('autoRemoveExpiredTasks', on ? 'true' : 'false');
+    set({ autoRemoveExpiredTasks: on });
   },
 }));

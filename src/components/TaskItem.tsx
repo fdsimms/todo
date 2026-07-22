@@ -25,8 +25,9 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { isTaskWindowActive, isTaskExpired } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -196,6 +197,8 @@ export function TaskItem({
   }, [expanded, isEditingTitle]);
 
   const priorityColor = PRIORITY_COLORS[task.priority];
+  const windowActive = isTaskWindowActive(task);
+  const windowExpired = isTaskExpired(task);
 
   const activeCycleItem =
     task.cycleEnabled && task.cycleItems.length > 0
@@ -369,6 +372,22 @@ export function TaskItem({
           <View style={styles.categoryRow}>
             <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
             <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
+          </View>
+        )}
+        {windowActive && (
+          <View style={styles.windowRow}>
+            <Ionicons name="time" size={iconSize.xs} color={colors.red} />
+            <Text style={styles.windowLabel} numberOfLines={1}>
+              {task.windowEnd ? `Open until ${formatHHMM(task.windowEnd)}` : 'Open now'}
+            </Text>
+          </View>
+        )}
+        {!windowActive && windowExpired && (
+          <View style={styles.windowRow}>
+            <Ionicons name="time-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Text style={styles.windowLabelExpired} numberOfLines={1}>
+              Expired at {formatHHMM(task.windowEnd!)}
+            </Text>
           </View>
         )}
       </TouchableOpacity>
@@ -764,6 +783,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 4,
   },
   categoryLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  windowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  windowLabel: {
+    color: colors.red,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  windowLabelExpired: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },

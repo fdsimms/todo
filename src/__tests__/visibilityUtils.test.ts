@@ -1,4 +1,11 @@
-import { isTaskVisible, isTaskDeferred, getVisibleAt, isHiddenForVacation } from '../utils/visibilityUtils';
+import {
+  isTaskVisible,
+  isTaskDeferred,
+  isTaskWindowActive,
+  isTaskExpired,
+  getVisibleAt,
+  isHiddenForVacation,
+} from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
@@ -52,6 +59,8 @@ const baseTask: Task = {
   dueDate: null,
   deferUntil: null,
   timeSegments: [],
+  windowStart: null,
+  windowEnd: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -156,6 +165,99 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible(task)).toBe(false);
   });
 
+  it('hides tasks whose time window has not started yet', () => {
+    // NOW is 10:00 AM
+    expect(isTaskVisible({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(false);
+  });
+
+  it('shows tasks currently inside their time window', () => {
+    expect(isTaskVisible({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(true);
+  });
+
+  it('hides tasks whose time window has already closed', () => {
+    expect(isTaskVisible({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+});
+
+// ─── isTaskWindowActive ────────────────────────────────────────────────────────
+
+describe('isTaskWindowActive', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a task with no windowStart', () => {
+    expect(isTaskWindowActive(baseTask)).toBe(false);
+  });
+
+  it('is false before windowStart', () => {
+    expect(isTaskWindowActive({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(false);
+  });
+
+  it('is true between windowStart and windowEnd', () => {
+    expect(isTaskWindowActive({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(true);
+  });
+
+  it('is false at/after windowEnd', () => {
+    expect(isTaskWindowActive({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('is true with windowStart in the past and no windowEnd (open-ended)', () => {
+    expect(isTaskWindowActive({ ...baseTask, windowStart: '08:00', windowEnd: null })).toBe(true);
+  });
+
+  it('is false for a completed task', () => {
+    expect(isTaskWindowActive({ ...baseTask, completed: true, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
+  });
+});
+
+// ─── isTaskExpired ─────────────────────────────────────────────────────────────
+
+describe('isTaskExpired', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a task with no windowEnd', () => {
+    expect(isTaskExpired(baseTask)).toBe(false);
+  });
+
+  it('is false before windowEnd', () => {
+    expect(isTaskExpired({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
+  });
+
+  it('is true once windowEnd has passed', () => {
+    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(true);
+  });
+
+  it('is true exactly at windowEnd', () => {
+    expect(isTaskExpired({ ...baseTask, windowEnd: '10:00' })).toBe(true);
+  });
+
+  it('is false for a completed task', () => {
+    expect(isTaskExpired({ ...baseTask, completed: true, windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('is false when the task is due on a future day, even if the clock time has passed', () => {
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString(); // tomorrow
+    expect(isTaskExpired({ ...baseTask, dueDate, windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('is true when the task was due on a past day and the window has closed', () => {
+    const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString(); // 2 days ago
+    expect(isTaskExpired({ ...baseTask, dueDate, windowEnd: '09:00' })).toBe(true);
+  });
 });
 
 // ─── isTaskDeferred ───────────────────────────────────────────────────────────
@@ -199,6 +301,14 @@ describe('isTaskDeferred', () => {
   it('returns false (not deferred) for overdue tasks', () => {
     const dueDate = new Date(2025, 5, 5, 0, 0, 0).toISOString();
     expect(isTaskDeferred({ ...baseTask, dueDate })).toBe(false);
+  });
+
+  it('returns false for an expired task (it belongs in the Expired bucket, not Later)', () => {
+    expect(isTaskDeferred({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('returns true for a task whose window has not started yet today', () => {
+    expect(isTaskDeferred({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
   });
 
 });
@@ -271,6 +381,28 @@ describe('getVisibleAt', () => {
     const task: Task = { ...baseTask, deferUntil: deferUntil.toISOString() };
     const result = getVisibleAt(task);
     expect(result.getTime()).toBe(NOW.getTime());
+  });
+
+  it('returns windowStart threshold when the window has not started today', () => {
+    const task: Task = { ...baseTask, windowStart: '12:00', windowEnd: '18:00' };
+    const result = getVisibleAt(task);
+    expect(result.getHours()).toBe(12);
+    expect(result.getMinutes()).toBe(0);
+    expect(result.getDate()).toBe(10);
+  });
+
+  it('returns now when already inside the time window', () => {
+    const task: Task = { ...baseTask, windowStart: '08:00', windowEnd: '13:00' };
+    const result = getVisibleAt(task);
+    expect(result.getTime()).toBe(NOW.getTime());
+  });
+
+  it('applies windowStart to a future dueDate day', () => {
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0);
+    const task: Task = { ...baseTask, dueDate: dueDate.toISOString(), windowStart: '08:00', windowEnd: '13:00' };
+    const result = getVisibleAt(task);
+    expect(result.getDate()).toBe(11);
+    expect(result.getHours()).toBe(8);
   });
 });
 

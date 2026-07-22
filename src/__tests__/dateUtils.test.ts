@@ -8,6 +8,9 @@ import {
   getLogicalToday,
   getLogicalTomorrow,
   isBeforeDayReset,
+  hhmmToDate,
+  formatHHMM,
+  dateToHHMM,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -27,6 +30,8 @@ const baseTask: Task = {
   dueDate: null,
   deferUntil: null,
   timeSegments: [],
+  windowStart: null,
+  windowEnd: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -244,6 +249,54 @@ describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
 
     expect(isBeforeDayReset('00:00')).toBe(false);
+  });
+});
+
+// ─── hhmmToDate / formatHHMM / dateToHHMM ─────────────────────────────────────
+
+describe('hhmmToDate', () => {
+  it('applies the given clock time to today by default', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    const result = hhmmToDate('08:30');
+    expect(result.getDate()).toBe(10);
+    expect(result.getHours()).toBe(8);
+    expect(result.getMinutes()).toBe(30);
+    jest.useRealTimers();
+  });
+
+  it('applies the clock time to a given base date', () => {
+    const base = new Date(2025, 5, 15, 3, 0, 0);
+    const result = hhmmToDate('13:00', base);
+    expect(result.getDate()).toBe(15);
+    expect(result.getHours()).toBe(13);
+    expect(result.getMinutes()).toBe(0);
+  });
+});
+
+describe('formatHHMM', () => {
+  it('formats a morning time', () => {
+    expect(formatHHMM('08:00')).toBe('8:00 AM');
+  });
+
+  it('formats an afternoon time', () => {
+    expect(formatHHMM('13:00')).toBe('1:00 PM');
+  });
+
+  it('formats midnight and noon', () => {
+    expect(formatHHMM('00:00')).toBe('12:00 AM');
+    expect(formatHHMM('12:00')).toBe('12:00 PM');
+  });
+});
+
+describe('dateToHHMM', () => {
+  it('formats a Date back into "HH:MM"', () => {
+    expect(dateToHHMM(new Date(2025, 5, 10, 8, 5, 0))).toBe('08:05');
+    expect(dateToHHMM(new Date(2025, 5, 10, 13, 0, 0))).toBe('13:00');
+  });
+
+  it('round-trips with hhmmToDate', () => {
+    expect(dateToHHMM(hhmmToDate('09:45'))).toBe('09:45');
   });
 });
 
