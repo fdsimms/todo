@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SortableList } from './SortableList';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
@@ -21,7 +22,7 @@ import { WeekdaySelector } from './WeekdaySelector';
 import { format, addMonths } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -29,7 +30,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
@@ -82,6 +83,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addCategory = useTaskStore(s => s.addCategory);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
+  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [aiLoading, setAiLoading] = useState(false);
@@ -93,6 +95,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
+  const [windowStart, setWindowStart] = useState<string | null>(null);
+  const [windowEnd, setWindowEnd] = useState<string | null>(null);
+  const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -142,6 +148,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       setTimeSegments(task.timeSegments ?? []);
+      setWindowStart(task.windowStart ?? null);
+      setWindowEnd(task.windowEnd ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
@@ -155,7 +163,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
-      setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setDeferUntil(null); setReminderTime(null);
+      setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
@@ -165,7 +173,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
-    setPickerMode('none'); setShowWhenPicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setShowWhenPicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
@@ -179,6 +187,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
+      windowStart: task?.windowStart ?? null,
+      windowEnd: task?.windowEnd ?? null,
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
@@ -203,7 +213,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const data = {
       title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
-      timeSegments, deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments, windowStart, windowEnd, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -242,6 +252,20 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none');
   };
 
+  const openWindowPicker = (which: 'start' | 'end') => {
+    const current = which === 'start' ? windowStart : windowEnd;
+    const fallback = which === 'start' ? '08:00' : '13:00';
+    setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerMode(which);
+  };
+
+  const confirmWindowPicker = () => {
+    const hhmm = dateToHHMM(windowPickerDate);
+    if (windowPickerMode === 'start') setWindowStart(hhmm);
+    else if (windowPickerMode === 'end') setWindowEnd(hhmm);
+    setWindowPickerMode('none');
+  };
+
   const addTagFromInput = () => {
     const t = newTag.trim().toLowerCase();
     if (t && !tags.includes(t)) setTags(prev => [...prev, t]);
@@ -276,6 +300,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const current = JSON.stringify({
       title, notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
+      windowStart, windowEnd,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
@@ -919,6 +944,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               })}
             </View>
             <View style={styles.sep} />
+            <View style={styles.optionRow}>
+              <Ionicons
+                name="hourglass-outline"
+                size={18}
+                color={(windowStart || windowEnd) ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Time window</Text>
+                {!windowStart && !windowEnd && (
+                  <Text style={styles.optionHint}>Only active for part of the day, then expires</Text>
+                )}
+              </View>
+              {(windowStart || windowEnd) && (
+                <TouchableOpacity onPress={() => { setWindowStart(null); setWindowEnd(null); }} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.windowPillRow}>
+              <TouchableOpacity
+                style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
+                onPress={() => openWindowPicker('start')}
+              >
+                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                  {windowStart ? formatHHMM(windowStart) : 'Start'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
+                onPress={() => openWindowPicker('end')}
+              >
+                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {windowPickerMode !== 'none' && (
+              <>
+                <DateTimePicker
+                  value={windowPickerDate}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_e, d) => d && setWindowPickerDate(d)}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                  style={styles.windowPickerWidget}
+                />
+                <View style={styles.pickerButtons}>
+                  <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
+                    <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
+                    <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+            <View style={styles.sep} />
             <OptionRow
               icon="notifications"
               label="Remind me"
@@ -1245,6 +1327,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillActive: { backgroundColor: colors.accent },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
+  windowPillRow: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  windowPill: { flex: 1 },
+  windowPickerWidget: { height: 180 },
+  pickerButtons: {
+    flexDirection: 'row', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  pickerBtn: {
+    flex: 1, paddingVertical: 11, borderRadius: radius.md,
+    alignItems: 'center', backgroundColor: colors.bgTertiary,
+  },
+  pickerBtnPrimary: { backgroundColor: colors.accent },
+  pickerBtnText: { fontSize: font.md, fontWeight: '600' },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',

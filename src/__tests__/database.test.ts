@@ -89,6 +89,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   dueDate: null,
   deferUntil: null,
   timeSegments: [],
+  windowStart: null,
+  windowEnd: null,
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
@@ -153,6 +155,7 @@ describe('initDatabase', () => {
       'recurrence_from_completion', 'parent_id', 'reminder_time',
       'cycle_enabled', 'cycle_index', 'cycle_items',
       'time_of_day', 'category', 'vacation_pause', 'estimated_minutes',
+      'window_start', 'window_end',
     ]) {
       expect(cols).toContain(col);
     }
@@ -277,6 +280,20 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].timeSegments).toEqual(['morning', 'evening']);
   });
 
+  it('round-trips windowStart and windowEnd', () => {
+    dbInsertTask(makeTask({ id: 'win', windowStart: '08:00', windowEnd: '13:00' }));
+    const [t] = dbGetAllTasks();
+    expect(t.windowStart).toBe('08:00');
+    expect(t.windowEnd).toBe('13:00');
+  });
+
+  it('returns null windowStart/windowEnd when unset', () => {
+    dbInsertTask(makeTask({ id: 'nowin' }));
+    const [t] = dbGetAllTasks();
+    expect(t.windowStart).toBeNull();
+    expect(t.windowEnd).toBeNull();
+  });
+
   it('stores empty timeSegments as NULL in the column', () => {
     dbInsertTask(makeTask({ id: 'nots' }));
     const row = mockRawDb
@@ -340,6 +357,8 @@ describe('dbUpdateTask', () => {
       completedAt: '2025-06-10T00:00:00.000Z',
       dueDate: '2025-07-01T00:00:00.000Z',
       timeSegments: ['afternoon'],
+      windowStart: '08:00',
+      windowEnd: '13:00',
       recurrenceType: 'weekly',
       recurrenceInterval: 2,
       recurrenceDays: [1, 5],
@@ -367,6 +386,8 @@ describe('dbUpdateTask', () => {
     expect(result.estimatedMinutes).toBe(75);
     expect(result.streakCount).toBe(5);
     expect(result.vacationPause).toBe(true);
+    expect(result.windowStart).toBe('08:00');
+    expect(result.windowEnd).toBe('13:00');
   });
 
   it('does not touch other rows', () => {

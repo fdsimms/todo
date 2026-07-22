@@ -1,5 +1,5 @@
 import type { Task, TimeOfDay, Category } from '../types';
-import { getDayStart, getCurrentDayStart } from './dateUtils';
+import { getDayStart, getCurrentDayStart, hhmmToDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -83,6 +83,49 @@ function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
     .reduce((min, t) => (t < min ? t : min));
 }
 
+// True once the task's own day (deferUntil / dueDate) has arrived — i.e. it's
+// not sitting hidden behind a future date. Used to distinguish a genuinely
+// expired time window from a window on a task that hasn't come up yet.
+function hasDayArrived(task: Task): boolean {
+  const { dayResetTime } = useSettingsStore.getState();
+  const todayStart = getCurrentDayStart();
+  if (task.deferUntil) {
+    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    if (deferDayStart > todayStart) return false;
+  }
+  if (task.dueDate) {
+    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    if (taskDayStart > todayStart) return false;
+  }
+  return true;
+}
+
+// True while a task with a time window is currently inside that window
+// (windowStart has passed, windowEnd hasn't) — used to surface the
+// "time-limited, act now" indicator.
+export function isTaskWindowActive(task: Task): boolean {
+  if (task.completed || !task.windowStart) return false;
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+  if (isCategoryHiddenOnVacation(task.category)) return false;
+  if (!hasDayArrived(task)) return false;
+  const now = new Date();
+  if (now < hhmmToDate(task.windowStart)) return false;
+  if (task.windowEnd && now >= hhmmToDate(task.windowEnd)) return false;
+  return true;
+}
+
+// True once a task's time window has closed (windowEnd has passed on its own
+// day) and it's still incomplete. Expired tasks are neither "visible" nor
+// "deferred" — they move to their own Expired bucket and stay there until the
+// user deals with them (delete, or skip/reschedule a recurring task).
+export function isTaskExpired(task: Task): boolean {
+  if (task.completed || !task.windowEnd) return false;
+  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
+  if (isCategoryHiddenOnVacation(task.category)) return false;
+  if (!hasDayArrived(task)) return false;
+  return new Date() >= hhmmToDate(task.windowEnd);
+}
+
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
 
@@ -104,6 +147,10 @@ export function isTaskVisible(task: Task): boolean {
     if (now < threshold) return false;
   }
 
+  if (task.windowStart && now < hhmmToDate(task.windowStart)) return false;
+
+  if (isTaskExpired(task)) return false;
+
   if (task.dueDate) {
     const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
     const todayStart = getCurrentDayStart();
@@ -119,6 +166,7 @@ export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
+  if (isTaskExpired(task)) return false;
   return !isTaskVisible(task);
 }
 
@@ -153,8 +201,13 @@ export function getVisibleAt(task: Task): Date {
   const candidates: Date[] = [];
   const todayStart = getCurrentDayStart();
 
-  const applyTimeSegments = (base: Date): Date => {
-    const threshold = earliestSegmentThreshold(task.timeSegments);
+  // Both timeSegments and windowStart refine a day to a specific clock time;
+  // a task normally uses one or the other, so timeSegments takes precedence
+  // when both happen to be set.
+  const applyTimeThreshold = (base: Date): Date => {
+    const threshold = task.timeSegments.length > 0
+      ? earliestSegmentThreshold(task.timeSegments)
+      : task.windowStart ? hhmmToDate(task.windowStart) : null;
     if (!threshold) return base;
     const result = new Date(base);
     result.setHours(threshold.getHours(), threshold.getMinutes(), 0, 0);
@@ -164,19 +217,22 @@ export function getVisibleAt(task: Task): Date {
   if (task.deferUntil) {
     const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart > todayStart) {
-      candidates.push(applyTimeSegments(deferDayStart));
+      candidates.push(applyTimeThreshold(deferDayStart));
     }
   }
 
   if (task.timeSegments.length > 0 && candidates.length === 0) {
     const threshold = earliestSegmentThreshold(task.timeSegments)!;
     if (threshold > now) candidates.push(threshold);
+  } else if (task.windowStart && candidates.length === 0) {
+    const threshold = hhmmToDate(task.windowStart);
+    if (threshold > now) candidates.push(threshold);
   }
 
   if (task.dueDate) {
     const taskStart = getDayStart(new Date(task.dueDate), dayResetTime);
     if (taskStart > todayStart) {
-      const candidate = applyTimeSegments(taskStart);
+      const candidate = applyTimeThreshold(taskStart);
       if (candidates.length === 0 || candidate > candidates[candidates.length - 1]) {
         candidates.push(candidate);
       }

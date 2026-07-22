@@ -30,6 +30,8 @@ export interface Task {
   dueDate: string | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
+  windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
+  windowEnd: string | null;   // "HH:MM" — task expires (moves to Expired) after this time on its day
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
