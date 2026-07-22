@@ -16,6 +16,7 @@ import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { getRepeatedInstances } from '../utils/taskInstances';
 
 const BAR_HEIGHT = 96;
 const HABIT_DAYS = 30;
@@ -144,6 +145,10 @@ export function StatsScreen() {
       .slice(0, 10);
   }, [done, now]);
 
+  // Non-recurring tasks completed more than once — the "instances" of a task
+  // that isn't formally recurring (e.g. re-adding one via title autosuggest).
+  const repeated = useMemo(() => getRepeatedInstances(tasks).slice(0, 10), [tasks]);
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Stats" subtitle={`${done.length} completed`} />
@@ -262,6 +267,31 @@ export function StatsScreen() {
             </StaggerIn>
           )}
 
+          {/* Repeated non-recurring tasks — "instances" of the same task */}
+          {repeated.length > 0 && (
+            <StaggerIn index={4}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>REPEATED TASKS</Text>
+              <View style={styles.card}>
+                {repeated.map((g, i) => (
+                  <View key={g.key} style={[styles.row, i < repeated.length - 1 && styles.rowBorder]}>
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.instanceTitle} numberOfLines={1}>{g.title}</Text>
+                      <Text style={styles.instanceMeta}>
+                        Last done {format(new Date(g.lastCompletedAt), 'MMM d')}
+                      </Text>
+                    </View>
+                    <View style={styles.badge}>
+                      <Ionicons name="repeat" size={13} color={colors.accent} />
+                      <Text style={[styles.badgeText, { color: colors.accent }]}>{g.count}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
         </ScrollView>
       )}
     </View>
@@ -370,6 +400,19 @@ const makeStyles = (colors: Colors) =>
       borderRadius: radius.full,
     },
     badgeText: { fontSize: font.sm, fontWeight: '700' },
+    instanceMain: {
+      flex: 1,
+      gap: 2,
+    },
+    instanceTitle: {
+      color: colors.text,
+      fontSize: font.md,
+    },
+    instanceMeta: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: '500',
+    },
     habitRow: {
       paddingHorizontal: spacing.md,
       paddingTop: spacing.sm + 2,
