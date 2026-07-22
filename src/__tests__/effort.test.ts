@@ -1,4 +1,4 @@
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime } from '../utils/effort';
 import type { Effort } from '../types';
 
 describe('effortToMinutes', () => {
@@ -59,5 +59,36 @@ describe('formatDuration', () => {
     expect(formatDuration(90)).toBe('1.5h');
     expect(formatDuration(240)).toBe('4h');
     expect(formatDuration(150)).toBe('2.5h');
+  });
+});
+
+describe('formatStopwatch', () => {
+  it('shows m:ss under an hour', () => {
+    expect(formatStopwatch(0)).toBe('0:00');
+    expect(formatStopwatch(5)).toBe('0:05');
+    expect(formatStopwatch(65)).toBe('1:05');
+    expect(formatStopwatch(600)).toBe('10:00');
+  });
+
+  it('shows h:mm:ss at or above an hour', () => {
+    expect(formatStopwatch(3600)).toBe('1:00:00');
+    expect(formatStopwatch(3723)).toBe('1:02:03');
+  });
+
+  it('floors fractional seconds and clamps negatives', () => {
+    expect(formatStopwatch(5.9)).toBe('0:05');
+    expect(formatStopwatch(-10)).toBe('0:00');
+  });
+});
+
+describe('applyMeasuredTime', () => {
+  it('sets actual and estimate to the rounded minutes and derives effort', () => {
+    expect(applyMeasuredTime(10)).toEqual({ actualMinutes: 10, estimatedMinutes: 10, effort: 1 });
+    expect(applyMeasuredTime(90)).toEqual({ actualMinutes: 90, estimatedMinutes: 90, effort: 3 });
+  });
+
+  it('rounds and floors to a minimum of one minute', () => {
+    expect(applyMeasuredTime(9.4)).toEqual({ actualMinutes: 9, estimatedMinutes: 9, effort: 1 });
+    expect(applyMeasuredTime(0.2)).toEqual({ actualMinutes: 1, estimatedMinutes: 1, effort: 1 });
   });
 });

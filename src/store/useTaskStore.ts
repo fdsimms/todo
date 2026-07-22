@@ -24,6 +24,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
+import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
@@ -46,6 +47,9 @@ interface TaskStore {
   skipNextRecurrence: (id: string) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
+  startTimer: (id: string) => void;
+  stopTimer: (id: string) => void;
+  logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   reorderWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
 
@@ -143,6 +147,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: draft.cycleIndex ?? 0,
       cycleItems: draft.cycleItems ?? [],
       vacationPause: draft.vacationPause ?? false,
+      timerStartedAt: draft.timerStartedAt ?? null,
+      actualMinutes: draft.actualMinutes ?? null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -187,8 +193,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   completeTask(id) {
-    const task = get().tasks.find(t => t.id === id);
+    let task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
+
+    // If a timer is still running, stop it first so the session's time is saved.
+    if (task.timerStartedAt !== null) {
+      get().stopTimer(id);
+      task = get().tasks.find(t => t.id === id)!;
+    }
 
     const now = new Date();
     const { dayResetTime } = useSettingsStore.getState();
@@ -250,6 +262,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           reminderTime: nextReminderTime,
           cycleIndex: nextCycleIndex,
           recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
+          timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...task
           // vacationPause carries over so recurring tasks stay paused across occurrences
         };
         dbInsertTask(nextTask);
@@ -314,6 +327,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: s.tasks.map(t => (t.focused ? { ...t, focused: false } : t)),
     }));
+  },
+
+  startTimer(id) {
+    // Only one task times at a time — stop any other running timer first.
+    const running = get().tasks.find(t => t.timerStartedAt !== null && t.id !== id);
+    if (running) get().stopTimer(running.id);
+    get().updateTask(id, { timerStartedAt: new Date().toISOString() });
+  },
+
+  stopTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.timerStartedAt === null) return;
+    const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
+    const minutes = elapsedMs / 60000;
+    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
+  },
+
+  logManualTime(id, minutes) {
+    if (!(minutes > 0)) return;
+    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
   },
 
   reorderTasks(orderedIds) {
@@ -385,6 +418,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       cycleIndex: 0,
       cycleItems: [],
       vacationPause: false,
+      timerStartedAt: null,
+      actualMinutes: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));

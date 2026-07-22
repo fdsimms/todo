@@ -48,7 +48,9 @@ export function initDatabase(): void {
       reminder_time TEXT,
       cycle_enabled INTEGER NOT NULL DEFAULT 0,
       cycle_index INTEGER NOT NULL DEFAULT 0,
-      cycle_items TEXT NOT NULL DEFAULT '[]'
+      cycle_items TEXT NOT NULL DEFAULT '[]',
+      timer_started_at TEXT,
+      actual_minutes INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -92,6 +94,8 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN estimated_minutes INTEGER',
     'ALTER TABLE categories ADD COLUMN hide_on_vacation INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN recurrence_count INTEGER',
+    'ALTER TABLE tasks ADD COLUMN timer_started_at TEXT',
+    'ALTER TABLE tasks ADD COLUMN actual_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN window_start TEXT',
     'ALTER TABLE tasks ADD COLUMN window_end TEXT',
   ];
@@ -157,6 +161,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     cycleIndex: (row.cycle_index as number) ?? 0,
     cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
     vacationPause: Boolean(row.vacation_pause),
+    timerStartedAt: (row.timer_started_at as string | null) ?? null,
+    actualMinutes: (row.actual_minutes as number | null) ?? null,
   };
 }
 
@@ -174,8 +180,8 @@ export function dbInsertTask(task: Task): void {
       due_date, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
-      cycle_enabled, cycle_index, cycle_items, vacation_pause
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -187,7 +193,7 @@ export function dbInsertTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.vacationPause ? 1 : 0,
+      task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
     ]
   );
 }
@@ -200,7 +206,7 @@ export function dbUpdateTask(task: Task): void {
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
-      cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?
+      cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -213,7 +219,7 @@ export function dbUpdateTask(task: Task): void {
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
-      task.vacationPause ? 1 : 0,
+      task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
       task.id,
     ]
   );

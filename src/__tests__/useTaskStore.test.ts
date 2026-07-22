@@ -107,6 +107,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
+  timerStartedAt: null,
+  actualMinutes: null,
   ...overrides,
 });
 
@@ -923,5 +925,67 @@ describe('tasksByTag', () => {
     });
     const tagged = useTaskStore.getState().tasksByTag('work');
     expect(tagged.map(t => t.id)).toEqual(['a']);
+  });
+});
+
+// ─── Time tracking ──────────────────────────────────────────────────────────────
+
+describe('timers', () => {
+  it('startTimer sets timerStartedAt on the task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().startTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).not.toBeNull();
+  });
+
+  it('only one timer runs at a time — starting a second stops the first', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })] });
+    useTaskStore.getState().startTimer('a');
+    useTaskStore.getState().startTimer('b');
+    const a = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    const b = useTaskStore.getState().tasks.find(t => t.id === 'b')!;
+    expect(a.timerStartedAt).toBeNull();
+    expect(b.timerStartedAt).not.toBeNull();
+  });
+
+  it('stopTimer records elapsed minutes as actual + estimate and clears the timer', () => {
+    const started = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
+    useTaskStore.getState().stopTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.actualMinutes).toBe(10);
+    expect(task.estimatedMinutes).toBe(10);
+    expect(task.effort).toBe(1); // ≤20min → XS
+  });
+
+  it('logManualTime sets actual + estimate without needing a running timer', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().logManualTime('a', 90);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(90);
+    expect(task.estimatedMinutes).toBe(90);
+    expect(task.effort).toBe(3); // ≤150min → M
+  });
+
+  it('completing a task with a running timer saves the elapsed time first', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
+    useTaskStore.getState().completeTask('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completed).toBe(true);
+    expect(task.actualMinutes).toBe(5);
+  });
+
+  it('carries the measured time forward to the next recurrence but resets the running timer', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'daily', actualMinutes: 10, estimatedMinutes: 10, effort: 1 })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next).toBeDefined();
+    expect(next.actualMinutes).toBe(10);
+    expect(next.estimatedMinutes).toBe(10);
+    expect(next.timerStartedAt).toBeNull();
   });
 });
