@@ -105,7 +105,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
         <View style={styles.header}>
           <View style={{ width: 44 }} />
           <Text style={styles.title}>Settings</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.doneBtn}>
+          <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.doneBtn} accessibilityRole="button" accessibilityLabel="Done">
             <Text style={styles.done}>Done</Text>
           </TouchableOpacity>
         </View>
@@ -124,6 +124,9 @@ export function SettingsScreen({ visible, onClose }: Props) {
                       themeMode === opt.mode && styles.themeBtnActive,
                     ]}
                     onPress={() => setThemeMode(opt.mode)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: themeMode === opt.mode }}
+                    accessibilityLabel={`${opt.label} theme`}
                   >
                     <Ionicons
                       name={opt.icon as never}
@@ -254,6 +257,9 @@ export function SettingsScreen({ visible, onClose }: Props) {
                   }
                 }}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: vacationMode }}
+                accessibilityLabel="Vacation mode"
               >
                 <Ionicons
                   name="airplane-outline"
@@ -284,6 +290,9 @@ export function SettingsScreen({ visible, onClose }: Props) {
                 style={styles.row}
                 onPress={() => setAutoRemoveExpiredTasks(!autoRemoveExpiredTasks)}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: autoRemoveExpiredTasks }}
+                accessibilityLabel="Auto-remove expired tasks"
               >
                 <Ionicons
                   name="time-outline"

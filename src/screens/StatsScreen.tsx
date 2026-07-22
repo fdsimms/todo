@@ -15,21 +15,28 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
+import { useReduceMotion } from '../utils/useReduceMotion';
 
 const BAR_HEIGHT = 96;
 const HABIT_DAYS = 30;
 
 // Sections cascade in on mount: each fades and rises with a small delay.
 function StaggerIn({ index, children }: { index: number; children: React.ReactNode }) {
+  const reduceMotion = useReduceMotion();
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    // Reduce Motion: show sections at rest, no cascade.
+    if (reduceMotion) {
+      anim.setValue(1);
+      return;
+    }
     Animated.timing(anim, {
       toValue: 1,
       duration: animation.duration.normal,
       delay: index * 60,
       useNativeDriver: true,
     }).start();
-  }, [anim, index]);
+  }, [anim, index, reduceMotion]);
   return (
     <Animated.View
       style={{
@@ -57,6 +64,7 @@ export function StatsScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const reduceMotion = useReduceMotion();
   const now = useMemo(() => new Date(), []);
 
   const done = useMemo(
@@ -94,13 +102,18 @@ export function StatsScreen() {
   // the native driver, so this one runs on the JS thread).
   const chartProgress = useRef(new Animated.Value(0)).current;
   useEffect(() => {
+    // Reduce Motion: render bars at full height immediately.
+    if (reduceMotion) {
+      chartProgress.setValue(1);
+      return;
+    }
     Animated.timing(chartProgress, {
       toValue: 1,
       duration: animation.duration.slow,
       delay: 150,
       useNativeDriver: false,
     }).start();
-  }, [chartProgress]);
+  }, [chartProgress, reduceMotion]);
 
   const streaks = useMemo(
     () =>

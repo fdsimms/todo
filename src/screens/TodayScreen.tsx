@@ -549,6 +549,7 @@ export function TodayScreen() {
       icon: 'checkmark-circle-outline',
       onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
       active: selectionMode,
+      accessibilityLabel: selectionMode ? 'Exit selection mode' : 'Select tasks',
     },
     ...(viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0
       ? [{
@@ -556,6 +557,7 @@ export function TodayScreen() {
           onPress: () => setShowUpcoming(v => !v),
           active: showUpcoming,
           badge: showUpcoming ? undefined : upcomingTodayTasks.length,
+          accessibilityLabel: showUpcoming ? 'Hide later-today tasks' : 'Show later-today tasks',
         }]
       : []),
     ...(viewMode === 'today'
@@ -564,6 +566,7 @@ export function TodayScreen() {
           onPress: () => setFilterVisible(true),
           active: activeFilterCount > 0,
           badge: activeFilterCount,
+          accessibilityLabel: 'Sort and filter',
         }]
       : []),
     ...(viewMode === 'today' && focusedTasks.length < 3 && visibleTasks.length > 0
@@ -574,9 +577,10 @@ export function TodayScreen() {
           tint: 'orange' as const,
           disabled: isSuggestingFocus,
           loading: isSuggestingFocus,
+          accessibilityLabel: 'Suggest focus tasks',
         }]
       : []),
-    { icon: 'settings-outline' as const, onPress: () => setSettingsVisible(true) },
+    { icon: 'settings-outline' as const, onPress: () => setSettingsVisible(true), accessibilityLabel: 'Settings' },
   ];
 
   return (
@@ -601,6 +605,9 @@ export function TodayScreen() {
               setSelectedIds(new Set());
             }}
             activeOpacity={interaction.activeOpacity}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: viewMode === mode }}
+            accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
           >
             <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
               {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -764,6 +771,7 @@ export function TodayScreen() {
               haptics.impactLight();
               setQuickAddVisible(true);
             }}
+            accessibilityLabel="Add task"
           >
             <Ionicons name="add" size={28} color={colors.onAccent} />
           </PressableScale>

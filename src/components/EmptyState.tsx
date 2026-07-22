@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, lineHeight, spacing, radius, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { useReduceMotion } from '../utils/useReduceMotion';
 
 interface Props {
   icon: keyof typeof Ionicons.glyphMap;
@@ -21,10 +22,17 @@ interface Props {
 export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
   const iconScale = useRef(new Animated.Value(0.8)).current;
 
   useEffect(() => {
+    // Reduce Motion: appear in place, no fade-up or icon pop.
+    if (reduceMotion) {
+      progress.setValue(1);
+      iconScale.setValue(1);
+      return;
+    }
     Animated.parallel([
       Animated.timing(progress, {
         toValue: 1,
@@ -37,7 +45,7 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: Pro
         useNativeDriver: true,
       }),
     ]).start();
-  }, [progress, iconScale]);
+  }, [progress, iconScale, reduceMotion]);
 
   return (
     <Animated.View
