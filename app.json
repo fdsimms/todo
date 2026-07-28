@@ -1,10 +1,10 @@
 {
   "expo": {
     "name": "dundundun",
-    "slug": "personal-todo",
+    "slug": "dundundun",
     "version": "1.0.0",
     "orientation": "portrait",
-    "scheme": "todo",
+    "scheme": "dundundun",
     "userInterfaceStyle": "automatic",
     "splash": {
       "resizeMode": "contain",
@@ -12,13 +12,13 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.personal.todo"
+      "bundleIdentifier": "com.personal.dundundun"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#000000"
       },
-      "package": "com.personal.todo"
+      "package": "com.personal.dundundun"
     },
     "plugins": [
       [
