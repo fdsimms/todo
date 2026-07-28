@@ -1,4 +1,4 @@
-# Personal Todo
+# dundundun
 
 A personal todo app built with Expo (React Native). Inspired by Things 3, with a key differentiator: tasks can be hidden until a specific time — either as a one-time snooze or as a daily visibility rule baked into the task itself.
 
