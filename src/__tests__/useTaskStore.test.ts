@@ -478,6 +478,57 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(1);
   });
 
+  it('does not complete a recurring task whose dueDate is a future day', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      dueDate: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // 2 days out
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+    expect(dbInsertTask).not.toHaveBeenCalled();
+    const stored = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(stored?.completed).toBe(false);
+  });
+
+  it('does not complete a recurring task deferred to a future day', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      deferUntil: new Date(2025, 5, 11, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+    expect(dbUpdateTask).not.toHaveBeenCalled();
+    const stored = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(stored?.completed).toBe(false);
+  });
+
+  it('completes a recurring task whose dueDate is today or in the past', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+    const stored = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(stored?.completed).toBe(true);
+  });
+
+  it('completes a non-recurring task even with a future dueDate', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'none',
+      dueDate: new Date(2025, 5, 12, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+    const stored = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(stored?.completed).toBe(true);
+  });
+
   it('does nothing when task id is not found', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('nonexistent');

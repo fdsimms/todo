@@ -85,8 +85,9 @@ function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
 
 // True once the task's own day (deferUntil / dueDate) has arrived — i.e. it's
 // not sitting hidden behind a future date. Used to distinguish a genuinely
-// expired time window from a window on a task that hasn't come up yet.
-function hasDayArrived(task: Task): boolean {
+// expired time window from a window on a task that hasn't come up yet, and to
+// gate early completion of recurring tasks shown ahead of time in Later.
+export function hasDayArrived(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
   const todayStart = getCurrentDayStart();
   if (task.deferUntil) {
@@ -160,6 +161,15 @@ export function isTaskVisible(task: Task): boolean {
   if (!isCategoryScheduleActive(task.category)) return false;
 
   return true;
+}
+
+// True for a recurring task that's showing up in Later ahead of its own day
+// (deferred to, or due on, a future day). Completing these early skips the
+// point of the schedule — the next occurrence gets generated before this one
+// was actually due — so callers use this to block completion until the day
+// arrives.
+export function isRecurrenceNotYetDue(task: Task): boolean {
+  return task.recurrenceType !== 'none' && !task.completed && !hasDayArrived(task);
 }
 
 export function isTaskDeferred(task: Task): boolean {
