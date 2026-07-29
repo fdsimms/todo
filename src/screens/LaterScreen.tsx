@@ -60,6 +60,19 @@ export function LaterScreen() {
     }, [])
   );
 
+  // deferredTasks() is only re-derived when a render happens; a task's
+  // window can expire (isTaskExpired) purely from time passing, with no
+  // store mutation to trigger that render. Tick while focused so an expired
+  // task drops out of Later on its own instead of lingering until some
+  // unrelated interaction forces a refresh.
+  const [, forceRefresh] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
+      return () => clearInterval(interval);
+    }, [])
+  );
+
   const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
 
