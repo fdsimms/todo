@@ -247,8 +247,11 @@ export function TaskItem({
     completingRef.current = true;
     await haptics.success();
     setCompleting(true);
-    // Checkmark springs in while the circle pops, then the row fades and the
-    // surrounding list closes the gap via LayoutAnimation. The task isn't
+    // Checkmark springs in while the circle pops, then the row fades to
+    // invisible but keeps its place in the list — completeTask holds it
+    // there (see useTaskStore's completionHoldIds) so completing several
+    // tasks in a row doesn't reflow the list after every tap. The row only
+    // collapses once completions pause for a couple seconds. The task isn't
     // actually marked complete in the store until this sequence finishes,
     // so a tap during the window (handleUndoComplete) can cancel it outright.
     checkScale.setValue(0);
@@ -265,7 +268,6 @@ export function TaskItem({
       if (!finished) return;
       setCompleting(false);
       completingRef.current = false;
-      animateLayout();
       completeTask(task.id);
     });
   };
