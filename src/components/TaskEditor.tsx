@@ -635,7 +635,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 )}
               </View>
               <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => {
+                {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
                   const active = !customEffortActive && effort === e;
                   const presetMins = EFFORT_MINUTES[e];
                   return (

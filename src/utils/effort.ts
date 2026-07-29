@@ -33,7 +33,7 @@ export function formatStopwatch(totalSeconds: number): string {
 // Canonical minutes per effort bucket. Index = Effort value; 0 = unknown (null).
 // These are the times shown on the preset chips and used as the fallback when a
 // task has no precise estimate.
-export const EFFORT_MINUTES: readonly (number | null)[] = [null, 15, 30, 90, 240, 480];
+export const EFFORT_MINUTES: readonly (number | null)[] = [null, 1, 15, 30, 90, 240, 480];
 
 /** The canonical minute value for an effort bucket (null for "unknown"). */
 export function effortToMinutes(e: Effort): number | null {
@@ -46,11 +46,12 @@ export function effortToMinutes(e: Effort): number | null {
  */
 export function minutesToEffort(min: number | null): Effort {
   if (min == null || min <= 0) return 0;
-  if (min <= 20) return 1;   // XS ~15
-  if (min <= 45) return 2;   // S ~30
-  if (min <= 150) return 3;  // M ~90
-  if (min <= 330) return 4;  // L ~240
-  return 5;                  // XL ~480+
+  if (min <= 5) return 1;    // XXS ~1
+  if (min <= 20) return 2;   // XS ~15
+  if (min <= 45) return 3;   // S ~30
+  if (min <= 150) return 4;  // M ~90
+  if (min <= 330) return 5;  // L ~240
+  return 6;                  // XL ~480+
 }
 
 /** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */

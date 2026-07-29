@@ -7,11 +7,12 @@ describe('effortToMinutes', () => {
   });
 
   it('returns the canonical minutes for each preset', () => {
-    expect(effortToMinutes(1)).toBe(15);
-    expect(effortToMinutes(2)).toBe(30);
-    expect(effortToMinutes(3)).toBe(90);
-    expect(effortToMinutes(4)).toBe(240);
-    expect(effortToMinutes(5)).toBe(480);
+    expect(effortToMinutes(1)).toBe(1);
+    expect(effortToMinutes(2)).toBe(15);
+    expect(effortToMinutes(3)).toBe(30);
+    expect(effortToMinutes(4)).toBe(90);
+    expect(effortToMinutes(5)).toBe(240);
+    expect(effortToMinutes(6)).toBe(480);
   });
 });
 
@@ -23,20 +24,22 @@ describe('minutesToEffort', () => {
   });
 
   it('buckets values by threshold', () => {
-    expect(minutesToEffort(10)).toBe(1);   // ≤20 → XS
-    expect(minutesToEffort(20)).toBe(1);
-    expect(minutesToEffort(21)).toBe(2);   // ≤45 → S
-    expect(minutesToEffort(45)).toBe(2);
-    expect(minutesToEffort(46)).toBe(3);   // ≤150 → M
-    expect(minutesToEffort(150)).toBe(3);
-    expect(minutesToEffort(151)).toBe(4);  // ≤330 → L
-    expect(minutesToEffort(330)).toBe(4);
-    expect(minutesToEffort(331)).toBe(5);  // else → XL
-    expect(minutesToEffort(1000)).toBe(5);
+    expect(minutesToEffort(1)).toBe(1);    // ≤5 → XXS
+    expect(minutesToEffort(5)).toBe(1);
+    expect(minutesToEffort(6)).toBe(2);    // ≤20 → XS
+    expect(minutesToEffort(20)).toBe(2);
+    expect(minutesToEffort(21)).toBe(3);   // ≤45 → S
+    expect(minutesToEffort(45)).toBe(3);
+    expect(minutesToEffort(46)).toBe(4);   // ≤150 → M
+    expect(minutesToEffort(150)).toBe(4);
+    expect(minutesToEffort(151)).toBe(5);  // ≤330 → L
+    expect(minutesToEffort(330)).toBe(5);
+    expect(minutesToEffort(331)).toBe(6);  // else → XL
+    expect(minutesToEffort(1000)).toBe(6);
   });
 
   it('round-trips every preset back to itself', () => {
-    for (const e of [1, 2, 3, 4, 5] as Effort[]) {
+    for (const e of [1, 2, 3, 4, 5, 6] as Effort[]) {
       expect(minutesToEffort(EFFORT_MINUTES[e])).toBe(e);
     }
   });
@@ -83,12 +86,12 @@ describe('formatStopwatch', () => {
 
 describe('applyMeasuredTime', () => {
   it('sets actual and estimate to the rounded minutes and derives effort', () => {
-    expect(applyMeasuredTime(10)).toEqual({ actualMinutes: 10, estimatedMinutes: 10, effort: 1 });
-    expect(applyMeasuredTime(90)).toEqual({ actualMinutes: 90, estimatedMinutes: 90, effort: 3 });
+    expect(applyMeasuredTime(10)).toEqual({ actualMinutes: 10, estimatedMinutes: 10, effort: 2 });
+    expect(applyMeasuredTime(90)).toEqual({ actualMinutes: 90, estimatedMinutes: 90, effort: 4 });
   });
 
   it('rounds and floors to a minimum of one minute', () => {
-    expect(applyMeasuredTime(9.4)).toEqual({ actualMinutes: 9, estimatedMinutes: 9, effort: 1 });
+    expect(applyMeasuredTime(9.4)).toEqual({ actualMinutes: 9, estimatedMinutes: 9, effort: 2 });
     expect(applyMeasuredTime(0.2)).toEqual({ actualMinutes: 1, estimatedMinutes: 1, effort: 1 });
   });
 });

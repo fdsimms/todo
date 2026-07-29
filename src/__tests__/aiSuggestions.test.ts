@@ -166,10 +166,10 @@ describe('suggestTaskAttributes', () => {
     expect(result.effort).toBe(0);
   });
 
-  it('clamps effort above 5 to 5', async () => {
+  it('clamps effort above 6 to 6', async () => {
     mockFetchOnce(toolUseResponse('suggest', { tags: [], effort: 99, category: '' }));
     const result = await suggestTaskAttributes('task', '', [], []);
-    expect(result.effort).toBe(5);
+    expect(result.effort).toBe(6);
   });
 
   it('handles null/missing tags field gracefully', async () => {
@@ -376,7 +376,7 @@ describe('suggestTaskDate', () => {
     const completed = makeTask({ id: 'c', completed: true, completedAt: '2025-06-09T10:00:00.000Z', dueDate: '2025-06-10T00:00:00.000Z', effort: 5 });
     const noDate = makeTask({ id: 'n', effort: 5, dueDate: null });
     // This one IS in the window and open
-    const open = makeTask({ id: 'o', effort: 3, dueDate: '2025-06-10T00:00:00.000Z' });
+    const open = makeTask({ id: 'o', effort: 4, dueDate: '2025-06-10T00:00:00.000Z' });
 
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
@@ -388,7 +388,7 @@ describe('suggestTaskDate', () => {
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
-    // 2025-06-10 should reflect only the open task's time (effort 3 → 90min → 1.5h),
+    // 2025-06-10 should reflect only the open task's time (effort 4 → 90min → 1.5h),
     // not the completed/no-date tasks.
     expect(content).toContain('2025-06-10');
     expect(content).toContain('load 1.5h');
@@ -666,7 +666,7 @@ describe('suggestTemplateItems', () => {
     }));
 
     const result = await suggestTemplateItems('Home checklist', []);
-    expect(result).toEqual([{ title: 'Water the plants', notes: '', effort: 5 }]);
+    expect(result).toEqual([{ title: 'Water the plants', notes: '', effort: 6 }]);
   });
 
   it('filters out duplicates of existing items and repeated suggestions (case-insensitively)', async () => {

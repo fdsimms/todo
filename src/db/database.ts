@@ -113,6 +113,27 @@ export function initDatabase(): void {
       } catch (_) {}
     }
   }
+
+  // One-time migration: introducing the XXS bucket at effort=1 shifts every
+  // existing preset (previously XS=1..XL=5) up by one, so XS=2..XL=6. Bump
+  // stored values so old tasks/templates keep their original size.
+  if (dbGetSetting('effort_xxs_migration_done') !== '1') {
+    try { db.runSync('UPDATE tasks SET effort = effort + 1 WHERE effort >= 1'); } catch (_) {}
+    const templateRows = db.getAllSync<{ id: string; items: string }>('SELECT id, items FROM templates');
+    for (const row of templateRows) {
+      try {
+        const items = JSON.parse(row.items ?? '[]') as Array<Record<string, unknown>>;
+        let changed = false;
+        const shifted = items.map(item => {
+          const e = item.effort as number | undefined;
+          if (typeof e === 'number' && e >= 1) { changed = true; return { ...item, effort: e + 1 }; }
+          return item;
+        });
+        if (changed) db.runSync('UPDATE templates SET items = ? WHERE id = ?', [JSON.stringify(shifted), row.id]);
+      } catch (_) {}
+    }
+    dbSetSetting('effort_xxs_migration_done', '1');
+  }
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
