@@ -19,6 +19,7 @@ import {
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
   dbGetSetting,
+  dbMarkTaskSeen,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
@@ -62,6 +63,7 @@ interface TaskStore {
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
   updateTask: (id: string, updates: Partial<Task>) => void;
+  markTaskSeen: (id: string) => void;
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
   deleteTask: (id: string) => void;
@@ -147,6 +149,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       createdAt: now,
+      seenAt: now,
       dueDate: draft.dueDate ?? null,
       deferUntil: draft.deferUntil ?? null,
       timeSegments: draft.timeSegments ?? [],
@@ -193,6 +196,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       createdAt: now,
+      seenAt: now,
       focused: false,
       streakCount: 0,
       streakDate: null,
@@ -234,6 +238,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return updated;
     });
     set({ tasks });
+  },
+
+  markTaskSeen(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    const now = new Date().toISOString();
+    dbMarkTaskSeen(id, now);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? { ...t, seenAt: now } : t)) }));
   },
 
   setLastAction(action) {
@@ -338,6 +350,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completed: false,
           completedAt: null,
           createdAt: now.toISOString(),
+          seenAt: now.toISOString(),
           dueDate: nextDue.toISOString(),
           deferUntil: null,
           focused: false, // focus resets on new occurrence
@@ -516,6 +529,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       createdAt: now,
+      seenAt: now,
       dueDate: null,
       deferUntil: null,
       timeSegments: [],
