@@ -20,5 +20,8 @@
         "buildConfiguration": "Release"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }
