@@ -60,6 +60,7 @@ const baseTask: Task = {
   createdAt: new Date(2025, 0, 1).toISOString(),
   seenAt: null,
   dueDate: null,
+  deadline: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,

@@ -88,6 +88,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
+  deadline: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -327,6 +328,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'nulls' }));
     const [t] = dbGetAllTasks();
     expect(t.dueDate).toBeNull();
+    expect(t.deadline).toBeNull();
     expect(t.deferUntil).toBeNull();
     expect(t.completedAt).toBeNull();
     expect(t.recurrenceEndDate).toBeNull();
@@ -360,6 +362,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const task = makeTask({
       id: 'full',
       dueDate: '2025-07-01T00:00:00.000Z',
+      deadline: '2025-07-04T00:00:00.000Z',
       deferUntil: '2025-06-15T00:00:00.000Z',
       completedAt: '2025-06-10T10:00:00.000Z',
       recurrenceEndDate: '2025-12-31T00:00:00.000Z',
@@ -372,6 +375,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(task);
     const [t] = dbGetAllTasks();
     expect(t.dueDate).toBe(task.dueDate);
+    expect(t.deadline).toBe(task.deadline);
     expect(t.deferUntil).toBe(task.deferUntil);
     expect(t.reminderTime).toBe(task.reminderTime);
     expect(t.category).toBe(task.category);
@@ -390,6 +394,7 @@ describe('dbUpdateTask', () => {
       completed: true,
       completedAt: '2025-06-10T00:00:00.000Z',
       dueDate: '2025-07-01T00:00:00.000Z',
+      deadline: '2025-07-04T00:00:00.000Z',
       timeSegments: ['afternoon'],
       windowStart: '08:00',
       windowEnd: '13:00',
@@ -422,6 +427,7 @@ describe('dbUpdateTask', () => {
     expect(result.vacationPause).toBe(true);
     expect(result.windowStart).toBe('08:00');
     expect(result.windowEnd).toBe('13:00');
+    expect(result.deadline).toBe('2025-07-04T00:00:00.000Z');
   });
 
   it('does not touch other rows', () => {

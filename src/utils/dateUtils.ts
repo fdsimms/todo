@@ -160,6 +160,16 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
 }
 
 /**
+ * Days remaining until a task's deadline, using the logical (reset-time-aware)
+ * day boundary. Negative once the deadline has passed.
+ */
+export function getDeadlineCountdown(deadline: string, dayResetTime?: string): number {
+  const today = getDayStart(new Date(), dayResetTime);
+  const target = getDayStart(new Date(deadline), dayResetTime);
+  return differenceInCalendarDays(target, today);
+}
+
+/**
  * Returns the current streak display for a recurring task:
  *   positive → { sign: '+', count: N }   (N consecutive completions)
  *   negative → { sign: '-', count: N }   (N days missed)

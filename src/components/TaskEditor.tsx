@@ -94,6 +94,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [deadline, setDeadline] = useState<Date | null>(null);
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
@@ -151,6 +153,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (task) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
+      setDeadline(task.deadline ? new Date(task.deadline) : null);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
@@ -168,7 +171,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
-      setDueDate(initialDraft?.dueDate ?? null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
@@ -179,7 +182,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
       setVacationPause(false);
     }
-    setPickerMode('none'); setShowWhenPicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
+    setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewCycleItemTitle(''); setAddingCycleItem(false);
     setAiLoading(false);
@@ -194,6 +197,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
+      deadline: task?.deadline ?? null,
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
       deferUntil: task?.deferUntil ?? null,
@@ -221,6 +225,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const data = {
       title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
+      deadline: deadline?.toISOString() ?? null,
       timeSegments, windowStart, windowEnd, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
@@ -312,6 +317,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const current = JSON.stringify({
       title, notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
+      deadline: deadline?.toISOString() ?? null,
       windowStart, windowEnd,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -997,6 +1003,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               styles={styles}
             />
             <View style={styles.sep} />
+            <OptionRow
+              icon="flag-outline"
+              label="Deadline"
+              hint="A target date to hit — separate from Date"
+              value={deadline ? formatDueDate(deadline.toISOString()) : undefined}
+              onPress={() => setShowDeadlinePicker(true)}
+              onClear={deadline ? () => setDeadline(null) : undefined}
+              colors={colors}
+              styles={styles}
+            />
+            <View style={styles.sep} />
             <View style={styles.optionRow}>
               <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
@@ -1252,6 +1269,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           title="End Date"
           onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
           onCancel={() => setShowEndDatePicker(false)}
+        />
+        <CalendarPicker
+          visible={showDeadlinePicker}
+          value={deadline}
+          mode="date"
+          title="Deadline"
+          onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+          onCancel={() => setShowDeadlinePicker(false)}
         />
         <SuggestedCategorySheet
           visible={pendingCategory !== null}

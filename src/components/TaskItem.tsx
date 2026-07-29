@@ -25,7 +25,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
-import { formatDueDate, formatHHMM } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
@@ -225,6 +225,12 @@ export function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
+  const deadlineDays = task.deadline ? getDeadlineCountdown(task.deadline) : null;
+  const deadlineColor =
+    deadlineDays === null ? colors.textTertiary
+    : deadlineDays < 0 ? colors.red
+    : deadlineDays <= 2 ? colors.orange
+    : colors.textTertiary;
   const isNew = isTaskNew(task);
 
   const handleContentPress = () => {
@@ -466,6 +472,23 @@ export function TaskItem({
               <View style={styles.cycleBadge}>
                 <Ionicons name="sync" size={9} color={colors.accent} />
                 <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
+              </View>
+            )}
+            {deadlineDays !== null && (
+              <View
+                style={styles.deadlineBadge}
+                accessibilityLabel={
+                  deadlineDays < 0
+                    ? `${Math.abs(deadlineDays)} days past deadline`
+                    : deadlineDays === 0
+                    ? 'Deadline today'
+                    : `${deadlineDays} days until deadline`
+                }
+              >
+                <Ionicons name="flag" size={9} color={deadlineColor} />
+                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]}>
+                  {Math.abs(deadlineDays)}
+                </Text>
               </View>
             )}
           </View>
@@ -1092,6 +1115,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
+  },
+  deadlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  deadlineBadgeText: {
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums'],
   },
   editSection: {
     flexDirection: 'row',

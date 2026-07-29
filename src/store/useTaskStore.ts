@@ -152,6 +152,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       createdAt: now,
       seenAt: now,
       dueDate: draft.dueDate ?? null,
+      deadline: draft.deadline ?? null,
       deferUntil: draft.deferUntil ?? null,
       timeSegments: draft.timeSegments ?? [],
       windowStart: draft.windowStart ?? null,
@@ -353,6 +354,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
           dueDate: nextDue.toISOString(),
+          deadline: null, // deadline is a one-off target date, doesn't carry to the next occurrence
           deferUntil: null,
           focused: false, // focus resets on new occurrence
           streakCount: newStreakCount,
@@ -532,6 +534,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       createdAt: now,
       seenAt: now,
       dueDate: null,
+      deadline: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,

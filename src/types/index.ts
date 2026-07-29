@@ -29,6 +29,7 @@ export interface Task {
   seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 
   dueDate: string | null;
+  deadline: string | null;   // separate target date to hit; shown as a subtle countdown, doesn't affect scheduling/visibility
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
