@@ -8,7 +8,10 @@ export interface AddTaskLink {
   notes?: string;
 }
 
-// Parses an "add task" deep link of the form `todo://add?title=…[&notes=…]`.
+// Must match app.json's `expo.scheme`. Update here if the app is ever renamed again.
+const SCHEME = 'dundundun';
+
+// Parses an "add task" deep link of the form `dundundun://add?title=…[&notes=…]`.
 // Kept pure and dependency-free (no expo-linking) so it stays unit-testable
 // under the node jest env and correctly decodes dictated text — which arrives
 // full of spaces, apostrophes and the occasional ampersand. Returns null for
@@ -16,9 +19,9 @@ export interface AddTaskLink {
 export function parseAddTaskUrl(url: string): AddTaskLink | null {
   if (typeof url !== 'string') return null;
 
-  // Match the scheme + `add` action, tolerating `todo://add`, `todo:///add`
+  // Match the scheme + `add` action, tolerating `dundundun://add`, `dundundun:///add`
   // and a trailing slash before the query string.
-  const match = /^todo:\/\/\/?add\/?(?:\?(.*))?$/i.exec(url.trim());
+  const match = new RegExp(`^${SCHEME}:\\/\\/\\/?add\\/?(?:\\?(.*))?$`, 'i').exec(url.trim());
   if (!match) return null;
 
   const query = match[1] ?? '';

@@ -37,7 +37,7 @@ export default function App() {
     requestNotificationPermissions();
   }, [initTasks, initSettings]);
 
-  // Handle `todo://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
+  // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
   // incoming link tries to insert a task.
   useTaskDeepLinks();
