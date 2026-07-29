@@ -65,7 +65,8 @@ export function initDatabase(): void {
       name TEXT NOT NULL UNIQUE,
       schedule_days TEXT,
       schedule_start TEXT,
-      schedule_end TEXT
+      schedule_end TEXT,
+      sort_order REAL NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS templates (
@@ -103,6 +104,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN previous_occurrence_id TEXT',
     'ALTER TABLE tasks ADD COLUMN seen_at TEXT',
     'ALTER TABLE tasks ADD COLUMN deadline TEXT',
+    'ALTER TABLE categories ADD COLUMN sort_order REAL NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -123,6 +125,17 @@ export function initDatabase(): void {
         db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
       } catch (_) {}
     }
+  }
+
+  // One-time migration: give existing categories a stable sort_order (their
+  // prior alphabetical position) so introducing manual reordering doesn't
+  // reshuffle everyone's existing category list.
+  if (dbGetSetting('category_sort_order_migration_done') !== '1') {
+    const rows = db.getAllSync<{ id: string }>('SELECT id FROM categories ORDER BY name ASC');
+    rows.forEach((row, i) => {
+      try { db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [i + 1, row.id]); } catch (_) {}
+    });
+    dbSetSetting('category_sort_order_migration_done', '1');
   }
 
   // One-time migration: introducing the XXS bucket at effort=1 shifts every
@@ -392,18 +405,29 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleStart: (row.schedule_start as string) ?? null,
     scheduleEnd: (row.schedule_end as string) ?? null,
     hideOnVacation: Boolean(row.hide_on_vacation),
+    sortOrder: row.sort_order as number,
   };
 }
 
 export function dbGetAllCategories(): Category[] {
-  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM categories ORDER BY name ASC');
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM categories ORDER BY sort_order ASC, name ASC');
   return rows.map(rowToCategory);
 }
 
 export function dbInsertCategory(name: string): Category {
   const id = generateId();
-  db.runSync('INSERT INTO categories (id, name) VALUES (?, ?)', [id, name]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false };
+  const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
+  const sortOrder = maxOrder + 1;
+  db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder };
+}
+
+export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
 }
 
 export function dbSetCategoryHideOnVacation(id: string, hide: boolean): void {

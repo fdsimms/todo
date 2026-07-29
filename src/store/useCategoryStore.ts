@@ -6,6 +6,7 @@ import {
   dbUpdateCategory,
   dbDeleteCategory,
   dbSetCategoryHideOnVacation,
+  dbBatchUpdateCategorySortOrders,
 } from '../db/database';
 
 interface CategoryStore {
@@ -18,6 +19,7 @@ interface CategoryStore {
   removeCategorySchedule: (name: string) => void;
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   getCategoryByName: (name: string) => Category | null;
+  reorderCategories: (orderedNames: string[]) => void;
 }
 
 export const useCategoryStore = create<CategoryStore>((set, get) => ({
@@ -77,5 +79,20 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
 
   getCategoryByName(name) {
     return get().categories.find(c => c.name === name) ?? null;
+  },
+
+  reorderCategories(orderedNames) {
+    // Names not yet backed by a category row (e.g. a legacy task category
+    // that predates the registry) are registered on the fly so they get a
+    // stable id/sortOrder like everything else.
+    const ensured = orderedNames.map(name => get().getCategoryByName(name) ?? get().addCategory(name));
+    const updates = ensured.map((c, index) => ({ id: c.id, sortOrder: index + 1 }));
+    dbBatchUpdateCategorySortOrders(updates);
+    set(s => ({
+      categories: s.categories.map(c => {
+        const u = updates.find(x => x.id === c.id);
+        return u ? { ...c, sortOrder: u.sortOrder } : c;
+      }),
+    }));
   },
 }));

@@ -11,6 +11,7 @@ export interface Category {
   scheduleStart: string | null;    // "HH:MM"
   scheduleEnd: string | null;      // "HH:MM"
   hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
+  sortOrder: number;
 }
 
 export interface CycleItem {
