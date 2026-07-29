@@ -29,18 +29,23 @@ import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUt
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
+interface UndoableAction {
+  label: string;
+  undo: () => void;
+}
+
 interface TaskStore {
   tasks: Task[];
   tagRegistry: string[];
   initialized: boolean;
-  lastEditSnapshot: { id: string; snapshot: Task } | null;
+  lastAction: UndoableAction | null;
 
   initialize: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
   updateTask: (id: string, updates: Partial<Task>) => void;
-  setLastEditSnapshot: (snap: { id: string; snapshot: Task } | null) => void;
-  undoTaskEdit: () => void;
+  setLastAction: (action: UndoableAction | null) => void;
+  undoLastAction: () => void;
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
   uncompleteTask: (id: string) => void;
@@ -89,7 +94,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   tasks: [],
   tagRegistry: [],
   initialized: false,
-  lastEditSnapshot: null,
+  lastAction: null,
 
   initialize() {
     initDatabase();
@@ -212,28 +217,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set({ tasks });
   },
 
-  setLastEditSnapshot(snap) {
-    set({ lastEditSnapshot: snap });
+  setLastAction(action) {
+    set({ lastAction: action });
   },
 
-  undoTaskEdit() {
-    const snap = get().lastEditSnapshot;
-    if (!snap) return;
-    const tasks = get().tasks.map(t => {
-      if (t.id !== snap.id) return t;
-      dbUpdateTask(snap.snapshot);
-      cancelTaskReminder(snap.id);
-      scheduleTaskReminder(snap.snapshot);
-      return snap.snapshot;
-    });
-    set({ tasks, lastEditSnapshot: null });
+  undoLastAction() {
+    const action = get().lastAction;
+    if (!action) return;
+    action.undo();
+    set({ lastAction: null });
   },
 
   deleteTask(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    const subtasks = get().subtasksOf(id);
+
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
+
+    get().setLastAction({
+      label: 'Task deleted',
+      undo: () => {
+        dbInsertTask(task);
+        scheduleTaskReminder(task);
+        subtasks.forEach(sub => {
+          dbInsertTask(sub);
+          scheduleTaskReminder(sub);
+        });
+        set(s => ({ tasks: [...s.tasks, task, ...subtasks] }));
+      },
+    });
   },
 
   completeTask(id) {
@@ -326,6 +342,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(nextTask ? [nextTask] : []),
       ],
     }));
+
+    get().setLastAction({
+      label: 'Task completed',
+      undo: () => get().uncompleteTask(id),
+    });
   },
 
   uncompleteTask(id) {
@@ -512,8 +533,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteSubtask(id) {
+    const subtask = get().tasks.find(t => t.id === id);
+    if (!subtask) return;
+
     dbDeleteTask(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id) }));
+
+    get().setLastAction({
+      label: 'Subtask deleted',
+      undo: () => {
+        dbInsertTask(subtask);
+        set(s => ({ tasks: [...s.tasks, subtask] }));
+      },
+    });
   },
 
   reorderSubtasks(parentId, orderedIds) {
@@ -549,15 +581,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkCompleteTasks(ids) {
     if (ids.length === 0) return;
     ids.forEach(id => get().completeTask(id));
+    get().setLastAction({
+      label: `${ids.length} task${ids.length === 1 ? '' : 's'} completed`,
+      undo: () => ids.forEach(id => get().uncompleteTask(id)),
+    });
   },
 
   bulkDeleteTasks(ids) {
     if (ids.length === 0) return;
+    const deleted = get().tasks.filter(t => ids.includes(t.id) || (t.parentId !== null && ids.includes(t.parentId)));
+
     dbBulkDeleteTasks(ids);
     ids.forEach(id => cancelTaskReminder(id));
     set(s => ({
       tasks: s.tasks.filter(t => !ids.includes(t.id) && (t.parentId === null || !ids.includes(t.parentId))),
     }));
+
+    get().setLastAction({
+      label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
+      undo: () => {
+        deleted.forEach(t => {
+          dbInsertTask(t);
+          scheduleTaskReminder(t);
+        });
+        set(s => ({ tasks: [...s.tasks, ...deleted] }));
+      },
+    });
   },
 
   bulkSetPriority(ids, priority) {

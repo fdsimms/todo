@@ -9,9 +9,9 @@ import { haptics } from '../utils/haptics';
 const VISIBLE_MS = 4000;
 
 export function UndoToast() {
-  const lastEditSnapshot = useTaskStore(s => s.lastEditSnapshot);
-  const undoTaskEdit = useTaskStore(s => s.undoTaskEdit);
-  const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
+  const lastAction = useTaskStore(s => s.lastAction);
+  const undoLastAction = useTaskStore(s => s.undoLastAction);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const { colors, shadows } = useTheme();
 
   const opacity = useRef(new Animated.Value(0)).current;
@@ -31,11 +31,11 @@ export function UndoToast() {
         duration: 200,
         useNativeDriver: true,
       }),
-    ]).start(() => setLastEditSnapshot(null));
+    ]).start(() => setLastAction(null));
   };
 
   useEffect(() => {
-    if (!lastEditSnapshot) return;
+    if (!lastAction) return;
 
     if (timer.current) clearTimeout(timer.current);
 
@@ -59,9 +59,9 @@ export function UndoToast() {
       if (timer.current) clearTimeout(timer.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastEditSnapshot]);
+  }, [lastAction]);
 
-  if (!lastEditSnapshot) return null;
+  if (!lastAction) return null;
 
   return (
     <Animated.View
@@ -73,11 +73,11 @@ export function UndoToast() {
       pointerEvents="box-none"
     >
       <Ionicons name="checkmark-circle" size={16} color={colors.green} />
-      <Text style={[styles.label, { color: colors.text }]}>Edit saved</Text>
+      <Text style={[styles.label, { color: colors.text }]}>{lastAction.label}</Text>
       <TouchableOpacity
         onPress={() => {
           haptics.tap();
-          undoTaskEdit();
+          undoLastAction();
           dismiss();
         }}
         hitSlop={8}

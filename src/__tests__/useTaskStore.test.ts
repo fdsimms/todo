@@ -116,7 +116,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
-  useTaskStore.setState({ tasks: [], initialized: false });
+  useTaskStore.setState({ tasks: [], initialized: false, lastAction: null });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -255,6 +255,31 @@ describe('deleteTask', () => {
     expect(dbDeleteSubtasks).toHaveBeenCalledWith('t1');
     expect(dbDeleteTask).toHaveBeenCalledWith('t1');
     expect(cancelTaskReminder).toHaveBeenCalledWith('t1');
+  });
+
+  it('does not queue an undo action for a nonexistent task', () => {
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().deleteTask('missing');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('queues an undo action that restores the task and its subtasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'parent', title: 'Parent' }),
+        makeTask({ id: 'child', parentId: 'parent', title: 'Child' }),
+      ],
+    });
+    useTaskStore.getState().deleteTask('parent');
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('Task deleted');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['child', 'parent']);
+    expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'parent' }));
+    expect(dbInsertTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'child' }));
   });
 });
 
@@ -398,6 +423,17 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
     useTaskStore.getState().completeTask('t1');
     expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('queues an undo action that uncompletes the task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
+    useTaskStore.getState().completeTask('t1');
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('Task completed');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(false);
   });
 
   it('creates a next task for a daily recurring task', () => {
@@ -876,6 +912,48 @@ describe('bulkDeleteTasks', () => {
     useTaskStore.getState().bulkDeleteTasks([]);
     expect(useTaskStore.getState().tasks).toHaveLength(1);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('queues an undo action that restores all deleted tasks', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' })],
+    });
+    useTaskStore.getState().bulkDeleteTasks(['a', 'b']);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('2 tasks deleted');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('bulkCompleteTasks', () => {
+  it('completes every specified task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
+  });
+
+  it('queues an undo action that uncompletes every specified task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('2 tasks completed');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
+  });
+
+  it('does nothing for an empty id list', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().bulkCompleteTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
 

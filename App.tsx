@@ -7,11 +7,13 @@ import { UndoToast } from './src/components/UndoToast';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions } from './src/utils/notifications';
+import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
 function AppContent() {
   const { isDark } = useTheme();
+  useShakeToUndo();
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />

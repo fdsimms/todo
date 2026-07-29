@@ -72,7 +72,7 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
-  const setLastEditSnapshot = useTaskStore(s => s.setLastEditSnapshot);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
@@ -237,7 +237,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     };
     haptics.success();
     if (task) {
-      setLastEditSnapshot({ id: task.id, snapshot: { ...task } });
+      const snapshot = { ...task };
+      setLastAction({
+        label: 'Edit saved',
+        undo: () => updateTask(snapshot.id, snapshot),
+      });
       updateTask(task.id, data);
     } else {
       animateLayout();
