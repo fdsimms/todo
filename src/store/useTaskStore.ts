@@ -49,6 +49,7 @@ interface TaskStore {
   clearAllFocus: () => void;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
+  discardTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   reorderWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
@@ -149,6 +150,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: draft.vacationPause ?? false,
       timerStartedAt: draft.timerStartedAt ?? null,
       actualMinutes: draft.actualMinutes ?? null,
+      previousOccurrenceId: draft.previousOccurrenceId ?? null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -264,6 +266,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...task
           // vacationPause carries over so recurring tasks stay paused across occurrences
+          previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -283,7 +286,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task) return;
     const updated = { ...task, completed: false, completedAt: null };
     dbUpdateTask(updated);
-    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+
+    // Completing a recurring task spawns a fresh next occurrence. Undoing
+    // that completion means it never happened, so the occurrence it
+    // generated shouldn't exist either — unless the user has since
+    // completed it themselves, in which case it's a real completion.
+    const followUp = get().tasks.find(t => t.previousOccurrenceId === id && !t.completed);
+    if (followUp) {
+      dbDeleteSubtasks(followUp.id);
+      dbDeleteTask(followUp.id);
+      cancelTaskReminder(followUp.id);
+    }
+
+    set(s => ({
+      tasks: s.tasks
+        .filter(t => !followUp || (t.id !== followUp.id && t.parentId !== followUp.id))
+        .map(t => (t.id === id ? updated : t)),
+    }));
   },
 
   deferTask(id, until) {
@@ -342,6 +361,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
     const minutes = elapsedMs / 60000;
     get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
+  },
+
+  discardTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.timerStartedAt === null) return;
+    get().updateTask(id, { timerStartedAt: null });
   },
 
   logManualTime(id, minutes) {
@@ -420,6 +445,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
+      previousOccurrenceId: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));

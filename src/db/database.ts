@@ -50,7 +50,8 @@ export function initDatabase(): void {
       cycle_index INTEGER NOT NULL DEFAULT 0,
       cycle_items TEXT NOT NULL DEFAULT '[]',
       timer_started_at TEXT,
-      actual_minutes INTEGER
+      actual_minutes INTEGER,
+      previous_occurrence_id TEXT
     );
 
     CREATE TABLE IF NOT EXISTS settings (
@@ -98,6 +99,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN actual_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN window_start TEXT',
     'ALTER TABLE tasks ADD COLUMN window_end TEXT',
+    'ALTER TABLE tasks ADD COLUMN previous_occurrence_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -112,6 +114,27 @@ export function initDatabase(): void {
         db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
       } catch (_) {}
     }
+  }
+
+  // One-time migration: introducing the XXS bucket at effort=1 shifts every
+  // existing preset (previously XS=1..XL=5) up by one, so XS=2..XL=6. Bump
+  // stored values so old tasks/templates keep their original size.
+  if (dbGetSetting('effort_xxs_migration_done') !== '1') {
+    try { db.runSync('UPDATE tasks SET effort = effort + 1 WHERE effort >= 1'); } catch (_) {}
+    const templateRows = db.getAllSync<{ id: string; items: string }>('SELECT id, items FROM templates');
+    for (const row of templateRows) {
+      try {
+        const items = JSON.parse(row.items ?? '[]') as Array<Record<string, unknown>>;
+        let changed = false;
+        const shifted = items.map(item => {
+          const e = item.effort as number | undefined;
+          if (typeof e === 'number' && e >= 1) { changed = true; return { ...item, effort: e + 1 }; }
+          return item;
+        });
+        if (changed) db.runSync('UPDATE templates SET items = ? WHERE id = ?', [JSON.stringify(shifted), row.id]);
+      } catch (_) {}
+    }
+    dbSetSetting('effort_xxs_migration_done', '1');
   }
 }
 
@@ -163,6 +186,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
+    previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
   };
 }
 
@@ -180,8 +204,8 @@ export function dbInsertTask(task: Task): void {
       due_date, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
-      cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.dueDate, task.deferUntil,
@@ -194,6 +218,7 @@ export function dbInsertTask(task: Task): void {
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
+      task.previousOccurrenceId ?? null,
     ]
   );
 }
@@ -206,7 +231,8 @@ export function dbUpdateTask(task: Task): void {
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
-      cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?
+      cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
+      previous_occurrence_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
@@ -220,6 +246,7 @@ export function dbUpdateTask(task: Task): void {
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
+      task.previousOccurrenceId ?? null,
       task.id,
     ]
   );

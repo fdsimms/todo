@@ -95,6 +95,7 @@ export function TaskItem({
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const startTimer = useTaskStore(s => s.startTimer);
   const stopTimer = useTaskStore(s => s.stopTimer);
+  const discardTimer = useTaskStore(s => s.discardTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const colors = useColors();
   const { shadows } = useTheme();
@@ -112,6 +113,7 @@ export function TaskItem({
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
   const deleteAlertOpenRef = useRef(false);
+  const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
@@ -185,6 +187,24 @@ export function TaskItem({
     }
   };
 
+  const handleDiscardTimer = () => {
+    Alert.alert(
+      'Discard Timer',
+      `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await haptics.warning();
+            discardTimer(task.id);
+          },
+        },
+      ]
+    );
+  };
+
   // Save and dismiss keyboard whenever the task collapses while title is being edited
   useEffect(() => {
     if (!expanded && isEditingTitle) {
@@ -220,19 +240,37 @@ export function TaskItem({
     await haptics.success();
     setCompleting(true);
     // Checkmark springs in while the circle pops, then the row fades and the
-    // surrounding list closes the gap via LayoutAnimation.
+    // surrounding list closes the gap via LayoutAnimation. The task isn't
+    // actually marked complete in the store until this sequence finishes,
+    // so a tap during the window (handleUndoComplete) can cancel it outright.
     checkScale.setValue(0);
     Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
-    Animated.sequence([
+    const sequence = Animated.sequence([
       Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.delay(120),
       Animated.timing(rowOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
-    ]).start(() => {
+    ]);
+    completeAnimRef.current = sequence;
+    sequence.start(({ finished }) => {
+      completeAnimRef.current = null;
+      if (!finished) return;
       setCompleting(false);
+      completingRef.current = false;
       animateLayout();
       completeTask(task.id);
     });
+  };
+
+  const handleUndoComplete = async () => {
+    completeAnimRef.current?.stop();
+    completeAnimRef.current = null;
+    completingRef.current = false;
+    await haptics.tap();
+    checkScale.setValue(0);
+    circleScale.setValue(1);
+    rowOpacity.setValue(1);
+    setCompleting(false);
   };
 
   const confirmDelete = () => {
@@ -326,16 +364,15 @@ export function TaskItem({
       )}
 
       <TouchableOpacity
-        onPress={selectionMode ? onSelect : handleComplete}
-        disabled={!selectionMode && completing}
+        onPress={selectionMode ? onSelect : (completing ? handleUndoComplete : handleComplete)}
         hitSlop={10}
         style={styles.circleWrapper}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: selectionMode ? selected : false }}
+        accessibilityState={{ checked: selectionMode ? selected : completing }}
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
-            : `Complete ${task.title}`
+            : (completing ? `Undo complete ${task.title}` : `Complete ${task.title}`)
         }
       >
         <Animated.View style={[
@@ -431,18 +468,30 @@ export function TaskItem({
 
       {!selectionMode && !isEditingTitle && (
         timerRunning ? (
-          <TouchableOpacity
-            onPress={handleTimerToggle}
-            hitSlop={8}
-            style={styles.timerPill}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Stop timer for ${task.title}`}
-            accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
-          >
-            <Ionicons name="stop" size={10} color={colors.onAccent} />
-            <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
-          </TouchableOpacity>
+          <View style={styles.timerRunningGroup}>
+            <TouchableOpacity
+              onPress={handleTimerToggle}
+              hitSlop={8}
+              style={styles.timerPill}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Stop timer for ${task.title}`}
+              accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
+            >
+              <Ionicons name="stop" size={10} color={colors.onAccent} />
+              <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDiscardTimer}
+              hitSlop={8}
+              style={styles.timerDeleteBtn}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Discard timer for ${task.title}`}
+            >
+              <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
         ) : (
           <TouchableOpacity
             onPress={handleTimerToggle}
@@ -854,6 +903,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   timerBtn: {
+    padding: 4,
+  },
+  timerRunningGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timerDeleteBtn: {
     padding: 4,
   },
   timerPill: {
