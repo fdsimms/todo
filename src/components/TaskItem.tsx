@@ -111,6 +111,7 @@ export function TaskItem({
   const [nowTick, setNowTick] = useState(() => Date.now());
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
+  const deleteAlertOpenRef = useRef(false);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
@@ -235,15 +236,29 @@ export function TaskItem({
   };
 
   const confirmDelete = () => {
+    // Opening the swipeable row (via drag-release) and tapping the revealed
+    // delete button both call this for the same swipe gesture; without this
+    // guard they stack two native alerts, so dismissing the first just
+    // reveals a second one underneath.
+    if (deleteAlertOpenRef.current) return;
+    deleteAlertOpenRef.current = true;
     Alert.alert(
       'Delete Task',
       `Delete "${task.title}"?`,
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => swipeableRef.current?.close() },
+        {
+          text: 'Cancel',
+          style: 'cancel',
+          onPress: () => {
+            deleteAlertOpenRef.current = false;
+            swipeableRef.current?.close();
+          },
+        },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
+            deleteAlertOpenRef.current = false;
             await haptics.impactHeavy();
             Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
               animateLayout();
@@ -251,7 +266,8 @@ export function TaskItem({
             });
           },
         },
-      ]
+      ],
+      { onDismiss: () => { deleteAlertOpenRef.current = false; } }
     );
   };
 
