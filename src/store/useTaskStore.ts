@@ -796,11 +796,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   allCategories() {
-    const catSet = new Set<string>(
-      useCategoryStore.getState().categories.map(c => c.name)
-    );
-    get().tasks.forEach(t => { if (t.category) catSet.add(t.category); });
-    return Array.from(catSet).sort();
+    // Registered categories keep their manually-chosen order; any category
+    // only found on a task (predating the registry) is appended alphabetically.
+    const registered = useCategoryStore.getState().categories.map(c => c.name);
+    const known = new Set(registered);
+    const phantom = new Set<string>();
+    get().tasks.forEach(t => { if (t.category && !known.has(t.category)) phantom.add(t.category); });
+    return [...registered, ...Array.from(phantom).sort()];
   },
 
   addCategory(name) {

@@ -49,6 +49,7 @@ const workCategory: Category = {
   scheduleStart: '09:00',
   scheduleEnd: '18:00',
   hideOnVacation: false,
+  sortOrder: 1,
 };
 
 const baseTask: Task = {
@@ -550,6 +551,7 @@ const errandsCategory: Category = {
   scheduleStart: null,
   scheduleEnd: null,
   hideOnVacation: true,
+  sortOrder: 1,
 };
 
 describe('category hide-on-vacation', () => {

@@ -22,6 +22,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { ReorderableList } from '../components/ReorderableList';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -253,6 +254,7 @@ export function CategoriesScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
+  const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -368,11 +370,14 @@ export function CategoriesScreen() {
           subtitle="Tap + to create a category, or assign one when editing a task"
         />
       ) : (
-        <FlatList
+        <ReorderableList
           data={allCategories}
           keyExtractor={c => c}
           contentContainerStyle={styles.list}
-          renderItem={({ item: cat }) => {
+          placeholderStyle={styles.dropSlot}
+          onHoverChange={haptics.tap}
+          onReorder={reordered => reorderCategories(reordered)}
+          renderItem={({ item: cat, drag, isActive }) => {
             const count = tasksByCategory(cat).length;
             const catObj = getCategoryObj(cat);
             const scheduleLabel = catObj ? formatScheduleLabel(catObj) : null;
@@ -387,16 +392,19 @@ export function CategoriesScreen() {
             };
             return (
               <TouchableOpacity
-                style={styles.catRow}
+                style={[styles.catRow, isActive && styles.catRowActive]}
                 onPress={() => {
                   setExpandedTaskId(null);
                   setSelectedCategory(cat);
                 }}
+                onLongPress={drag}
+                delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={`${cat}, ${count} ${count === 1 ? 'task' : 'tasks'}${hint ? `. ${hint}` : ''}`}
-                accessibilityHint="Double tap to view tasks in this category"
+                accessibilityHint="Double tap to view tasks in this category. Long press to reorder."
               >
+                <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                 <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>
                   <Ionicons name="folder" size={18} color={colors.accent} />
                 </View>
@@ -587,6 +595,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.md,
+  },
+  // Lifted look while being dragged, mirroring TaskItem's drag treatment.
+  catRowActive: {
+    backgroundColor: colors.bgTertiary,
+  },
+  // Subtle slot marking where a dragged category will land; mirrors the
+  // row's own footprint (margin + radius).
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
   },
   catIcon: {
     width: 36,
