@@ -114,6 +114,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
+  previousOccurrenceId: null,
   ...overrides,
 });
 
@@ -322,6 +323,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.parentId).toBeNull();
     expect(t.reminderTime).toBeNull();
     expect(t.category).toBeNull();
+    expect(t.previousOccurrenceId).toBeNull();
+  });
+
+  it('round-trips previousOccurrenceId', () => {
+    dbInsertTask(makeTask({ id: 'occurrence', previousOccurrenceId: 'original-task' }));
+    const [t] = dbGetAllTasks();
+    expect(t.previousOccurrenceId).toBe('original-task');
   });
 
   it('persists non-null optional fields', () => {
