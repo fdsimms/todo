@@ -44,7 +44,13 @@ interface Props {
   onOpenFull: (draft: TaskDraft) => void;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | null;
+
+const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
+  { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline' },
+  { key: 'evening', label: 'Evening', icon: 'moon-outline' },
+];
 
 // Singular/plural units for the interval stepper ("Every 2 weeks").
 const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]> = {
@@ -258,6 +264,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     if (panel === 'tags') {
       setTimeout(() => tagInputRef.current?.focus(), 100);
     }
+  };
+
+  const toggleSegment = (seg: TimeOfDay) => {
+    haptics.tap();
+    setTimeSegments(prev => (prev.includes(seg) ? [] : [seg]));
   };
 
   const addTag = (tag: string) => {
@@ -518,6 +529,26 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               </Text>
             </TouchableOpacity>
 
+            {/* Segment chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'segment' && styles.toolChipActive, timeSegments.length > 0 && styles.toolChipSet]}
+              onPress={() => togglePanel('segment')}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <Ionicons
+                name={timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline'}
+                size={13}
+                color={timeSegments.length > 0 ? {
+                  morning: colors.timeMorning,
+                  afternoon: colors.timeAfternoon,
+                  evening: colors.timeEvening,
+                }[timeSegments[0]] : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, timeSegments.length > 0 && styles.toolChipTextSet]}>
+                {timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.label : 'Segment'}
+              </Text>
+            </TouchableOpacity>
+
             {/* Priority chip */}
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
@@ -596,6 +627,42 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           </View>
 
           {/* Inline panels */}
+          {activePanel === 'segment' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {SEGMENTS.map(seg => {
+                  const active = timeSegments.includes(seg.key);
+                  const segColor = {
+                    morning: colors.timeMorning,
+                    afternoon: colors.timeAfternoon,
+                    evening: colors.timeEvening,
+                  }[seg.key];
+                  return (
+                    <TouchableOpacity
+                      key={seg.key}
+                      style={[
+                        styles.priorityChip,
+                        active && styles.priorityChipActive,
+                        active && { borderColor: segColor, backgroundColor: segColor + '22' },
+                      ]}
+                      onPress={() => toggleSegment(seg.key)}
+                      activeOpacity={interaction.activeOpacity}
+                    >
+                      <Ionicons name={seg.icon} size={13} color={active ? segColor : colors.textTertiary} />
+                      <Text style={[
+                        styles.presetChipText,
+                        active && styles.presetChipTextActive,
+                        active && { color: segColor },
+                      ]}>
+                        {seg.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
           {activePanel === 'priority' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
