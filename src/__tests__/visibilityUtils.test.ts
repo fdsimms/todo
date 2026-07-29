@@ -5,6 +5,7 @@ import {
   isTaskExpired,
   getVisibleAt,
   isHiddenForVacation,
+  isRecurrenceNotYetDue,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -311,6 +312,48 @@ describe('isTaskDeferred', () => {
     expect(isTaskDeferred({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
   });
 
+});
+
+// ─── isRecurrenceNotYetDue ────────────────────────────────────────────────────
+
+describe('isRecurrenceNotYetDue', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns false for a non-recurring task with a future due date', () => {
+    const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'none', dueDate })).toBe(false);
+  });
+
+  it('returns true for a recurring task due on a future day', () => {
+    const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate })).toBe(true);
+  });
+
+  it('returns true for a recurring task deferred to a future day', () => {
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', deferUntil })).toBe(true);
+  });
+
+  it('returns false for a recurring task due today', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate })).toBe(false);
+  });
+
+  it('returns false for a recurring task hidden only behind a same-day time segment', () => {
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', timeSegments: ['evening'] })).toBe(false);
+  });
+
+  it('returns false for a completed recurring task', () => {
+    const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
+    expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate, completed: true })).toBe(false);
+  });
 });
 
 // ─── getVisibleAt ─────────────────────────────────────────────────────────────

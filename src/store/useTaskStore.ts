@@ -26,7 +26,7 @@ import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface TaskStore {
@@ -239,6 +239,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   completeTask(id) {
     let task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
+    // Recurring tasks shown early in Later (deferred to, or due on, a future
+    // day) can't be completed ahead of schedule — doing so would generate the
+    // next occurrence off today instead of the task's real day. Non-recurring
+    // tasks have no such next-occurrence math, so early completion is fine.
+    if (isRecurrenceNotYetDue(task)) return;
 
     // If a timer is still running, stop it first so the session's time is saved.
     if (task.timerStartedAt !== null) {

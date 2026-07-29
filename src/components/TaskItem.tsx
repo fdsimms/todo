@@ -27,7 +27,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -221,6 +221,9 @@ export function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
+  // A recurring task showing early in Later (its day hasn't arrived yet)
+  // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
+  const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
 
   const activeCycleItem =
     task.cycleEnabled && task.cycleItems.length > 0
@@ -237,6 +240,10 @@ export function TaskItem({
 
   const handleComplete = async () => {
     if (completingRef.current) return;
+    if (recurrenceNotYetDue) {
+      await haptics.error();
+      return;
+    }
     completingRef.current = true;
     await haptics.success();
     setCompleting(true);
@@ -369,16 +376,22 @@ export function TaskItem({
         hitSlop={10}
         style={styles.circleWrapper}
         accessibilityRole="checkbox"
-        accessibilityState={{ checked: selectionMode ? selected : completing }}
+        accessibilityState={{
+          checked: selectionMode ? selected : completing,
+          disabled: !selectionMode && recurrenceNotYetDue,
+        }}
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
-            : (completing ? `Undo complete ${task.title}` : `Complete ${task.title}`)
+            : recurrenceNotYetDue
+              ? `${task.title}, not due yet`
+              : (completing ? `Undo complete ${task.title}` : `Complete ${task.title}`)
         }
       >
         <Animated.View style={[
           styles.circle,
           !selectionMode && completing && styles.circleCompleting,
+          !selectionMode && recurrenceNotYetDue && styles.circleLocked,
           selectionMode && selected && styles.circleSelected,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
@@ -860,6 +873,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleCompleting: {
     backgroundColor: colors.green,
     borderColor: colors.green,
+  },
+  circleLocked: {
+    opacity: 0.4,
   },
   circleSelected: {
     backgroundColor: colors.accent,
