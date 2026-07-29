@@ -5,6 +5,7 @@ import {
   formatGroupHeader,
   getNextDueDate,
   getStreakDisplay,
+  getDeadlineCountdown,
   getLogicalToday,
   getLogicalTomorrow,
   isBeforeDayReset,
@@ -28,6 +29,7 @@ const baseTask: Task = {
   completedAt: null,
   createdAt: new Date(2025, 0, 1).toISOString(),
   dueDate: null,
+  deadline: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -545,5 +547,36 @@ describe('getStreakDisplay', () => {
       streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
     };
     expect(getStreakDisplay(task)).toEqual({ sign: '+', count: 8 });
+  });
+});
+
+// ─── getDeadlineCountdown ──────────────────────────────────────────────────────
+
+describe('getDeadlineCountdown', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10 2025 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns 0 when the deadline is today', () => {
+    expect(getDeadlineCountdown(new Date(2025, 5, 10, 22, 0, 0).toISOString(), '00:00')).toBe(0);
+  });
+
+  it('returns a positive count for a future deadline', () => {
+    expect(getDeadlineCountdown(new Date(2025, 5, 13).toISOString(), '00:00')).toBe(3);
+  });
+
+  it('returns a negative count for a deadline already passed', () => {
+    expect(getDeadlineCountdown(new Date(2025, 5, 8).toISOString(), '00:00')).toBe(-2);
+  });
+
+  it('respects dayResetTime for both today and the deadline', () => {
+    // 1:30 AM on June 11 is still logical-day June 10 with a 2 AM reset.
+    jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
+    expect(getDeadlineCountdown(new Date(2025, 5, 11, 1, 0, 0).toISOString(), '02:00')).toBe(0);
   });
 });
