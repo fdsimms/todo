@@ -28,6 +28,7 @@ interface Props {
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'light', label: 'Light', icon: 'sunny' },
   { mode: 'dark', label: 'Dark', icon: 'moon' },
+  { mode: 'darkPurple', label: 'Purple', icon: 'color-palette' },
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 

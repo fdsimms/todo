@@ -25,7 +25,7 @@ export type Colors = {
   tagPalette: string[];
 };
 
-export type ThemeMode = 'dark' | 'light' | 'system';
+export type ThemeMode = 'dark' | 'light' | 'system' | 'darkPurple';
 
 export const darkColors: Colors = {
   bg: '#000000',
@@ -45,6 +45,35 @@ export const darkColors: Colors = {
   onAccent: '#FFFFFF',
   backdrop: 'rgba(0, 0, 0, 0.45)',
   blurFallback: 'rgba(28, 28, 30, 0.85)',
+  timeMorning: '#FF9F0A',
+  timeAfternoon: '#0A84FF',
+  timeEvening: '#BF5AF2',
+  tagPalette: [
+    '#0A84FF', '#30D158', '#FF9F0A', '#FF453A', '#BF5AF2',
+    '#5E5CE6', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68',
+  ],
+};
+
+// A softer alternative to the near-black default dark theme — same
+// semantic colors, base surfaces tinted with a subdued purple instead of pure black.
+export const darkPurpleColors: Colors = {
+  bg: '#16121F',
+  bgSecondary: '#1F1A2C',
+  bgTertiary: '#2A2338',
+  bgQuaternary: '#3A324A',
+  text: '#FFFFFF',
+  textSecondary: '#9D93AD',
+  textTertiary: '#6E6480',
+  accent: '#0A84FF',
+  accentSubtle: 'rgba(10, 132, 255, 0.15)',
+  green: '#30D158',
+  orange: '#FF9F0A',
+  red: '#FF453A',
+  purple: '#BF5AF2',
+  separator: '#3D3550',
+  onAccent: '#FFFFFF',
+  backdrop: 'rgba(10, 6, 20, 0.5)',
+  blurFallback: 'rgba(31, 26, 44, 0.85)',
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
