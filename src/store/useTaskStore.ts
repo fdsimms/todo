@@ -37,6 +37,7 @@ interface TaskStore {
 
   initialize: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
+  duplicateTask: (id: string) => Task | null;
   updateTask: (id: string, updates: Partial<Task>) => void;
   setLastEditSnapshot: (snap: { id: string; snapshot: Task } | null) => void;
   undoTaskEdit: () => void;
@@ -156,6 +157,47 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
     return task;
+  },
+
+  duplicateTask(id) {
+    const original = get().tasks.find(t => t.id === id);
+    if (!original) return null;
+
+    const now = new Date().toISOString();
+    const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    const resetForCopy = {
+      completed: false,
+      completedAt: null,
+      createdAt: now,
+      focused: false,
+      streakCount: 0,
+      streakDate: null,
+      timerStartedAt: null,
+      actualMinutes: null,
+      previousOccurrenceId: null,
+    };
+    const copy: Task = {
+      ...original,
+      ...resetForCopy,
+      id: generateId(),
+      sortOrder: maxOrder + 1,
+    };
+    dbInsertTask(copy);
+    scheduleTaskReminder(copy);
+
+    const subtaskCopies = get().subtasksOf(id).map(sub => ({
+      ...sub,
+      ...resetForCopy,
+      id: generateId(),
+      parentId: copy.id,
+    }));
+    subtaskCopies.forEach(sub => {
+      dbInsertTask(sub);
+      scheduleTaskReminder(sub);
+    });
+
+    set(s => ({ tasks: [...s.tasks, copy, ...subtaskCopies] }));
+    return copy;
   },
 
   updateTask(id, updates) {

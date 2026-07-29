@@ -97,6 +97,7 @@ export function TaskItem({
   const stopTimer = useTaskStore(s => s.stopTimer);
   const discardTimer = useTaskStore(s => s.discardTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const duplicateTask = useTaskStore(s => s.duplicateTask);
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -662,6 +663,19 @@ export function TaskItem({
                     <Text style={[styles.editBtnText, !task.dueDate && styles.skipBtnText]}>
                       {task.dueDate ? formatDueDate(task.dueDate) : 'Date'}
                     </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={async () => {
+                      await haptics.tap();
+                      duplicateTask(task.id);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Duplicate task"
+                  >
+                    <Ionicons name="copy-outline" size={13} color={colors.textSecondary} />
+                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Duplicate</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.editBtn}

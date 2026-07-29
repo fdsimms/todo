@@ -258,6 +258,110 @@ describe('deleteTask', () => {
   });
 });
 
+// ─── duplicateTask ────────────────────────────────────────────────────────────
+
+describe('duplicateTask', () => {
+  it('returns null when the task does not exist', () => {
+    const result = useTaskStore.getState().duplicateTask('missing');
+    expect(result).toBeNull();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('creates a copy with a new id but the same settings', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        title: 'Take multivitamins',
+        notes: 'With food',
+        tags: ['health'],
+        category: 'Morning',
+        priority: 2,
+        effort: 1,
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: '2025-01-05T00:00:00.000Z',
+        timeSegments: ['morning'],
+        sortOrder: 3,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1');
+    expect(copy).not.toBeNull();
+    expect(copy!.id).not.toBe('t1');
+    expect(copy!.title).toBe('Take multivitamins');
+    expect(copy!.notes).toBe('With food');
+    expect(copy!.tags).toEqual(['health']);
+    expect(copy!.category).toBe('Morning');
+    expect(copy!.priority).toBe(2);
+    expect(copy!.effort).toBe(1);
+    expect(copy!.recurrenceType).toBe('daily');
+    expect(copy!.dueDate).toBe('2025-01-05T00:00:00.000Z');
+    expect(copy!.timeSegments).toEqual(['morning']);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('resets completion, streak, timer, and occurrence bookkeeping', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        completed: true,
+        completedAt: '2025-01-01T00:00:00.000Z',
+        streakCount: 5,
+        streakDate: '2025-01-01T00:00:00.000Z',
+        timerStartedAt: '2025-01-01T00:00:00.000Z',
+        actualMinutes: 30,
+        previousOccurrenceId: 'prev',
+        focused: true,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.completed).toBe(false);
+    expect(copy.completedAt).toBeNull();
+    expect(copy.streakCount).toBe(0);
+    expect(copy.streakDate).toBeNull();
+    expect(copy.timerStartedAt).toBeNull();
+    expect(copy.actualMinutes).toBeNull();
+    expect(copy.previousOccurrenceId).toBeNull();
+    expect(copy.focused).toBe(false);
+  });
+
+  it('sets sortOrder to maxExisting + 1', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', sortOrder: 3 }),
+        makeTask({ id: 't2', sortOrder: 7 }),
+      ],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.sortOrder).toBe(8);
+  });
+
+  it('also duplicates subtasks under the new parent', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'parent', sortOrder: 1 }),
+        makeTask({ id: 'child-1', parentId: 'parent', title: 'Sub A', sortOrder: 1 }),
+        makeTask({ id: 'child-2', parentId: 'parent', title: 'Sub B', sortOrder: 2, completed: true }),
+      ],
+    });
+    const copy = useTaskStore.getState().duplicateTask('parent')!;
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(6);
+    const copiedSubtasks = tasks.filter(t => t.parentId === copy.id);
+    expect(copiedSubtasks).toHaveLength(2);
+    expect(copiedSubtasks.map(t => t.title).sort()).toEqual(['Sub A', 'Sub B']);
+    expect(copiedSubtasks.every(t => !t.completed)).toBe(true);
+    // Original subtasks are untouched
+    expect(tasks.filter(t => t.parentId === 'parent')).toHaveLength(2);
+  });
+
+  it('persists the copy to db and schedules its reminder', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(dbInsertTask).toHaveBeenCalledWith(copy);
+    expect(scheduleTaskReminder).toHaveBeenCalledWith(copy);
+  });
+});
+
 // ─── completeTask ─────────────────────────────────────────────────────────────
 
 describe('completeTask', () => {
