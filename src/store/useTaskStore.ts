@@ -257,7 +257,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   undoLastAction() {
     const action = get().lastAction;
     if (!action) return;
-    action.undo();
+    try {
+      action.undo();
+    } catch (e) {
+      console.error('undoLastAction failed', e);
+    }
     set({ lastAction: null });
   },
 
