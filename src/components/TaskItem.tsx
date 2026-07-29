@@ -95,6 +95,7 @@ export function TaskItem({
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const startTimer = useTaskStore(s => s.startTimer);
   const stopTimer = useTaskStore(s => s.stopTimer);
+  const discardTimer = useTaskStore(s => s.discardTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
   const colors = useColors();
   const { shadows } = useTheme();
@@ -182,6 +183,24 @@ export function TaskItem({
       await haptics.impactMedium();
       startTimer(task.id);
     }
+  };
+
+  const handleDiscardTimer = () => {
+    Alert.alert(
+      'Discard Timer',
+      `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: async () => {
+            await haptics.warning();
+            discardTimer(task.id);
+          },
+        },
+      ]
+    );
   };
 
   // Save and dismiss keyboard whenever the task collapses while title is being edited
@@ -415,18 +434,30 @@ export function TaskItem({
 
       {!selectionMode && !isEditingTitle && (
         timerRunning ? (
-          <TouchableOpacity
-            onPress={handleTimerToggle}
-            hitSlop={8}
-            style={styles.timerPill}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Stop timer for ${task.title}`}
-            accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
-          >
-            <Ionicons name="stop" size={10} color={colors.onAccent} />
-            <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
-          </TouchableOpacity>
+          <View style={styles.timerRunningGroup}>
+            <TouchableOpacity
+              onPress={handleTimerToggle}
+              hitSlop={8}
+              style={styles.timerPill}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Stop timer for ${task.title}`}
+              accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
+            >
+              <Ionicons name="stop" size={10} color={colors.onAccent} />
+              <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleDiscardTimer}
+              hitSlop={8}
+              style={styles.timerDeleteBtn}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Discard timer for ${task.title}`}
+            >
+              <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
         ) : (
           <TouchableOpacity
             onPress={handleTimerToggle}
@@ -838,6 +869,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   timerBtn: {
+    padding: 4,
+  },
+  timerRunningGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  timerDeleteBtn: {
     padding: 4,
   },
   timerPill: {
