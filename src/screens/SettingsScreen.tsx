@@ -408,7 +408,10 @@ export function SettingsScreen({ visible, onClose }: Props) {
                 <View style={styles.rowContent}>
                   <Text style={styles.rowLabel}>Version</Text>
                 </View>
-                <Text style={styles.rowValue}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+                <Text style={styles.rowValue}>
+                  {Constants.expoConfig?.version || '1.0.0'}
+                  {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
+                </Text>
               </View>
             </View>
           </View>
