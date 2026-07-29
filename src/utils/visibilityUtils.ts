@@ -183,7 +183,7 @@ export function isTaskDeferred(task: Task): boolean {
 // True when a task is hidden solely because its time-of-day segment hasn't started yet today.
 // Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
-  if (task.completed || !task.timeOfDay) return false;
+  if (task.completed || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
 
@@ -201,7 +201,7 @@ export function isUpcomingToday(task: Task): boolean {
     if (taskDayStart > todayStart) return false;
   }
 
-  const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  const threshold = earliestSegmentThreshold(task.timeSegments)!;
   return now < threshold;
 }
 

@@ -36,6 +36,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
+  previousOccurrenceId: null,
   ...overrides,
 });
 
