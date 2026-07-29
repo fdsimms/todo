@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Modal,
   View,
@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Platform,
   ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Ionicons } from '@expo/vector-icons';
@@ -56,6 +57,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
+  const scrollRef = useRef<ScrollView>(null);
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
@@ -110,7 +112,15 @@ export function SettingsScreen({ visible, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+        <ScrollView
+          ref={scrollRef}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+        >
           {/* Appearance */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Appearance</Text>
@@ -330,6 +340,9 @@ export function SettingsScreen({ visible, onClose }: Props) {
                     style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                     value={apiKeyDraft}
                     onChangeText={setApiKeyDraft}
+                    onFocus={() => {
+                      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+                    }}
                     onBlur={() => setAnthropicApiKey(apiKeyDraft.trim())}
                     placeholder="sk-ant-..."
                     placeholderTextColor={colors.textTertiary}
@@ -346,6 +359,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </Text>
           </View>
         </ScrollView>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
