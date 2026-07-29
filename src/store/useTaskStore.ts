@@ -28,10 +28,25 @@ import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
+import { animateLayout } from '../utils/layoutAnimation';
 
 interface UndoableAction {
   label: string;
   undo: () => void;
+}
+
+// A completed task keeps appearing wherever it would if it were still
+// incomplete, for COMPLETION_HOLD_MS after it's completed. Checking off
+// several tasks in a row would otherwise reflow the list after every single
+// tap; holding them lets the whole burst finish before the list collapses
+// around whatever's left, once completions pause for COMPLETION_HOLD_MS.
+const COMPLETION_HOLD_MS = 2000;
+let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
+
+function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
+  if (heldIds.length === 0) return tasks;
+  const held = new Set(heldIds);
+  return tasks.map(t => (held.has(t.id) ? { ...t, completed: false } : t));
 }
 
 interface TaskStore {
@@ -39,6 +54,9 @@ interface TaskStore {
   tagRegistry: string[];
   initialized: boolean;
   lastAction: UndoableAction | null;
+  // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
+  // withHeldCompletions above.
+  completionHoldIds: string[];
 
   initialize: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
@@ -95,6 +113,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   tagRegistry: [],
   initialized: false,
   lastAction: null,
+  completionHoldIds: [],
 
   initialize() {
     initDatabase();
@@ -341,7 +360,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...s.tasks.map(t => (t.id === id ? completed : t)),
         ...(nextTask ? [nextTask] : []),
       ],
+      completionHoldIds: [...s.completionHoldIds, id],
     }));
+
+    if (completionHoldTimer) clearTimeout(completionHoldTimer);
+    completionHoldTimer = setTimeout(() => {
+      completionHoldTimer = null;
+      animateLayout();
+      set({ completionHoldIds: [] });
+    }, COMPLETION_HOLD_MS);
+    // Node (tests) returns a Timeout with unref(); React Native's timer is a
+    // plain number without it — don't keep a test process alive over this.
+    (completionHoldTimer as unknown as { unref?: () => void }).unref?.();
 
     get().setLastAction({
       label: 'Task completed',
@@ -370,6 +400,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: s.tasks
         .filter(t => !followUp || (t.id !== followUp.id && t.parentId !== followUp.id))
         .map(t => (t.id === id ? updated : t)),
+      completionHoldIds: s.completionHoldIds.filter(x => x !== id),
     }));
   },
 
@@ -638,38 +669,44 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   visibleTasks() {
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskVisible(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   upcomingTodayTasks() {
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isUpcomingToday(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   deferredTasks() {
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskDeferred(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   expiredTasks() {
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskExpired(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   vacationHiddenTasks() {
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isHiddenForVacation(t))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   focusedTasks() {
     const { vacationMode } = useSettingsStore.getState();
-    return get().tasks
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && t.focused && !t.completed && !(vacationMode && t.vacationPause))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
@@ -729,10 +766,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   tasksByTag(tag) {
-    return get().tasks.filter(t => !t.completed && t.tags.includes(tag));
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && t.tags.includes(tag));
   },
 
   tasksByCategory(category) {
-    return get().tasks.filter(t => !t.completed && !t.parentId && t.category === category);
+    const { tasks, completionHoldIds } = get();
+    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.parentId && t.category === category);
   },
 }));
