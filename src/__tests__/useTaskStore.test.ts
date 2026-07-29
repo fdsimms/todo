@@ -109,6 +109,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleItems: [],
   timerStartedAt: null,
   actualMinutes: null,
+  previousOccurrenceId: null,
   ...overrides,
 });
 
@@ -317,6 +318,20 @@ describe('completeTask', () => {
     expect(new Date(next!.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
   });
 
+  it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.previousOccurrenceId).toBe('recurring');
+  });
+
   it('does not create a next task when recurrenceEndDate is already reached', () => {
     const task = makeTask({
       id: 'ending',
@@ -451,6 +466,54 @@ describe('uncompleteTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now' })] });
     useTaskStore.getState().uncompleteTask('t1');
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: false }));
+  });
+
+  it('removes the untouched follow-up occurrence spawned by the completion', () => {
+    const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
+    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: false });
+    useTaskStore.setState({ tasks: [original, followUp] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.map(t => t.id)).toEqual(['t1']);
+    expect(dbDeleteTask).toHaveBeenCalledWith('t2');
+    expect(dbDeleteSubtasks).toHaveBeenCalledWith('t2');
+    expect(cancelTaskReminder).toHaveBeenCalledWith('t2');
+  });
+
+  it('also removes subtasks of the deleted follow-up occurrence', () => {
+    const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
+    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: false });
+    const followUpSubtask = makeTask({ id: 't2-sub', parentId: 't2' });
+    useTaskStore.setState({ tasks: [original, followUp, followUpSubtask] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['t1']);
+  });
+
+  it('keeps a follow-up occurrence that has itself already been completed', () => {
+    const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
+    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: true });
+    useTaskStore.setState({ tasks: [original, followUp] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.map(t => t.id).sort()).toEqual(['t1', 't2']);
+    expect(dbDeleteTask).not.toHaveBeenCalled();
+  });
+
+  it('does not touch unrelated tasks', () => {
+    const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
+    const unrelated = makeTask({ id: 't3', previousOccurrenceId: null, completed: false });
+    useTaskStore.setState({ tasks: [original, unrelated] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['t1', 't3']);
+    expect(dbDeleteTask).not.toHaveBeenCalled();
   });
 });
 
