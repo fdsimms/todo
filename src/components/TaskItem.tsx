@@ -119,7 +119,12 @@ export function TaskItem({
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
-  const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
+  // Opacity of a scrim drawn on top of the row (not the row's own opacity) —
+  // fading the whole card instead washes out low-contrast text (e.g. category
+  // labels) far less than high-contrast text, since both just blend toward
+  // the same light background in light mode. A flat scrim darkens every
+  // pixel underneath by the same fixed amount regardless of its original color.
+  const spotlightScrimOpacity = useRef(new Animated.Value(spotlightDisabled ? 1 : 0)).current;
   // Reanimated (UI-thread) shared value drives the expand/collapse. The panel
   // animates `height`, which forces a re-layout of every row below it on each
   // frame — doing that from a JS-thread Animated.Value stutters once the list
@@ -151,14 +156,12 @@ export function TaskItem({
   }));
 
   useEffect(() => {
-    Animated.timing(dimAnim, {
-      toValue: spotlightDisabled ? 0.35 : 1,
+    Animated.timing(spotlightScrimOpacity, {
+      toValue: spotlightDisabled ? 1 : 0,
       duration: animation.duration.fast,
       useNativeDriver: true,
     }).start();
   }, [spotlightDisabled]);
-
-  const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
 
   useEffect(() => {
     if (isActive) {
@@ -733,7 +736,7 @@ export function TaskItem({
         style={[
           styles.itemWrapper,
           shadows.card,
-          { opacity: isActive ? 1 : wrapperOpacity },
+          { opacity: isActive ? 1 : rowOpacity },
           isActive && styles.itemWrapperActive,
           expanded && styles.itemWrapperElevated,
         ]}
@@ -780,6 +783,10 @@ export function TaskItem({
           </Swipeable>
         )}
         {expandedPanel}
+        <Animated.View
+          style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
+          pointerEvents="none"
+        />
         </View>
       </Animated.View>
 
@@ -832,6 +839,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardClip: {
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  spotlightScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.backdrop,
   },
   swipeContainer: {
     borderRadius: radius.md,
