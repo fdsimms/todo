@@ -9,6 +9,7 @@ import {
   Platform,
   ScrollView,
   KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -57,6 +58,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
+  const resetAllStreaks = useTaskStore(s => s.resetAllStreaks);
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -93,6 +95,17 @@ export function SettingsScreen({ visible, onClose }: Props) {
   };
 
   const formatTime = (hhmm: string) => format(hhmmToDate(hhmm), 'h:mm a');
+
+  const confirmResetStreaks = () => {
+    Alert.alert(
+      'Reset All Streaks',
+      'This sets every task\'s streak back to 0. You can undo this right after from the toast that appears.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => resetAllStreaks() },
+      ]
+    );
+  };
 
   const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string }[] = [
     { key: 'afternoon', label: 'Afternoon starts', icon: 'sunny', value: formatTime(afternoonStart) },
@@ -292,6 +305,29 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </View>
             <Text style={styles.sectionFooter}>
               While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically.
+            </Text>
+          </View>
+
+          {/* Streaks */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Streaks</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={confirmResetStreaks}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Reset all streaks"
+              >
+                <Ionicons name="refresh-outline" size={18} color={colors.red} />
+                <View style={styles.rowContent}>
+                  <Text style={[styles.rowLabel, { color: colors.red }]}>Reset all streaks</Text>
+                  <Text style={styles.rowHint}>Sets every task's streak count back to 0</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Asks for confirmation first. Undoable from the toast that appears right after.
             </Text>
           </View>
 

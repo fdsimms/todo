@@ -86,6 +86,7 @@ interface TaskStore {
   reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
 
   forgivVacationStreaks: () => void;
+  resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
@@ -621,6 +622,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           : t
       ),
     }));
+  },
+
+  resetAllStreaks() {
+    const toReset = get().tasks.filter(t => t.streakCount > 0 || t.streakDate !== null);
+    if (toReset.length === 0) return;
+
+    const snapshot = toReset.map(t => ({ id: t.id, streakCount: t.streakCount, streakDate: t.streakDate }));
+
+    toReset.forEach(t => {
+      dbUpdateTask({ ...t, streakCount: 0, streakDate: null });
+    });
+    set(s => ({
+      tasks: s.tasks.map(t =>
+        toReset.some(r => r.id === t.id) ? { ...t, streakCount: 0, streakDate: null } : t
+      ),
+    }));
+
+    get().setLastAction({
+      label: 'Streaks reset',
+      undo: () => {
+        snapshot.forEach(({ id, streakCount, streakDate }) => {
+          const task = get().tasks.find(t => t.id === id);
+          if (!task) return;
+          dbUpdateTask({ ...task, streakCount, streakDate });
+        });
+        set(s => ({
+          tasks: s.tasks.map(t => {
+            const r = snapshot.find(x => x.id === t.id);
+            return r ? { ...t, streakCount: r.streakCount, streakDate: r.streakDate } : t;
+          }),
+        }));
+      },
+    });
   },
 
   bulkCompleteTasks(ids) {
