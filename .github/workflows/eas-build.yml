@@ -1,0 +1,26 @@
+name: EAS Build & Submit (iOS)
+
+on:
+  schedule:
+    # Runs on the 1st of every month — well inside TestFlight's 90-day
+    # build expiry, so a fresh build is always available.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+jobs:
+  build-and-submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - run: eas build --platform ios --profile production --non-interactive
+      - run: eas submit --platform ios --profile production --latest --non-interactive
