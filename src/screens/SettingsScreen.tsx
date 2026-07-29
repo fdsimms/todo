@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -62,6 +63,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -119,7 +121,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
         <ScrollView
           ref={scrollRef}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xl }}
         >
           {/* Appearance */}
           <View style={styles.section}>
