@@ -709,7 +709,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
           {activePanel === 'effort' && (
             <View style={styles.panel}>
               <View style={styles.presetRow}>
-                {([1, 2, 3, 4, 5] as Effort[]).map(e => {
+                {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
                   const active = !customEffortActive && effort === e;
                   return (
                     <TouchableOpacity

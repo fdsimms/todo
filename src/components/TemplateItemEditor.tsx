@@ -314,7 +314,7 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
             <View style={styles.cardSection}>
               <Text style={styles.sectionLabel}>Effort</Text>
               <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4, 5] as Effort[]).map(e => (
+                {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => (
                   <TouchableOpacity
                     key={e}
                     style={[styles.pill, effort === e && styles.pillActiveNeutral]}

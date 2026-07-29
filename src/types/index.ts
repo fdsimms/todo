@@ -1,6 +1,6 @@
 export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
-export type Effort = 0 | 1 | 2 | 3 | 4 | 5;
+export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening';
 
@@ -106,8 +106,8 @@ export const PRIORITY_COLORS = [
   '#FF453A',
 ] as const;
 
-export const EFFORT_LABELS = ['—', 'XS', 'S', 'M', 'L', 'XL'] as const;
-export const EFFORT_HINTS = ['', '~15min', '~30min', '~1-2hr', '~4hr', 'day+'] as const;
+export const EFFORT_LABELS = ['—', 'XXS', 'XS', 'S', 'M', 'L', 'XL'] as const;
+export const EFFORT_HINTS = ['', '~1min', '~15min', '~30min', '~1-2hr', '~4hr', 'day+'] as const;
 
 // Max length for any title-style input (task, subtask, cycle step). Long titles
 // are truncated with an ellipsis in the list, so cap input to keep them sane.

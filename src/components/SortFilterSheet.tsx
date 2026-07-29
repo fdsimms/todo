@@ -149,7 +149,7 @@ export function SortFilterSheet({
           {/* Effort filter */}
           <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter by effort</Text>
           <View style={styles.chips}>
-            {([1, 2, 3, 4, 5] as Effort[]).map(e => {
+            {([1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
               const active = efforts.includes(e);
               return (
                 <TouchableOpacity

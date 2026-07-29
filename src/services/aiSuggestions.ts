@@ -52,9 +52,9 @@ export async function suggestTaskAttributes(
             },
             effort: {
               type: 'integer',
-              description: '0=unknown, 1=XS ~15min, 2=S ~30min, 3=M ~1-2hr, 4=L ~4hr, 5=XL day+',
+              description: '0=unknown, 1=XXS ~1min, 2=XS ~15min, 3=S ~30min, 4=M ~1-2hr, 5=L ~4hr, 6=XL day+',
               minimum: 0,
-              maximum: 5,
+              maximum: 6,
             },
             category: {
               type: 'string',
@@ -105,7 +105,7 @@ export async function suggestTaskAttributes(
 
   return {
     tags: (rawTags ?? []).filter(t => availableTags.includes(t)),
-    effort: Math.max(0, Math.min(5, rawEffort ?? 0)) as Effort,
+    effort: Math.max(0, Math.min(6, rawEffort ?? 0)) as Effort,
     category,
     newCategory,
   };
@@ -475,9 +475,9 @@ export async function suggestTemplateItems(
                   },
                   effort: {
                     type: 'integer',
-                    description: '0=unknown, 1=XS ~15min, 2=S ~30min, 3=M ~1-2hr, 4=L ~4hr, 5=XL day+',
+                    description: '0=unknown, 1=XXS ~1min, 2=XS ~15min, 3=S ~30min, 4=M ~1-2hr, 5=L ~4hr, 6=XL day+',
                     minimum: 0,
-                    maximum: 5,
+                    maximum: 6,
                   },
                 },
                 required: ['title', 'notes', 'effort'],
@@ -521,7 +521,7 @@ export async function suggestTemplateItems(
     result.push({
       title,
       notes: (t.notes ?? '').trim(),
-      effort: Math.max(0, Math.min(5, t.effort ?? 0)) as Effort,
+      effort: Math.max(0, Math.min(6, t.effort ?? 0)) as Effort,
     });
   }
   return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);

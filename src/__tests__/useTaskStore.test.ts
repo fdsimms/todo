@@ -956,7 +956,7 @@ describe('timers', () => {
     expect(task.timerStartedAt).toBeNull();
     expect(task.actualMinutes).toBe(10);
     expect(task.estimatedMinutes).toBe(10);
-    expect(task.effort).toBe(1); // ≤20min → XS
+    expect(task.effort).toBe(2); // ≤20min → XS
   });
 
   it('discardTimer clears the timer without recording any elapsed time', () => {
@@ -982,7 +982,7 @@ describe('timers', () => {
     const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
     expect(task.actualMinutes).toBe(90);
     expect(task.estimatedMinutes).toBe(90);
-    expect(task.effort).toBe(3); // ≤150min → M
+    expect(task.effort).toBe(4); // ≤150min → M
   });
 
   it('completing a task with a running timer saves the elapsed time first', () => {
