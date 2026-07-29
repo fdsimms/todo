@@ -32,9 +32,14 @@ export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Prop
 
   const translateY = useRef(new Animated.Value(400)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (visible) {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
       setShowCalendar(false);
       translateY.setValue(400);
       backdropOpacity.setValue(0);
@@ -44,6 +49,12 @@ export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Prop
       ]).start();
     }
   }, [visible]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+    };
+  }, []);
 
   const dismiss = () => {
     Animated.parallel([
@@ -86,12 +97,16 @@ export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Prop
         mode="datetime"
         title="Completion Date"
         onConfirm={date => {
+          // Close the pageSheet first and let its dismiss animation finish
+          // before hiding the outer sheet Modal — closing both native Modals
+          // in the same tick can deadlock the iOS modal transition and
+          // freeze the app.
           setShowCalendar(false);
-          onChangeDate(date);
+          closeTimeoutRef.current = setTimeout(() => onChangeDate(date), animation.duration.slow);
         }}
         onCancel={() => {
           setShowCalendar(false);
-          onClose();
+          closeTimeoutRef.current = setTimeout(() => onClose(), animation.duration.slow);
         }}
       />
     </Modal>
