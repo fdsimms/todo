@@ -49,6 +49,7 @@ interface TaskStore {
   clearAllFocus: () => void;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
+  discardTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   reorderWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
@@ -342,6 +343,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
     const minutes = elapsedMs / 60000;
     get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
+  },
+
+  discardTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.timerStartedAt === null) return;
+    get().updateTask(id, { timerStartedAt: null });
   },
 
   logManualTime(id, minutes) {

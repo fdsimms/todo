@@ -959,6 +959,23 @@ describe('timers', () => {
     expect(task.effort).toBe(1); // ≤20min → XS
   });
 
+  it('discardTimer clears the timer without recording any elapsed time', () => {
+    const started = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
+    useTaskStore.getState().discardTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.actualMinutes).toBeNull();
+    expect(task.estimatedMinutes).toBeNull();
+  });
+
+  it('discardTimer is a no-op when no timer is running', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().discardTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+  });
+
   it('logManualTime sets actual + estimate without needing a running timer', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
     useTaskStore.getState().logManualTime('a', 90);
