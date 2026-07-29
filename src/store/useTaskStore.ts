@@ -29,7 +29,6 @@ import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
-import { animateLayout } from '../utils/layoutAnimation';
 
 interface UndoableAction {
   label: string;
@@ -386,7 +385,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
-      animateLayout();
+      // No animateLayout() here: this commit unmounts the completed row's
+      // Swipeable (react-native-gesture-handler). Firing a LayoutAnimation in
+      // the same tick a Swipeable unmounts crashes on iOS — RNGH's native
+      // animated-event cleanup (removeAnimatedEventFromView) races the layout
+      // transition and can segfault mid-GC. The row already faded to
+      // opacity 0 during the completion animation, so the list just loses its
+      // slot cleanly without needing an extra transition here.
       set({ completionHoldIds: [] });
     }, COMPLETION_HOLD_MS);
     // Node (tests) returns a Timeout with unref(); React Native's timer is a
