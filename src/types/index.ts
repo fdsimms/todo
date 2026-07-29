@@ -26,6 +26,7 @@ export interface Task {
   completed: boolean;
   completedAt: string | null;
   createdAt: string;
+  seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 
   dueDate: string | null;
   deferUntil: string | null;
@@ -74,7 +75,7 @@ export interface Task {
   previousOccurrenceId: string | null;
 }
 
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
 
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the

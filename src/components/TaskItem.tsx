@@ -27,7 +27,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -91,6 +91,7 @@ export function TaskItem({
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const startTimer = useTaskStore(s => s.startTimer);
@@ -221,6 +222,12 @@ export function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
+  const isNew = isTaskNew(task);
+
+  const handleContentPress = () => {
+    if (isNew) markTaskSeen(task.id);
+    if (selectionMode) { onSelect?.(); } else { onPress(); }
+  };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
@@ -244,6 +251,7 @@ export function TaskItem({
       await haptics.error();
       return;
     }
+    if (isNew) markTaskSeen(task.id);
     completingRef.current = true;
     await haptics.success();
     setCompleting(true);
@@ -408,7 +416,7 @@ export function TaskItem({
 
       <TouchableOpacity
         style={styles.content}
-        onPress={selectionMode ? onSelect : onPress}
+        onPress={handleContentPress}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
@@ -438,6 +446,7 @@ export function TaskItem({
           />
         ) : (
           <View style={styles.titleRow}>
+            {isNew && <View style={styles.newDot} />}
             {expanded ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity}>
@@ -905,6 +914,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   titleFlex: {
     flexShrink: 1,
+  },
+  newDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    flexShrink: 0,
   },
   categoryRow: {
     flexDirection: 'row',

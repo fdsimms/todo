@@ -6,6 +6,7 @@ import {
   getVisibleAt,
   isHiddenForVacation,
   isRecurrenceNotYetDue,
+  isTaskNew,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -57,6 +58,7 @@ const baseTask: Task = {
   completed: false,
   completedAt: null,
   createdAt: new Date(2025, 0, 1).toISOString(),
+  seenAt: null,
   dueDate: null,
   deferUntil: null,
   timeSegments: [],
@@ -579,6 +581,68 @@ describe('category hide-on-vacation', () => {
     mockSettingsState.vacationMode = true;
     expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
     expect(isTaskVisible({ ...baseTask, category: null })).toBe(true);
+  });
+});
+
+// ─── isTaskNew ─────────────────────────────────────────────────────────────────
+
+describe('isTaskNew', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a task with no scheduling constraints', () => {
+    expect(isTaskNew(baseTask)).toBe(false);
+  });
+
+  it('is false for a completed task even if its due day just arrived', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, completed: true, dueDate })).toBe(false);
+  });
+
+  it('is true when a task becomes visible on its due day and has never been seen', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, dueDate })).toBe(true);
+  });
+
+  it('is false when the due day has not arrived yet (task is hidden)', () => {
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, dueDate })).toBe(false);
+  });
+
+  it('is true when a deferred task’s day has just arrived and has never been seen', () => {
+    const deferUntil = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskNew({ ...baseTask, deferUntil })).toBe(true);
+  });
+
+  it('is true when a same-day time segment threshold has just passed and has never been seen', () => {
+    // morning started at 6 AM, NOW is 10 AM
+    expect(isTaskNew({ ...baseTask, timeSegments: ['morning'] })).toBe(true);
+  });
+
+  it('is false while the time segment threshold has not passed yet', () => {
+    expect(isTaskNew({ ...baseTask, timeSegments: ['evening'] })).toBe(false);
+  });
+
+  it('is false once seenAt is after the task became visible', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    const seenAt = new Date(2025, 5, 10, 9, 0, 0).toISOString(); // after due-day start
+    expect(isTaskNew({ ...baseTask, dueDate, seenAt })).toBe(false);
+  });
+
+  it('is true again if seenAt predates the day the task became visible', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    const seenAt = new Date(2025, 5, 9, 9, 0, 0).toISOString(); // before due-day start
+    expect(isTaskNew({ ...baseTask, dueDate, seenAt })).toBe(true);
+  });
+
+  it('is false for a task only gated by windowStart (not a day-turnover cause)', () => {
+    expect(isTaskNew({ ...baseTask, windowStart: '08:00', windowEnd: '13:00' })).toBe(false);
   });
 });
 
