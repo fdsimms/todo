@@ -23,6 +23,7 @@ import {
   flattenLaterSections,
   isLaterHeader,
   laterTaskOrder,
+  LATER_TODAY_LABEL,
   type LaterListItem,
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
@@ -48,20 +49,47 @@ import { animateLayout } from '../utils/layoutAnimation';
 type ViewMode = 'today' | 'later';
 
 // Category section header that fades + slides in on mount, so a section created
-// by a drop eases in rather than popping.
-function SectionHeader({ label, styles }: { label: string; styles: ReturnType<typeof makeStyles> }) {
+// by a drop eases in rather than popping. When `onToggle` is given, the header
+// is a tappable collapse/expand control for its category (chevron reflects
+// `collapsed`); otherwise it renders as static text (used for the non-category
+// "Later Today" header).
+function SectionHeader({
+  label,
+  styles,
+  colors,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.timing(anim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
   }, [anim]);
+  const animStyle = { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] };
+  if (!onToggle) {
+    return (
+      <Animated.View style={[styles.sectionHeader, animStyle]}>
+        <Text style={styles.sectionHeaderText}>{label}</Text>
+      </Animated.View>
+    );
+  }
   return (
-    <Animated.View
-      style={[
-        styles.sectionHeader,
-        { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] },
-      ]}
-    >
-      <Text style={styles.sectionHeaderText}>{label}</Text>
+    <Animated.View style={animStyle}>
+      <TouchableOpacity
+        style={styles.categorySectionHeader}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+      >
+        <Text style={styles.sectionHeaderText}>{label}</Text>
+        <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
     </Animated.View>
   );
 }
@@ -184,6 +212,7 @@ export function TodayScreen() {
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
 
   // Collapse any expanded task when navigating away from this tab so it
@@ -243,6 +272,20 @@ export function TodayScreen() {
     setSelectedIds(new Set());
   };
 
+  const toggleCategoryCollapse = (label: string) => {
+    if (expandedTaskId !== null) {
+      setExpandedTaskId(null);
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  };
+
   // Sort & filter state
   const [sort, setSort] = useState<SortOption>('default');
   const [filterPriorities, setFilterPriorities] = useState<Priority[]>([]);
@@ -300,6 +343,24 @@ export function TodayScreen() {
     [upcomingTodayTasks],
   );
 
+  // Hide task rows under a collapsed category header, leaving the header
+  // itself in place so it stays tappable to re-expand. The "Later Today"
+  // header is a time section, not a category, so it's never collapsible.
+  const applyCategoryCollapse = (items: ListItem[]): ListItem[] => {
+    if (collapsedCategories.size === 0) return items;
+    let currentCategory: string | null = null;
+    return items.filter(item => {
+      if (item.type === 'header') {
+        currentCategory = item.label === LATER_TODAY_LABEL ? null : item.label;
+        return true;
+      }
+      if (item.type === 'task' && currentCategory !== null && collapsedCategories.has(currentCategory)) {
+        return false;
+      }
+      return true;
+    });
+  };
+
   const data: ListItem[] = useMemo(() => {
     if (focusedTasks.length > 0) {
       const items: ListItem[] = [{ type: 'focus-header' }];
@@ -309,7 +370,7 @@ export function TodayScreen() {
         items.push({ type: 'rest-header' });
         if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
-      return items;
+      return applyCategoryCollapse(items);
     }
 
     const items = makeCategoryGroups(filtered, allCategories);
@@ -322,8 +383,9 @@ export function TodayScreen() {
         upcomingFiltered.forEach(task => items.push({ type: 'task', task }));
       }
     }
-    return items;
-  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories]);
+    return applyCategoryCollapse(items);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
@@ -405,7 +467,16 @@ export function TodayScreen() {
       // per label) and fades/slides in instead of popping after a drop.
       // (Tapping it while a task is expanded still collapses the spotlight,
       // via the list wrapper's onTouchEnd.)
-      return <SectionHeader label={item.label} styles={styles} />;
+      const isCategory = item.label !== LATER_TODAY_LABEL;
+      return (
+        <SectionHeader
+          label={item.label}
+          styles={styles}
+          colors={colors}
+          collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
+          onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
+        />
+      );
     }
     const subs = subtasksByParent.get(item.task.id) ?? [];
     const taskNode = (
@@ -857,6 +928,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  categorySectionHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
