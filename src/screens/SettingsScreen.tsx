@@ -14,6 +14,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -396,6 +397,20 @@ export function SettingsScreen({ visible, onClose }: Props) {
             <Text style={styles.sectionFooter}>
               Get a key at console.anthropic.com. Stored locally on device only.
             </Text>
+          </View>
+
+          {/* About */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>About</Text>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Version</Text>
+                </View>
+                <Text style={styles.rowValue}>{Constants.expoConfig?.version || '1.0.0'}</Text>
+              </View>
+            </View>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
