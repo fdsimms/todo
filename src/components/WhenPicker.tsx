@@ -16,7 +16,7 @@ import {
   format, addDays,
 } from 'date-fns';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday, getLogicalTomorrow, isBeforeDayReset } from '../utils/dateUtils';
 import type { TimeOfDay, Effort } from '../types';
@@ -98,6 +98,9 @@ export function WhenPicker({
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const popAnim = useRef(new Animated.Value(1)).current;
+  // Drives the card's entrance pop — layered on top of the Modal's native
+  // fade so opening reads as a snappy spring rather than a flat crossfade.
+  const cardScale = useRef(new Animated.Value(0.92)).current;
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -116,6 +119,8 @@ export function WhenPicker({
       setSuggestError(null);
       pendingRef.current = false;
       popAnim.setValue(1);
+      cardScale.setValue(0.92);
+      Animated.spring(cardScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }).start();
     }
     return () => {
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
@@ -187,7 +192,7 @@ export function WhenPicker({
     >
       <View style={styles.backdrop}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
-        <View style={styles.card}>
+        <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerSpacer} />
@@ -376,7 +381,7 @@ export function WhenPicker({
               </TouchableOpacity>
             </>
           )}
-        </View>
+        </Animated.View>
       </View>
     </Modal>
   );

@@ -69,6 +69,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const inputRef = useRef<TextInput>(null);
   const tagInputRef = useRef<TextInput>(null);
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const translateYAnim = useRef(new Animated.Value(16)).current;
   const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
@@ -137,14 +138,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setAiLoading(false);
       setPendingCategory(null);
       scaleAnim.setValue(0.95);
+      translateYAnim.setValue(16);
       sheetOpacity.setValue(0);
       backdropOpacity.setValue(0);
       Animated.parallel([
-        Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-        Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true }),
-        Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-      ]).start();
-      setTimeout(() => inputRef.current?.focus(), 50);
+        Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
+        Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
+        Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+        Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+      ]).start(() => {
+        // Focus (and the keyboard's own slide-up) is deferred until the sheet
+        // has settled, so the two motions don't overlap and fight each other.
+        inputRef.current?.focus();
+      });
     }
   }, [visible]);
 
@@ -372,7 +378,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         pointerEvents="box-none"
       >
-        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] }]}>
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
