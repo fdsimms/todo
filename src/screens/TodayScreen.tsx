@@ -535,19 +535,21 @@ export function TodayScreen() {
   // state centered by stopping the spacer from growing.
   const listFooter = (fixedWhenEmpty = false) => (
     <>
-      <ExpiredSection
-        tasks={expiredTasks}
-        expanded={showExpired}
-        onToggle={() => {
-          haptics.tap();
-          animateLayout();
-          setExpandedTaskId(null);
-          setShowExpired(v => !v);
-        }}
-        renderExpiredTask={renderHiddenTask}
-        styles={styles}
-        colors={colors}
-      />
+      {viewMode === 'today' && (
+        <ExpiredSection
+          tasks={expiredTasks}
+          expanded={showExpired}
+          onToggle={() => {
+            haptics.tap();
+            animateLayout();
+            setExpandedTaskId(null);
+            setShowExpired(v => !v);
+          }}
+          renderExpiredTask={renderHiddenTask}
+          styles={styles}
+          colors={colors}
+        />
+      )}
       <VacationHiddenSection
         tasks={vacationHiddenTasks}
         expanded={showHidden}

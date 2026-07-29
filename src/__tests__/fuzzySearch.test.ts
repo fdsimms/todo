@@ -34,6 +34,10 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   cycleIndex: 0,
   cycleItems: [],
   category: null,
+  vacationPause: false,
+  timerStartedAt: null,
+  actualMinutes: null,
+  previousOccurrenceId: null,
   ...overrides,
 });
 

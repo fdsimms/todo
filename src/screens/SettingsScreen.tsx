@@ -9,10 +9,12 @@ import {
   Platform,
   ScrollView,
   KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { format } from 'date-fns';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -57,6 +59,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
+  const resetAllStreaks = useTaskStore(s => s.resetAllStreaks);
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -93,6 +96,17 @@ export function SettingsScreen({ visible, onClose }: Props) {
   };
 
   const formatTime = (hhmm: string) => format(hhmmToDate(hhmm), 'h:mm a');
+
+  const confirmResetStreaks = () => {
+    Alert.alert(
+      'Reset All Streaks',
+      'This sets every task\'s streak back to 0. You can undo this right after from the toast that appears.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => resetAllStreaks() },
+      ]
+    );
+  };
 
   const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string }[] = [
     { key: 'afternoon', label: 'Afternoon starts', icon: 'sunny', value: formatTime(afternoonStart) },
@@ -295,6 +309,29 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* Streaks */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Streaks</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={confirmResetStreaks}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Reset all streaks"
+              >
+                <Ionicons name="refresh-outline" size={18} color={colors.red} />
+                <View style={styles.rowContent}>
+                  <Text style={[styles.rowLabel, { color: colors.red }]}>Reset all streaks</Text>
+                  <Text style={styles.rowHint}>Sets every task's streak count back to 0</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Asks for confirmation first. Undoable from the toast that appears right after.
+            </Text>
+          </View>
+
           {/* Time-limited tasks */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Time-limited tasks</Text>
@@ -360,6 +397,23 @@ export function SettingsScreen({ visible, onClose }: Props) {
             <Text style={styles.sectionFooter}>
               Get a key at console.anthropic.com. Stored locally on device only.
             </Text>
+          </View>
+
+          {/* About */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>About</Text>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Version</Text>
+                </View>
+                <Text style={styles.rowValue}>
+                  {Constants.expoConfig?.version || '1.0.0'}
+                  {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
+                </Text>
+              </View>
+            </View>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>

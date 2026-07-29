@@ -41,6 +41,10 @@ const BASE: Task = {
   cycleEnabled: false,
   cycleIndex: 0,
   cycleItems: [],
+  vacationPause: false,
+  timerStartedAt: null,
+  actualMinutes: null,
+  previousOccurrenceId: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

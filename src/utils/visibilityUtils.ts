@@ -183,7 +183,7 @@ export function isTaskDeferred(task: Task): boolean {
 // True when a task is hidden solely because its time-of-day segment hasn't started yet today.
 // Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
-  if (task.completed || !task.timeOfDay) return false;
+  if (task.completed || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
 
@@ -201,7 +201,7 @@ export function isUpcomingToday(task: Task): boolean {
     if (taskDayStart > todayStart) return false;
   }
 
-  const threshold = getTimeOfDayThreshold(task.timeOfDay);
+  const threshold = earliestSegmentThreshold(task.timeSegments)!;
   return now < threshold;
 }
 
@@ -259,6 +259,45 @@ export function getVisibleAt(task: Task): Date {
 
   if (candidates.length === 0) return now;
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
+}
+
+// The most recent moment a day-based visibility gate (deferUntil, dueDate, or
+// a time-of-day segment) let this task through. Only these three are "day
+// turnover" gates — windowStart/vacationPause aren't, and already have their
+// own indicators — so a task with none of them returns null (never "new").
+function getBecameVisibleAt(task: Task): Date | null {
+  const { dayResetTime } = useSettingsStore.getState();
+  const now = new Date();
+  const todayStart = getCurrentDayStart();
+  const candidates: Date[] = [];
+
+  if (task.deferUntil) {
+    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    if (deferDayStart <= todayStart) candidates.push(deferDayStart);
+  }
+
+  if (task.dueDate) {
+    const dueDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    if (dueDayStart <= todayStart) candidates.push(dueDayStart);
+  }
+
+  if (task.timeSegments.length > 0) {
+    const threshold = earliestSegmentThreshold(task.timeSegments)!;
+    if (threshold <= now) candidates.push(threshold);
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates.reduce((latest, d) => (d > latest ? d : latest));
+}
+
+// True for a visible task that hasn't been interacted with since it most
+// recently crossed a day-based visibility gate — drives the "new" dot.
+export function isTaskNew(task: Task): boolean {
+  if (!isTaskVisible(task)) return false;
+  const becameVisibleAt = getBecameVisibleAt(task);
+  if (!becameVisibleAt) return false;
+  const seenAt = new Date(task.seenAt ?? task.createdAt);
+  return becameVisibleAt > seenAt;
 }
 
 export function getSegmentLabels(task: Task): string[] {

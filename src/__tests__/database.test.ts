@@ -86,6 +86,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   completed: false,
   completedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
+  seenAt: null,
   dueDate: null,
   deadline: null,
   deferUntil: null,
@@ -167,6 +168,17 @@ describe('initDatabase', () => {
 
   it('is idempotent — safe to call multiple times', () => {
     expect(() => initDatabase()).not.toThrow();
+  });
+
+  it('backfills seen_at from created_at for legacy rows so they are not treated as new', () => {
+    mockRawDb
+      .prepare(
+        "INSERT INTO tasks (id, created_at, seen_at) VALUES ('legacy-row', '2025-01-01T00:00:00.000Z', NULL)"
+      )
+      .run();
+    initDatabase();
+    const row = mockRawDb.prepare('SELECT seen_at FROM tasks WHERE id = ?').get('legacy-row') as { seen_at: string };
+    expect(row.seen_at).toBe('2025-01-01T00:00:00.000Z');
   });
 });
 
@@ -332,6 +344,18 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'occurrence', previousOccurrenceId: 'original-task' }));
     const [t] = dbGetAllTasks();
     expect(t.previousOccurrenceId).toBe('original-task');
+  });
+
+  it('round-trips seenAt', () => {
+    dbInsertTask(makeTask({ id: 'seen', seenAt: '2025-06-10T08:00:00.000Z' }));
+    const [t] = dbGetAllTasks();
+    expect(t.seenAt).toBe('2025-06-10T08:00:00.000Z');
+  });
+
+  it('returns null seenAt when unset', () => {
+    dbInsertTask(makeTask({ id: 'unseen', seenAt: null }));
+    const [t] = dbGetAllTasks();
+    expect(t.seenAt).toBeNull();
   });
 
   it('persists non-null optional fields', () => {

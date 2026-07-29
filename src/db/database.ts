@@ -25,6 +25,7 @@ export function initDatabase(): void {
       completed INTEGER NOT NULL DEFAULT 0,
       completed_at TEXT,
       created_at TEXT NOT NULL,
+      seen_at TEXT,
       due_date TEXT,
       defer_until TEXT,
       time_of_day TEXT,
@@ -100,11 +101,18 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN window_start TEXT',
     'ALTER TABLE tasks ADD COLUMN window_end TEXT',
     'ALTER TABLE tasks ADD COLUMN previous_occurrence_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN seen_at TEXT',
     'ALTER TABLE tasks ADD COLUMN deadline TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
   }
+
+  // Backfill seen_at for tasks that predate the "new" dot feature so they
+  // don't all light up as new the moment this ships — treat them as already
+  // seen as of their creation. New rows always insert with seen_at set, so
+  // this only ever touches legacy rows and is a no-op after the first run.
+  try { db.runSync('UPDATE tasks SET seen_at = created_at WHERE seen_at IS NULL'); } catch (_) {}
 
   // One-time migration: populate categories table from legacy category_registry setting
   const catCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM categories')?.n ?? 0;
@@ -159,6 +167,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     completed: Boolean(row.completed),
     completedAt: (row.completed_at as string) ?? null,
     createdAt: row.created_at as string,
+    seenAt: (row.seen_at as string) ?? null,
     dueDate: (row.due_date as string) ?? null,
     deadline: (row.deadline as string) ?? null,
     deferUntil: (row.defer_until as string) ?? null,
@@ -202,15 +211,15 @@ export function dbGetAllTasks(): Task[] {
 export function dbInsertTask(task: Task): void {
   db.runSync(
     `INSERT INTO tasks (
-      id, title, notes, completed, completed_at, created_at,
+      id, title, notes, completed, completed_at, created_at, seen_at,
       due_date, deadline, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
-      task.completedAt, task.createdAt, task.dueDate, task.deadline, task.deferUntil,
+      task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deferUntil,
       task.timeSegments.length ? JSON.stringify(task.timeSegments) : null, task.windowStart, task.windowEnd,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate, task.recurrenceCount,
@@ -228,7 +237,7 @@ export function dbInsertTask(task: Task): void {
 export function dbUpdateTask(task: Task): void {
   db.runSync(
     `UPDATE tasks SET
-      title=?, notes=?, completed=?, completed_at=?,
+      title=?, notes=?, completed=?, completed_at=?, seen_at=?,
       due_date=?, deadline=?, defer_until=?, time_of_day=?, window_start=?, window_end=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
@@ -237,7 +246,7 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?
     WHERE id=?`,
     [
-      task.title, task.notes, task.completed ? 1 : 0, task.completedAt,
+      task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
       task.dueDate, task.deadline, task.deferUntil, task.timeSegments.length ? JSON.stringify(task.timeSegments) : null,
       task.windowStart, task.windowEnd,
       task.recurrenceType, task.recurrenceInterval,
@@ -252,6 +261,10 @@ export function dbUpdateTask(task: Task): void {
       task.id,
     ]
   );
+}
+
+export function dbMarkTaskSeen(id: string, seenAt: string): void {
+  db.runSync('UPDATE tasks SET seen_at = ? WHERE id = ?', [seenAt, id]);
 }
 
 export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number }[]): void {

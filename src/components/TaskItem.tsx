@@ -27,7 +27,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
@@ -91,6 +91,7 @@ export function TaskItem({
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const toggleFocus = useTaskStore(s => s.toggleFocus);
   const startTimer = useTaskStore(s => s.startTimer);
@@ -118,7 +119,12 @@ export function TaskItem({
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
-  const dimAnim = useRef(new Animated.Value(spotlightDisabled ? 0.35 : 1)).current;
+  // Opacity of a scrim drawn on top of the row (not the row's own opacity) —
+  // fading the whole card instead washes out low-contrast text (e.g. category
+  // labels) far less than high-contrast text, since both just blend toward
+  // the same light background in light mode. A flat scrim darkens every
+  // pixel underneath by the same fixed amount regardless of its original color.
+  const spotlightScrimOpacity = useRef(new Animated.Value(spotlightDisabled ? 1 : 0)).current;
   // Reanimated (UI-thread) shared value drives the expand/collapse. The panel
   // animates `height`, which forces a re-layout of every row below it on each
   // frame — doing that from a JS-thread Animated.Value stutters once the list
@@ -150,14 +156,12 @@ export function TaskItem({
   }));
 
   useEffect(() => {
-    Animated.timing(dimAnim, {
-      toValue: spotlightDisabled ? 0.35 : 1,
+    Animated.timing(spotlightScrimOpacity, {
+      toValue: spotlightDisabled ? 1 : 0,
       duration: animation.duration.fast,
       useNativeDriver: true,
     }).start();
   }, [spotlightDisabled]);
-
-  const wrapperOpacity = useMemo(() => Animated.multiply(rowOpacity, dimAnim), [rowOpacity, dimAnim]);
 
   useEffect(() => {
     if (isActive) {
@@ -227,6 +231,12 @@ export function TaskItem({
     : deadlineDays < 0 ? colors.red
     : deadlineDays <= 2 ? colors.orange
     : colors.textTertiary;
+  const isNew = isTaskNew(task);
+
+  const handleContentPress = () => {
+    if (isNew) markTaskSeen(task.id);
+    if (selectionMode) { onSelect?.(); } else { onPress(); }
+  };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
@@ -250,6 +260,7 @@ export function TaskItem({
       await haptics.error();
       return;
     }
+    if (isNew) markTaskSeen(task.id);
     completingRef.current = true;
     await haptics.success();
     setCompleting(true);
@@ -416,7 +427,7 @@ export function TaskItem({
 
       <TouchableOpacity
         style={styles.content}
-        onPress={selectionMode ? onSelect : onPress}
+        onPress={handleContentPress}
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
@@ -446,6 +457,7 @@ export function TaskItem({
           />
         ) : (
           <View style={styles.titleRow}>
+            {isNew && <View style={styles.newDot} />}
             {expanded ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity}>
@@ -747,7 +759,7 @@ export function TaskItem({
         style={[
           styles.itemWrapper,
           shadows.card,
-          { opacity: isActive ? 1 : wrapperOpacity },
+          { opacity: isActive ? 1 : rowOpacity },
           isActive && styles.itemWrapperActive,
           expanded && styles.itemWrapperElevated,
         ]}
@@ -794,6 +806,10 @@ export function TaskItem({
           </Swipeable>
         )}
         {expandedPanel}
+        <Animated.View
+          style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
+          pointerEvents="none"
+        />
         </View>
       </Animated.View>
 
@@ -846,6 +862,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardClip: {
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  spotlightScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.backdrop,
   },
   swipeContainer: {
     borderRadius: radius.md,
@@ -930,6 +950,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   titleFlex: {
     flexShrink: 1,
+  },
+  newDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.accent,
+    flexShrink: 0,
   },
   categoryRow: {
     flexDirection: 'row',
