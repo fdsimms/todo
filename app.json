@@ -12,7 +12,10 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.fdsimms.dundundun"
+      "bundleIdentifier": "com.fdsimms.dundundun",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -30,6 +33,11 @@
       "@react-native-community/datetimepicker",
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "dc3d4782-26cd-4447-8b51-06af03290e9c"
+      }
+    }
   }
 }
