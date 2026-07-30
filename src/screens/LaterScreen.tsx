@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   Pressable,
   StyleSheet,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,7 +19,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { getVisibleAt } from '../utils/visibilityUtils';
@@ -75,6 +76,24 @@ export function LaterScreen() {
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
+
+  // The spotlight overlay sits behind the elevated list (zIndex 10), so it
+  // never sees taps over the list; the wrapper's onTouchEnd below catches
+  // them instead. Raw touch events fire on release regardless of whether the
+  // list itself claimed the gesture as a scroll, so without this distance
+  // check, scrolling to browse the list (e.g. down to the bottom) would
+  // dismiss the spotlight just like an intentional tap outside it.
+  const listTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const handleListTouchStart = (e: GestureResponderEvent) => {
+    const touch = e.nativeEvent.touches[0];
+    listTouchStart.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
+  };
+  const handleListTouchEnd = (e: GestureResponderEvent) => {
+    const start = listTouchStart.current;
+    const touch = e.nativeEvent.changedTouches[0];
+    const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
+    if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
+  };
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -168,7 +187,8 @@ export function LaterScreen() {
         // The list sits above the spotlight overlay, so the overlay can't see
         // taps here — catch any touch in the list area instead. The expanded
         // card stops propagation so its own controls keep working.
-        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
+        onTouchStart={spotlightActive ? handleListTouchStart : undefined}
+        onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
       >
         <ReorderableList
           data={laterDraggableData}
@@ -216,7 +236,6 @@ export function LaterScreen() {
             reorderTasks(laterTaskOrder(reordered));
           }}
           contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <EmptyState
               icon="moon"

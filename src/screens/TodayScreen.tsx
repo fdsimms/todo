@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   Animated,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -242,6 +243,24 @@ export function TodayScreen() {
       useNativeDriver: true,
     }).start();
   }, [spotlightActive, fabOpacity]);
+
+  // The spotlight overlay sits behind the elevated list (zIndex 10), so it
+  // never sees taps over the list; the wrapper's onTouchEnd below catches
+  // them instead. Raw touch events fire on release regardless of whether the
+  // list itself claimed the gesture as a scroll, so without this distance
+  // check, scrolling to browse the list (e.g. down to the bottom) would
+  // dismiss the spotlight just like an intentional tap outside it.
+  const listTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const handleListTouchStart = (e: GestureResponderEvent) => {
+    const touch = e.nativeEvent.touches[0];
+    listTouchStart.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
+  };
+  const handleListTouchEnd = (e: GestureResponderEvent) => {
+    const start = listTouchStart.current;
+    const touch = e.nativeEvent.changedTouches[0];
+    const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
+    if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
+  };
 
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
@@ -755,7 +774,8 @@ export function TodayScreen() {
         // The list sits above the spotlight overlay, so the overlay can't see
         // taps here — catch any touch in the list area instead. The expanded
         // card stops propagation so its own controls keep working.
-        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
+        onTouchStart={spotlightActive ? handleListTouchStart : undefined}
+        onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
       >
       {viewMode === 'later' && (
         <ReorderableList
@@ -805,7 +825,6 @@ export function TodayScreen() {
             reorderTasks(laterTaskOrder(reordered));
           }}
           contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
           ListEmptyComponent={
             <EmptyState
               icon="moon"
@@ -834,7 +853,6 @@ export function TodayScreen() {
           }
           ListFooterComponent={listFooter()}
           ListFooterComponentStyle={styles.listFooterCell}
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
 
@@ -882,7 +900,6 @@ export function TodayScreen() {
             // empty state stays centered.
             listFooter(filtered.length === 0)
           }
-          onScrollBeginDrag={() => setExpandedTaskId(null)}
         />
       )}
       </View>
