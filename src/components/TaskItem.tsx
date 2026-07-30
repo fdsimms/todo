@@ -438,6 +438,11 @@ export function TaskItem({
         onLongPress={drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
+        // Content only hugs its text height, leaving the row's own vertical
+        // padding and the flex gaps to either side untappable — this slop
+        // extends the hit target out to cover that dead space so the whole
+        // card row responds, not just the text itself.
+        hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : { expanded }}
         accessibilityLabel={task.title}
