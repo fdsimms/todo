@@ -252,6 +252,7 @@ export function CategoriesScreen() {
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const addCategory = useTaskStore(s => s.addCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
+  const focusCategory = useTaskStore(s => s.focusCategory);
   const allTasks = useTaskStore(s => s.tasks);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
@@ -298,6 +299,14 @@ export function CategoriesScreen() {
   };
 
   const categoryTasks = selectedCategory ? tasksByCategory(selectedCategory) : [];
+  const categoryAllFocused = categoryTasks.length > 0 && categoryTasks.every(t => t.focused);
+
+  const handleFocusCategory = () => {
+    if (!selectedCategory || categoryTasks.length === 0) return;
+    haptics.tap();
+    animateLayout();
+    focusCategory(selectedCategory);
+  };
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
 
@@ -497,7 +506,20 @@ export function CategoriesScreen() {
               </View>
               <Text style={styles.detailTitleText}>{selectedCategory}</Text>
             </View>
-            <View style={{ width: 24 }} />
+            <TouchableOpacity
+              onPress={handleFocusCategory}
+              disabled={categoryTasks.length === 0}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllFocused }}
+              accessibilityLabel={categoryAllFocused ? `Remove ${selectedCategory} from focus` : `Focus all tasks in ${selectedCategory}`}
+            >
+              <Ionicons
+                name={categoryAllFocused ? 'star' : 'star-outline'}
+                size={22}
+                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllFocused ? colors.orange : colors.textSecondary)}
+              />
+            </TouchableOpacity>
           </View>
 
           <View

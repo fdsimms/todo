@@ -35,6 +35,26 @@ export function getCurrentDayStart(): Date {
   return getDayStart(new Date());
 }
 
+/**
+ * The logical-day-start instant for a *stored* date like a task's dueDate or
+ * deferUntil — the calendar day the value represents, at the dayResetTime
+ * clock time. Unlike getDayStart(), this never rolls the result back a day:
+ * getDayStart()'s rollback exists to handle "now" landing in the early-morning
+ * grace window before today's reset has happened yet. A stored date's own
+ * clock-time carries no such meaning — it's whatever anchor hour the picker
+ * used (noon, midnight, the reset hour at generation time) — so treating an
+ * early clock-time as "still the previous logical day" would silently pull a
+ * task scheduled for tomorrow into today whenever that anchor happens to
+ * precede the current dayResetTime.
+ */
+export function getTaskDayStart(date: Date, dayResetTime?: string): Date {
+  const rt = dayResetTime ?? useSettingsStore.getState().dayResetTime;
+  const [h, m] = rt.split(':').map(Number);
+  const result = startOfDay(date);
+  result.setHours(h, m, 0, 0);
+  return result;
+}
+
 /** Applies an "HH:MM" clock time to today's (or a given base) date. */
 export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
   const [h, m] = hhmm.split(':').map(Number);
