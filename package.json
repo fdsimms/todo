@@ -2,6 +2,12 @@
   "name": "dundundun",
   "version": "1.0.0",
   "scripts": {
+    "build:patchnotes": "node scripts/build-patch-notes.js",
+    "postinstall": "npm run build:patchnotes",
+    "prestart": "npm run build:patchnotes",
+    "preandroid": "npm run build:patchnotes",
+    "preios": "npm run build:patchnotes",
+    "pretest": "npm run build:patchnotes",
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
