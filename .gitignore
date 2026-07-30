@@ -10,3 +10,6 @@ npm-debug.*
 *.orig.*
 web-build/
 .env*
+
+# Generated from src/patchNotes/entries/ by scripts/build-patch-notes.js
+src/utils/patchNotesData.ts
