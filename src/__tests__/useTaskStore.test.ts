@@ -1112,6 +1112,54 @@ describe('reorderTasks', () => {
   });
 });
 
+// ─── reorderWithCategoryUpdates ─────────────────────────────────────────────
+
+describe('reorderWithCategoryUpdates', () => {
+  it('assigns sortOrder and applies category updates', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', sortOrder: 1, category: 'Work' }),
+        makeTask({ id: 'b', sortOrder: 2, category: null }),
+      ],
+    });
+    useTaskStore.getState().reorderWithCategoryUpdates(['b', 'a'], [{ id: 'b', category: 'Work' }]);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'b')).toMatchObject({ sortOrder: 1, category: 'Work' });
+    expect(tasks.find(t => t.id === 'a')).toMatchObject({ sortOrder: 2, category: 'Work' });
+    expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 'b', category: 'Work' }));
+  });
+
+  it('queues an undo action that restores the previous category', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', sortOrder: 1, category: null })],
+    });
+    useTaskStore.getState().reorderWithCategoryUpdates(['a'], [{ id: 'a', category: 'Errands' }]);
+    expect(useTaskStore.getState().tasks[0].category).toBe('Errands');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].category).toBe(null);
+  });
+
+  it('does not queue an undo action when no category changed', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', sortOrder: 1 }), makeTask({ id: 'b', sortOrder: 2 })],
+      lastAction: null,
+    });
+    useTaskStore.getState().reorderWithCategoryUpdates(['b', 'a'], []);
+    expect(useTaskStore.getState().lastAction).toBe(null);
+  });
+
+  it('captures seriesDefaults instead of overwriting the series when scope is occurrence', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', sortOrder: 1, category: 'Work', recurrenceType: 'daily' })],
+    });
+    useTaskStore.getState().reorderWithCategoryUpdates(['a'], [{ id: 'a', category: 'Home' }], { scope: 'occurrence' });
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.category).toBe('Home');
+    expect(task.seriesDefaults).toMatchObject({ category: 'Work' });
+  });
+});
+
 // ─── addSubtask ──────────────────────────────────────────────────────────────
 
 describe('addSubtask', () => {

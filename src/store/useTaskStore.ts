@@ -121,7 +121,11 @@ interface TaskStore {
   discardTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
-  reorderWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
+  reorderWithCategoryUpdates: (
+    orderedIds: string[],
+    categoryUpdates: Array<{ id: string; category: string | null }>,
+    options?: { scope?: 'occurrence' | 'series' },
+  ) => void;
 
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
@@ -625,25 +629,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
-  reorderWithCategoryUpdates(orderedIds, categoryUpdates) {
+  reorderWithCategoryUpdates(orderedIds, categoryUpdates, options) {
+    const scope = options?.scope ?? 'series';
     const orderUpdates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(orderUpdates);
-    categoryUpdates.forEach(u => {
-      const task = get().tasks.find(t => t.id === u.id);
-      if (task) dbUpdateTask({ ...task, category: u.category });
-    });
     set(s => ({
       tasks: s.tasks.map(t => {
         const orderUpdate = orderUpdates.find(x => x.id === t.id);
-        const categoryUpdate = categoryUpdates.find(x => x.id === t.id);
-        if (!orderUpdate && !categoryUpdate) return t;
-        return {
-          ...t,
-          ...(orderUpdate ? { sortOrder: orderUpdate.sortOrder } : {}),
-          ...(categoryUpdate ? { category: categoryUpdate.category } : {}),
-        };
+        return orderUpdate ? { ...t, sortOrder: orderUpdate.sortOrder } : t;
       }),
     }));
+
+    // Snapshot full pre-drop tasks so a category move can be undone, and
+    // route the category write through updateTask so it gets the same
+    // recurring-series handling (seriesDefaults capture for 'occurrence'
+    // scope) as any other content-field edit.
+    const snapshots = categoryUpdates
+      .map(u => get().tasks.find(t => t.id === u.id))
+      .filter((t): t is Task => t !== undefined)
+      .map(t => ({ ...t }));
+
+    categoryUpdates.forEach(u => {
+      get().updateTask(u.id, { category: u.category }, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+    });
+
+    if (snapshots.length > 0) {
+      get().setLastAction({
+        label: snapshots.length === 1 ? 'Category changed' : `${snapshots.length} tasks recategorized`,
+        undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+      });
+    }
   },
 
   addSubtask(parentId, title) {
