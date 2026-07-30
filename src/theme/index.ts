@@ -174,6 +174,9 @@ export const interaction = {
   activeOpacity: 0.7,
   pressScale: 0.96,
   delayLongPress: 180,
+  // Max finger travel (px) for a raw touchEnd to still count as a tap rather
+  // than a scroll/drag release.
+  tapMoveThreshold: 10,
 };
 
 export const animation = {
