@@ -104,47 +104,53 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
       transparent
       onRequestClose={dismiss}
     >
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
-        <SafeBlurView
-          intensity={isDark ? 20 : 15}
-          tint="dark"
-          style={StyleSheet.absoluteFill}
-        />
-        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
-      </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <View style={styles.container}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+          <SafeBlurView
+            intensity={isDark ? 20 : 15}
+            tint="dark"
+            style={StyleSheet.absoluteFill}
+          />
+          <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+        </Animated.View>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
-        <View style={styles.handleArea} {...panResponder.panHandlers}>
-          <View style={styles.handle} />
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.titleRow}>
-            <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
-            <Text style={styles.title}>What's New</Text>
+        <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+          <View style={styles.handleArea} {...panResponder.panHandlers}>
+            <View style={styles.handle} />
           </View>
 
-          {patchNotes.map((note, idx) => (
-            <React.Fragment key={idx}>
-              {idx > 0 && <View style={styles.sep} />}
-              <View style={styles.noteRow}>
-                <Text style={styles.noteMessage}>{note.message}</Text>
-                {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
-              </View>
-            </React.Fragment>
-          ))}
-        </View>
+          <View style={styles.card}>
+            <View style={styles.titleRow}>
+              <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
+              <Text style={styles.title}>What's New</Text>
+            </View>
 
-        <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
-          <Text style={styles.doneLabel}>Done</Text>
-        </TouchableOpacity>
-      </Animated.View>
+            {patchNotes.map((note, idx) => (
+              <React.Fragment key={idx}>
+                {idx > 0 && <View style={styles.sep} />}
+                <View style={styles.noteRow}>
+                  <Text style={styles.noteMessage}>{note.message}</Text>
+                  {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
+                </View>
+              </React.Fragment>
+            ))}
+          </View>
+
+          <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
+            <Text style={styles.doneLabel}>Done</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
   backdropDim: {
     backgroundColor: colors.backdrop,
   },
