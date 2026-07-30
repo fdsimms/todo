@@ -97,3 +97,4 @@ Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `ca
 - **Booleans in SQLite**: stored as `0`/`1` integers, converted in `rowToTask()`.
 - **JSON fields in SQLite**: `tags`, `recurrenceDays`, `cycleItems`, `timeSegments` are JSON-stringified arrays. `timeSegments` has a legacy code path in `parseTimeSegments()` that handles a plain string (old format).
 - **Subtasks**: tasks with `parentId !== null`. Most store selectors filter with `!t.parentId` to exclude them from top-level lists.
+- **Patch notes**: when a change in this PR is user-facing, add an entry to the top of `patchNotes` in `src/utils/patchNotes.ts` before opening the PR (short, written for someone who isn't reading the diff). Skip it for internal-only changes (refactors, tests, CI, tooling).
