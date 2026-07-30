@@ -7,7 +7,7 @@ import {
   TextInput,
   ScrollView,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { DeferModal } from './DeferModal';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
