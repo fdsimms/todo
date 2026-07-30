@@ -12,6 +12,8 @@ export interface ScreenHeaderAction {
   active?: boolean;
   tint?: 'accent' | 'orange';
   badge?: number;
+  /** Plain neutral dot instead of a numbered red badge — for a low-key "there's something here" signal. */
+  badgeDot?: boolean;
   disabled?: boolean;
   loading?: boolean;
   /**
@@ -74,10 +76,14 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
               ) : (
                 <Ionicons name={action.icon} size={18} color={iconColor} />
               )}
-              {action.badge != null && action.badge > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{action.badge}</Text>
-                </View>
+              {action.badgeDot ? (
+                (action.badge ?? 0) > 0 && <View style={styles.badgeDot} />
+              ) : (
+                action.badge != null && action.badge > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{action.badge}</Text>
+                  </View>
+                )
               )}
             </PressableScale>
           );
@@ -118,4 +124,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
   },
   badgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
+  badgeDot: {
+    position: 'absolute', top: 1, right: 1,
+    width: 8, height: 8, borderRadius: 4,
+    backgroundColor: colors.textTertiary,
+  },
 });

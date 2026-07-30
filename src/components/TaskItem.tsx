@@ -52,6 +52,8 @@ interface Props {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Steps shown on each side of the active chain step before truncating with '…'.
+const CHAIN_PREVIEW_RADIUS = 2;
 
 function describeRecurrence(task: Task): string {
   const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
@@ -458,6 +460,7 @@ export function TaskItem({
             maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
+            textAlignVertical="center"
           />
         ) : (
           <View style={styles.titleRow}>
@@ -610,28 +613,39 @@ export function TaskItem({
               </View>
             )}
 
-            {activeChainItem && task.chainItems.length > 0 && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-              ]}>
-                <Ionicons name="link" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>
-                  Chain {(task.chainIndex % task.chainItems.length) + 1}/{task.chainItems.length}:
-                </Text>
-                {task.chainItems.map((item, i) => (
-                  <Text
-                    key={item.id}
-                    style={[
-                      styles.expandMeta,
-                      i === task.chainIndex % task.chainItems.length && styles.expandMetaActive,
-                    ]}
-                  >
-                    {i > 0 ? ' → ' : ' '}{item.title}
+            {activeChainItem && task.chainItems.length > 0 && (() => {
+              const total = task.chainItems.length;
+              const currentIdx = task.chainIndex % total;
+              // Long chains overflow the row unreadably, so only show a
+              // window of steps around the current one, with ellipses
+              // standing in for whatever's trimmed off each end.
+              const start = Math.max(0, currentIdx - CHAIN_PREVIEW_RADIUS);
+              const end = Math.min(total - 1, currentIdx + CHAIN_PREVIEW_RADIUS);
+              const visibleItems = task.chainItems.slice(start, end + 1);
+              return (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="link" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta} numberOfLines={1}>
+                    Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
+                    {visibleItems.map((item, i) => {
+                      const actualIdx = start + i;
+                      return (
+                        <Text
+                          key={item.id}
+                          style={actualIdx === currentIdx && styles.expandMetaActive}
+                        >
+                          {actualIdx > 0 ? ' → ' : ' '}{item.title}
+                        </Text>
+                      );
+                    })}
+                    {end < total - 1 ? ' → …' : ''}
                   </Text>
-                ))}
-              </View>
-            )}
+                </View>
+              );
+            })()}
 
             {task.actualMinutes != null && (
               <View style={[
@@ -943,8 +957,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: lineHeight.md,
+    height: lineHeight.md,
     padding: 0,
     margin: 0,
+    includeFontPadding: false,
   },
   titleRow: {
     flexDirection: 'row',

@@ -8,6 +8,8 @@ export interface PatchNote {
 // short and written for someone who isn't reading the diff.
 export const patchNotes: PatchNote[] = [
   { message: 'Cycle is now Chain, shown next to Repeat — chained tasks now step to the next item on their own, ending after the last one unless Repeat is also on', date: '2026-07-30' },
+  { message: 'Later Today button now shows a subtle dot instead of a notification-style count', date: '2026-07-30' },
+  { message: 'Fixed the task title field appearing off-center while editing', date: '2026-07-30' },
   { message: 'Shake to undo now asks for confirmation instead of undoing right away', date: '2026-07-30' },
   { message: "See today's workload at a glance, with AI-assisted help lightening it", date: '2026-07-30' },
   { message: 'Added a deadline field with a subtle countdown badge', date: '2026-07-29' },

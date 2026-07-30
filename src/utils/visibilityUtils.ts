@@ -180,6 +180,32 @@ export function isTaskDeferred(task: Task): boolean {
   return !isTaskVisible(task);
 }
 
+// True when a task is a "loose" item with no organizing metadata — the kind
+// that lands in the Inbox for triage (e.g. voice-added or quickly jotted tasks).
+// It's a pure computed view: as soon as a task gains a category, tag, date,
+// time window, recurrence, reminder or priority it leaves the Inbox on its own,
+// so there's no stored flag to keep in sync. Deliberately NOT disqualifying:
+// notes, effort, estimatedMinutes, focused, vacationPause — those don't file a
+// task anywhere. Inbox tasks still appear on Today; the Inbox is a triage lens,
+// not a hidden holding pen.
+export function isInboxTask(task: Task): boolean {
+  return (
+    !task.parentId &&
+    !task.completed &&
+    task.category == null &&
+    task.tags.length === 0 &&
+    task.dueDate == null &&
+    task.deadline == null &&
+    task.deferUntil == null &&
+    task.timeSegments.length === 0 &&
+    task.windowStart == null &&
+    task.windowEnd == null &&
+    task.recurrenceType === 'none' &&
+    task.reminderTime == null &&
+    task.priority === 0
+  );
+}
+
 // True when a task is hidden solely because its time-of-day segment hasn't started yet today.
 // Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
