@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Modal,
   View,
@@ -7,12 +7,13 @@ import {
   ScrollView,
   StyleSheet,
   PanResponder,
+  Animated,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -45,12 +46,65 @@ export function SortFilterSheet({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const translateY = useRef(new Animated.Value(600)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      translateY.setValue(600);
+      backdropOpacity.setValue(0);
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          ...animation.spring.smooth,
+          useNativeDriver: true,
+        }),
+        Animated.timing(backdropOpacity, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
+
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.spring(translateY, {
+        toValue: 700,
+        damping: 28,
+        stiffness: 320,
+        useNativeDriver: true,
+      }),
+      Animated.timing(backdropOpacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      translateY.setValue(600);
+      onClose();
+    });
+  };
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: (_, { dy }) => dy > 10,
+      onPanResponderMove: (_, { dy }) => {
+        if (dy > 0) translateY.setValue(dy);
+      },
       onPanResponderRelease: (_, { dy, vy }) => {
-        if (dy > 60 || vy > 1) onClose();
+        if (dy > 60 || vy > 1) {
+          dismiss();
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            damping: 22,
+            stiffness: 300,
+            useNativeDriver: true,
+          }).start();
+        }
       },
     })
   ).current;
@@ -67,12 +121,14 @@ export function SortFilterSheet({
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType="none"
       transparent
-      onRequestClose={onClose}
+      onRequestClose={dismiss}
     >
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose} />
-      <View style={styles.sheet}>
+      <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      </Animated.View>
+      <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -85,7 +141,7 @@ export function SortFilterSheet({
                 <Text style={styles.resetText}>Clear all ({activeCount})</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onClose} hitSlop={8}>
+            <TouchableOpacity onPress={dismiss} hitSlop={8}>
               <Ionicons name="close" size={22} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -171,7 +227,7 @@ export function SortFilterSheet({
             })}
           </View>
         </ScrollView>
-      </View>
+      </Animated.View>
     </Modal>
   );
 }
