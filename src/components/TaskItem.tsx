@@ -647,7 +647,6 @@ export function TaskItem({
               <View style={[
                 styles.editSection,
                 (hasExpandContent || task.actualMinutes != null) && styles.sectionDivider,
-                { justifyContent: 'space-between' },
               ]}>
                 <View style={styles.editSectionLeft}>
                   {showActions && (
@@ -1129,13 +1128,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   editSection: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
     alignItems: 'center',
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
+    gap: spacing.xs,
   },
   editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
-  editSectionRight: { flexDirection: 'row', gap: spacing.xs },
+  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end' },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
