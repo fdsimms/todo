@@ -242,18 +242,18 @@ export function TaskItem({
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
 
-  const activeCycleItem =
-    task.cycleEnabled && task.cycleItems.length > 0
-      ? task.cycleItems[task.cycleIndex % task.cycleItems.length]
+  const activeChainItem =
+    task.chainEnabled && task.chainItems.length > 0
+      ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
-  // A multi-step cycle drives the collapsed row's title: we show the current
+  // A multi-step chain drives the collapsed row's title: we show the current
   // step's title with a compact step-count badge beside it, instead of a
   // second subtitle line, so the row stays the same height as the others.
-  const cycleStep = activeCycleItem && task.cycleItems.length > 1 ? activeCycleItem : null;
-  const cyclePosition = cycleStep ? `${(task.cycleIndex % task.cycleItems.length) + 1}/${task.cycleItems.length}` : '';
+  const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
+  const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
 
   const hasExpandContent =
-    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
+    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null;
 
   const handleComplete = async () => {
     if (completingRef.current) return;
@@ -469,13 +469,13 @@ export function TaskItem({
               </TouchableOpacity>
             ) : (
               <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
-                {cycleStep ? cycleStep.title : task.title}
+                {chainStep ? chainStep.title : task.title}
               </Text>
             )}
-            {cycleStep && (
-              <View style={styles.cycleBadge}>
-                <Ionicons name="sync" size={9} color={colors.accent} />
-                <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
+            {chainStep && (
+              <View style={styles.chainBadge}>
+                <Ionicons name="link" size={9} color={colors.accent} />
+                <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
             {deadlineDays !== null && (
@@ -610,21 +610,21 @@ export function TaskItem({
               </View>
             )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (
+            {activeChainItem && task.chainItems.length > 0 && (
               <View style={[
                 styles.recurrenceRow,
                 (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
               ]}>
-                <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                <Ionicons name="link" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>
-                  Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
+                  Chain {(task.chainIndex % task.chainItems.length) + 1}/{task.chainItems.length}:
                 </Text>
-                {task.cycleItems.map((item, i) => (
+                {task.chainItems.map((item, i) => (
                   <Text
                     key={item.id}
                     style={[
                       styles.expandMeta,
-                      i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
+                      i === task.chainIndex % task.chainItems.length && styles.expandMetaActive,
                     ]}
                   >
                     {i > 0 ? ' → ' : ' '}{item.title}
@@ -1102,7 +1102,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
-  cycleBadge: {
+  chainBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -1111,7 +1111,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
-  cycleBadgeText: {
+  chainBadgeText: {
     color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,

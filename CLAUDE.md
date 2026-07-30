@@ -49,7 +49,9 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.
 
-Cycle items (`cycleItems[]` / `cycleIndex`) rotate the task's sub-title on each recurrence.
+### Chains
+
+Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with Repeat since the two are easy to conflate) are a singly-linked list of steps, independent of recurrence: completing a chained task always advances `chainIndex` and immediately spawns the next task with no `dueDate`, ending after the last item. Repeat changes only what happens at that last item — instead of ending, `chainIndex` wraps to `0` and the whole chain repeats on the recurrence's schedule. See the `spawnsNext`/`atChainEnd` logic in `completeTask()` (`src/store/useTaskStore.ts`). The SQLite columns are still named `cycle_enabled`/`cycle_index`/`cycle_items` (renaming them would require a data migration for existing installs); `rowToTask()` maps them to the `chain*` fields on `Task`.
 
 ### Navigation
 
@@ -95,6 +97,6 @@ Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `ca
 - **IDs**: generated with `src/utils/id.ts` (`generateId()`), not UUIDs.
 - **Dates**: always stored and passed as ISO strings; `date-fns` is used for all date arithmetic.
 - **Booleans in SQLite**: stored as `0`/`1` integers, converted in `rowToTask()`.
-- **JSON fields in SQLite**: `tags`, `recurrenceDays`, `cycleItems`, `timeSegments` are JSON-stringified arrays. `timeSegments` has a legacy code path in `parseTimeSegments()` that handles a plain string (old format).
+- **JSON fields in SQLite**: `tags`, `recurrenceDays`, `chainItems` (stored in the `cycle_items` column — see Chains above), `timeSegments` are JSON-stringified arrays. `timeSegments` has a legacy code path in `parseTimeSegments()` that handles a plain string (old format).
 - **Subtasks**: tasks with `parentId !== null`. Most store selectors filter with `!t.parentId` to exclude them from top-level lists.
 - **Patch notes**: when a change in this PR is user-facing, add an entry to the top of `patchNotes` in `src/utils/patchNotes.ts` before opening the PR (short, written for someone who isn't reading the diff). Skip it for internal-only changes (refactors, tests, CI, tooling).

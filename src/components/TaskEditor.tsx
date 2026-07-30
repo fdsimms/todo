@@ -20,7 +20,7 @@ import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { format, addMonths } from 'date-fns';
-import type { Task, Priority, Effort, RecurrenceType, CycleItem, TimeOfDay } from '../types';
+import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
@@ -135,15 +135,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
 
-  const [cycleEnabled, setCycleEnabled] = useState(false);
-  const [cycleItems, setCycleItems] = useState<CycleItem[]>([]);
-  const [cycleIndex, setCycleIndex] = useState(0);
-  const [newCycleItemTitle, setNewCycleItemTitle] = useState('');
-  const [addingCycleItem, setAddingCycleItem] = useState(false);
+  const [chainEnabled, setChainEnabled] = useState(false);
+  const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [chainIndex, setChainIndex] = useState(0);
+  const [newChainItemTitle, setNewChainItemTitle] = useState('');
+  const [addingChainItem, setAddingChainItem] = useState(false);
 
   const titleRef = useRef<TextInput>(null);
-  const cycleInputRef = useRef<TextInput>(null);
-  const cycleItemSavedRef = useRef(false);
+  const chainInputRef = useRef<TextInput>(null);
+  const chainItemSavedRef = useRef(false);
   const subtaskInputRef = useRef<TextInput>(null);
   const subtaskSavedRef = useRef(false);
   const initialStateRef = useRef<string>('');
@@ -166,8 +166,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
       setActualMinutes(task.actualMinutes ?? null);
-      setCycleEnabled(task.cycleEnabled); setCycleItems(task.cycleItems);
-      setCycleIndex(task.cycleIndex);
+      setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
+      setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
@@ -179,12 +179,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceCount(null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
       setActualMinutes(null);
-      setCycleEnabled(false); setCycleItems([]); setCycleIndex(0);
+      setChainEnabled(false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
     }
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
-    setNewCycleItemTitle(''); setAddingCycleItem(false);
+    setNewChainItemTitle(''); setAddingChainItem(false);
     setAiLoading(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setLogTimeOpen(false); setLogTimeText(''); setLogTimeUnit('min');
@@ -213,9 +213,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       actualMinutes: task?.actualMinutes ?? null,
       focused: task?.focused ?? false,
-      cycleEnabled: task?.cycleEnabled ?? false,
-      cycleItems: task?.cycleItems ?? [],
-      cycleIndex: task?.cycleIndex ?? 0,
+      chainEnabled: task?.chainEnabled ?? false,
+      chainItems: task?.chainItems ?? [],
+      chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
     });
   }, [visible, task]);
@@ -235,9 +235,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       focused, priority, effort, estimatedMinutes, actualMinutes,
-      cycleEnabled: cycleEnabled && cycleItems.length > 0,
-      cycleItems,
-      cycleIndex,
+      chainEnabled: chainEnabled && chainItems.length > 0,
+      chainItems,
+      chainIndex,
       vacationPause,
     };
     haptics.success();
@@ -324,7 +324,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, focused, cycleEnabled, cycleItems, cycleIndex, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, focused, chainEnabled, chainItems, chainIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -1105,54 +1105,49 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             )}
             <View style={styles.sep} />
             <View style={styles.cardSection}>
-              <View style={styles.cycleHeader}>
-                <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
-                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
+              <View style={styles.chainHeader}>
+                <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
                 <TouchableOpacity
-                  style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
-                  onPress={() => setCycleEnabled(v => !v)}
+                  style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
+                  onPress={() => setChainEnabled(v => !v)}
                 >
-                  <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
+                  <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
                 </TouchableOpacity>
               </View>
-              {!cycleEnabled && (
-                <Text style={styles.cycleHint}>
-                  Rotate through different versions of this task on each recurrence.
-                  {recurrenceType === 'none' ? ' Set Repeat above for this to take effect.' : ''}
+              {!chainEnabled && (
+                <Text style={styles.chainHint}>
+                  Step through a list of items, one per completion — finishing one reveals the next.
+                  {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
                 </Text>
               )}
-              {cycleEnabled && (
+              {chainEnabled && (
                 <>
-                  {recurrenceType === 'none' && (
-                    <Text style={styles.cycleHint}>
-                      This task doesn't repeat yet, so it won't cycle. Set Repeat above.
-                    </Text>
-                  )}
                   <SortableList
-                    data={cycleItems}
+                    data={chainItems}
                     onReorder={(newData) => {
-                      const activeItemId = cycleItems[cycleIndex]?.id;
-                      setCycleItems(newData);
+                      const activeItemId = chainItems[chainIndex]?.id;
+                      setChainItems(newData);
                       const newIdx = newData.findIndex(item => item.id === activeItemId);
-                      if (newIdx !== -1) setCycleIndex(newIdx);
+                      if (newIdx !== -1) setChainIndex(newIdx);
                     }}
                     renderItem={(item, displayIndex, drag) => {
-                      const actualIdx = cycleItems.findIndex(c => c.id === item.id);
-                      const isCurrentStep = actualIdx === cycleIndex;
+                      const actualIdx = chainItems.findIndex(c => c.id === item.id);
+                      const isCurrentStep = actualIdx === chainIndex;
                       return (
-                        <View style={styles.cycleItemRow}>
+                        <View style={styles.chainItemRow}>
                           <TouchableOpacity
-                            onPress={() => setCycleIndex(actualIdx)}
+                            onPress={() => setChainIndex(actualIdx)}
                             hitSlop={6}
-                            style={styles.cycleItemIndexBtn}
+                            style={styles.chainItemIndexBtn}
                           >
-                            <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
-                              <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
+                            <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
+                              <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
                                 {displayIndex + 1}
                               </Text>
                             </View>
                           </TouchableOpacity>
-                          <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
+                          <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
                             {item.title}
                           </Text>
                           <TouchableOpacity
@@ -1165,12 +1160,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
-                              const next = cycleItems.filter((_, j) => j !== actualIdx);
-                              setCycleItems(next);
-                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                              const next = chainItems.filter((_, j) => j !== actualIdx);
+                              setChainItems(next);
+                              if (chainIndex >= next.length) setChainIndex(Math.max(0, next.length - 1));
                             }}
                             hitSlop={8}
-                            style={styles.cycleItemDelete}
+                            style={styles.chainItemDelete}
                           >
                             <Ionicons name="close" size={14} color={colors.textTertiary} />
                           </TouchableOpacity>
@@ -1178,52 +1173,52 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       );
                     }}
                   />
-                  {addingCycleItem ? (
-                    <View style={styles.cycleInputRow}>
-                      <View style={styles.cycleItemDot}>
-                        <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
+                  {addingChainItem ? (
+                    <View style={styles.chainInputRow}>
+                      <View style={styles.chainItemDot}>
+                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
                       </View>
                       <TextInput
-                        ref={cycleInputRef}
+                        ref={chainInputRef}
                         autoFocus
-                        style={styles.cycleInput}
-                        value={newCycleItemTitle}
-                        onChangeText={setNewCycleItemTitle}
+                        style={styles.chainInput}
+                        value={newChainItemTitle}
+                        onChangeText={setNewChainItemTitle}
                         placeholder="Item title"
                         placeholderTextColor={colors.textTertiary}
                         maxLength={TITLE_MAX_LENGTH}
                         returnKeyType="done"
                         onSubmitEditing={() => {
-                          cycleItemSavedRef.current = true;
-                          const t = newCycleItemTitle.trim();
-                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewCycleItemTitle('');
+                          chainItemSavedRef.current = true;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewChainItemTitle('');
                           setTimeout(() => {
-                            cycleItemSavedRef.current = false;
-                            cycleInputRef.current?.focus();
+                            chainItemSavedRef.current = false;
+                            chainInputRef.current?.focus();
                           }, 50);
                         }}
                         onBlur={() => {
-                          if (cycleItemSavedRef.current) return;
-                          const t = newCycleItemTitle.trim();
-                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewCycleItemTitle('');
-                          setAddingCycleItem(false);
+                          if (chainItemSavedRef.current) return;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewChainItemTitle('');
+                          setAddingChainItem(false);
                         }}
                       />
                     </View>
                   ) : (
                     <TouchableOpacity
-                      style={styles.addCycleItemBtn}
-                      onPress={() => setAddingCycleItem(true)}
+                      style={styles.addChainItemBtn}
+                      onPress={() => setAddingChainItem(true)}
                     >
                       <Ionicons name="add" size={14} color={colors.accent} />
-                      <Text style={styles.addCycleItemText}>Add item</Text>
+                      <Text style={styles.addChainItemText}>Add item</Text>
                     </TouchableOpacity>
                   )}
-                  {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
-                    <Text style={styles.cycleCurrentHint}>
-                      Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
+                  {chainIndex < chainItems.length && chainItems.length > 1 && (
+                    <Text style={styles.chainCurrentHint}>
+                      Tap a number to set the current position. Next up: {chainItems[(chainIndex + 1) % chainItems.length]?.title}
                     </Text>
                   )}
                 </>
@@ -1552,60 +1547,60 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   addSubtaskText: { color: colors.accent, fontSize: font.sm },
-  cycleHeader: {
+  chainHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
   },
-  cycleToggle: {
+  chainToggle: {
     width: 42, height: 25, borderRadius: 13,
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
   },
-  cycleToggleOn: { backgroundColor: colors.accent },
-  cycleToggleKnob: {
+  chainToggleOn: { backgroundColor: colors.accent },
+  chainToggleKnob: {
     width: 19, height: 19, borderRadius: 10,
     backgroundColor: colors.bg,
   },
-  cycleToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
-  cycleHint: {
+  chainToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
+  chainHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
   },
-  cycleItemRow: {
+  chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  cycleItemIndexBtn: { padding: 2 },
-  cycleItemDot: {
+  chainItemIndexBtn: { padding: 2 },
+  chainItemDot: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center', justifyContent: 'center',
     flexShrink: 0,
   },
-  cycleItemDotActive: { backgroundColor: colors.accent },
-  cycleItemDotText: {
+  chainItemDotActive: { backgroundColor: colors.accent },
+  chainItemDotText: {
     color: colors.textSecondary, fontSize: 11, fontWeight: '700',
   },
-  cycleItemDotTextActive: { color: colors.bg },
-  cycleItemTitle: {
+  chainItemDotTextActive: { color: colors.bg },
+  chainItemTitle: {
     flex: 1, color: colors.text, fontSize: font.md,
   },
-  cycleItemTitleActive: { color: colors.accent, fontWeight: '600' },
-  cycleItemDelete: { padding: 4 },
-  cycleInputRow: {
+  chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
+  chainItemDelete: { padding: 4 },
+  chainInputRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
   },
-  cycleInput: {
+  chainInput: {
     flex: 1, color: colors.text, fontSize: font.md,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 2,
   },
-  addCycleItemBtn: {
+  addChainItemBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     paddingVertical: spacing.sm,
   },
-  addCycleItemText: { color: colors.accent, fontSize: font.sm },
-  cycleCurrentHint: {
+  addChainItemText: { color: colors.accent, fontSize: font.sm },
+  chainCurrentHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },

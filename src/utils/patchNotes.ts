@@ -7,7 +7,7 @@ export interface PatchNote {
 // Add a new entry at the top when a user-facing change ships; keep entries
 // short and written for someone who isn't reading the diff.
 export const patchNotes: PatchNote[] = [
-  { message: 'Moved Cycle next to Repeat in the task editor so the two related settings show together', date: '2026-07-30' },
+  { message: 'Cycle is now Chain, shown next to Repeat — chained tasks now step to the next item on their own, ending after the last one unless Repeat is also on', date: '2026-07-30' },
   { message: 'Shake to undo now asks for confirmation instead of undoing right away', date: '2026-07-30' },
   { message: "See today's workload at a glance, with AI-assisted help lightening it", date: '2026-07-30' },
   { message: 'Added a deadline field with a subtle countdown badge', date: '2026-07-29' },
