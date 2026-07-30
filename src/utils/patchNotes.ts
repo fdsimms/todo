@@ -1,4 +1,5 @@
 export interface PatchNote {
+  id: string;
   message: string;
   date: string;
 }

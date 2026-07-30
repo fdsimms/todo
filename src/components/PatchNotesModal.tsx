@@ -14,6 +14,8 @@ import { format, parseISO } from 'date-fns';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
 import { patchNotes } from '../utils/patchNotes';
+import { useSettingsStore, type PatchNoteQaStatus } from '../store/useSettingsStore';
+import { haptics } from '../utils/haptics';
 
 interface Props {
   visible: boolean;
@@ -33,6 +35,13 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const patchNotesQaStatus = useSettingsStore(s => s.patchNotesQaStatus);
+  const setPatchNoteQaStatus = useSettingsStore(s => s.setPatchNoteQaStatus);
+
+  const toggleQaStatus = (id: string, status: PatchNoteQaStatus) => {
+    haptics.tap();
+    setPatchNoteQaStatus(id, patchNotesQaStatus[id] === status ? null : status);
+  };
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -126,15 +135,46 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               <Text style={styles.title}>What's New</Text>
             </View>
 
-            {patchNotes.map((note, idx) => (
-              <React.Fragment key={idx}>
-                {idx > 0 && <View style={styles.sep} />}
-                <View style={styles.noteRow}>
-                  <Text style={styles.noteMessage}>{note.message}</Text>
-                  {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
-                </View>
-              </React.Fragment>
-            ))}
+            {patchNotes.map((note, idx) => {
+              const qaStatus = patchNotesQaStatus[note.id];
+              return (
+                <React.Fragment key={note.id}>
+                  {idx > 0 && <View style={styles.sep} />}
+                  <View style={styles.noteRow}>
+                    <View style={styles.noteTextCol}>
+                      <Text style={styles.noteMessage}>{note.message}</Text>
+                      {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
+                    </View>
+                    <View style={styles.qaButtons}>
+                      <TouchableOpacity
+                        style={styles.qaButton}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => toggleQaStatus(note.id, 'pass')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                          size={22}
+                          color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
+                        />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.qaButton}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => toggleQaStatus(note.id, 'fail')}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
+                          size={22}
+                          color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </React.Fragment>
+              );
+            })}
           </View>
 
           <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
@@ -189,8 +229,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   noteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
+    gap: spacing.sm,
+  },
+  noteTextCol: {
+    flex: 1,
     gap: 2,
   },
   noteMessage: {
@@ -201,6 +247,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   noteDate: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  qaButtons: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  qaButton: {
+    padding: 2,
   },
   sep: {
     height: border.hairline,
