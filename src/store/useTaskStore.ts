@@ -52,11 +52,13 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 }
 
 // A completed task keeps appearing wherever it would if it were still
-// incomplete, for COMPLETION_HOLD_MS after it's completed. Checking off
-// several tasks in a row would otherwise reflow the list after every single
-// tap; holding them lets the whole burst finish before the list collapses
-// around whatever's left, once completions pause for COMPLETION_HOLD_MS.
-const COMPLETION_HOLD_MS = 2000;
+// incomplete, for COMPLETION_HOLD_MS after it's completed. TaskItem's own row
+// collapses to zero height ~animation.duration.normal (250ms) after
+// completeTask() is called, so this only needs to outlast that collapse
+// (with a little slack for near-simultaneous taps) — anything longer just
+// strands a now-empty category header on screen after its last task has
+// already visibly disappeared.
+const COMPLETION_HOLD_MS = 500;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Caches the masked (completed: false) copy of each held task, keyed by the
