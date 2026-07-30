@@ -52,6 +52,8 @@ interface Props {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Steps shown on each side of the active cycle step before truncating with '…'.
+const CYCLE_PREVIEW_RADIUS = 2;
 
 function describeRecurrence(task: Task): string {
   const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
@@ -610,28 +612,39 @@ export function TaskItem({
               </View>
             )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (
-              <View style={[
-                styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-              ]}>
-                <Ionicons name="sync" size={12} color={colors.textTertiary} />
-                <Text style={styles.expandMeta}>
-                  Cycle {(task.cycleIndex % task.cycleItems.length) + 1}/{task.cycleItems.length}:
-                </Text>
-                {task.cycleItems.map((item, i) => (
-                  <Text
-                    key={item.id}
-                    style={[
-                      styles.expandMeta,
-                      i === task.cycleIndex % task.cycleItems.length && styles.expandMetaActive,
-                    ]}
-                  >
-                    {i > 0 ? ' → ' : ' '}{item.title}
+            {activeCycleItem && task.cycleItems.length > 0 && (() => {
+              const total = task.cycleItems.length;
+              const currentIdx = task.cycleIndex % total;
+              // Long cycles overflow the row unreadably, so only show a
+              // window of steps around the current one, with ellipses
+              // standing in for whatever's trimmed off each end.
+              const start = Math.max(0, currentIdx - CYCLE_PREVIEW_RADIUS);
+              const end = Math.min(total - 1, currentIdx + CYCLE_PREVIEW_RADIUS);
+              const visibleItems = task.cycleItems.slice(start, end + 1);
+              return (
+                <View style={[
+                  styles.recurrenceRow,
+                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                ]}>
+                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                  <Text style={styles.expandMeta} numberOfLines={1}>
+                    Cycle {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
+                    {visibleItems.map((item, i) => {
+                      const actualIdx = start + i;
+                      return (
+                        <Text
+                          key={item.id}
+                          style={actualIdx === currentIdx && styles.expandMetaActive}
+                        >
+                          {actualIdx > 0 ? ' → ' : ' '}{item.title}
+                        </Text>
+                      );
+                    })}
+                    {end < total - 1 ? ' → …' : ''}
                   </Text>
-                ))}
-              </View>
-            )}
+                </View>
+              );
+            })()}
 
             {task.actualMinutes != null && (
               <View style={[
