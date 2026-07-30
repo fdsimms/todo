@@ -138,6 +138,13 @@ describe('formatDueDate', () => {
     expect(formatDueDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
     expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1');
   });
+
+  it('is not "overdue" for a task due on the logical day, checked after midnight but before dayResetTime', () => {
+    // It's 12:30 AM on June 11, but with a 4 AM reset the logical day is still June 10.
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
+    const dueToday = formatDueDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
+    expect(dueToday).toBe('Today');
+  });
 });
 
 // ─── formatDeferUntil ─────────────────────────────────────────────────────────
