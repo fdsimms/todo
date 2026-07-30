@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a task due/deferred to tomorrow sometimes showing up on the Today screen a day early when the day reset time is set to the afternoon or evening",
+  "date": "2026-07-30"
+}
