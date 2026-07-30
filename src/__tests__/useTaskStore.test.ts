@@ -950,6 +950,34 @@ describe('uncompleteTask', () => {
       jest.useRealTimers();
     }
   });
+
+  it('queues an undo action that restores the completed task (e.g. un-completing from the Logbook)', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(false);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('Task uncompleted');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+  });
+
+  it('undo restores the follow-up occurrence it removed', () => {
+    const original = makeTask({ id: 't1', completed: true, completedAt: 'now', recurrenceType: 'daily' });
+    const followUp = makeTask({ id: 't2', previousOccurrenceId: 't1', completed: false });
+    useTaskStore.setState({ tasks: [original, followUp] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['t1']);
+
+    useTaskStore.getState().lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['t1', 't2']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.completed).toBe(true);
+  });
 });
 
 // ─── deferTask ────────────────────────────────────────────────────────────────
