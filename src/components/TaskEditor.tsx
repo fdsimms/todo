@@ -857,129 +857,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             );
           })()}
 
-          {/* Cycle items */}
-          <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <View style={styles.cycleHeader}>
-                <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
-                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
-                <TouchableOpacity
-                  style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
-                  onPress={() => setCycleEnabled(v => !v)}
-                >
-                  <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
-                </TouchableOpacity>
-              </View>
-              {!cycleEnabled && (
-                <Text style={styles.cycleHint}>
-                  Rotate through different versions of this task on each recurrence.
-                </Text>
-              )}
-              {cycleEnabled && (
-                <>
-                  <SortableList
-                    data={cycleItems}
-                    onReorder={(newData) => {
-                      const activeItemId = cycleItems[cycleIndex]?.id;
-                      setCycleItems(newData);
-                      const newIdx = newData.findIndex(item => item.id === activeItemId);
-                      if (newIdx !== -1) setCycleIndex(newIdx);
-                    }}
-                    renderItem={(item, displayIndex, drag) => {
-                      const actualIdx = cycleItems.findIndex(c => c.id === item.id);
-                      const isCurrentStep = actualIdx === cycleIndex;
-                      return (
-                        <View style={styles.cycleItemRow}>
-                          <TouchableOpacity
-                            onPress={() => setCycleIndex(actualIdx)}
-                            hitSlop={6}
-                            style={styles.cycleItemIndexBtn}
-                          >
-                            <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
-                              <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
-                                {displayIndex + 1}
-                              </Text>
-                            </View>
-                          </TouchableOpacity>
-                          <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
-                            {item.title}
-                          </Text>
-                          <TouchableOpacity
-                            onLongPress={(e) => drag(e.nativeEvent.pageY)}
-                            delayLongPress={150}
-                            hitSlop={8}
-                            style={styles.dragHandle}
-                          >
-                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            onPress={() => {
-                              const next = cycleItems.filter((_, j) => j !== actualIdx);
-                              setCycleItems(next);
-                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
-                            }}
-                            hitSlop={8}
-                            style={styles.cycleItemDelete}
-                          >
-                            <Ionicons name="close" size={14} color={colors.textTertiary} />
-                          </TouchableOpacity>
-                        </View>
-                      );
-                    }}
-                  />
-                  {addingCycleItem ? (
-                    <View style={styles.cycleInputRow}>
-                      <View style={styles.cycleItemDot}>
-                        <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
-                      </View>
-                      <TextInput
-                        ref={cycleInputRef}
-                        autoFocus
-                        style={styles.cycleInput}
-                        value={newCycleItemTitle}
-                        onChangeText={setNewCycleItemTitle}
-                        placeholder="Item title"
-                        placeholderTextColor={colors.textTertiary}
-                        maxLength={TITLE_MAX_LENGTH}
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          cycleItemSavedRef.current = true;
-                          const t = newCycleItemTitle.trim();
-                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewCycleItemTitle('');
-                          setTimeout(() => {
-                            cycleItemSavedRef.current = false;
-                            cycleInputRef.current?.focus();
-                          }, 50);
-                        }}
-                        onBlur={() => {
-                          if (cycleItemSavedRef.current) return;
-                          const t = newCycleItemTitle.trim();
-                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewCycleItemTitle('');
-                          setAddingCycleItem(false);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.addCycleItemBtn}
-                      onPress={() => setAddingCycleItem(true)}
-                    >
-                      <Ionicons name="add" size={14} color={colors.accent} />
-                      <Text style={styles.addCycleItemText}>Add item</Text>
-                    </TouchableOpacity>
-                  )}
-                  {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
-                    <Text style={styles.cycleCurrentHint}>
-                      Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
-                    </Text>
-                  )}
-                </>
-              )}
-            </View>
-          </View>
-
           {/* Options */}
           <View style={styles.optionsCard}>
             <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={interaction.activeOpacity}>
@@ -1226,6 +1103,132 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 )}
               </>
             )}
+            <View style={styles.sep} />
+            <View style={styles.cardSection}>
+              <View style={styles.cycleHeader}>
+                <Ionicons name="sync" size={14} color={cycleEnabled ? colors.accent : colors.textTertiary} />
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Cycle</Text>
+                <TouchableOpacity
+                  style={[styles.cycleToggle, cycleEnabled && styles.cycleToggleOn]}
+                  onPress={() => setCycleEnabled(v => !v)}
+                >
+                  <View style={[styles.cycleToggleKnob, cycleEnabled && styles.cycleToggleKnobOn]} />
+                </TouchableOpacity>
+              </View>
+              {!cycleEnabled && (
+                <Text style={styles.cycleHint}>
+                  Rotate through different versions of this task on each recurrence.
+                  {recurrenceType === 'none' ? ' Set Repeat above for this to take effect.' : ''}
+                </Text>
+              )}
+              {cycleEnabled && (
+                <>
+                  {recurrenceType === 'none' && (
+                    <Text style={styles.cycleHint}>
+                      This task doesn't repeat yet, so it won't cycle. Set Repeat above.
+                    </Text>
+                  )}
+                  <SortableList
+                    data={cycleItems}
+                    onReorder={(newData) => {
+                      const activeItemId = cycleItems[cycleIndex]?.id;
+                      setCycleItems(newData);
+                      const newIdx = newData.findIndex(item => item.id === activeItemId);
+                      if (newIdx !== -1) setCycleIndex(newIdx);
+                    }}
+                    renderItem={(item, displayIndex, drag) => {
+                      const actualIdx = cycleItems.findIndex(c => c.id === item.id);
+                      const isCurrentStep = actualIdx === cycleIndex;
+                      return (
+                        <View style={styles.cycleItemRow}>
+                          <TouchableOpacity
+                            onPress={() => setCycleIndex(actualIdx)}
+                            hitSlop={6}
+                            style={styles.cycleItemIndexBtn}
+                          >
+                            <View style={[styles.cycleItemDot, isCurrentStep && styles.cycleItemDotActive]}>
+                              <Text style={[styles.cycleItemDotText, isCurrentStep && styles.cycleItemDotTextActive]}>
+                                {displayIndex + 1}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                          <Text style={[styles.cycleItemTitle, isCurrentStep && styles.cycleItemTitleActive]}>
+                            {item.title}
+                          </Text>
+                          <TouchableOpacity
+                            onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                            delayLongPress={150}
+                            hitSlop={8}
+                            style={styles.dragHandle}
+                          >
+                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const next = cycleItems.filter((_, j) => j !== actualIdx);
+                              setCycleItems(next);
+                              if (cycleIndex >= next.length) setCycleIndex(Math.max(0, next.length - 1));
+                            }}
+                            hitSlop={8}
+                            style={styles.cycleItemDelete}
+                          >
+                            <Ionicons name="close" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        </View>
+                      );
+                    }}
+                  />
+                  {addingCycleItem ? (
+                    <View style={styles.cycleInputRow}>
+                      <View style={styles.cycleItemDot}>
+                        <Text style={styles.cycleItemDotText}>{cycleItems.length + 1}</Text>
+                      </View>
+                      <TextInput
+                        ref={cycleInputRef}
+                        autoFocus
+                        style={styles.cycleInput}
+                        value={newCycleItemTitle}
+                        onChangeText={setNewCycleItemTitle}
+                        placeholder="Item title"
+                        placeholderTextColor={colors.textTertiary}
+                        maxLength={TITLE_MAX_LENGTH}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          cycleItemSavedRef.current = true;
+                          const t = newCycleItemTitle.trim();
+                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewCycleItemTitle('');
+                          setTimeout(() => {
+                            cycleItemSavedRef.current = false;
+                            cycleInputRef.current?.focus();
+                          }, 50);
+                        }}
+                        onBlur={() => {
+                          if (cycleItemSavedRef.current) return;
+                          const t = newCycleItemTitle.trim();
+                          if (t) setCycleItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewCycleItemTitle('');
+                          setAddingCycleItem(false);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.addCycleItemBtn}
+                      onPress={() => setAddingCycleItem(true)}
+                    >
+                      <Ionicons name="add" size={14} color={colors.accent} />
+                      <Text style={styles.addCycleItemText}>Add item</Text>
+                    </TouchableOpacity>
+                  )}
+                  {cycleIndex < cycleItems.length && cycleItems.length > 1 && (
+                    <Text style={styles.cycleCurrentHint}>
+                      Tap a number to set the current position. Next up: {cycleItems[(cycleIndex + 1) % cycleItems.length]?.title}
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
           </View>
         </ScrollView>
 
