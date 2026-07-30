@@ -335,6 +335,15 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   });
 }
 
+export function dbBulkSetFocus(ids: string[], focused: boolean): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET focused = ? WHERE id = ?', [focused ? 1 : 0, id]);
+    }
+  });
+}
+
 export function dbGetTagRegistry(): string[] {
   const val = dbGetSetting('tag_registry');
   if (!val) return [];

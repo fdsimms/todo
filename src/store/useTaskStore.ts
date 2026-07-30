@@ -13,6 +13,7 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetFocus,
   dbBulkAddTags,
   dbGetTagRegistry,
   dbAddToTagRegistry,
@@ -94,6 +95,7 @@ interface TaskStore {
   skipNextRecurrence: (id: string) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
+  focusCategory: (category: string) => void;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
@@ -507,6 +509,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbClearAllFocus();
     set(s => ({
       tasks: s.tasks.map(t => (t.focused ? { ...t, focused: false } : t)),
+    }));
+  },
+
+  focusCategory(category) {
+    const ids = get().tasksByCategory(category).map(t => t.id);
+    if (ids.length === 0) return;
+    const allFocused = ids.every(id => get().tasks.find(t => t.id === id)?.focused);
+    const nextFocused = !allFocused;
+    dbBulkSetFocus(ids, nextFocused);
+    set(s => ({
+      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, focused: nextFocused } : t)),
     }));
   },
 
