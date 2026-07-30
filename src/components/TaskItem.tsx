@@ -519,45 +519,6 @@ export function TaskItem({
         )}
       </TouchableOpacity>
 
-      {!selectionMode && !isEditingTitle && (
-        timerRunning ? (
-          <View style={styles.timerRunningGroup}>
-            <TouchableOpacity
-              onPress={handleTimerToggle}
-              hitSlop={8}
-              style={styles.timerPill}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`Stop timer for ${task.title}`}
-              accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
-            >
-              <Ionicons name="stop" size={10} color={colors.onAccent} />
-              <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleDiscardTimer}
-              hitSlop={8}
-              style={styles.timerDeleteBtn}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`Discard timer for ${task.title}`}
-            >
-              <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={handleTimerToggle}
-            hitSlop={8}
-            style={styles.timerBtn}
-            accessibilityRole="button"
-            accessibilityLabel={`Start timer for ${task.title}`}
-          >
-            <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
-        )
-      )}
-
       {!selectionMode && (
         <TouchableOpacity
           onPress={() => {
@@ -687,6 +648,43 @@ export function TaskItem({
                 { justifyContent: 'space-between' },
               ]}>
                 <View style={styles.editSectionLeft}>
+                  {timerRunning ? (
+                    <View style={styles.timerRunningGroup}>
+                      <TouchableOpacity
+                        onPress={handleTimerToggle}
+                        hitSlop={8}
+                        style={styles.timerPill}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Stop timer for ${task.title}`}
+                        accessibilityValue={{ text: formatStopwatch(elapsedSeconds) }}
+                      >
+                        <Ionicons name="stop" size={10} color={colors.onAccent} />
+                        <Text style={styles.timerPillText}>{formatStopwatch(elapsedSeconds)}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={handleDiscardTimer}
+                        hitSlop={8}
+                        style={styles.timerDeleteBtn}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Discard timer for ${task.title}`}
+                      >
+                        <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={handleTimerToggle}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Start timer for ${task.title}`}
+                    >
+                      <Ionicons name="stopwatch-outline" size={13} color={colors.textSecondary} />
+                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Timer</Text>
+                    </TouchableOpacity>
+                  )}
                   {task.recurrenceType !== 'none' && (
                     <TouchableOpacity
                       style={styles.editBtn}
@@ -984,9 +982,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   starBtn: {
-    padding: 4,
-  },
-  timerBtn: {
     padding: 4,
   },
   timerRunningGroup: {
