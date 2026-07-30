@@ -9,6 +9,7 @@ import {
   RefreshControl,
   Alert,
   Animated,
+  AppState,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -231,6 +232,27 @@ export function TodayScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => setExpandedTaskId(null);
+    }, [])
+  );
+
+  // visibleTasks()/expiredTasks()/upcomingTodayTasks() etc. are only
+  // re-derived when a render happens; a task's visibility can flip purely
+  // from time passing (a defer/time-segment threshold crossing, a window
+  // expiring), with no store mutation to trigger that render. Tick while
+  // focused so the list stays current on its own, matching LaterScreen.
+  const [, forceRefresh] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
+      // Also refresh the instant the app comes back to the foreground
+      // (e.g. reopened the next morning), instead of waiting on the tick.
+      const subscription = AppState.addEventListener('change', state => {
+        if (state === 'active') forceRefresh(n => n + 1);
+      });
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
     }, [])
   );
 
