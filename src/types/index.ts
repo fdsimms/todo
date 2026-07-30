@@ -58,6 +58,12 @@ export interface Task {
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
 
+  // Snapshot of streakCount/streakDate from just before the current
+  // completion, so uncompleting (e.g. from the Logbook) can restore the
+  // streak to what it was rather than leaving the incremented value.
+  previousStreakCount: number;
+  previousStreakDate: string | null;
+
   parentId: string | null;   // null = root task; set = subtask of that id
 
   // Cyclical recurrence — rotates through items on each recurrence
@@ -77,7 +83,7 @@ export interface Task {
   previousOccurrenceId: string | null;
 }
 
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate'>;
 
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the

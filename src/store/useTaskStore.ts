@@ -193,6 +193,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       estimatedMinutes: draft.estimatedMinutes ?? null,
       streakCount: 0,
       streakDate: null,
+      previousStreakCount: 0,
+      previousStreakDate: null,
       parentId: draft.parentId ?? null,
       reminderTime: draft.reminderTime ?? null,
       cycleEnabled: draft.cycleEnabled ?? false,
@@ -223,6 +225,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       focused: false,
       streakCount: 0,
       streakDate: null,
+      previousStreakCount: 0,
+      previousStreakDate: null,
       timerStartedAt: null,
       actualMinutes: null,
       previousOccurrenceId: null,
@@ -351,6 +355,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completedAt: now.toISOString(),
       streakCount: task.recurrenceType !== 'none' ? newStreakCount : task.streakCount,
       streakDate: task.recurrenceType !== 'none' ? getCurrentDayStart().toISOString() : task.streakDate,
+      previousStreakCount: task.streakCount,
+      previousStreakDate: task.streakDate,
     };
     dbUpdateTask(completed);
 
@@ -429,7 +435,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   uncompleteTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
-    const updated = { ...task, completed: false, completedAt: null };
+    const updated = {
+      ...task,
+      completed: false,
+      completedAt: null,
+      // Restore the streak to what it was before this completion, so
+      // undoing a completion (e.g. from the Logbook) doesn't leave the
+      // streak incremented for something that no longer happened.
+      streakCount: task.previousStreakCount,
+      streakDate: task.previousStreakDate,
+    };
     dbUpdateTask(updated);
 
     // Completing a recurring task spawns a fresh next occurrence. Undoing
@@ -585,6 +600,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       estimatedMinutes: null,
       streakCount: 0,
       streakDate: null,
+      previousStreakCount: 0,
+      previousStreakDate: null,
       parentId,
       reminderTime: null,
       cycleEnabled: false,

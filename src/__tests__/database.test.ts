@@ -108,6 +108,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
+  previousStreakCount: 0,
+  previousStreakDate: null,
   parentId: null,
   reminderTime: null,
   cycleEnabled: false,
@@ -344,6 +346,17 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'occurrence', previousOccurrenceId: 'original-task' }));
     const [t] = dbGetAllTasks();
     expect(t.previousOccurrenceId).toBe('original-task');
+  });
+
+  it('round-trips previousStreakCount and previousStreakDate', () => {
+    dbInsertTask(makeTask({
+      id: 'streaky',
+      previousStreakCount: 4,
+      previousStreakDate: '2025-06-09T00:00:00.000Z',
+    }));
+    const [t] = dbGetAllTasks();
+    expect(t.previousStreakCount).toBe(4);
+    expect(t.previousStreakDate).toBe('2025-06-09T00:00:00.000Z');
   });
 
   it('round-trips seenAt', () => {

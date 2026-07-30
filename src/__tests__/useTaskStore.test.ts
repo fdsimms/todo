@@ -114,6 +114,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
+  previousStreakCount: 0,
+  previousStreakDate: null,
   parentId: null,
   reminderTime: null,
   cycleEnabled: false,
@@ -650,6 +652,16 @@ describe('completeTask', () => {
       const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
       expect(completed?.streakCount).toBe(7);
     });
+
+    it('snapshots the pre-completion streak onto previousStreakCount/previousStreakDate', () => {
+      const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+      const task = makeTask({ recurrenceType: 'daily', streakCount: 3, streakDate: yesterdayStart });
+      useTaskStore.setState({ tasks: [task] });
+      useTaskStore.getState().completeTask(task.id);
+      const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      expect(completed?.previousStreakCount).toBe(3);
+      expect(completed?.previousStreakDate).toBe(yesterdayStart);
+    });
   });
 
   describe('completion hold (deferred list removal)', () => {
@@ -754,6 +766,52 @@ describe('uncompleteTask', () => {
 
     expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['t1', 't3']);
     expect(dbDeleteTask).not.toHaveBeenCalled();
+  });
+
+  it('restores streakCount/streakDate to their pre-completion values', () => {
+    const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+    const task = makeTask({
+      id: 't1',
+      completed: true,
+      completedAt: 'now',
+      recurrenceType: 'daily',
+      streakCount: 6,
+      streakDate: '2025-06-10T00:00:00.000Z',
+      previousStreakCount: 5,
+      previousStreakDate: yesterdayStart,
+    });
+    useTaskStore.setState({ tasks: [task] });
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    const updated = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(updated?.streakCount).toBe(5);
+    expect(updated?.streakDate).toBe(yesterdayStart);
+    expect(dbUpdateTask).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', streakCount: 5, streakDate: yesterdayStart })
+    );
+  });
+
+  it('undoes a completion end-to-end back to the exact prior streak', () => {
+    // Complete a task whose streak was 5 (last completed yesterday), then
+    // undo it via uncompleteTask — the streak should land back on 5, not 0.
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // June 10, 2025 10:00 AM
+    try {
+      const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
+      const task = makeTask({ id: 't1', recurrenceType: 'daily', streakCount: 5, streakDate: yesterdayStart });
+      useTaskStore.setState({ tasks: [task] });
+
+      useTaskStore.getState().completeTask('t1');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.streakCount).toBe(6);
+
+      useTaskStore.getState().uncompleteTask('t1');
+      const reverted = useTaskStore.getState().tasks.find(t => t.id === 't1');
+      expect(reverted?.streakCount).toBe(5);
+      expect(reverted?.streakDate).toBe(yesterdayStart);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
