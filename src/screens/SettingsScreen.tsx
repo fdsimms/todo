@@ -22,6 +22,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
 import { formatDuration } from '../utils/effort';
+import { PatchNotesModal } from '../components/PatchNotesModal';
 
 const CAPACITY_STEP_MINUTES = 30;
 const CAPACITY_MIN_MINUTES = 30;
@@ -72,6 +73,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+  const [showPatchNotes, setShowPatchNotes] = useState(false);
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
@@ -465,11 +467,27 @@ export function SettingsScreen({ visible, onClose }: Props) {
                   {Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}
                 </Text>
               </View>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setShowPatchNotes(true)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="What's New"
+              >
+                <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>What's New</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      <PatchNotesModal visible={showPatchNotes} onDismiss={() => setShowPatchNotes(false)} />
     </Modal>
   );
 }
