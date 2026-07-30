@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  AppState,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
@@ -73,7 +74,15 @@ export function LaterScreen() {
   useFocusEffect(
     useCallback(() => {
       const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
-      return () => clearInterval(interval);
+      // Also refresh the instant the app comes back to the foreground
+      // (e.g. reopened the next morning), instead of waiting on the tick.
+      const subscription = AppState.addEventListener('change', state => {
+        if (state === 'active') forceRefresh(n => n + 1);
+      });
+      return () => {
+        clearInterval(interval);
+        subscription.remove();
+      };
     }, [])
   );
 
