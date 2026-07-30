@@ -266,6 +266,43 @@ export function TodayScreen() {
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
   };
 
+  // Focusing a task immediately reshuffles the list into Focus/Rest sections,
+  // which moves everything under the finger and makes it hard to tap the
+  // star on more than one task in a row. Give the user a brief grace period
+  // after each focus toggle to keep tapping stars in the normal layout
+  // before the view snaps into focus mode.
+  const FOCUS_VIEW_GRACE_MS = 1500;
+  const [focusViewGraceActive, setFocusViewGraceActive] = useState(false);
+  const focusViewGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevFocusedCount = useRef(focusedTasks.length);
+
+  useEffect(() => {
+    const grew = focusedTasks.length > prevFocusedCount.current;
+    prevFocusedCount.current = focusedTasks.length;
+
+    if (focusedTasks.length === 0) {
+      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
+      focusViewGraceTimer.current = null;
+      setFocusViewGraceActive(false);
+      return;
+    }
+
+    if (grew) {
+      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
+      setFocusViewGraceActive(true);
+      focusViewGraceTimer.current = setTimeout(() => {
+        focusViewGraceTimer.current = null;
+        setFocusViewGraceActive(false);
+      }, FOCUS_VIEW_GRACE_MS);
+    }
+  }, [focusedTasks.length]);
+
+  useEffect(() => {
+    return () => {
+      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
+    };
+  }, []);
+
   const handleSuggestFocus = async () => {
     setIsSuggestingFocus(true);
     try {
@@ -425,7 +462,7 @@ export function TodayScreen() {
   };
 
   const data: ListItem[] = useMemo(() => {
-    if (focusedTasks.length > 0) {
+    if (focusedTasks.length > 0 && !focusViewGraceActive) {
       const items: ListItem[] = [{ type: 'focus-header' }];
       focusedTasks.forEach(task => items.push({ type: 'task', task }));
       const restTasks = filtered.filter(t => !t.focused);
@@ -448,7 +485,7 @@ export function TodayScreen() {
     }
     return applyCategoryCollapse(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, focusedTasks, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories]);
+  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
