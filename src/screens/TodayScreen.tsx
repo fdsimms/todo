@@ -1021,12 +1021,37 @@ export function TodayScreen() {
               categoryOrder: allCategories,
             });
 
-            // Show the final grouped layout immediately to avoid a flash; the
-            // effect then reconciles to the store-derived `data` (structurally
-            // identical) once the store write lands.
-            setDraggableData(settled);
+            const commitDrop = (scope?: 'occurrence' | 'series') => {
+              // Show the final grouped layout immediately to avoid a flash; the
+              // effect then reconciles to the store-derived `data` (structurally
+              // identical) once the store write lands.
+              setDraggableData(settled);
+              reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
+            };
 
-            reorderWithCategoryUpdates(taskIds, categoryUpdates);
+            // Dragging a recurring task into a new category is a content-field
+            // edit like any other (category is a CONTENT_FIELD) and needs the
+            // same "just this task or this and future occurrences" choice as
+            // editing it through the editor. Leaving draggableData untouched on
+            // Cancel lets the list settle back to its pre-drag order.
+            const recategorizedRecurring = categoryUpdates.some(u => {
+              const task = allTasks.find(t => t.id === u.id);
+              return task && task.recurrenceType !== 'none';
+            });
+            if (recategorizedRecurring) {
+              Alert.alert(
+                'Update recurring task',
+                'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
+                [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'This Task', onPress: () => commitDrop('occurrence') },
+                  { text: 'This and Future Tasks', onPress: () => commitDrop('series') },
+                ],
+              );
+              return;
+            }
+
+            commitDrop();
           }}
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
