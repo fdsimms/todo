@@ -7,6 +7,7 @@ export interface PatchNote {
 // Add a new entry at the top when a user-facing change ships; keep entries
 // short and written for someone who isn't reading the diff.
 export const patchNotes: PatchNote[] = [
+  { message: 'Focusing a task now waits a moment before switching to the Focus view, so you can star a few tasks in a row', date: '2026-07-30' },
   { message: 'Tasks now respond to a tap anywhere on the row, not just the text', date: '2026-07-30' },
   { message: 'Later Today button now shows a subtle dot instead of a notification-style count', date: '2026-07-30' },
   { message: 'Fixed the task title field appearing off-center while editing', date: '2026-07-30' },
