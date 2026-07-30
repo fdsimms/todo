@@ -29,7 +29,6 @@ import { formatDueDate, formatHHMM, getDeadlineCountdown } from '../utils/dateUt
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
-import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 
@@ -325,8 +324,11 @@ export function TaskItem({
           onPress: async () => {
             deleteAlertOpenRef.current = false;
             await haptics.impactHeavy();
+            // No animateLayout() here: this unmounts the row's Swipeable
+            // (react-native-gesture-handler), and firing a LayoutAnimation in
+            // the same tick a Swipeable unmounts crashes on iOS — see the
+            // matching note in useTaskStore's completeTask.
             Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-              animateLayout();
               deleteTask(task.id);
             });
           },
