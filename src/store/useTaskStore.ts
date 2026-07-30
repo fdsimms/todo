@@ -507,6 +507,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   uncompleteTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
+    const original = task;
     const updated = {
       ...task,
       completed: false,
@@ -524,6 +525,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // generated shouldn't exist either — unless the user has since
     // completed it themselves, in which case it's a real completion.
     const followUp = get().tasks.find(t => t.previousOccurrenceId === id && !t.completed);
+    const followUpSubtasks = followUp ? get().subtasksOf(followUp.id) : [];
     if (followUp) {
       dbDeleteSubtasks(followUp.id);
       dbDeleteTask(followUp.id);
@@ -536,6 +538,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
     }));
+
+    // Un-completing a task (e.g. from the Logbook) is itself undoable via
+    // shake-to-undo — this restores the exact prior completed state rather
+    // than re-running completeTask, which would recompute streak/dueDate
+    // off "now" instead of reproducing what was actually undone.
+    get().setLastAction({
+      label: 'Task uncompleted',
+      undo: () => {
+        dbUpdateTask(original);
+        if (followUp) {
+          dbInsertTask(followUp);
+          scheduleTaskReminder(followUp);
+          followUpSubtasks.forEach(sub => {
+            dbInsertTask(sub);
+            scheduleTaskReminder(sub);
+          });
+        }
+        set(s => ({
+          tasks: [
+            ...s.tasks.map(t => (t.id === id ? original : t)),
+            ...(followUp ? [followUp, ...followUpSubtasks] : []),
+          ],
+        }));
+      },
+    });
   },
 
   deferTask(id, until) {
