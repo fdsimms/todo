@@ -340,7 +340,10 @@ export function LaterScreen() {
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
-        onClose={() => setEditorVisible(false)}
+        onClose={() => {
+          setEditorVisible(false);
+          setExpandedTaskId(null);
+        }}
       />
 
       {selectionMode && (
