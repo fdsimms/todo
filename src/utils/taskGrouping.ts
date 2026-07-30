@@ -123,6 +123,83 @@ export function resolveDrop(
   return { taskIds, categoryUpdates, settled };
 }
 
+/**
+ * Inclusive [min, max] index range a category header may be dragged across on
+ * the Today list, so it can only swap positions with other category headers
+ * — never land above the header-less uncategorized group at the top, nor
+ * below into the trailing "Later Today" section.
+ *
+ * Returns null if there are fewer than two headers to reorder.
+ */
+export function categoryHeaderRange(
+  data: Array<{ type: string; label?: string }>,
+): [number, number] | null {
+  const headerIndices = data
+    .map((item, i) => (item.type === 'header' && item.label !== LATER_TODAY_LABEL ? i : -1))
+    .filter(i => i >= 0);
+  if (headerIndices.length === 0) return null;
+  return [headerIndices[0], headerIndices[headerIndices.length - 1]];
+}
+
+export interface CategoryReorderResolution {
+  /** Category names in their new top-to-bottom order (for reorderCategories). */
+  categoryOrder: string[];
+  /** The final, regrouped layout to show immediately after the drop. */
+  settled: CategoryListItem[];
+}
+
+/**
+ * Resolve a category-header drag on the Today list: unlike resolveDrop (which
+ * moves tasks between sections), this only changes the ORDER of the sections
+ * themselves — no task ever changes category here.
+ *
+ * The dragged header's raw new position doesn't matter beyond that: since
+ * `dragRange` (via categoryHeaderRange) already confines it to the header
+ * run, and tasks are regrouped by their own (untouched) category regardless
+ * of where they momentarily sit in `reordered`, reading off the header
+ * sequence is enough to recover the new category order.
+ *
+ * Only categories with at least one *visible* task today get a header to
+ * drag, so `fullCategoryOrder` (the complete, previously-known order) is
+ * threaded through and used as the base: categories currently absent from
+ * Today keep their existing relative position, and only the ones that were
+ * actually dragged adopt the new sequence. Without this, persisting just the
+ * visible subset's order would silently reshuffle every other category's
+ * sortOrder too.
+ */
+export function resolveCategoryReorder(
+  reordered: CategoryListItem[],
+  opts: { isUpcoming: (id: string) => boolean; showUpcoming: boolean; fullCategoryOrder?: string[] },
+): CategoryReorderResolution {
+  const draggedOrder: string[] = [];
+  const mainTasks: Task[] = [];
+  const upcomingTasks: Task[] = [];
+
+  for (const item of reordered) {
+    if (item.type === 'header') {
+      if (item.label !== LATER_TODAY_LABEL) draggedOrder.push(item.label);
+      continue;
+    }
+    (opts.isUpcoming(item.task.id) ? upcomingTasks : mainTasks).push(item.task);
+  }
+
+  const draggedSet = new Set(draggedOrder);
+  const queue = [...draggedOrder];
+  const base = opts.fullCategoryOrder ?? draggedOrder;
+  const categoryOrder = base.map(name => (draggedSet.has(name) ? queue.shift()! : name));
+  // Any dragged category missing from fullCategoryOrder (shouldn't normally
+  // happen) still needs to be persisted, so tack it on at the end.
+  categoryOrder.push(...queue);
+
+  const settled = makeCategoryGroups(mainTasks, categoryOrder);
+  if (opts.showUpcoming && upcomingTasks.length > 0) {
+    settled.push({ type: 'header', label: LATER_TODAY_LABEL });
+    upcomingTasks.forEach(task => settled.push({ type: 'task', task }));
+  }
+
+  return { categoryOrder, settled };
+}
+
 export type LaterListItem =
   | { type: 'header'; label: string; key: string }
   | { type: 'task'; task: Task; key: string };
