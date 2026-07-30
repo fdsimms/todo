@@ -1,0 +1,4 @@
+{
+  "message": "Timed tasks now show a countdown like \"2h 15m left\" instead of a fixed end time, and open-ended tasks no longer show a redundant \"Open now\" label",
+  "date": "2026-07-30"
+}

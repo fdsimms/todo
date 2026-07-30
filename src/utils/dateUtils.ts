@@ -181,6 +181,16 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
   return addDays(from, 7 - dow + sorted[0]);
 }
 
+/** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
+export function formatWindowRemaining(windowEnd: string): string {
+  const minutesLeft = Math.max(0, Math.round((hhmmToDate(windowEnd).getTime() - Date.now()) / 60000));
+  const hours = Math.floor(minutesLeft / 60);
+  const minutes = minutesLeft % 60;
+  if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m left`;
+  if (hours > 0) return `${hours}h left`;
+  return `${minutes}m left`;
+}
+
 /**
  * Days remaining until a task's deadline, using the logical (reset-time-aware)
  * day boundary. Negative once the deadline has passed.

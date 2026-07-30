@@ -26,7 +26,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
-import { formatDueDate, formatHHMM, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isLiveRecurring } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
@@ -581,11 +581,11 @@ export function TaskItem({
             <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
           </View>
         )}
-        {windowActive && (
+        {windowActive && task.windowEnd && (
           <View style={styles.windowRow}>
             <Ionicons name="time" size={iconSize.xs} color={colors.red} />
             <Text style={styles.windowLabel} numberOfLines={1}>
-              {task.windowEnd ? `Open until ${formatHHMM(task.windowEnd)}` : 'Open now'}
+              {formatWindowRemaining(task.windowEnd)}
             </Text>
           </View>
         )}
