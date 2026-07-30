@@ -119,6 +119,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timerStartedAt: null,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesDefaults: null,
   ...overrides,
 });
 
@@ -340,12 +341,25 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.reminderTime).toBeNull();
     expect(t.category).toBeNull();
     expect(t.previousOccurrenceId).toBeNull();
+    expect(t.seriesDefaults).toBeNull();
   });
 
   it('round-trips previousOccurrenceId', () => {
     dbInsertTask(makeTask({ id: 'occurrence', previousOccurrenceId: 'original-task' }));
     const [t] = dbGetAllTasks();
     expect(t.previousOccurrenceId).toBe('original-task');
+  });
+
+  it('round-trips seriesDefaults', () => {
+    dbInsertTask(makeTask({ id: 'with-series-defaults', title: 'Edited', seriesDefaults: { title: 'Original' } }));
+    const [t] = dbGetAllTasks();
+    expect(t.seriesDefaults).toEqual({ title: 'Original' });
+  });
+
+  it('returns null seriesDefaults when unset', () => {
+    dbInsertTask(makeTask({ id: 'no-series-defaults' }));
+    const [t] = dbGetAllTasks();
+    expect(t.seriesDefaults).toBeNull();
   });
 
   it('round-trips previousStreakCount and previousStreakDate', () => {
@@ -448,6 +462,15 @@ describe('dbUpdateTask', () => {
     dbInsertTask(makeTask({ id: 'edit', title: 'Edit Me' }));
     dbUpdateTask(makeTask({ id: 'edit', title: 'Edited' }));
     expect(dbGetAllTasks().find((t) => t.id === 'keep')?.title).toBe('Keep Me');
+  });
+
+  it('round-trips seriesDefaults through an update, including clearing it back to null', () => {
+    dbInsertTask(makeTask({ id: 'sd', title: 'Edited today' }));
+    dbUpdateTask(makeTask({ id: 'sd', title: 'Edited today', seriesDefaults: { title: 'Series title' } }));
+    expect(dbGetAllTasks()[0].seriesDefaults).toEqual({ title: 'Series title' });
+
+    dbUpdateTask(makeTask({ id: 'sd', title: 'Edited today', seriesDefaults: null }));
+    expect(dbGetAllTasks()[0].seriesDefaults).toBeNull();
   });
 });
 

@@ -28,7 +28,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isLiveRecurring } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
@@ -345,32 +345,67 @@ export function TaskItem({
     // reveals a second one underneath.
     if (deleteAlertOpenRef.current) return;
     deleteAlertOpenRef.current = true;
+
+    const performDelete = async () => {
+      deleteAlertOpenRef.current = false;
+      await haptics.impactHeavy();
+      // No animateLayout() here: this unmounts the row's Swipeable
+      // (react-native-gesture-handler), and firing a LayoutAnimation in
+      // the same tick a Swipeable unmounts crashes on iOS — see the
+      // matching note in useTaskStore's completeTask.
+      Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
+        deleteTask(task.id);
+      });
+    };
+
+    const cancelButton = {
+      text: 'Cancel',
+      style: 'cancel' as const,
+      onPress: () => {
+        deleteAlertOpenRef.current = false;
+        swipeableRef.current?.close();
+      },
+    };
+
+    // A live recurring task (not yet completed, series not exhausted) makes
+    // "delete" ambiguous: does the user want to skip just this occurrence, or
+    // end the series? Everything else (a completed/logbook row, or a
+    // recurring task whose series already ended) has only one outcome.
+    if (isLiveRecurring(task)) {
+      Alert.alert(
+        'Delete recurring task',
+        `"${task.title}" repeats. Skip just this occurrence, or delete it and stop the series?`,
+        [
+          cancelButton,
+          {
+            text: 'This Task',
+            onPress: async () => {
+              deleteAlertOpenRef.current = false;
+              swipeableRef.current?.close();
+              await haptics.impactMedium();
+              skipNextRecurrence(task.id);
+            },
+          },
+          {
+            text: 'This and Future Tasks',
+            style: 'destructive',
+            onPress: performDelete,
+          },
+        ],
+        { onDismiss: () => { deleteAlertOpenRef.current = false; } }
+      );
+      return;
+    }
+
     Alert.alert(
       'Delete Task',
       `Delete "${task.title}"?`,
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-          onPress: () => {
-            deleteAlertOpenRef.current = false;
-            swipeableRef.current?.close();
-          },
-        },
+        cancelButton,
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: async () => {
-            deleteAlertOpenRef.current = false;
-            await haptics.impactHeavy();
-            // No animateLayout() here: this unmounts the row's Swipeable
-            // (react-native-gesture-handler), and firing a LayoutAnimation in
-            // the same tick a Swipeable unmounts crashes on iOS — see the
-            // matching note in useTaskStore's completeTask.
-            Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-              deleteTask(task.id);
-            });
-          },
+          onPress: performDelete,
         },
       ],
       { onDismiss: () => { deleteAlertOpenRef.current = false; } }

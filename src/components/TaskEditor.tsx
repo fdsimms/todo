@@ -27,7 +27,7 @@ import { spacing, radius, font, lineHeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
-import { useTaskStore } from '../store/useTaskStore';
+import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
@@ -240,19 +240,47 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainIndex,
       vacationPause,
     };
-    haptics.success();
-    if (task) {
-      const snapshot = { ...task };
-      setLastAction({
-        label: 'Edit saved',
-        undo: () => updateTask(snapshot.id, snapshot),
-      });
-      updateTask(task.id, data);
-    } else {
-      animateLayout();
-      addTask(data);
+
+    const commitSave = (scope?: 'occurrence' | 'series') => {
+      haptics.success();
+      if (task) {
+        const snapshot = { ...task };
+        setLastAction({
+          label: 'Edit saved',
+          undo: () => updateTask(snapshot.id, snapshot),
+        });
+        updateTask(task.id, data, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+      } else {
+        animateLayout();
+        addTask(data);
+      }
+      onClose();
+    };
+
+    // Recurring tasks: content-field edits (title, notes, tags, etc. — the
+    // fields that otherwise silently carry forward to every future
+    // occurrence) need the user to pick a scope. Repeat-section/schedule-only
+    // edits have exactly one sensible meaning and save directly.
+    if (task && task.recurrenceType !== 'none') {
+      const record = data as unknown as Record<string, unknown>;
+      const taskRecord = task as unknown as Record<string, unknown>;
+      const contentChanged = CONTENT_FIELDS.some(
+        key => JSON.stringify(record[key]) !== JSON.stringify(taskRecord[key])
+      );
+      if (contentChanged) {
+        Alert.alert(
+          'Update recurring task',
+          'This task repeats. Apply this change to just this task, or to this and all future occurrences?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'This Task', onPress: () => commitSave('occurrence') },
+            { text: 'This and Future Tasks', onPress: () => commitSave('series') },
+          ],
+        );
+        return;
+      }
     }
-    onClose();
+    commitSave();
   };
 
   const openPicker = (mode: PickerMode) => {
