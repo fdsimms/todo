@@ -846,7 +846,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   allCategories() {
     // Registered categories keep their manually-chosen order; any category
     // only found on a task (predating the registry) is appended alphabetically.
-    const registered = useCategoryStore.getState().categories.map(c => c.name);
+    // Sorted by sortOrder here (rather than trusting array position) because
+    // reorderCategories() only patches each category's sortOrder field in
+    // place, it doesn't physically reposition the store's array.
+    const registered = [...useCategoryStore.getState().categories]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(c => c.name);
     const known = new Set(registered);
     const phantom = new Set<string>();
     get().tasks.forEach(t => { if (t.category && !known.has(t.category)) phantom.add(t.category); });

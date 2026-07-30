@@ -21,6 +21,8 @@ import { getVisibleAt } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
+  resolveCategoryReorder,
+  categoryHeaderRange,
   flattenLaterSections,
   isLaterHeader,
   laterTaskOrder,
@@ -29,6 +31,7 @@ import {
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
@@ -61,12 +64,14 @@ function SectionHeader({
   colors,
   collapsed,
   onToggle,
+  onDrag,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   collapsed?: boolean;
   onToggle?: () => void;
+  onDrag?: () => void;
 }) {
   if (!onToggle) {
     return (
@@ -79,11 +84,17 @@ function SectionHeader({
     <TouchableOpacity
       style={styles.categorySectionHeader}
       onPress={onToggle}
+      onLongPress={onDrag}
+      delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+      accessibilityHint={onDrag ? 'Long press to reorder categories' : undefined}
     >
-      <Text style={styles.sectionHeaderText}>{label}</Text>
+      <View style={styles.categorySectionHeaderLeft}>
+        {onDrag && <Ionicons name="reorder-three" size={14} color={colors.textTertiary} />}
+        <Text style={styles.sectionHeaderText}>{label}</Text>
+      </View>
       <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
     </TouchableOpacity>
   );
@@ -184,6 +195,7 @@ export function TodayScreen() {
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
+  const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -460,6 +472,18 @@ export function TodayScreen() {
     setDraggableData(data);
   }, [data]);
 
+  // Set right before a category header's drag() starts, and cleared right
+  // before any other drag starts, so onReorder below can tell whether the
+  // in-flight drag is reordering categories rather than moving a task.
+  // Left stale after a cancelled (no-op) header drag is harmless: it's only
+  // read once inside onReorder, by which point the next drag has already set
+  // it correctly for whatever it actually is.
+  const draggingCategoryRef = useRef<string | null>(null);
+  const startCategoryDrag = (label: string, drag: () => void) => {
+    draggingCategoryRef.current = label;
+    drag();
+  };
+
   // A fast drag can cross several rows between frames; spacing the selection
   // ticks out keeps them from piling up into one long buzz.
   const lastDragHapticRef = useRef(0);
@@ -524,6 +548,7 @@ export function TodayScreen() {
           colors={colors}
           collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
           onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
+          onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
         />
       );
     }
@@ -544,7 +569,11 @@ export function TodayScreen() {
         subtaskCount={subs.length}
         subtaskDoneCount={subs.filter(t => t.completed).length}
         subtasks={subs}
-        drag={selectionMode || !drag || upcomingTaskIds.has(item.task.id) ? undefined : drag}
+        drag={
+          selectionMode || !drag || upcomingTaskIds.has(item.task.id)
+            ? undefined
+            : () => { draggingCategoryRef.current = null; drag(); }
+        }
         isActive={isActive}
         selectionMode={selectionMode}
         selected={selectedIds.has(item.task.id)}
@@ -855,6 +884,14 @@ export function TodayScreen() {
             setExpandedTaskId(null);
           }}
           onHoverChange={dragHaptic}
+          dragRange={(rangeData, activeIndex) => {
+            const activeItem = rangeData[activeIndex];
+            if (activeItem?.type === 'header' && activeItem.label !== LATER_TODAY_LABEL) {
+              const range = categoryHeaderRange(rangeData);
+              if (range) return range;
+            }
+            return [0, rangeData.length - 1];
+          }}
           placeholderStyle={styles.dropSlot}
           onReorder={reordered => {
             // The draggable list only ever contains header + task items.
@@ -862,6 +899,19 @@ export function TodayScreen() {
               (item): item is { type: 'header'; label: string } | { type: 'task'; task: Task } =>
                 item.type === 'header' || item.type === 'task',
             );
+
+            if (draggingCategoryRef.current !== null) {
+              draggingCategoryRef.current = null;
+              const { categoryOrder, settled } = resolveCategoryReorder(dropped, {
+                isUpcoming: id => upcomingTaskIds.has(id),
+                showUpcoming,
+                fullCategoryOrder: allCategories,
+              });
+              setDraggableData(settled);
+              reorderCategories(categoryOrder);
+              return;
+            }
+
             const { taskIds, categoryUpdates, settled } = resolveDrop(dropped, {
               isUpcoming: id => upcomingTaskIds.has(id),
               showUpcoming,
@@ -997,6 +1047,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
+  },
+  categorySectionHeaderLeft: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
