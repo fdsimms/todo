@@ -1,0 +1,4 @@
+{
+  "message": "Chain steps on a task now truncate neatly instead of overflowing when there are a lot of them",
+  "date": "2026-07-30"
+}

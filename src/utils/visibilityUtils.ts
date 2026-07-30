@@ -1,5 +1,5 @@
 import type { Task, TimeOfDay, Category } from '../types';
-import { getDayStart, getCurrentDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -91,11 +91,11 @@ export function hasDayArrived(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
   const todayStart = getCurrentDayStart();
   if (task.deferUntil) {
-    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart > todayStart) return false;
   }
   if (task.dueDate) {
-    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (taskDayStart > todayStart) return false;
   }
   return true;
@@ -138,7 +138,7 @@ export function isTaskVisible(task: Task): boolean {
   const { dayResetTime } = useSettingsStore.getState();
 
   if (task.deferUntil) {
-    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
     const todayStart = getCurrentDayStart();
     if (deferDayStart > todayStart) return false;
   }
@@ -153,7 +153,7 @@ export function isTaskVisible(task: Task): boolean {
   if (isTaskExpired(task)) return false;
 
   if (task.dueDate) {
-    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     const todayStart = getCurrentDayStart();
     if (taskDayStart > todayStart) return false;
   }
@@ -229,12 +229,12 @@ export function isUpcomingToday(task: Task): boolean {
   const todayStart = getCurrentDayStart();
 
   if (task.deferUntil) {
-    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart > todayStart) return false;
   }
 
   if (task.dueDate) {
-    const taskDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (taskDayStart > todayStart) return false;
   }
 
@@ -262,7 +262,7 @@ export function getVisibleAt(task: Task): Date {
   };
 
   if (task.deferUntil) {
-    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart > todayStart) {
       candidates.push(applyTimeThreshold(deferDayStart));
     }
@@ -277,7 +277,7 @@ export function getVisibleAt(task: Task): Date {
   }
 
   if (task.dueDate) {
-    const taskStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const taskStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (taskStart > todayStart) {
       const candidate = applyTimeThreshold(taskStart);
       if (candidates.length === 0 || candidate > candidates[candidates.length - 1]) {
@@ -309,12 +309,12 @@ function getBecameVisibleAt(task: Task): Date | null {
   const candidates: Date[] = [];
 
   if (task.deferUntil) {
-    const deferDayStart = getDayStart(new Date(task.deferUntil), dayResetTime);
+    const deferDayStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
     if (deferDayStart <= todayStart) candidates.push(deferDayStart);
   }
 
   if (task.dueDate) {
-    const dueDayStart = getDayStart(new Date(task.dueDate), dayResetTime);
+    const dueDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     if (dueDayStart <= todayStart) candidates.push(dueDayStart);
   }
 

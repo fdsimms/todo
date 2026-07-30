@@ -112,9 +112,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   reminderTime: null,
-  cycleEnabled: false,
-  cycleIndex: 0,
-  cycleItems: [],
+  chainEnabled: false,
+  chainIndex: 0,
+  chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
@@ -261,7 +261,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         completedAt: '2025-06-10T10:00:00.000Z',
         focused: true,
         recurrenceFromCompletion: true,
-        cycleEnabled: true,
+        chainEnabled: true,
         vacationPause: true,
       }),
     );
@@ -269,7 +269,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.completed).toBe(true);
     expect(t.focused).toBe(true);
     expect(t.recurrenceFromCompletion).toBe(true);
-    expect(t.cycleEnabled).toBe(true);
+    expect(t.chainEnabled).toBe(true);
     expect(t.vacationPause).toBe(true);
   });
 
@@ -279,19 +279,19 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.completed).toBe(false);
     expect(t.focused).toBe(false);
     expect(t.recurrenceFromCompletion).toBe(false);
-    expect(t.cycleEnabled).toBe(false);
+    expect(t.chainEnabled).toBe(false);
     expect(t.vacationPause).toBe(false);
   });
 
-  it('deserialises JSON array columns (tags, recurrenceDays, cycleItems)', () => {
+  it('deserialises JSON array columns (tags, recurrenceDays, chainItems)', () => {
     const tags = ['work', 'urgent'];
     const recurrenceDays = [1, 3, 5];
-    const cycleItems = [{ id: 'ci', title: 'Item A', notes: '' }];
-    dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, cycleItems }));
+    const chainItems = [{ id: 'ci', title: 'Item A', notes: '' }];
+    dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
     const [t] = dbGetAllTasks();
     expect(t.tags).toEqual(tags);
     expect(t.recurrenceDays).toEqual(recurrenceDays);
-    expect(t.cycleItems).toEqual(cycleItems);
+    expect(t.chainItems).toEqual(chainItems);
   });
 
   it('deserialises timeSegments from a JSON array', () => {
@@ -436,8 +436,8 @@ describe('dbUpdateTask', () => {
       effort: 2,
       estimatedMinutes: 75,
       streakCount: 5,
-      cycleEnabled: true,
-      cycleItems: [{ id: 'ci', title: 'C', notes: '' }],
+      chainEnabled: true,
+      chainItems: [{ id: 'ci', title: 'C', notes: '' }],
       vacationPause: true,
     };
     dbUpdateTask(updated);

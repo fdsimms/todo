@@ -14,7 +14,7 @@ export interface Category {
   sortOrder: number;
 }
 
-export interface CycleItem {
+export interface ChainItem {
   id: string;
   title: string;
   notes: string;
@@ -66,10 +66,13 @@ export interface Task {
 
   parentId: string | null;   // null = root task; set = subtask of that id
 
-  // Cyclical recurrence — rotates through items on each recurrence
-  cycleEnabled: boolean;
-  cycleIndex: number;        // index of the currently active CycleItem
-  cycleItems: CycleItem[];
+  // Chain — steps through a list of items one at a time. Completing a
+  // chained task advances to the next item and creates the next task on
+  // its own, independent of recurrence; Repeat (if also set) makes the
+  // whole chain repeat instead of running through once.
+  chainEnabled: boolean;
+  chainIndex: number;        // index of the currently active ChainItem
+  chainItems: ChainItem[];
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
@@ -128,6 +131,6 @@ export const PRIORITY_COLORS = [
 export const EFFORT_LABELS = ['—', 'XXS', 'XS', 'S', 'M', 'L', 'XL'] as const;
 export const EFFORT_HINTS = ['', '~1min', '~15min', '~30min', '~1-2hr', '~4hr', 'day+'] as const;
 
-// Max length for any title-style input (task, subtask, cycle step). Long titles
+// Max length for any title-style input (task, subtask, chain step). Long titles
 // are truncated with an ellipsis in the list, so cap input to keep them sane.
 export const TITLE_MAX_LENGTH = 200;
