@@ -17,7 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt } from '../utils/visibilityUtils';
+import { getVisibleAt, isLiveRecurring } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -198,6 +198,7 @@ export function TodayScreen() {
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
+  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkDefer = useTaskStore(s => s.bulkDefer);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
@@ -333,6 +334,48 @@ export function TodayScreen() {
     animateLayout();
     setSelectionMode(false);
     setSelectedIds(new Set());
+  };
+
+  // A live recurring task in the selection makes "delete" ambiguous — see
+  // the matching prompt in TaskItem's swipe-to-delete. For a mixed
+  // selection, "This Task(s)" skips just the recurring ones to their next
+  // occurrence and deletes the rest; "This and Future Tasks" deletes
+  // everything, ending any series in the selection.
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    const liveRecurringIds = ids.filter(id => {
+      const t = allTasks.find(x => x.id === id);
+      return t ? isLiveRecurring(t) : false;
+    });
+    if (liveRecurringIds.length === 0) {
+      bulkDeleteTasks(ids);
+      exitSelection();
+      return;
+    }
+    const restIds = ids.filter(id => !liveRecurringIds.includes(id));
+    Alert.alert(
+      'Delete recurring tasks',
+      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'This Task(s)',
+          onPress: () => {
+            liveRecurringIds.forEach(id => skipNextRecurrence(id));
+            bulkDeleteTasks(restIds);
+            exitSelection();
+          },
+        },
+        {
+          text: 'This and Future Tasks',
+          style: 'destructive',
+          onPress: () => {
+            bulkDeleteTasks(ids);
+            exitSelection();
+          },
+        },
+      ],
+    );
   };
 
   const toggleCategoryCollapse = (label: string) => {
@@ -996,7 +1039,7 @@ export function TodayScreen() {
           totalCount={viewMode === 'later' ? deferredTasks.length : filtered.length}
           existingTags={allTags}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
-          onDelete={() => { bulkDeleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={handleBulkDelete}
           onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}

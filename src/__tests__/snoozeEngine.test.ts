@@ -47,6 +47,7 @@ const BASE: Task = {
   timerStartedAt: null,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesDefaults: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

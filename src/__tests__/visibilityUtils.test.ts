@@ -8,6 +8,7 @@ import {
   isRecurrenceNotYetDue,
   isTaskNew,
   isInboxTask,
+  isLiveRecurring,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -93,6 +94,7 @@ const baseTask: Task = {
   timerStartedAt: null,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesDefaults: null,
 };
 
 // June 10, 2025 at 10:00 AM
@@ -362,6 +364,41 @@ describe('isRecurrenceNotYetDue', () => {
   it('returns false for a completed recurring task', () => {
     const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
     expect(isRecurrenceNotYetDue({ ...baseTask, recurrenceType: 'daily', dueDate, completed: true })).toBe(false);
+  });
+});
+
+// ─── isLiveRecurring ──────────────────────────────────────────────────────────
+
+describe('isLiveRecurring', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns false for a non-recurring task', () => {
+    expect(isLiveRecurring({ ...baseTask, recurrenceType: 'none' })).toBe(false);
+  });
+
+  it('returns false for a completed recurring task', () => {
+    expect(isLiveRecurring({ ...baseTask, recurrenceType: 'daily', completed: true })).toBe(false);
+  });
+
+  it('returns true for a not-yet-completed recurring task with a next occurrence', () => {
+    expect(isLiveRecurring({ ...baseTask, recurrenceType: 'daily' })).toBe(true);
+  });
+
+  it('returns false once the series has ended (recurrenceEndDate already passed)', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    const recurrenceEndDate = new Date(2025, 5, 10, 0, 0, 0).toISOString(); // next due would exceed this
+    expect(isLiveRecurring({ ...baseTask, recurrenceType: 'daily', dueDate, recurrenceEndDate })).toBe(false);
+  });
+
+  it('returns false once recurrenceCount has run out', () => {
+    expect(isLiveRecurring({ ...baseTask, recurrenceType: 'daily', recurrenceCount: 1 })).toBe(false);
   });
 });
 

@@ -7,6 +7,7 @@ export interface PatchNote {
 // Add a new entry at the top when a user-facing change ships; keep entries
 // short and written for someone who isn't reading the diff.
 export const patchNotes: PatchNote[] = [
+  { message: 'Editing or deleting a recurring task now asks whether to apply the change to just that task or to this and future occurrences', date: '2026-07-30' },
   { message: 'Later Today button now shows a subtle dot instead of a notification-style count', date: '2026-07-30' },
   { message: 'Fixed the task title field appearing off-center while editing', date: '2026-07-30' },
   { message: 'Cycle steps on a task now truncate neatly instead of overflowing when there are a lot of them', date: '2026-07-30' },

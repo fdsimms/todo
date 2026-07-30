@@ -1,5 +1,5 @@
 import type { Task, TimeOfDay, Category } from '../types';
-import { getDayStart, getCurrentDayStart, hhmmToDate } from './dateUtils';
+import { getDayStart, getCurrentDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -170,6 +170,17 @@ export function isTaskVisible(task: Task): boolean {
 // arrives.
 export function isRecurrenceNotYetDue(task: Task): boolean {
   return task.recurrenceType !== 'none' && !task.completed && !hasDayArrived(task);
+}
+
+// True for a not-yet-completed recurring task that still has a next
+// occurrence ahead of it. Used to decide whether deleting this task is
+// ambiguous (could mean "skip this one" vs. "end the series") — a task whose
+// series has already ended (getNextDueDate returns null), or one sitting as
+// a completed log entry, has only one sensible delete outcome.
+export function isLiveRecurring(task: Task): boolean {
+  if (task.recurrenceType === 'none' || task.completed) return false;
+  const { dayResetTime } = useSettingsStore.getState();
+  return getNextDueDate(task, dayResetTime) !== null;
 }
 
 export function isTaskDeferred(task: Task): boolean {

@@ -40,6 +40,21 @@ interface UndoableAction {
 // several tasks in a row would otherwise reflow the list after every single
 // tap; holding them lets the whole burst finish before the list collapses
 // around whatever's left, once completions pause for COMPLETION_HOLD_MS.
+// Fields that silently carry forward to the next occurrence today (spread
+// via `...task` in completeTask). These are the only fields "this task only"
+// edits (updateTask's { scope: 'occurrence' }) need to protect via
+// seriesDefaults — recurrence-rule, cycle, and schedule fields are excluded
+// because each already has exactly one sensible interpretation (see
+// isLiveRecurring / CLAUDE.md recurrence docs for why).
+export const CONTENT_FIELDS: (keyof Task)[] = [
+  'title', 'notes', 'tags', 'category', 'priority', 'effort',
+  'estimatedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime',
+];
+
+function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
+  target[key] = source[key];
+}
+
 const COMPLETION_HOLD_MS = 2000;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -83,7 +98,12 @@ interface TaskStore {
   initialize: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
-  updateTask: (id: string, updates: Partial<Task>) => void;
+  // scope 'occurrence' ("this task only") applies `updates` to this row but
+  // preserves whatever content-field values existed before the edit in
+  // seriesDefaults, so the next occurrence (see completeTask) reverts to
+  // them instead of carrying the one-off edit forward. Default ('series' /
+  // omitted, "this and future tasks") is a plain patch, same as always.
+  updateTask: (id: string, updates: Partial<Task>, options?: { scope?: 'occurrence' | 'series' }) => void;
   markTaskSeen: (id: string) => void;
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
@@ -205,6 +225,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timerStartedAt: draft.timerStartedAt ?? null,
       actualMinutes: draft.actualMinutes ?? null,
       previousOccurrenceId: draft.previousOccurrenceId ?? null,
+      seriesDefaults: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -231,6 +252,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timerStartedAt: null,
       actualMinutes: null,
       previousOccurrenceId: null,
+      seriesDefaults: null,
     };
     const copy: Task = {
       ...original,
@@ -256,10 +278,37 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return copy;
   },
 
-  updateTask(id, updates) {
+  updateTask(id, updates, options) {
+    const scope = options?.scope ?? 'series';
     const tasks = get().tasks.map(t => {
       if (t.id !== id) return t;
-      const updated = { ...t, ...updates };
+
+      let seriesDefaults = t.seriesDefaults;
+      if (scope === 'occurrence') {
+        const captured: Partial<Task> = {};
+        for (const key of CONTENT_FIELDS) {
+          if (key in updates && !(seriesDefaults && key in seriesDefaults)) {
+            captureField(captured, t, key);
+          }
+        }
+        if (Object.keys(captured).length > 0) {
+          seriesDefaults = { ...(seriesDefaults ?? {}), ...captured };
+        }
+      } else if (seriesDefaults) {
+        // A deliberate series-wide change makes any pending "revert to"
+        // value for that field stale — drop it.
+        const next = { ...seriesDefaults };
+        let changed = false;
+        for (const key of CONTENT_FIELDS) {
+          if (key in updates && key in next) {
+            delete next[key];
+            changed = true;
+          }
+        }
+        seriesDefaults = changed ? (Object.keys(next).length > 0 ? next : null) : seriesDefaults;
+      }
+
+      const updated = { ...t, ...updates, seriesDefaults };
       dbUpdateTask(updated);
       cancelTaskReminder(id);
       scheduleTaskReminder(updated);
@@ -367,9 +416,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (task.recurrenceType !== 'none') {
       const nextDue = getNextDueDate(task, dayResetTime);
       if (nextDue !== null) {
+        // A "this task only" edit (see updateTask) stores what content fields
+        // should revert to for the next occurrence in seriesDefaults — apply
+        // it before spreading so the clone below reflects the series' real
+        // values, not a one-off edit made on this occurrence.
+        const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
         let nextReminderTime: string | null = null;
-        if (task.reminderTime) {
-          const original = new Date(task.reminderTime);
+        if (effective.reminderTime) {
+          const original = new Date(effective.reminderTime);
           const next = new Date(nextDue);
           next.setHours(original.getHours(), original.getMinutes(), 0, 0);
           nextReminderTime = next.toISOString();
@@ -379,7 +433,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             ? (task.cycleIndex + 1) % task.cycleItems.length
             : task.cycleIndex;
         nextTask = {
-          ...task,
+          ...effective,
           id: generateId(),
           completed: false,
           completedAt: null,
@@ -394,9 +448,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           reminderTime: nextReminderTime,
           cycleIndex: nextCycleIndex,
           recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
-          timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...task
+          timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
+          seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -612,6 +667,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timerStartedAt: null,
       actualMinutes: null,
       previousOccurrenceId: null,
+      seriesDefaults: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));

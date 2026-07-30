@@ -125,6 +125,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timerStartedAt: null,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesDefaults: null,
   ...overrides,
 });
 
@@ -239,6 +240,61 @@ describe('updateTask', () => {
     expect(dbUpdateTask).toHaveBeenCalledTimes(1);
     expect(cancelTaskReminder).toHaveBeenCalledWith('t1');
     expect(scheduleTaskReminder).toHaveBeenCalledTimes(1);
+  });
+
+  describe('scope: "occurrence" ("this task only")', () => {
+    it('captures the pre-edit value of changed content fields into seriesDefaults', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Original', recurrenceType: 'daily' })] });
+      useTaskStore.getState().updateTask('t1', { title: 'Just today' }, { scope: 'occurrence' });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.title).toBe('Just today');
+      expect(updated.seriesDefaults).toEqual({ title: 'Original' });
+    });
+
+    it('does not clobber an already-captured seriesDefaults value on a second occurrence-scoped edit', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Original', recurrenceType: 'daily' })] });
+      useTaskStore.getState().updateTask('t1', { title: 'First edit' }, { scope: 'occurrence' });
+      useTaskStore.getState().updateTask('t1', { title: 'Second edit' }, { scope: 'occurrence' });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.title).toBe('Second edit');
+      expect(updated.seriesDefaults).toEqual({ title: 'Original' });
+    });
+
+    it('does not populate seriesDefaults for non-content (schedule/rule) fields', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'daily' })] });
+      useTaskStore.getState().updateTask(
+        't1',
+        { dueDate: new Date(2025, 5, 11).toISOString() },
+        { scope: 'occurrence' }
+      );
+      expect(useTaskStore.getState().tasks[0].seriesDefaults).toBeNull();
+    });
+  });
+
+  describe('scope: "series" (default, "this and future tasks")', () => {
+    it('clears a stale seriesDefaults entry for a field it now deliberately overrides', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 't1', title: 'Just today', recurrenceType: 'daily',
+          seriesDefaults: { title: 'Original' },
+        })],
+      });
+      useTaskStore.getState().updateTask('t1', { title: 'New series title' });
+      const updated = useTaskStore.getState().tasks[0];
+      expect(updated.title).toBe('New series title');
+      expect(updated.seriesDefaults).toBeNull();
+    });
+
+    it('leaves unrelated seriesDefaults entries intact', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 't1', title: 'Just today', notes: 'Just today notes', recurrenceType: 'daily',
+          seriesDefaults: { title: 'Original title', notes: 'Original notes' },
+        })],
+      });
+      useTaskStore.getState().updateTask('t1', { title: 'New series title' });
+      expect(useTaskStore.getState().tasks[0].seriesDefaults).toEqual({ notes: 'Original notes' });
+    });
   });
 });
 
@@ -485,6 +541,23 @@ describe('completeTask', () => {
 
     const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
     expect(next?.previousOccurrenceId).toBe('recurring');
+  });
+
+  it('applies seriesDefaults content overrides to the next occurrence and resets seriesDefaults on it', () => {
+    const task = makeTask({
+      id: 'recurring',
+      title: 'Edited just today',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      seriesDefaults: { title: 'Series title' },
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.title).toBe('Series title');
+    expect(next?.seriesDefaults).toBeNull();
   });
 
   it('does not create a next task when recurrenceEndDate is already reached', () => {

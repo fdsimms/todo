@@ -60,6 +60,7 @@ const baseTask: Task = {
   timerStartedAt: null,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesDefaults: null,
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

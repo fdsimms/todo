@@ -81,6 +81,11 @@ export interface Task {
   // to the task whose completion created it. Lets uncompleting that task
   // remove this follow-up occurrence again.
   previousOccurrenceId: string | null;
+
+  // Pre-edit values of content fields overridden with "this task only" scope
+  // (see updateTask). Applied on top of this task when its completion spawns
+  // the next occurrence, so a one-off edit doesn't become the series template.
+  seriesDefaults: Partial<Task> | null;
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate'>;
