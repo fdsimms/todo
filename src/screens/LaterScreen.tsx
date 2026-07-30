@@ -3,12 +3,12 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Pressable,
   StyleSheet,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -52,6 +52,7 @@ export function LaterScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -122,6 +123,20 @@ export function LaterScreen() {
     setSelectedIds(new Set());
   };
 
+  const toggleSectionCollapse = (label: string) => {
+    if (expandedTaskId !== null) {
+      setExpandedTaskId(null);
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  };
+
   const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
 
   const getGroupKeys = (task: Task): string[] => {
@@ -148,7 +163,20 @@ export function LaterScreen() {
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [deferredTasks]);
 
-  const laterData = useMemo(() => flattenLaterSections(sections), [sections]);
+  // Hide task rows under a collapsed section header, leaving the header
+  // itself in place so it stays tappable to re-expand.
+  const laterData = useMemo(() => {
+    const items = flattenLaterSections(sections);
+    if (collapsedSections.size === 0) return items;
+    let currentSection: string | null = null;
+    return items.filter(item => {
+      if (item.type === 'header') {
+        currentSection = item.label;
+        return true;
+      }
+      return !(currentSection !== null && collapsedSections.has(currentSection));
+    });
+  }, [sections, collapsedSections]);
   const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
   useEffect(() => {
     setLaterDraggableData(laterData);
@@ -195,10 +223,18 @@ export function LaterScreen() {
           keyExtractor={item => item.key}
           renderItem={({ item, drag, isActive }) => {
             if (item.type === 'header') {
+              const collapsed = collapsedSections.has(item.label);
               return (
-                <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  onPress={() => toggleSectionCollapse(item.label)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${item.label}`}
+                >
                   <Text style={styles.sectionTitle}>{item.label}</Text>
-                </Pressable>
+                  <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                </TouchableOpacity>
               );
             }
             const subs = allTasks.filter(t => t.parentId === item.task.id);
@@ -286,6 +322,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
