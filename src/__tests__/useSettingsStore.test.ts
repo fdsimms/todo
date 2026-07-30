@@ -9,7 +9,7 @@ jest.mock('../db/database', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', dailyCapacityMinutes: 360, initialized: false });
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', dailyCapacityMinutes: 360, patchNotesQaStatus: {}, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -127,5 +127,54 @@ describe('setThemeMode', () => {
     useSettingsStore.getState().setThemeMode('light');
     useSettingsStore.getState().setThemeMode('dark');
     expect(useSettingsStore.getState().themeMode).toBe('dark');
+  });
+});
+
+// ─── setPatchNoteQaStatus ───────────────────────────────────────────────────
+
+describe('setPatchNoteQaStatus', () => {
+  it('has an empty default', () => {
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({});
+  });
+
+  it('marks a note as passed', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'pass');
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'some-note': 'pass' });
+  });
+
+  it('marks a note as failed', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'fail');
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'some-note': 'fail' });
+  });
+
+  it('overwrites an existing status for the same note', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'pass');
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'fail');
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'some-note': 'fail' });
+  });
+
+  it('clears the status when passed null', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'pass');
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', null);
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({});
+  });
+
+  it('persists the map to the database', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('some-note', 'pass');
+    expect(dbSetSetting).toHaveBeenCalledWith('patchNotesQaStatus', JSON.stringify({ 'some-note': 'pass' }));
+  });
+
+  it('keeps statuses for other notes independent', () => {
+    useSettingsStore.getState().setPatchNoteQaStatus('note-a', 'pass');
+    useSettingsStore.getState().setPatchNoteQaStatus('note-b', 'fail');
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'note-a': 'pass', 'note-b': 'fail' });
+  });
+
+  it('restores stored statuses on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'patchNotesQaStatus' ? JSON.stringify({ 'note-a': 'pass' }) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'note-a': 'pass' });
   });
 });
