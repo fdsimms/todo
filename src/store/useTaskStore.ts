@@ -43,10 +43,32 @@ interface UndoableAction {
 const COMPLETION_HOLD_MS = 2000;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
+// Caches the masked (completed: false) copy of each held task, keyed by the
+// underlying task's own reference. Selectors like visibleTasks() call this on
+// every render (Zustand re-invokes selectors to build each render's snapshot,
+// not just on store changes), so returning a fresh `{ ...t, completed: false }`
+// object every call — as this used to — made every held task's row a "new"
+// array element to useShallow on every single render. That kept every screen
+// depending on it re-rendering forever for the whole hold window (an infinite
+// loop that starved the JS thread and crashed the app). Reusing the same
+// masked object across calls, as long as the source task hasn't actually
+// changed, lets useShallow see it as unchanged and break the loop.
+const heldMaskCache = new Map<string, { source: Task; masked: Task }>();
+
 function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
   if (heldIds.length === 0) return tasks;
   const held = new Set(heldIds);
-  return tasks.map(t => (held.has(t.id) ? { ...t, completed: false } : t));
+  for (const id of heldMaskCache.keys()) {
+    if (!held.has(id)) heldMaskCache.delete(id);
+  }
+  return tasks.map(t => {
+    if (!held.has(t.id)) return t;
+    const cached = heldMaskCache.get(t.id);
+    if (cached && cached.source === t) return cached.masked;
+    const masked = { ...t, completed: false };
+    heldMaskCache.set(t.id, { source: t, masked });
+    return masked;
+  });
 }
 
 interface TaskStore {

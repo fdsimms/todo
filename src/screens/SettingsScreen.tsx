@@ -106,7 +106,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
   const confirmResetStreaks = () => {
     Alert.alert(
       'Reset All Streaks',
-      'This sets every task\'s streak back to 0. You can undo this right after from the toast that appears.',
+      'This sets every task\'s streak back to 0. You can undo this right after by shaking your phone.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetAllStreaks() },
@@ -334,7 +334,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
               </TouchableOpacity>
             </View>
             <Text style={styles.sectionFooter}>
-              Asks for confirmation first. Undoable from the toast that appears right after.
+              Asks for confirmation first. Undoable right after by shaking your phone.
             </Text>
           </View>
 
