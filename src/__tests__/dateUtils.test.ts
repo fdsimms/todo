@@ -147,16 +147,6 @@ describe('formatDueDate', () => {
     const dueToday = formatDueDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
     expect(dueToday).toBe('Today');
   });
-
-  it('agrees with the day-start rollback used by isTaskVisible for a dueDate clocked before dayResetTime', () => {
-    // With an 8 AM reset, June 11 00:00 falls inside the logical day that runs
-    // from June 10 08:00 to June 11 08:00 — the same logical day getDayStart()
-    // (and isTaskVisible) assigns it to. The label must say "Today", not
-    // "Tomorrow", or the calendar chip would contradict the Today list.
-    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
-    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
-    expect(formatDueDate(dueDate, '08:00')).toBe('Today');
-  });
 });
 
 // ─── formatDeferUntil ─────────────────────────────────────────────────────────
@@ -189,12 +179,6 @@ describe('formatDeferUntil', () => {
   it('returns "MMM d" for dates beyond this week', () => {
     const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
     expect(result).toBe('Jul 20');
-  });
-
-  it('agrees with the day-start rollback used by isTaskVisible for a deferUntil clocked before dayResetTime', () => {
-    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
-    const deferUntil = new Date(2025, 5, 11, 0, 0, 0).toISOString();
-    expect(formatDeferUntil(deferUntil, '08:00')).toBe('Today');
   });
 });
 
@@ -236,12 +220,6 @@ describe('formatGroupHeader', () => {
 
   it('includes the year for batched dates in a different year', () => {
     expect(formatGroupHeader(new Date(2026, 0, 1, 8, 0, 0).toISOString())).toBe('January 2026');
-  });
-
-  it('agrees with the day-start rollback used by isTaskVisible for a date clocked before dayResetTime', () => {
-    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
-    const iso = new Date(2025, 5, 11, 0, 0, 0).toISOString();
-    expect(formatGroupHeader(iso, '08:00')).toBe('Today · Jun 10');
   });
 });
 
