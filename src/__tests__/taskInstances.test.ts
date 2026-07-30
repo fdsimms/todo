@@ -30,6 +30,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   reminderTime: null,
   streakCount: 0,
   streakDate: null,
+  previousStreakCount: 0,
+  previousStreakDate: null,
   parentId: null,
   cycleEnabled: false,
   cycleIndex: 0,

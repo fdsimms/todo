@@ -105,6 +105,8 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN seen_at TEXT',
     'ALTER TABLE tasks ADD COLUMN deadline TEXT',
     'ALTER TABLE categories ADD COLUMN sort_order REAL NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN previous_streak_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN previous_streak_date TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -211,6 +213,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
+    previousStreakCount: (row.previous_streak_count as number) ?? 0,
+    previousStreakDate: (row.previous_streak_date as string) ?? null,
   };
 }
 
@@ -228,8 +232,9 @@ export function dbInsertTask(task: Task): void {
       due_date, deadline, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
-      cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
+      previous_streak_count, previous_streak_date
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deferUntil,
@@ -243,6 +248,7 @@ export function dbInsertTask(task: Task): void {
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
       task.previousOccurrenceId ?? null,
+      task.previousStreakCount, task.previousStreakDate,
     ]
   );
 }
@@ -256,7 +262,7 @@ export function dbUpdateTask(task: Task): void {
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
-      previous_occurrence_id=?
+      previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -271,6 +277,7 @@ export function dbUpdateTask(task: Task): void {
       task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
       task.previousOccurrenceId ?? null,
+      task.previousStreakCount, task.previousStreakDate,
       task.id,
     ]
   );

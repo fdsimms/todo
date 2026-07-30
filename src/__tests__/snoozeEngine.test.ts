@@ -35,6 +35,8 @@ const BASE: Task = {
   estimatedMinutes: null,
   streakCount: 0,
   streakDate: null,
+  previousStreakCount: 0,
+  previousStreakDate: null,
   reminderTime: null,
   parentId: null,
   category: null,
