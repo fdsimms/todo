@@ -50,11 +50,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 
 type ViewMode = 'today' | 'later';
 
-// Category section header that fades + slides in on mount, so a section created
-// by a drop eases in rather than popping. When `onToggle` is given, the header
-// is a tappable collapse/expand control for its category (chevron reflects
-// `collapsed`); otherwise it renders as static text (used for the non-category
-// "Later Today" header).
+// Category section header. When `onToggle` is given, the header is a
+// tappable collapse/expand control for its category (chevron reflects
+// `collapsed`); otherwise it renders as static text (used for the
+// non-category "Later Today" header).
 function SectionHeader({
   label,
   styles,
@@ -68,31 +67,24 @@ function SectionHeader({
   collapsed?: boolean;
   onToggle?: () => void;
 }) {
-  const anim = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    Animated.timing(anim, { toValue: 1, duration: 240, useNativeDriver: true }).start();
-  }, [anim]);
-  const animStyle = { opacity: anim, transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) }] };
   if (!onToggle) {
     return (
-      <Animated.View style={[styles.sectionHeader, animStyle]}>
+      <View style={styles.sectionHeader}>
         <Text style={styles.sectionHeaderText}>{label}</Text>
-      </Animated.View>
+      </View>
     );
   }
   return (
-    <Animated.View style={animStyle}>
-      <TouchableOpacity
-        style={styles.categorySectionHeader}
-        onPress={onToggle}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-      >
-        <Text style={styles.sectionHeaderText}>{label}</Text>
-        <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
-      </TouchableOpacity>
-    </Animated.View>
+    <TouchableOpacity
+      style={styles.categorySectionHeader}
+      onPress={onToggle}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+    >
+      <Text style={styles.sectionHeaderText}>{label}</Text>
+      <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+    </TouchableOpacity>
   );
 }
 
@@ -503,8 +495,6 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'header') {
-      // A newly-appearing category header mounts fresh (its row key is unique
-      // per label) and fades/slides in instead of popping after a drop.
       // (Tapping it while a task is expanded still collapses the spotlight,
       // via the list wrapper's onTouchEnd.)
       const isCategory = item.label !== LATER_TODAY_LABEL;
