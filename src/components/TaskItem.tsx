@@ -48,6 +48,7 @@ interface Props {
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
+  showActions?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -86,6 +87,7 @@ export function TaskItem({
   spotlightDisabled = false,
   hideTodayLabel = false,
   showCategory = false,
+  showActions = true,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -519,7 +521,7 @@ export function TaskItem({
         )}
       </TouchableOpacity>
 
-      {!selectionMode && !isEditingTitle && (
+      {!selectionMode && !isEditingTitle && showActions && (
         timerRunning ? (
           <View style={styles.timerRunningGroup}>
             <TouchableOpacity
@@ -558,7 +560,7 @@ export function TaskItem({
         )
       )}
 
-      {!selectionMode && (
+      {!selectionMode && showActions && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
