@@ -1,4 +1,4 @@
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime } from '../utils/effort';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes } from '../utils/effort';
 import type { Effort } from '../types';
 
 describe('effortToMinutes', () => {
@@ -81,6 +81,41 @@ describe('formatStopwatch', () => {
   it('floors fractional seconds and clamps negatives', () => {
     expect(formatStopwatch(5.9)).toBe('0:05');
     expect(formatStopwatch(-10)).toBe('0:00');
+  });
+});
+
+describe('sumEstimatedMinutes', () => {
+  it('sums precise estimates when present', () => {
+    const tasks = [
+      { estimatedMinutes: 30, effort: 0 as Effort },
+      { estimatedMinutes: 45, effort: 0 as Effort },
+    ];
+    expect(sumEstimatedMinutes(tasks)).toBe(75);
+  });
+
+  it('falls back to the effort bucket when a task has no precise estimate', () => {
+    const tasks = [
+      { estimatedMinutes: null, effort: 3 as Effort }, // ~30
+      { estimatedMinutes: null, effort: 4 as Effort }, // ~90
+    ];
+    expect(sumEstimatedMinutes(tasks)).toBe(120);
+  });
+
+  it('contributes 0 for tasks with no estimate and unknown effort', () => {
+    const tasks = [{ estimatedMinutes: null, effort: 0 as Effort }];
+    expect(sumEstimatedMinutes(tasks)).toBe(0);
+  });
+
+  it('returns 0 for an empty list', () => {
+    expect(sumEstimatedMinutes([])).toBe(0);
+  });
+
+  it('mixes precise and bucketed estimates', () => {
+    const tasks = [
+      { estimatedMinutes: 20, effort: 0 as Effort },
+      { estimatedMinutes: null, effort: 2 as Effort }, // ~15
+    ];
+    expect(sumEstimatedMinutes(tasks)).toBe(35);
   });
 });
 

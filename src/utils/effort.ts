@@ -54,6 +54,15 @@ export function minutesToEffort(min: number | null): Effort {
   return 6;                  // XL ~480+
 }
 
+/**
+ * Total estimated minutes across a set of tasks, falling back to each task's
+ * coarse effort bucket when it has no precise estimate. Powers the "how full
+ * is today" workload readout.
+ */
+export function sumEstimatedMinutes(tasks: readonly { estimatedMinutes: number | null; effort: Effort }[]): number {
+  return tasks.reduce((sum, t) => sum + (t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 0), 0);
+}
+
 /** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */
 export function formatDuration(min: number): string {
   if (min < 60) return `${min}m`;

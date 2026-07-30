@@ -9,7 +9,7 @@ jest.mock('../db/database', () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', initialized: false });
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', dailyCapacityMinutes: 360, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -74,6 +74,39 @@ describe('setDayResetTime', () => {
   it('persists the value to the database', () => {
     useSettingsStore.getState().setDayResetTime('03:30');
     expect(dbSetSetting).toHaveBeenCalledWith('dayResetTime', '03:30');
+  });
+});
+
+// ─── setDailyCapacityMinutes ──────────────────────────────────────────────────
+
+describe('setDailyCapacityMinutes', () => {
+  it('has a default of 360 minutes (6 hours)', () => {
+    expect(useSettingsStore.getState().dailyCapacityMinutes).toBe(360);
+  });
+
+  it('updates dailyCapacityMinutes in state', () => {
+    useSettingsStore.getState().setDailyCapacityMinutes(240);
+    expect(useSettingsStore.getState().dailyCapacityMinutes).toBe(240);
+  });
+
+  it('persists the value to the database', () => {
+    useSettingsStore.getState().setDailyCapacityMinutes(300);
+    expect(dbSetSetting).toHaveBeenCalledWith('dailyCapacityMinutes', '300');
+  });
+
+  it('clamps below the 30-minute minimum', () => {
+    useSettingsStore.getState().setDailyCapacityMinutes(0);
+    expect(useSettingsStore.getState().dailyCapacityMinutes).toBe(30);
+  });
+
+  it('clamps above the 24-hour maximum', () => {
+    useSettingsStore.getState().setDailyCapacityMinutes(10000);
+    expect(useSettingsStore.getState().dailyCapacityMinutes).toBe(24 * 60);
+  });
+
+  it('rounds fractional minutes', () => {
+    useSettingsStore.getState().setDailyCapacityMinutes(90.6);
+    expect(useSettingsStore.getState().dailyCapacityMinutes).toBe(91);
   });
 });
 

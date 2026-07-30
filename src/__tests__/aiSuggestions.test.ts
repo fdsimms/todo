@@ -10,6 +10,7 @@ import {
   suggestTaskDate,
   suggestTaskEffort,
   suggestFocusTasks,
+  suggestDeloadTasks,
   suggestTemplateItems,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
@@ -617,6 +618,83 @@ describe('co-completion hints in suggestFocusTasks prompt', () => {
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
     expect(content).not.toContain('historically completed together');
+  });
+});
+
+// ============================================================================
+// suggestDeloadTasks
+// ============================================================================
+
+describe('suggestDeloadTasks', () => {
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({ anthropicApiKey: '' });
+
+    await expect(suggestDeloadTasks([makeTask()], 60)).rejects.toThrow('No API key');
+  });
+
+  it('returns [] when there are no non-focused candidate tasks', async () => {
+    const result = await suggestDeloadTasks([makeTask({ focused: true })], 60);
+    expect(result).toEqual([]);
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 500);
+    await expect(suggestDeloadTasks([makeTask()], 60)).rejects.toThrow('API error 500');
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text' }] });
+    await expect(suggestDeloadTasks([makeTask()], 60)).rejects.toThrow('No suggestion returned');
+  });
+
+  it('returns the suggested task IDs', async () => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' })];
+    mockFetchOnce(toolUseResponse('deload', { task_ids: ['a', 'b'] }));
+    const result = await suggestDeloadTasks(tasks, 60);
+    expect(result).toEqual(['a', 'b']);
+  });
+
+  it('filters out IDs that are not valid candidate tasks', async () => {
+    const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' })];
+    mockFetchOnce(toolUseResponse('deload', { task_ids: ['a', 'hallucinated'] }));
+    const result = await suggestDeloadTasks(tasks, 60);
+    expect(result).toEqual(['a']);
+  });
+
+  it('excludes already-focused tasks from the candidate list sent to the API', async () => {
+    const tasks = [
+      makeTask({ id: 'focused', focused: true }),
+      makeTask({ id: 'flexible' }),
+    ];
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('deload', { task_ids: ['flexible'] })),
+    } as Response);
+
+    await suggestDeloadTasks(tasks, 60);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).not.toContain('id:focused');
+    expect(content).toContain('id:flexible');
+  });
+
+  it('includes the overload amount in the prompt', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('deload', { task_ids: [] })),
+    } as Response);
+
+    await suggestDeloadTasks([makeTask({ id: 'a' })], 90);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('1.5h');
   });
 });
 

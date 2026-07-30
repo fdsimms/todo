@@ -21,6 +21,11 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
+import { formatDuration } from '../utils/effort';
+
+const CAPACITY_STEP_MINUTES = 30;
+const CAPACITY_MIN_MINUTES = 30;
+const CAPACITY_MAX_MINUTES = 24 * 60;
 
 interface Props {
   visible: boolean;
@@ -56,6 +61,7 @@ export function SettingsScreen({ visible, onClose }: Props) {
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
+    dailyCapacityMinutes, setDailyCapacityMinutes,
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
@@ -367,6 +373,52 @@ export function SettingsScreen({ visible, onClose }: Props) {
             </Text>
           </View>
 
+          {/* Workload */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Workload</Text>
+            <View style={styles.card}>
+              <View style={styles.row}>
+                <Ionicons name="speedometer-outline" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Daily capacity</Text>
+                  <Text style={styles.rowHint}>How much estimated work fits in a day before Today counts as full</Text>
+                </View>
+                <View style={styles.stepper}>
+                  <TouchableOpacity
+                    onPress={() => setDailyCapacityMinutes(dailyCapacityMinutes - CAPACITY_STEP_MINUTES)}
+                    disabled={dailyCapacityMinutes <= CAPACITY_MIN_MINUTES}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease daily capacity"
+                  >
+                    <Ionicons
+                      name="remove-circle-outline"
+                      size={22}
+                      color={dailyCapacityMinutes <= CAPACITY_MIN_MINUTES ? colors.textTertiary : colors.accent}
+                    />
+                  </TouchableOpacity>
+                  <Text style={styles.stepperValue}>{formatDuration(dailyCapacityMinutes)}</Text>
+                  <TouchableOpacity
+                    onPress={() => setDailyCapacityMinutes(dailyCapacityMinutes + CAPACITY_STEP_MINUTES)}
+                    disabled={dailyCapacityMinutes >= CAPACITY_MAX_MINUTES}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase daily capacity"
+                  >
+                    <Ionicons
+                      name="add-circle-outline"
+                      size={22}
+                      color={dailyCapacityMinutes >= CAPACITY_MAX_MINUTES ? colors.textTertiary : colors.accent}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Today's header shows your planned time against this budget. Once you go over, a "deload" button appears to move flexible tasks to tomorrow with AI.
+            </Text>
+          </View>
+
           {/* AI Suggestions */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>AI Suggestions</Text>
@@ -466,6 +518,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowLabel: { color: colors.text, fontSize: font.md, flex: 1 },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
   rowValue: { color: colors.accent, fontSize: font.md, fontWeight: '500' },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  stepperValue: { color: colors.text, fontSize: font.md, fontWeight: '600', minWidth: 44, textAlign: 'center' },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   picker: { height: 180 },
   pickerButtons: {
