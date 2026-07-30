@@ -708,6 +708,7 @@ export function TodayScreen() {
           onPress: () => setShowUpcoming(v => !v),
           active: showUpcoming,
           badge: showUpcoming ? undefined : upcomingTodayTasks.length,
+          badgeDot: true,
           accessibilityLabel: showUpcoming ? 'Hide later-today tasks' : 'Show later-today tasks',
         }]
       : []),
