@@ -103,7 +103,10 @@ export function InboxScreen() {
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
-        onClose={() => setEditorVisible(false)}
+        onClose={() => {
+          setEditorVisible(false);
+          setExpandedTaskId(null);
+        }}
       />
     </View>
   );

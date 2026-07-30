@@ -1076,7 +1076,10 @@ export function TodayScreen() {
         visible={editorVisible}
         task={editingTask}
         initialDraft={editorInitialDraft}
-        onClose={() => setEditorVisible(false)}
+        onClose={() => {
+          setEditorVisible(false);
+          setExpandedTaskId(null);
+        }}
       />
 
       <SortFilterSheet
