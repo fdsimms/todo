@@ -48,6 +48,7 @@ interface Props {
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
+  showActions?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -86,6 +87,7 @@ export function TaskItem({
   spotlightDisabled = false,
   hideTodayLabel = false,
   showCategory = false,
+  showActions = true,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -519,7 +521,7 @@ export function TaskItem({
         )}
       </TouchableOpacity>
 
-      {!selectionMode && (
+      {!selectionMode && showActions && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
@@ -648,7 +650,8 @@ export function TaskItem({
                 { justifyContent: 'space-between' },
               ]}>
                 <View style={styles.editSectionLeft}>
-                  {timerRunning ? (
+                  {showActions && (
+                    timerRunning ? (
                     <View style={styles.timerRunningGroup}>
                       <TouchableOpacity
                         onPress={handleTimerToggle}
@@ -673,7 +676,7 @@ export function TaskItem({
                         <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>
-                  ) : (
+                    ) : (
                     <TouchableOpacity
                       style={styles.editBtn}
                       onPress={handleTimerToggle}
@@ -684,6 +687,7 @@ export function TaskItem({
                       <Ionicons name="stopwatch-outline" size={13} color={colors.textSecondary} />
                       <Text style={[styles.editBtnText, styles.skipBtnText]}>Timer</Text>
                     </TouchableOpacity>
+                    )
                   )}
                   {task.recurrenceType !== 'none' && (
                     <TouchableOpacity
