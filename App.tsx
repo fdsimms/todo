@@ -3,7 +3,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
-import { UndoToast } from './src/components/UndoToast';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
@@ -19,7 +18,6 @@ function AppContent() {
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppNavigator />
-      <UndoToast />
     </View>
   );
 }
