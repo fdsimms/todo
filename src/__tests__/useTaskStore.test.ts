@@ -120,9 +120,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   reminderTime: null,
-  cycleEnabled: false,
-  cycleIndex: 0,
-  cycleItems: [],
+  chainEnabled: false,
+  chainIndex: 0,
+  chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
@@ -529,6 +529,68 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('last-one');
     expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('advances a chain immediately with no due date when the task does not recur', () => {
+    const task = makeTask({
+      id: 'chained',
+      recurrenceType: 'none',
+      dueDate: null,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained');
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks).toHaveLength(2);
+    const next = tasks.find(t => t.id !== 'chained');
+    expect(next?.chainIndex).toBe(1);
+    expect(next?.dueDate).toBeNull();
+    expect(next?.completed).toBe(false);
+  });
+
+  it('ends a non-recurring chain after its last item instead of wrapping around', () => {
+    const task = makeTask({
+      id: 'chained-end',
+      recurrenceType: 'none',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 1, // already on the last item
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained-end');
+
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('wraps a chain back to its first item when the task recurs and reaches the end', () => {
+    const task = makeTask({
+      id: 'chained-recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 1, // already on the last item
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained-recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'chained-recurring');
+    expect(next?.chainIndex).toBe(0); // whole chain repeats
+    expect(next?.dueDate).not.toBeNull();
   });
 
   it('does not complete a recurring task whose dueDate is a future day', () => {

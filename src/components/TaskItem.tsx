@@ -53,8 +53,8 @@ interface Props {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Steps shown on each side of the active cycle step before truncating with '…'.
-const CYCLE_PREVIEW_RADIUS = 2;
+// Steps shown on each side of the active chain step before truncating with '…'.
+const CHAIN_PREVIEW_RADIUS = 2;
 
 function describeRecurrence(task: Task): string {
   const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
@@ -245,18 +245,18 @@ export function TaskItem({
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
 
-  const activeCycleItem =
-    task.cycleEnabled && task.cycleItems.length > 0
-      ? task.cycleItems[task.cycleIndex % task.cycleItems.length]
+  const activeChainItem =
+    task.chainEnabled && task.chainItems.length > 0
+      ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
-  // A multi-step cycle drives the collapsed row's title: we show the current
+  // A multi-step chain drives the collapsed row's title: we show the current
   // step's title with a compact step-count badge beside it, instead of a
   // second subtitle line, so the row stays the same height as the others.
-  const cycleStep = activeCycleItem && task.cycleItems.length > 1 ? activeCycleItem : null;
-  const cyclePosition = cycleStep ? `${(task.cycleIndex % task.cycleItems.length) + 1}/${task.cycleItems.length}` : '';
+  const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
+  const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
 
   const hasExpandContent =
-    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
+    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null;
 
   const handleComplete = async () => {
     if (completingRef.current) return;
@@ -478,13 +478,13 @@ export function TaskItem({
               </TouchableOpacity>
             ) : (
               <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
-                {cycleStep ? cycleStep.title : task.title}
+                {chainStep ? chainStep.title : task.title}
               </Text>
             )}
-            {cycleStep && (
-              <View style={styles.cycleBadge}>
-                <Ionicons name="sync" size={9} color={colors.accent} />
-                <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
+            {chainStep && (
+              <View style={styles.chainBadge}>
+                <Ionicons name="link" size={9} color={colors.accent} />
+                <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
             {deadlineDays !== null && (
@@ -619,23 +619,23 @@ export function TaskItem({
               </View>
             )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (() => {
-              const total = task.cycleItems.length;
-              const currentIdx = task.cycleIndex % total;
-              // Long cycles overflow the row unreadably, so only show a
+            {activeChainItem && task.chainItems.length > 0 && (() => {
+              const total = task.chainItems.length;
+              const currentIdx = task.chainIndex % total;
+              // Long chains overflow the row unreadably, so only show a
               // window of steps around the current one, with ellipses
               // standing in for whatever's trimmed off each end.
-              const start = Math.max(0, currentIdx - CYCLE_PREVIEW_RADIUS);
-              const end = Math.min(total - 1, currentIdx + CYCLE_PREVIEW_RADIUS);
-              const visibleItems = task.cycleItems.slice(start, end + 1);
+              const start = Math.max(0, currentIdx - CHAIN_PREVIEW_RADIUS);
+              const end = Math.min(total - 1, currentIdx + CHAIN_PREVIEW_RADIUS);
+              const visibleItems = task.chainItems.slice(start, end + 1);
               return (
                 <View style={[
                   styles.recurrenceRow,
                   (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
                 ]}>
-                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                  <Ionicons name="link" size={12} color={colors.textTertiary} />
                   <Text style={styles.expandMeta} numberOfLines={1}>
-                    Cycle {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
+                    Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
                     {visibleItems.map((item, i) => {
                       const actualIdx = start + i;
                       return (
@@ -1121,7 +1121,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
-  cycleBadge: {
+  chainBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -1130,7 +1130,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
-  cycleBadgeText: {
+  chainBadgeText: {
     color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
