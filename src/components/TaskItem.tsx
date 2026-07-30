@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Alert,
   Keyboard,
+  LayoutChangeEvent,
 } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -123,6 +124,17 @@ export function TaskItem({
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  // Drives the whole row's height to 0 once the completion fade finishes, so
+  // the space it took up collapses right away instead of sitting there
+  // invisible for the rest of completeTask's completionHoldIds window (see
+  // useTaskStore) — that hold keeps the row mounted for a couple seconds so a
+  // burst of completions doesn't reflow the list after every tap, but with no
+  // visual collapse of its own it just reads as the app freezing. Runs on the
+  // UI thread for the same reason the expand panel below does: a JS-driven
+  // height change stutters once other rows have to re-layout under it.
+  const collapseProgress = useSharedValue(1);
+  const collapseStartedRef = useRef(false);
+  const [rowHeight, setRowHeight] = useState<number | null>(null);
   // Opacity of a scrim drawn on top of the row (not the row's own opacity) —
   // fading the whole card instead washes out low-contrast text (e.g. category
   // labels) far less than high-contrast text, since both just blend toward
@@ -158,6 +170,21 @@ export function TaskItem({
     height: interpolate(expansionProgress.value, [0, 1], [0, panelHeight], Extrapolation.CLAMP),
     opacity: interpolate(expansionProgress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
+
+  // Left at `{}` (auto height) until a completion actually starts collapsing
+  // the row — locking in `rowHeight` any earlier would clip normal content
+  // changes (expanding notes, adding subtasks, etc).
+  const collapseStyle = useAnimatedStyle(() => {
+    if (rowHeight === null || collapseProgress.value >= 1) return {};
+    return {
+      height: interpolate(collapseProgress.value, [0, 1], [0, rowHeight], Extrapolation.CLAMP),
+      overflow: 'hidden' as const,
+    };
+  });
+
+  const handleItemLayout = (e: LayoutChangeEvent) => {
+    if (!collapseStartedRef.current) setRowHeight(e.nativeEvent.layout.height);
+  };
 
   useEffect(() => {
     Animated.timing(spotlightScrimOpacity, {
@@ -290,6 +317,11 @@ export function TaskItem({
       setCompleting(false);
       completingRef.current = false;
       completeTask(task.id);
+      collapseStartedRef.current = true;
+      collapseProgress.value = withTiming(0, {
+        duration: animation.duration.normal,
+        easing: Easing.inOut(Easing.cubic),
+      });
     });
   };
 
@@ -302,6 +334,8 @@ export function TaskItem({
     circleScale.setValue(1);
     rowOpacity.setValue(1);
     setCompleting(false);
+    collapseStartedRef.current = false;
+    collapseProgress.value = 1;
   };
 
   const confirmDelete = () => {
@@ -775,63 +809,65 @@ export function TaskItem({
 
   return (
     <>
-      <Animated.View
-        style={[
-          styles.itemWrapper,
-          shadows.card,
-          { opacity: isActive ? 1 : rowOpacity },
-          isActive && styles.itemWrapperActive,
-          expanded && styles.itemWrapperElevated,
-        ]}
-        // Screens collapse the spotlight on any touch in the list area;
-        // touches inside the expanded card must not bubble up to that.
-        onTouchEnd={expanded ? e => e.stopPropagation() : undefined}
-      >
-        {/* Clips the row + panel together as one card. Because this view is
-            never shorter than the row, its corner radius never clamps, so
-            the card silhouette stays rounded at every animation frame.
-            (Separate from itemWrapper: overflow hidden there would clip the
-            card shadow on iOS.) */}
-        <View style={styles.cardClip}>
-        {spotlightDisabled && !selectionMode ? (
-          // While another task is spotlighted this row must not react to
-          // touches itself — any tap on it just dismisses the spotlight.
-          <Pressable style={styles.swipeContainer} onPress={onPress}>
-            <View pointerEvents="none">{rowBody}</View>
-          </Pressable>
-        ) : selectionMode || spotlightDisabled ? (
-          <View style={styles.swipeContainer}>
-            {rowBody}
-          </View>
-        ) : (
-          <Swipeable
-            ref={swipeableRef}
-            renderRightActions={renderRightActions}
-            renderLeftActions={renderLeftActions}
-            overshootRight={false}
-            overshootLeft={false}
-            onSwipeableWillOpen={() => {
-              haptics.impactMedium();
-            }}
-            onSwipeableOpen={(direction) => {
-              if (direction === 'right') {
-                confirmDelete();
-              } else {
-                swipeableRef.current?.close();
-                setShowWhenPicker(true);
-              }
-            }}
-          >
-            {rowBody}
-          </Swipeable>
-        )}
-        {expandedPanel}
+      <Reanimated.View style={collapseStyle} onLayout={handleItemLayout}>
         <Animated.View
-          style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
-          pointerEvents="none"
-        />
-        </View>
-      </Animated.View>
+          style={[
+            styles.itemWrapper,
+            shadows.card,
+            { opacity: isActive ? 1 : rowOpacity },
+            isActive && styles.itemWrapperActive,
+            expanded && styles.itemWrapperElevated,
+          ]}
+          // Screens collapse the spotlight on any touch in the list area;
+          // touches inside the expanded card must not bubble up to that.
+          onTouchEnd={expanded ? e => e.stopPropagation() : undefined}
+        >
+          {/* Clips the row + panel together as one card. Because this view is
+              never shorter than the row, its corner radius never clamps, so
+              the card silhouette stays rounded at every animation frame.
+              (Separate from itemWrapper: overflow hidden there would clip the
+              card shadow on iOS.) */}
+          <View style={styles.cardClip}>
+          {spotlightDisabled && !selectionMode ? (
+            // While another task is spotlighted this row must not react to
+            // touches itself — any tap on it just dismisses the spotlight.
+            <Pressable style={styles.swipeContainer} onPress={onPress}>
+              <View pointerEvents="none">{rowBody}</View>
+            </Pressable>
+          ) : selectionMode || spotlightDisabled ? (
+            <View style={styles.swipeContainer}>
+              {rowBody}
+            </View>
+          ) : (
+            <Swipeable
+              ref={swipeableRef}
+              renderRightActions={renderRightActions}
+              renderLeftActions={renderLeftActions}
+              overshootRight={false}
+              overshootLeft={false}
+              onSwipeableWillOpen={() => {
+                haptics.impactMedium();
+              }}
+              onSwipeableOpen={(direction) => {
+                if (direction === 'right') {
+                  confirmDelete();
+                } else {
+                  swipeableRef.current?.close();
+                  setShowWhenPicker(true);
+                }
+              }}
+            >
+              {rowBody}
+            </Swipeable>
+          )}
+          {expandedPanel}
+          <Animated.View
+            style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
+            pointerEvents="none"
+          />
+          </View>
+        </Animated.View>
+      </Reanimated.View>
 
       {!selectionMode && (
         <WhenPicker
