@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -22,5 +24,6 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
+      - run: node scripts/generatePatchNotes.js
       - run: eas build --platform ios --profile production --non-interactive
       - run: eas submit --platform ios --profile production --latest --non-interactive
