@@ -13,6 +13,7 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetFocus,
   dbBulkAddTags,
 } from '../db/database';
 import {
@@ -41,6 +42,7 @@ jest.mock('../db/database', () => ({
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
+  dbBulkSetFocus: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
@@ -907,6 +909,46 @@ describe('clearAllFocus', () => {
   it('calls dbClearAllFocus', () => {
     useTaskStore.getState().clearAllFocus();
     expect(dbClearAllFocus).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── focusCategory ───────────────────────────────────────────────────────────
+
+describe('focusCategory', () => {
+  it('focuses every incomplete task in the category when not all are focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Work', focused: false }),
+        makeTask({ id: 't2', category: 'Work', focused: true }),
+        makeTask({ id: 't3', category: 'Home', focused: false }),
+      ],
+    });
+    useTaskStore.getState().focusCategory('Work');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 't1')?.focused).toBe(true);
+    expect(tasks.find(t => t.id === 't2')?.focused).toBe(true);
+    expect(tasks.find(t => t.id === 't3')?.focused).toBe(false);
+    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], true);
+  });
+
+  it('unfocuses every task in the category when all are already focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Work', focused: true }),
+        makeTask({ id: 't2', category: 'Work', focused: true }),
+      ],
+    });
+    useTaskStore.getState().focusCategory('Work');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.every(t => !t.focused)).toBe(true);
+    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], false);
+  });
+
+  it('does nothing when the category has no tasks', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Home', focused: false })] });
+    useTaskStore.getState().focusCategory('Work');
+    expect(dbBulkSetFocus).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].focused).toBe(false);
   });
 });
 
