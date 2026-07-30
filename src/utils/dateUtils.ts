@@ -4,9 +4,8 @@ import {
   addMonths,
   addYears,
   format,
-  isToday,
-  isTomorrow,
-  isThisWeek,
+  isSameDay,
+  isSameWeek,
   startOfDay,
   differenceInCalendarDays,
 } from 'date-fns';
@@ -77,21 +76,23 @@ export function isBeforeDayReset(dayResetTime?: string): boolean {
   return getLogicalToday(dayResetTime).getTime() !== startOfDay(new Date()).getTime();
 }
 
-export function formatDueDate(iso: string): string {
+export function formatDueDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return 'Today';
-  if (isTomorrow(d)) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, new Date());
+  const today = getDayStart(new Date(), dayResetTime);
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
-  if (isThisWeek(d)) return format(d, 'EEEE');
+  if (isSameWeek(d, today)) return format(d, 'EEEE');
   return format(d, 'MMM d');
 }
 
-export function formatDeferUntil(iso: string): string {
+export function formatDeferUntil(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return 'Today';
-  if (isTomorrow(d)) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, new Date());
+  const today = getDayStart(new Date(), dayResetTime);
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, today);
   if (diff < 7) return format(d, 'EEEE');
   return format(d, 'MMM d');
 }
@@ -104,15 +105,16 @@ export function formatDeferUntil(iso: string): string {
  * further out are batched together by month (with a year suffix when it
  * differs from the current year) so the list doesn't grow one header per day.
  */
-export function formatGroupHeader(iso: string): string {
+export function formatGroupHeader(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
-  const diff = differenceInCalendarDays(d, new Date());
+  const today = getDayStart(new Date(), dayResetTime);
+  const diff = differenceInCalendarDays(d, today);
   if (diff < 7) {
-    if (isToday(d)) return `Today · ${format(d, 'MMM d')}`;
-    if (isTomorrow(d)) return `Tomorrow · ${format(d, 'MMM d')}`;
+    if (isSameDay(d, today)) return `Today · ${format(d, 'MMM d')}`;
+    if (isSameDay(d, addDays(today, 1))) return `Tomorrow · ${format(d, 'MMM d')}`;
     return format(d, 'EEEE · MMM d');
   }
-  return d.getFullYear() === new Date().getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
+  return d.getFullYear() === today.getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
 }
 
 export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
