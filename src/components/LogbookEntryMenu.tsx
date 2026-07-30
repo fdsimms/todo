@@ -7,7 +7,7 @@ import {
   Animated,
   StyleSheet,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';

@@ -8,7 +8,7 @@ import {
   StyleSheet,
   PanResponder,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import type { SortOption, Priority, Effort } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '../types';
 import { useColors } from '../theme/ThemeContext';

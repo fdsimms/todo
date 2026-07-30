@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';

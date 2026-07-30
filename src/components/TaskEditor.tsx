@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { SortableList } from './SortableList';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
