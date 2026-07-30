@@ -77,24 +77,24 @@ export function isBeforeDayReset(dayResetTime?: string): boolean {
 }
 
 export function formatDueDate(iso: string, dayResetTime?: string): string {
-  const d = new Date(iso);
+  const taskDay = getDayStart(new Date(iso), dayResetTime);
   const today = getDayStart(new Date(), dayResetTime);
-  if (isSameDay(d, today)) return 'Today';
-  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, today);
+  if (isSameDay(taskDay, today)) return 'Today';
+  if (isSameDay(taskDay, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(taskDay, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
-  if (isSameWeek(d, today)) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  if (isSameWeek(taskDay, today)) return format(taskDay, 'EEEE');
+  return format(taskDay, 'MMM d');
 }
 
 export function formatDeferUntil(iso: string, dayResetTime?: string): string {
-  const d = new Date(iso);
+  const taskDay = getDayStart(new Date(iso), dayResetTime);
   const today = getDayStart(new Date(), dayResetTime);
-  if (isSameDay(d, today)) return 'Today';
-  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, today);
-  if (diff < 7) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  if (isSameDay(taskDay, today)) return 'Today';
+  if (isSameDay(taskDay, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(taskDay, today);
+  if (diff < 7) return format(taskDay, 'EEEE');
+  return format(taskDay, 'MMM d');
 }
 
 /**
@@ -106,15 +106,15 @@ export function formatDeferUntil(iso: string, dayResetTime?: string): string {
  * differs from the current year) so the list doesn't grow one header per day.
  */
 export function formatGroupHeader(iso: string, dayResetTime?: string): string {
-  const d = new Date(iso);
+  const taskDay = getDayStart(new Date(iso), dayResetTime);
   const today = getDayStart(new Date(), dayResetTime);
-  const diff = differenceInCalendarDays(d, today);
+  const diff = differenceInCalendarDays(taskDay, today);
   if (diff < 7) {
-    if (isSameDay(d, today)) return `Today · ${format(d, 'MMM d')}`;
-    if (isSameDay(d, addDays(today, 1))) return `Tomorrow · ${format(d, 'MMM d')}`;
-    return format(d, 'EEEE · MMM d');
+    if (isSameDay(taskDay, today)) return `Today · ${format(taskDay, 'MMM d')}`;
+    if (isSameDay(taskDay, addDays(today, 1))) return `Tomorrow · ${format(taskDay, 'MMM d')}`;
+    return format(taskDay, 'EEEE · MMM d');
   }
-  return d.getFullYear() === today.getFullYear() ? format(d, 'MMMM') : format(d, 'MMMM yyyy');
+  return taskDay.getFullYear() === today.getFullYear() ? format(taskDay, 'MMMM') : format(taskDay, 'MMMM yyyy');
 }
 
 export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
