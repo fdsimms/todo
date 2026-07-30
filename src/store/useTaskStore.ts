@@ -13,6 +13,7 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetFocus,
   dbBulkAddTags,
   dbGetTagRegistry,
   dbAddToTagRegistry,
@@ -94,6 +95,7 @@ interface TaskStore {
   skipNextRecurrence: (id: string) => void;
   toggleFocus: (id: string) => void;
   clearAllFocus: () => void;
+  focusCategory: (category: string) => void;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
@@ -198,9 +200,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       parentId: draft.parentId ?? null,
       reminderTime: draft.reminderTime ?? null,
-      cycleEnabled: draft.cycleEnabled ?? false,
-      cycleIndex: draft.cycleIndex ?? 0,
-      cycleItems: draft.cycleItems ?? [],
+      chainEnabled: draft.chainEnabled ?? false,
+      chainIndex: draft.chainIndex ?? 0,
+      chainItems: draft.chainItems ?? [],
       vacationPause: draft.vacationPause ?? false,
       timerStartedAt: draft.timerStartedAt ?? null,
       actualMinutes: draft.actualMinutes ?? null,
@@ -364,20 +366,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     cancelTaskReminder(id);
 
     let nextTask: Task | null = null;
-    if (task.recurrenceType !== 'none') {
-      const nextDue = getNextDueDate(task, dayResetTime);
-      if (nextDue !== null) {
-        let nextReminderTime: string | null = null;
-        if (task.reminderTime) {
+    const recurs = task.recurrenceType !== 'none';
+    const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
+    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+    // A chain is a singly linked list of steps: completing one immediately
+    // creates the next, with no schedule needed, and it simply ends after
+    // the last step. Repeat changes only what happens at that last step —
+    // instead of ending, the whole chain loops back to the first item on
+    // the recurrence's schedule. A chain with no Repeat set never spawns
+    // past its last item; a plain recurring task with no chain just keeps
+    // recurring on schedule as always.
+    const spawnsNext = recurs ? true : (chainAdvances && !atChainEnd);
+    if (spawnsNext) {
+      const nextDue = recurs ? getNextDueDate(task, dayResetTime) : null;
+      if (!recurs || nextDue !== null) {
+        let nextReminderTime: string | null = task.reminderTime;
+        if (nextDue && task.reminderTime) {
           const original = new Date(task.reminderTime);
           const next = new Date(nextDue);
           next.setHours(original.getHours(), original.getMinutes(), 0, 0);
           nextReminderTime = next.toISOString();
         }
-        const nextCycleIndex =
-          task.cycleEnabled && task.cycleItems.length > 0
-            ? (task.cycleIndex + 1) % task.cycleItems.length
-            : task.cycleIndex;
+        const nextChainIndex = chainAdvances
+          ? (atChainEnd ? 0 : task.chainIndex + 1)
+          : task.chainIndex;
         nextTask = {
           ...task,
           id: generateId(),
@@ -385,14 +397,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completedAt: null,
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
-          dueDate: nextDue.toISOString(),
+          dueDate: nextDue ? nextDue.toISOString() : null,
           deadline: null, // deadline is a one-off target date, doesn't carry to the next occurrence
           deferUntil: null,
           focused: false, // focus resets on new occurrence
-          streakCount: newStreakCount,
-          streakDate: getCurrentDayStart().toISOString(),
+          streakCount: recurs ? newStreakCount : task.streakCount,
+          streakDate: recurs ? getCurrentDayStart().toISOString() : task.streakDate,
           reminderTime: nextReminderTime,
-          cycleIndex: nextCycleIndex,
+          chainIndex: nextChainIndex,
           recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...task
           // vacationPause carries over so recurring tasks stay paused across occurrences
@@ -484,15 +496,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
-    const nextCycleIndex =
-      task.cycleEnabled && task.cycleItems.length > 0
-        ? (task.cycleIndex + 1) % task.cycleItems.length
-        : task.cycleIndex;
+    const nextChainIndex =
+      task.chainEnabled && task.chainItems.length > 0
+        ? (task.chainIndex + 1) % task.chainItems.length
+        : task.chainIndex;
     get().updateTask(id, {
       dueDate: nextDue.toISOString(),
       deferUntil: null,
       reminderTime: nextReminderTime,
-      cycleIndex: nextCycleIndex,
+      chainIndex: nextChainIndex,
       recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
     });
   },
@@ -507,6 +519,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbClearAllFocus();
     set(s => ({
       tasks: s.tasks.map(t => (t.focused ? { ...t, focused: false } : t)),
+    }));
+  },
+
+  focusCategory(category) {
+    const ids = get().tasksByCategory(category).map(t => t.id);
+    if (ids.length === 0) return;
+    const allFocused = ids.every(id => get().tasks.find(t => t.id === id)?.focused);
+    const nextFocused = !allFocused;
+    dbBulkSetFocus(ids, nextFocused);
+    set(s => ({
+      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, focused: nextFocused } : t)),
     }));
   },
 
@@ -605,9 +628,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       parentId,
       reminderTime: null,
-      cycleEnabled: false,
-      cycleIndex: 0,
-      cycleItems: [],
+      chainEnabled: false,
+      chainIndex: 0,
+      chainItems: [],
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,

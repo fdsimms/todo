@@ -13,6 +13,7 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetFocus,
   dbBulkAddTags,
 } from '../db/database';
 import {
@@ -41,6 +42,7 @@ jest.mock('../db/database', () => ({
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
+  dbBulkSetFocus: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
@@ -118,9 +120,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   reminderTime: null,
-  cycleEnabled: false,
-  cycleIndex: 0,
-  cycleItems: [],
+  chainEnabled: false,
+  chainIndex: 0,
+  chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
@@ -529,6 +531,68 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(1);
   });
 
+  it('advances a chain immediately with no due date when the task does not recur', () => {
+    const task = makeTask({
+      id: 'chained',
+      recurrenceType: 'none',
+      dueDate: null,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained');
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks).toHaveLength(2);
+    const next = tasks.find(t => t.id !== 'chained');
+    expect(next?.chainIndex).toBe(1);
+    expect(next?.dueDate).toBeNull();
+    expect(next?.completed).toBe(false);
+  });
+
+  it('ends a non-recurring chain after its last item instead of wrapping around', () => {
+    const task = makeTask({
+      id: 'chained-end',
+      recurrenceType: 'none',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 1, // already on the last item
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained-end');
+
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('wraps a chain back to its first item when the task recurs and reaches the end', () => {
+    const task = makeTask({
+      id: 'chained-recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 1, // already on the last item
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('chained-recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'chained-recurring');
+    expect(next?.chainIndex).toBe(0); // whole chain repeats
+    expect(next?.dueDate).not.toBeNull();
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -907,6 +971,46 @@ describe('clearAllFocus', () => {
   it('calls dbClearAllFocus', () => {
     useTaskStore.getState().clearAllFocus();
     expect(dbClearAllFocus).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ─── focusCategory ───────────────────────────────────────────────────────────
+
+describe('focusCategory', () => {
+  it('focuses every incomplete task in the category when not all are focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Work', focused: false }),
+        makeTask({ id: 't2', category: 'Work', focused: true }),
+        makeTask({ id: 't3', category: 'Home', focused: false }),
+      ],
+    });
+    useTaskStore.getState().focusCategory('Work');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 't1')?.focused).toBe(true);
+    expect(tasks.find(t => t.id === 't2')?.focused).toBe(true);
+    expect(tasks.find(t => t.id === 't3')?.focused).toBe(false);
+    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], true);
+  });
+
+  it('unfocuses every task in the category when all are already focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Work', focused: true }),
+        makeTask({ id: 't2', category: 'Work', focused: true }),
+      ],
+    });
+    useTaskStore.getState().focusCategory('Work');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.every(t => !t.focused)).toBe(true);
+    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], false);
+  });
+
+  it('does nothing when the category has no tasks', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Home', focused: false })] });
+    useTaskStore.getState().focusCategory('Work');
+    expect(dbBulkSetFocus).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].focused).toBe(false);
   });
 });
 

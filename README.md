@@ -101,5 +101,5 @@ Completing a recurring task creates the next instance with the same `showAfterTi
 - **Effort** — XS (~15 min) → XL (day+)
 - **Recurrence** — daily, weekly, monthly, yearly with custom interval; can recur from completion date
 - **Subtasks** — tasks can have a `parentId`
-- **Cycle items** — a recurring task can rotate through a list of sub-titles on each recurrence
+- **Chain** — a task can step through a list of sub-titles one at a time, completing one immediately reveals the next; pairing it with Recurrence makes the whole chain repeat instead of ending after the last item
 - **Streaks** — consecutive completion count tracked per recurring task

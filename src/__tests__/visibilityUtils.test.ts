@@ -86,9 +86,9 @@ const baseTask: Task = {
   reminderTime: null,
   parentId: null,
   category: null,
-  cycleEnabled: false,
-  cycleIndex: 0,
-  cycleItems: [],
+  chainEnabled: false,
+  chainIndex: 0,
+  chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
   actualMinutes: null,
@@ -164,6 +164,19 @@ describe('isTaskVisible', () => {
   it('hides tasks with a future due date', () => {
     const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
     expect(isTaskVisible({ ...baseTask, dueDate })).toBe(false);
+  });
+
+  it('hides a task due tomorrow (noon-anchored) even with an afternoon dayResetTime', () => {
+    // WhenPicker anchors calendar-picked due dates at noon, regardless of
+    // dayResetTime. With a 2 PM reset and "now" past that reset today, a due
+    // date of tomorrow at noon must not collapse into today's logical day —
+    // that anchor hour is just where the picker landed, not a signal that
+    // the date belongs to the previous logical day.
+    mockSettingsState.dayResetTime = '14:00';
+    jest.setSystemTime(new Date(2025, 5, 10, 15, 0, 0)); // 3 PM, after today's reset
+    const dueDate = new Date(2025, 5, 11, 12, 0, 0).toISOString(); // tomorrow, noon
+    expect(isTaskVisible({ ...baseTask, dueDate })).toBe(false);
+    mockSettingsState.dayResetTime = '00:00';
   });
 
   it('hides when both deferUntil (future day) and segment block visibility', () => {

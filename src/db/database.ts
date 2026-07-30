@@ -206,9 +206,12 @@ function rowToTask(row: Record<string, unknown>): Task {
     streakDate: (row.streak_date as string) ?? null,
     parentId: (row.parent_id as string) ?? null,
     reminderTime: (row.reminder_time as string) ?? null,
-    cycleEnabled: Boolean(row.cycle_enabled),
-    cycleIndex: (row.cycle_index as number) ?? 0,
-    cycleItems: JSON.parse((row.cycle_items as string) ?? '[]'),
+    // Column names stay cycle_* — this is the pre-rename "Cycle" feature
+    // (now "Chain") and renaming the columns would need a data migration
+    // for existing installs. The JS-facing field names are the new ones.
+    chainEnabled: Boolean(row.cycle_enabled),
+    chainIndex: (row.cycle_index as number) ?? 0,
+    chainItems: JSON.parse((row.cycle_items as string) ?? '[]'),
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
@@ -245,7 +248,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
-      task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
+      task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
       task.previousOccurrenceId ?? null,
       task.previousStreakCount, task.previousStreakDate,
@@ -274,7 +277,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
       task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
-      task.cycleEnabled ? 1 : 0, task.cycleIndex, JSON.stringify(task.cycleItems),
+      task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
       task.previousOccurrenceId ?? null,
       task.previousStreakCount, task.previousStreakDate,
@@ -331,6 +334,15 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   db.withTransactionSync(() => {
     for (const id of ids) {
       db.runSync('UPDATE tasks SET defer_until = ? WHERE id = ?', [deferUntil, id]);
+    }
+  });
+}
+
+export function dbBulkSetFocus(ids: string[], focused: boolean): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET focused = ? WHERE id = ?', [focused ? 1 : 0, id]);
     }
   });
 }

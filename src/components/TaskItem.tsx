@@ -32,6 +32,7 @@ import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } f
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
+import { PressableScale } from './PressableScale';
 
 interface Props {
   task: Task;
@@ -53,8 +54,8 @@ interface Props {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Steps shown on each side of the active cycle step before truncating with '…'.
-const CYCLE_PREVIEW_RADIUS = 2;
+// Steps shown on each side of the active chain step before truncating with '…'.
+const CHAIN_PREVIEW_RADIUS = 2;
 
 function describeRecurrence(task: Task): string {
   const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
@@ -271,18 +272,18 @@ export function TaskItem({
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
 
-  const activeCycleItem =
-    task.cycleEnabled && task.cycleItems.length > 0
-      ? task.cycleItems[task.cycleIndex % task.cycleItems.length]
+  const activeChainItem =
+    task.chainEnabled && task.chainItems.length > 0
+      ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
-  // A multi-step cycle drives the collapsed row's title: we show the current
+  // A multi-step chain drives the collapsed row's title: we show the current
   // step's title with a compact step-count badge beside it, instead of a
   // second subtitle line, so the row stays the same height as the others.
-  const cycleStep = activeCycleItem && task.cycleItems.length > 1 ? activeCycleItem : null;
-  const cyclePosition = cycleStep ? `${(task.cycleIndex % task.cycleItems.length) + 1}/${task.cycleItems.length}` : '';
+  const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
+  const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
 
   const hasExpandContent =
-    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none';
+    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null;
 
   const handleComplete = async () => {
     if (completingRef.current) return;
@@ -511,13 +512,13 @@ export function TaskItem({
               </TouchableOpacity>
             ) : (
               <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
-                {cycleStep ? cycleStep.title : task.title}
+                {chainStep ? chainStep.title : task.title}
               </Text>
             )}
-            {cycleStep && (
-              <View style={styles.cycleBadge}>
-                <Ionicons name="sync" size={9} color={colors.accent} />
-                <Text style={styles.cycleBadgeText}>{cyclePosition}</Text>
+            {chainStep && (
+              <View style={styles.chainBadge}>
+                <Ionicons name="link" size={9} color={colors.accent} />
+                <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
             {deadlineDays !== null && (
@@ -652,23 +653,23 @@ export function TaskItem({
               </View>
             )}
 
-            {activeCycleItem && task.cycleItems.length > 0 && (() => {
-              const total = task.cycleItems.length;
-              const currentIdx = task.cycleIndex % total;
-              // Long cycles overflow the row unreadably, so only show a
+            {activeChainItem && task.chainItems.length > 0 && (() => {
+              const total = task.chainItems.length;
+              const currentIdx = task.chainIndex % total;
+              // Long chains overflow the row unreadably, so only show a
               // window of steps around the current one, with ellipses
               // standing in for whatever's trimmed off each end.
-              const start = Math.max(0, currentIdx - CYCLE_PREVIEW_RADIUS);
-              const end = Math.min(total - 1, currentIdx + CYCLE_PREVIEW_RADIUS);
-              const visibleItems = task.cycleItems.slice(start, end + 1);
+              const start = Math.max(0, currentIdx - CHAIN_PREVIEW_RADIUS);
+              const end = Math.min(total - 1, currentIdx + CHAIN_PREVIEW_RADIUS);
+              const visibleItems = task.chainItems.slice(start, end + 1);
               return (
                 <View style={[
                   styles.recurrenceRow,
                   (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
                 ]}>
-                  <Ionicons name="sync" size={12} color={colors.textTertiary} />
+                  <Ionicons name="link" size={12} color={colors.textTertiary} />
                   <Text style={styles.expandMeta} numberOfLines={1}>
-                    Cycle {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
+                    Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
                     {visibleItems.map((item, i) => {
                       const actualIdx = start + i;
                       return (
@@ -729,68 +730,65 @@ export function TaskItem({
                       </TouchableOpacity>
                     </View>
                     ) : (
-                    <TouchableOpacity
-                      style={styles.editBtn}
+                    <PressableScale
+                      style={styles.iconActionBtn}
                       onPress={handleTimerToggle}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
+                      hitSlop={8}
                       accessibilityLabel={`Start timer for ${task.title}`}
                     >
-                      <Ionicons name="stopwatch-outline" size={13} color={colors.textSecondary} />
-                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Timer</Text>
-                    </TouchableOpacity>
+                      <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                     )
                   )}
                   {task.recurrenceType !== 'none' && (
-                    <TouchableOpacity
-                      style={styles.editBtn}
+                    <PressableScale
+                      style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
                         skipNextRecurrence(task.id);
                       }}
-                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={8}
+                      accessibilityLabel={`Skip next occurrence of ${task.title}`}
                     >
-                      <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
-                    </TouchableOpacity>
+                      <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
                   <TouchableOpacity
-                    style={styles.editBtn}
+                    style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
                     activeOpacity={interaction.activeOpacity}
+                    accessibilityLabel={task.dueDate ? `Change date, currently ${formatDueDate(task.dueDate)}` : 'Set date'}
                   >
                     <Ionicons
                       name="calendar-outline"
-                      size={13}
+                      size={iconSize.sm}
                       color={task.dueDate ? colors.accent : colors.textSecondary}
                     />
-                    <Text style={[styles.editBtnText, !task.dueDate && styles.skipBtnText]}>
-                      {task.dueDate ? formatDueDate(task.dueDate) : 'Date'}
-                    </Text>
+                    {task.dueDate && (
+                      <Text style={styles.editBtnText}>{formatDueDate(task.dueDate)}</Text>
+                    )}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.editBtn}
+                  <PressableScale
+                    style={styles.iconActionBtn}
                     onPress={async () => {
                       await haptics.tap();
                       duplicateTask(task.id);
                     }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
+                    hitSlop={8}
                     accessibilityLabel="Duplicate task"
                   >
-                    <Ionicons name="copy-outline" size={13} color={colors.textSecondary} />
-                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Duplicate</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.editBtn}
+                    <Ionicons name="copy-outline" size={iconSize.sm} color={colors.textSecondary} />
+                  </PressableScale>
+                  <PressableScale
+                    style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={onEdit}
-                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={8}
+                    accessibilityLabel="Edit task"
                   >
-                    <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.accent} />
+                  </PressableScale>
                 </View>
               </View>
             )}
@@ -1159,7 +1157,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontWeight: fontWeight.semibold,
   },
-  cycleBadge: {
+  chainBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
@@ -1168,7 +1166,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
-  cycleBadgeText: {
+  chainBadgeText: {
     color: colors.accent,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
@@ -1192,7 +1190,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
-  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end' },
+  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center' },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1202,12 +1200,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.full,
   },
+  editBtnIconOnly: {
+    paddingHorizontal: 9,
+  },
   editBtnText: {
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
   },
-  skipBtnText: {
-    color: colors.textSecondary,
+  iconActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconActionBtnAccent: {
+    backgroundColor: colors.accentSubtle,
   },
 });
