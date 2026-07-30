@@ -10,6 +10,7 @@ import {
   Alert,
   ScrollView,
   Platform,
+  type GestureResponderEvent,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
@@ -280,6 +281,22 @@ export function CategoriesScreen() {
     setEditorVisible(true);
   };
 
+  // Raw touch events fire on release regardless of whether the list itself
+  // claimed the gesture as a scroll, so without this distance check,
+  // scrolling the list would dismiss the expanded-task spotlight just like
+  // an intentional tap outside it.
+  const listTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const handleListTouchStart = (e: GestureResponderEvent) => {
+    const touch = e.nativeEvent.touches[0];
+    listTouchStart.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
+  };
+  const handleListTouchEnd = (e: GestureResponderEvent) => {
+    const start = listTouchStart.current;
+    const touch = e.nativeEvent.changedTouches[0];
+    const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
+    if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
+  };
+
   const categoryTasks = selectedCategory ? tasksByCategory(selectedCategory) : [];
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
@@ -488,7 +505,8 @@ export function CategoriesScreen() {
             // Catch any touch in the list area to dismiss the expanded-task
             // spotlight; the expanded card stops propagation so its own
             // controls keep working.
-            onTouchEnd={expandedTaskId !== null ? () => setExpandedTaskId(null) : undefined}
+            onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
+            onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
           >
           <FlatList
             data={categoryTasks}

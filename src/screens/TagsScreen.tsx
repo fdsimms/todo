@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Modal,
   Alert,
+  type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -54,6 +55,24 @@ export function TagsScreen() {
 
   const spotlightActive = expandedTaskId !== null;
   const listElevated = useSpotlightElevation(spotlightActive);
+
+  // The spotlight overlay sits behind the elevated list (zIndex 10), so it
+  // never sees taps over the list; the wrapper's onTouchEnd below catches
+  // them instead. Raw touch events fire on release regardless of whether the
+  // list itself claimed the gesture as a scroll, so without this distance
+  // check, scrolling the list would dismiss the spotlight just like an
+  // intentional tap outside it.
+  const listTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const handleListTouchStart = (e: GestureResponderEvent) => {
+    const touch = e.nativeEvent.touches[0];
+    listTouchStart.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
+  };
+  const handleListTouchEnd = (e: GestureResponderEvent) => {
+    const start = listTouchStart.current;
+    const touch = e.nativeEvent.changedTouches[0];
+    const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
+    if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
+  };
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -220,7 +239,8 @@ export function TagsScreen() {
             // The list sits above the spotlight overlay, so the overlay can't
             // see taps here — catch any touch in the list area instead. The
             // expanded card stops propagation so its own controls keep working.
-            onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
+            onTouchStart={spotlightActive ? handleListTouchStart : undefined}
+            onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
           >
             <FlatList
               data={tagTasks}
