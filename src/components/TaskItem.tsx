@@ -31,6 +31,7 @@ import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } f
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
+import { PressableScale } from './PressableScale';
 
 interface Props {
   task: Task;
@@ -690,68 +691,65 @@ export function TaskItem({
                       </TouchableOpacity>
                     </View>
                     ) : (
-                    <TouchableOpacity
-                      style={styles.editBtn}
+                    <PressableScale
+                      style={styles.iconActionBtn}
                       onPress={handleTimerToggle}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
+                      hitSlop={8}
                       accessibilityLabel={`Start timer for ${task.title}`}
                     >
-                      <Ionicons name="stopwatch-outline" size={13} color={colors.textSecondary} />
-                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Timer</Text>
-                    </TouchableOpacity>
+                      <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                     )
                   )}
                   {task.recurrenceType !== 'none' && (
-                    <TouchableOpacity
-                      style={styles.editBtn}
+                    <PressableScale
+                      style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
                         skipNextRecurrence(task.id);
                       }}
-                      activeOpacity={interaction.activeOpacity}
+                      hitSlop={8}
+                      accessibilityLabel={`Skip next occurrence of ${task.title}`}
                     >
-                      <Ionicons name="play-skip-forward-outline" size={13} color={colors.textSecondary} />
-                      <Text style={[styles.editBtnText, styles.skipBtnText]}>Skip</Text>
-                    </TouchableOpacity>
+                      <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
                   <TouchableOpacity
-                    style={styles.editBtn}
+                    style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
                     activeOpacity={interaction.activeOpacity}
+                    accessibilityLabel={task.dueDate ? `Change date, currently ${formatDueDate(task.dueDate)}` : 'Set date'}
                   >
                     <Ionicons
                       name="calendar-outline"
-                      size={13}
+                      size={iconSize.sm}
                       color={task.dueDate ? colors.accent : colors.textSecondary}
                     />
-                    <Text style={[styles.editBtnText, !task.dueDate && styles.skipBtnText]}>
-                      {task.dueDate ? formatDueDate(task.dueDate) : 'Date'}
-                    </Text>
+                    {task.dueDate && (
+                      <Text style={styles.editBtnText}>{formatDueDate(task.dueDate)}</Text>
+                    )}
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.editBtn}
+                  <PressableScale
+                    style={styles.iconActionBtn}
                     onPress={async () => {
                       await haptics.tap();
                       duplicateTask(task.id);
                     }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
+                    hitSlop={8}
                     accessibilityLabel="Duplicate task"
                   >
-                    <Ionicons name="copy-outline" size={13} color={colors.textSecondary} />
-                    <Text style={[styles.editBtnText, styles.skipBtnText]}>Duplicate</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.editBtn}
+                    <Ionicons name="copy-outline" size={iconSize.sm} color={colors.textSecondary} />
+                  </PressableScale>
+                  <PressableScale
+                    style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={onEdit}
-                    activeOpacity={interaction.activeOpacity}
+                    hitSlop={8}
+                    accessibilityLabel="Edit task"
                   >
-                    <Ionicons name="pencil-outline" size={13} color={colors.accent} />
-                    <Text style={styles.editBtnText}>Edit</Text>
-                  </TouchableOpacity>
+                    <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.accent} />
+                  </PressableScale>
                 </View>
               </View>
             )}
@@ -1151,7 +1149,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   editSectionLeft: { flexDirection: 'row', gap: spacing.xs },
-  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end' },
+  editSectionRight: { flexDirection: 'row', gap: spacing.xs, flexGrow: 1, justifyContent: 'flex-end', alignItems: 'center' },
   editBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1161,12 +1159,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radius.full,
   },
+  editBtnIconOnly: {
+    paddingHorizontal: 9,
+  },
   editBtnText: {
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
   },
-  skipBtnText: {
-    color: colors.textSecondary,
+  iconActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconActionBtnAccent: {
+    backgroundColor: colors.accentSubtle,
   },
 });
