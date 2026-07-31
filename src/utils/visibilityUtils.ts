@@ -3,13 +3,18 @@ import { getCurrentDayStart, getTaskDayStart, hhmmToDate, getNextDueDate } from 
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
+// Anchored to the current *logical* day (getCurrentDayStart), not the literal
+// wall-clock date — otherwise, during the early-morning grace window before
+// dayResetTime, a segment threshold at or before the reset hour would appear
+// to be "later today" (pointing at a clock time hours in the future) instead
+// of already having passed for the logical day that's still in progress.
 function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
   const { morningStart, afternoonStart, eveningStart } = useSettingsStore.getState();
   const hhmm = timeOfDay === 'morning' ? morningStart
     : timeOfDay === 'afternoon' ? afternoonStart
     : eveningStart;
   const [h, m] = hhmm.split(':').map(Number);
-  const t = new Date();
+  const t = getCurrentDayStart();
   t.setHours(h, m, 0, 0);
   return t;
 }

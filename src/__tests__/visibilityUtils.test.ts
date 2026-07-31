@@ -9,6 +9,7 @@ import {
   isTaskNew,
   isInboxTask,
   isLiveRecurring,
+  isUpcomingToday,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -204,6 +205,44 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
   });
 
+});
+
+// ─── isUpcomingToday ───────────────────────────────────────────────────────────
+
+describe('isUpcomingToday', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockSettingsState.dayResetTime = '00:00';
+    mockSettingsState.morningStart = '06:00';
+  });
+
+  it('is true when the segment threshold has not started today', () => {
+    // NOW is 10:00 AM, evening starts at 18:00
+    expect(isUpcomingToday({ ...baseTask, timeSegments: ['evening'] })).toBe(true);
+  });
+
+  it('is false once the segment threshold has passed', () => {
+    expect(isUpcomingToday({ ...baseTask, timeSegments: ['morning'] })).toBe(false);
+  });
+
+  it('does not treat an already-started segment as upcoming during the early-morning grace window', () => {
+    // dayResetTime and morningStart both 04:00 (setDayResetTime keeps them in
+    // sync). At 1:49 AM the wall clock hasn't reached 4 AM yet, so we're
+    // still inside *yesterday's* logical day (which began at 4 AM yesterday
+    // and is still ongoing) — the morning segment for that logical day
+    // started 21+ hours ago, not "later today".
+    mockSettingsState.dayResetTime = '04:00';
+    mockSettingsState.morningStart = '04:00';
+    jest.setSystemTime(new Date(2026, 6, 31, 1, 49, 0)); // Fri Jul 31, 1:49 AM
+    const task: Task = { ...baseTask, timeSegments: ['morning'] };
+    expect(isUpcomingToday(task)).toBe(false);
+    expect(isTaskVisible(task)).toBe(true);
+  });
 });
 
 // ─── isTaskWindowActive ────────────────────────────────────────────────────────
