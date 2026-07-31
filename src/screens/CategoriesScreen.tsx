@@ -17,12 +17,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, interaction, type Colors } from '../theme';
@@ -254,6 +256,12 @@ export function CategoriesScreen() {
   const deleteCategory = useTaskStore(s => s.deleteCategory);
   const focusCategory = useTaskStore(s => s.focusCategory);
   const allTasks = useTaskStore(s => s.tasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
@@ -268,6 +276,16 @@ export function CategoriesScreen() {
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryText, setNewCategoryText] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+  } = useTaskSelection(allTasks);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -493,11 +511,11 @@ export function CategoriesScreen() {
         visible={selectedCategory !== null}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setSelectedCategory(null)}
+        onRequestClose={() => { setSelectedCategory(null); if (selectionMode) exitSelection(); }}
       >
         <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
           <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedCategory(null)} accessibilityRole="button" accessibilityLabel="Close">
+            <TouchableOpacity onPress={() => { setSelectedCategory(null); if (selectionMode) exitSelection(); }} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             <View style={styles.detailTitle}>
@@ -551,7 +569,11 @@ export function CategoriesScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
                 />
               );
             }}
@@ -562,6 +584,26 @@ export function CategoriesScreen() {
             }
           />
           </View>
+
+          {selectionMode && (
+            <BulkActionBar
+              selectedCount={selectedIds.size}
+              totalCount={categoryTasks.length}
+              existingTags={allTags}
+              existingCategories={allCategories}
+              onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+              onDelete={handleBulkDelete}
+              onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+              onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+              onAddCategory={addCategory}
+              onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+              onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+              onSelectAll={() => selectAll(categoryTasks.map(t => t.id))}
+              onDeselectAll={deselectAll}
+              onCancel={exitSelection}
+              bottomInset={insets.bottom}
+            />
+          )}
         </View>
       </Modal>
 

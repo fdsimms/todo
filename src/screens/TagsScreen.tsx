@@ -14,11 +14,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -30,9 +32,16 @@ import type { Task } from '../types';
 export function TagsScreen() {
   const insets = useSafeAreaInsets();
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByTag = useTaskStore(s => s.tasksByTag);
   const addTag = useTaskStore(s => s.addTag);
   const deleteTag = useTaskStore(s => s.deleteTag);
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const addCategory = useTaskStore(s => s.addCategory);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -44,6 +53,16 @@ export function TagsScreen() {
   const [newTagText, setNewTagText] = useState('');
   const allTasks = useTaskStore(s => s.tasks);
   const inputRef = useRef<TextInput>(null);
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+  } = useTaskSelection(allTasks);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -53,7 +72,7 @@ export function TagsScreen() {
     }, [])
   );
 
-  const spotlightActive = expandedTaskId !== null;
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
 
   // The spotlight overlay sits behind the elevated list (zIndex 10), so it
@@ -212,11 +231,11 @@ export function TagsScreen() {
         visible={selectedTag !== null}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setSelectedTag(null)}
+        onRequestClose={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
       >
         <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
           <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedTag(null)} accessibilityRole="button" accessibilityLabel="Close">
+            <TouchableOpacity onPress={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }} accessibilityRole="button" accessibilityLabel="Close">
               <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
             <View style={styles.detailTitle}>
@@ -259,11 +278,15 @@ export function TagsScreen() {
                       setExpandedTaskId(prev => prev === item.id ? null : item.id);
                     }}
                     expanded={expandedTaskId === item.id}
-                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                    spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                     onEdit={() => openEditor(item)}
                     subtaskCount={subs.length}
                     subtaskDoneCount={subs.filter(t => t.completed).length}
                     subtasks={subs}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.has(item.id)}
+                    onSelect={() => toggleSelection(item.id)}
+                    onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
                   />
                 );
               }}
@@ -274,6 +297,26 @@ export function TagsScreen() {
               }
             />
           </View>
+
+          {selectionMode && (
+            <BulkActionBar
+              selectedCount={selectedIds.size}
+              totalCount={tagTasks.length}
+              existingTags={allTags}
+              existingCategories={allCategories}
+              onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+              onDelete={handleBulkDelete}
+              onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+              onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+              onAddCategory={addCategory}
+              onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+              onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+              onSelectAll={() => selectAll(tagTasks.map(t => t.id))}
+              onDeselectAll={deselectAll}
+              onCancel={exitSelection}
+              bottomInset={insets.bottom}
+            />
+          )}
         </View>
       </Modal>
 

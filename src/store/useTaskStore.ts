@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns';
-import type { Task, TaskDraft, Priority } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -13,6 +13,8 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetWhen,
+  dbBulkSetCategory,
   dbBulkSetFocus,
   dbBulkAddTags,
   dbGetTagRegistry,
@@ -140,6 +142,8 @@ interface TaskStore {
   bulkDeleteTasks: (ids: string[]) => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkDefer: (ids: string[], until: Date) => void;
+  bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[]) => void;
+  bulkSetCategory: (ids: string[], category: string | null) => void;
   bulkAddTags: (ids: string[], tags: string[]) => void;
   addTag: (tag: string) => void;
   deleteTag: (tag: string) => void;
@@ -887,6 +891,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbBulkSetDefer(ids, deferUntil);
     set(s => ({
       tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, deferUntil } : t),
+    }));
+  },
+
+  bulkSetWhen(ids, date, timeSegments) {
+    if (ids.length === 0) return;
+    const dueDate = date ? date.toISOString() : null;
+    dbBulkSetWhen(ids, dueDate, timeSegments);
+    set(s => ({
+      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, dueDate, timeSegments } : t),
+    }));
+  },
+
+  bulkSetCategory(ids, category) {
+    if (ids.length === 0) return;
+    dbBulkSetCategory(ids, category);
+    set(s => ({
+      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, category } : t),
     }));
   },
 

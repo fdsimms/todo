@@ -3,11 +3,13 @@ import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, type Colors } from '../theme';
@@ -21,12 +23,30 @@ export function InboxScreen() {
   const insets = useSafeAreaInsets();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const allTasks = useTaskStore(s => s.tasks);
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const addCategory = useTaskStore(s => s.addCategory);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+  } = useTaskSelection(allTasks);
 
   // Collapse any expanded task when leaving the tab so it isn't still expanded
   // on return.
@@ -36,7 +56,7 @@ export function InboxScreen() {
     }, [])
   );
 
-  const spotlightActive = expandedTaskId !== null;
+  const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
 
   const openEditor = (task: Task) => {
@@ -80,11 +100,15 @@ export function InboxScreen() {
                   setExpandedTaskId(prev => prev === item.id ? null : item.id);
                 }}
                 expanded={expandedTaskId === item.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                 onEdit={() => openEditor(item)}
                 subtaskCount={subs.length}
                 subtaskDoneCount={subs.filter(t => t.completed).length}
                 subtasks={subs}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onSelect={() => toggleSelection(item.id)}
+                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
               />
             );
           }}
@@ -108,6 +132,26 @@ export function InboxScreen() {
           setExpandedTaskId(null);
         }}
       />
+
+      {selectionMode && (
+        <BulkActionBar
+          selectedCount={selectedIds.size}
+          totalCount={inboxTasks.length}
+          existingTags={allTags}
+          existingCategories={allCategories}
+          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+          onDelete={handleBulkDelete}
+          onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+          onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+          onAddCategory={addCategory}
+          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onSelectAll={() => selectAll(inboxTasks.map(t => t.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={insets.bottom}
+        />
+      )}
     </View>
   );
 }
