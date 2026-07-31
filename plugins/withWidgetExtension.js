@@ -102,6 +102,16 @@ const withWidgetExtension = config => {
 
     const target = project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, bundleIdentifier);
 
+    // addTarget() only writes signing info into the XCBuildConfigurations
+    // below — it does NOT register the target in the PBXProject's
+    // `attributes.TargetAttributes` dict. Xcode's own "requires a
+    // development team" validation during archive reads THIS, not the
+    // buildSettings, to resolve automatic signing — a target created via
+    // Xcode's UI always gets both written together. Without this, the
+    // archive fails even with DEVELOPMENT_TEAM set below.
+    project.addTargetAttribute('DevelopmentTeam', DEVELOPMENT_TEAM, target);
+    project.addTargetAttribute('ProvisioningStyle', 'Automatic', target);
+
     project.addBuildPhase([], 'PBXSourcesBuildPhase', 'Sources', target.uuid);
     project.addBuildPhase([], 'PBXResourcesBuildPhase', 'Resources', target.uuid);
     project.addBuildPhase([], 'PBXFrameworksBuildPhase', 'Frameworks', target.uuid);
