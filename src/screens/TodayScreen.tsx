@@ -1040,6 +1040,9 @@ export function TodayScreen() {
               return (
                 <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
                   <Text style={styles.sectionHeaderText}>{item.label}</Text>
+                  {expandedTaskId !== null && !selectionMode && (
+                    <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
+                  )}
                 </Pressable>
               );
             }
