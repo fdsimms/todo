@@ -505,6 +505,15 @@ export function TaskItem({
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
+            {subtaskCount > 0 && (
+              <View
+                style={styles.subtaskBadge}
+                accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
+              >
+                <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
+                <Text style={styles.subtaskBadgeText}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -1224,6 +1233,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainBadgeText: {
     color: colors.accent,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+  },
+  subtaskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  subtaskBadgeText: {
+    color: colors.textTertiary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },
