@@ -280,6 +280,7 @@ export function LaterScreen() {
               icon="moon"
               title="Nothing deferred"
               subtitle="Swipe right on a task to set a date, or set a time of day in the task editor"
+              bottomOffset={tabBarHeight}
             />
           }
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}

@@ -414,6 +414,7 @@ export function CategoriesScreen() {
           icon="folder-open-outline"
           title="No categories yet"
           subtitle="Tap + to create a category, or assign one when editing a task"
+          bottomOffset={tabBarHeight}
         />
       ) : (
         <ReorderableList

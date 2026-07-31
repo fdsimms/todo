@@ -7,6 +7,7 @@ import {
   Animated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, subDays, isToday, startOfWeek, isSameDay } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -61,6 +62,7 @@ function expectedCount(recurrenceType: string, interval: number): number {
 
 export function StatsScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -158,6 +160,7 @@ export function StatsScreen() {
           icon="bar-chart-outline"
           title="No data yet"
           subtitle="Complete tasks to see your stats here"
+          bottomOffset={tabBarHeight}
         />
       ) : (
         <ScrollView

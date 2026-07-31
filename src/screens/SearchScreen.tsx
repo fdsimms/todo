@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { TaskEditor } from '../components/TaskEditor';
@@ -91,6 +92,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -177,9 +179,9 @@ export function SearchScreen() {
       </View>
 
       {showEmpty ? (
-        <EmptyState icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} />
+        <EmptyState icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} bottomOffset={tabBarHeight} />
       ) : query.trim().length === 0 ? (
-        <EmptyState icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" />
+        <EmptyState icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
       ) : (
         <FlatList
           data={listData}

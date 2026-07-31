@@ -180,53 +180,55 @@ export function TagsScreen() {
         </View>
       )}
 
-      {allTags.length === 0 && !addingTag ? (
-        <EmptyState
-          icon="pricetag"
-          title="No tags yet"
-          subtitle="Tap + to create a tag, or add tags to tasks"
-        />
-      ) : (
-        <FlatList
-          data={allTags}
-          keyExtractor={t => t}
-          contentContainerStyle={styles.list}
-          renderItem={({ item: tag }) => {
-            const count = tasksByTag(tag).length;
-            const color = tagColor(tag);
-            return (
+      <FlatList
+        data={allTags}
+        keyExtractor={t => t}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          !addingTag ? (
+            <EmptyState
+              icon="pricetag"
+              title="No tags yet"
+              subtitle="Tap + to create a tag, or add tags to tasks"
+              bottomOffset={tabBarHeight}
+            />
+          ) : null
+        }
+        renderItem={({ item: tag }) => {
+          const count = tasksByTag(tag).length;
+          const color = tagColor(tag);
+          return (
+            <TouchableOpacity
+              style={styles.tagRow}
+              onPress={() => {
+                setExpandedTaskId(null);
+                setSelectedTag(tag);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`${tag}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
+              accessibilityHint="Double tap to view tasks with this tag"
+            >
+              <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
+                <Ionicons name="pricetag" size={18} color={color} />
+              </View>
+              <Text style={styles.tagName}>{tag}</Text>
+              <Text style={styles.tagCount}>{count}</Text>
               <TouchableOpacity
-                style={styles.tagRow}
-                onPress={() => {
-                  setExpandedTaskId(null);
-                  setSelectedTag(tag);
-                }}
+                onPress={() => handleDeleteTag(tag)}
+                style={styles.deleteButton}
                 activeOpacity={interaction.activeOpacity}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 accessibilityRole="button"
-                accessibilityLabel={`${tag}, ${count} ${count === 1 ? 'task' : 'tasks'}`}
-                accessibilityHint="Double tap to view tasks with this tag"
+                accessibilityLabel={`Delete tag ${tag}`}
               >
-                <View style={[styles.tagIcon, { backgroundColor: color + '22' }]}>
-                  <Ionicons name="pricetag" size={18} color={color} />
-                </View>
-                <Text style={styles.tagName}>{tag}</Text>
-                <Text style={styles.tagCount}>{count}</Text>
-                <TouchableOpacity
-                  onPress={() => handleDeleteTag(tag)}
-                  style={styles.deleteButton}
-                  activeOpacity={interaction.activeOpacity}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Delete tag ${tag}`}
-                >
-                  <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
-            );
-          }}
-        />
-      )}
+              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+            </TouchableOpacity>
+          );
+        }}
+      />
 
       {/* Tag detail modal */}
       <Modal
