@@ -679,7 +679,11 @@ export function TaskItem({
                 <Ionicons name="repeat" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
                 {task.streakCount > 0 && (
-                  <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+                  <>
+                    <Text style={styles.expandMeta}> · </Text>
+                    <Ionicons name="flame" size={12} color={colors.textTertiary} />
+                    <Text style={styles.expandMeta}> {task.streakCount}</Text>
+                  </>
                 )}
               </View>
             )}
