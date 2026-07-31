@@ -693,8 +693,10 @@ export function TaskItem({
                 {task.streakCount > 0 && (
                   <>
                     <Text style={styles.expandMeta}> · </Text>
-                    <Ionicons name="flame" size={12} color={colors.textTertiary} />
-                    <Text style={styles.expandMeta}> {task.streakCount}</Text>
+                    <View style={styles.streakBadge}>
+                      <Ionicons name="flame" size={12} color={colors.orange} />
+                      <Text style={styles.expandMeta}>{task.streakCount}</Text>
+                    </View>
                   </>
                 )}
               </View>
@@ -1230,6 +1232,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   expandMeta: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   expandMetaActive: {
     color: colors.accent,
