@@ -31,6 +31,10 @@ interface Props<T> {
   /** Called once with the final order when a drag commits. */
   onReorder: (data: T[]) => void;
   onDragBegin?: () => void;
+  /** Called once whenever an active drag ends, whether committed, dropped
+   * with no change, or cancelled — always after resetDrag's own state
+   * clears, so a listener that starts a fresh drag from here is safe. */
+  onDragEnd?: () => void;
   /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
   onHoverChange?: () => void;
   /** Restricts how far the active row may move, e.g. to keep it within its own section. */
@@ -70,6 +74,7 @@ export function ReorderableList<T>({
   renderItem,
   onReorder,
   onDragBegin,
+  onDragEnd,
   onHoverChange,
   dragRange,
   placeholderStyle,
@@ -100,6 +105,7 @@ export function ReorderableList<T>({
   const scrollRef = useRef<ScrollView>(null);
   const dataRef = useRef(data);
   const onReorderRef = useRef(onReorder);
+  const onDragEndRef = useRef(onDragEnd);
   const activeIndexRef = useRef<number | null>(null);
   const hoverIndexRef = useRef<number | null>(null);
   const startPageYRef = useRef(0);
@@ -132,6 +138,7 @@ export function ReorderableList<T>({
   const renderData = committedData ?? data;
   dataRef.current = renderData;
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
+  useEffect(() => { onDragEndRef.current = onDragEnd; }, [onDragEnd]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
   useEffect(() => { dragRangeRef.current = dragRange; }, [dragRange]);
 
@@ -164,6 +171,7 @@ export function ReorderableList<T>({
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
     setActiveIndex(null);
+    onDragEndRef.current?.();
     // Do NOT reset the overlay's animated values here: the native view obeys
     // setValue immediately, while React unmounts the overlay a frame later —
     // zeroing the translates snapped the card back to its drag-start position
