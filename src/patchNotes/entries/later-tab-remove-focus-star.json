@@ -1,0 +1,4 @@
+{
+  "message": "Removed the focus star from tasks in the Later tab, since focusing a deferred task didn't do anything",
+  "date": "2026-07-31"
+}
