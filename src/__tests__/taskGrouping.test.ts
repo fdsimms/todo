@@ -8,7 +8,19 @@ import {
   isLaterHeader,
   type CategoryListItem,
 } from '../utils/taskGrouping';
-import type { Task } from '../types';
+import type { Task, TaskGroup } from '../types';
+
+const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+  id: 'group-1',
+  title: 'Test Group',
+  notes: '',
+  tags: [],
+  priority: 0,
+  category: null,
+  sortOrder: 1,
+  collapsed: false,
+  ...overrides,
+});
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: 'task-1',
@@ -42,6 +54,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   parentId: null,
+  groupId: null,
   reminderTime: null,
   chainEnabled: false,
   chainIndex: 0,
@@ -57,7 +70,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 // Helper: flatten the grouped output into a readable [label-or-taskId] sequence.
 const seq = (tasks: Task[], categoryOrder?: string[]) =>
   makeCategoryGroups(tasks, categoryOrder).map(item =>
-    item.type === 'header' ? `#${item.label}` : item.task.id,
+    item.type === 'header' ? `#${item.label}` : item.type === 'group' ? `g-${item.group.id}` : item.task.id,
   );
 
 describe('makeCategoryGroups', () => {
@@ -119,9 +132,60 @@ describe('makeCategoryGroups', () => {
   });
 });
 
-// Readable view of a header/task layout.
+// Readable view of a header/task/group layout.
 const layoutSeq = (items: CategoryListItem[]) =>
-  items.map(item => (item.type === 'header' ? `#${item.label}` : item.task.id));
+  items.map(item =>
+    item.type === 'header' ? `#${item.label}` : item.type === 'group' ? `g-${item.group.id}` : item.task.id,
+  );
+
+describe('makeCategoryGroups — with task groups', () => {
+  it('renders each category’s groups before its plain tasks', () => {
+    const items = makeCategoryGroups(
+      [makeTask({ id: 't-health-1', category: 'health' }), makeTask({ id: 't-work-1', category: 'work' })],
+      ['health', 'work'],
+      [{ group: makeGroup({ id: 'g-health', category: 'health' }), children: [makeTask({ id: 'c1' })] }],
+    );
+    expect(layoutSeq(items)).toEqual(['#health', 'g-g-health', 't-health-1', '#work', 't-work-1']);
+  });
+
+  // Regression: a category made up ENTIRELY of a group with no loose tasks
+  // must still get a header — this is the realistic case ("Health" might
+  // contain only a "Take supplements" group).
+  it('gives a category a header even when it has a group but no plain tasks', () => {
+    const items = makeCategoryGroups(
+      [],
+      ['health'],
+      [{ group: makeGroup({ id: 'g-health', category: 'health' }), children: [makeTask()] }],
+    );
+    expect(layoutSeq(items)).toEqual(['#health', 'g-g-health']);
+  });
+
+  it('sorts multiple groups within the same category by their own sortOrder', () => {
+    const items = makeCategoryGroups(
+      [],
+      ['health'],
+      [
+        { group: makeGroup({ id: 'second', category: 'health', sortOrder: 2 }), children: [makeTask()] },
+        { group: makeGroup({ id: 'first', category: 'health', sortOrder: 1 }), children: [makeTask()] },
+      ],
+    );
+    expect(layoutSeq(items)).toEqual(['#health', 'g-first', 'g-second']);
+  });
+
+  it('places an uncategorized group above the header-less loose task group', () => {
+    const items = makeCategoryGroups(
+      [makeTask({ id: 'loose', category: null })],
+      [],
+      [{ group: makeGroup({ id: 'g-loose', category: null }), children: [makeTask()] }],
+    );
+    expect(layoutSeq(items)).toEqual(['g-g-loose', 'loose']);
+  });
+
+  it('behaves exactly like the two-argument call when there are no groups', () => {
+    const tasks = [makeTask({ id: 't1' })];
+    expect(makeCategoryGroups(tasks, [], [])).toEqual(makeCategoryGroups(tasks));
+  });
+});
 
 const noUpcoming = { isUpcoming: () => false, showUpcoming: false };
 

@@ -25,6 +25,8 @@ import {
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
+import { useTaskGroupStore } from './useTaskGroupStore';
+import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
@@ -134,6 +136,18 @@ interface TaskStore {
   deleteSubtask: (id: string) => void;
   reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
 
+  groupChildrenOf: (groupId: string) => Task[];
+  addNewGroupedTask: (groupId: string, title: string) => Task;
+  addExistingToGroup: (taskId: string, groupId: string) => void;
+  removeFromGroup: (taskId: string) => void;
+  reorderGroupChildren: (groupId: string, orderedIds: string[]) => void;
+  groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
+  completeGroup: (groupId: string) => void;
+  uncompleteGroup: (groupId: string) => void;
+  deferGroup: (groupId: string, until: Date) => void;
+  focusGroup: (groupId: string) => void;
+  deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
+
   forgivVacationStreaks: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
@@ -172,6 +186,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     initDatabase();
     useCategoryStore.getState().initialize();
     useTemplateStore.getState().initialize();
+    useTaskGroupStore.getState().initialize();
     let tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 
@@ -226,6 +241,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakCount: 0,
       previousStreakDate: null,
       parentId: draft.parentId ?? null,
+      groupId: draft.groupId ?? null,
       reminderTime: draft.reminderTime ?? null,
       chainEnabled: draft.chainEnabled ?? false,
       chainIndex: draft.chainIndex ?? 0,
@@ -736,6 +752,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakCount: 0,
       previousStreakDate: null,
       parentId,
+      groupId: null,
       reminderTime: null,
       chainEnabled: false,
       chainIndex: 0,
@@ -788,6 +805,188 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return u ? { ...t, sortOrder: u.sortOrder } : t;
       }),
     }));
+  },
+
+  groupChildrenOf(groupId) {
+    return get().tasks
+      .filter(t => t.groupId === groupId)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  addNewGroupedTask(groupId, title) {
+    const now = new Date().toISOString();
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    const siblings = get().tasks.filter(t => t.groupId === groupId);
+    const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    const task: Task = {
+      id: generateId(),
+      title,
+      notes: '',
+      completed: false,
+      completedAt: null,
+      createdAt: now,
+      seenAt: now,
+      dueDate: null,
+      deadline: null,
+      deadlineOffsetDays: null,
+      deferUntil: null,
+      timeSegments: [],
+      windowStart: null,
+      windowEnd: null,
+      recurrenceType: 'none',
+      recurrenceInterval: 1,
+      recurrenceDays: [],
+      recurrenceEndDate: null,
+      recurrenceCount: null,
+      recurrenceFromCompletion: false,
+      tags: [],
+      category: group?.category ?? null,
+      sortOrder: maxOrder + 1,
+      focused: false,
+      priority: 0,
+      effort: 0,
+      estimatedMinutes: null,
+      streakCount: 0,
+      streakDate: null,
+      previousStreakCount: 0,
+      previousStreakDate: null,
+      parentId: null,
+      groupId,
+      reminderTime: null,
+      chainEnabled: false,
+      chainIndex: 0,
+      chainItems: [],
+      vacationPause: false,
+      timerStartedAt: null,
+      actualMinutes: null,
+      previousOccurrenceId: null,
+      seriesDefaults: null,
+    };
+    dbInsertTask(task);
+    set(s => ({ tasks: [...s.tasks, task] }));
+    return task;
+  },
+
+  addExistingToGroup(taskId, groupId) {
+    const task = get().tasks.find(t => t.id === taskId);
+    if (!task) return;
+    const siblings = get().tasks.filter(t => t.groupId === groupId);
+    const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    get().updateTask(taskId, { groupId, sortOrder: maxOrder + 1 });
+  },
+
+  removeFromGroup(taskId) {
+    get().updateTask(taskId, { groupId: null });
+  },
+
+  reorderGroupChildren(groupId, orderedIds) {
+    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
+    dbBatchUpdateSortOrders(updates);
+    set(s => ({
+      tasks: s.tasks.map(t => {
+        const u = updates.find(x => x.id === t.id);
+        return u ? { ...t, sortOrder: u.sortOrder } : t;
+      }),
+    }));
+  },
+
+  groupTasks(taskIds, title, category) {
+    const group = useTaskGroupStore.getState().createGroup(title, category);
+    taskIds.forEach((id, index) => {
+      get().updateTask(id, { groupId: group.id, sortOrder: index + 1 });
+    });
+    return group;
+  },
+
+  // Cascades complete/uncomplete/defer/focus to every child, reusing each
+  // child's own completeTask/uncompleteTask/updateTask so per-child guards
+  // (already-completed, isRecurrenceNotYetDue), streak math, recurrence
+  // spawns, and chain advances all keep working exactly as if tapped
+  // individually. A mismatched-cadence child (e.g. iron every 3 days) can
+  // never be force-completed early — completeTask's own guard silently
+  // no-ops it. Skip is deliberately NOT cascaded here: it only makes sense
+  // per-child (see skipNextRecurrence), and cascading it across children on
+  // different cadences would desync them unpredictably.
+  completeGroup(groupId) {
+    const children = get().groupChildrenOf(groupId);
+    const completedIds: string[] = [];
+    children.forEach(child => {
+      if (child.completed) return;
+      get().completeTask(child.id);
+      if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
+    });
+    if (completedIds.length === 0) return;
+    get().setLastAction({
+      label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
+      undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  uncompleteGroup(groupId) {
+    // The group's checkbox is a live readout (see TaskGroupHeader), not its
+    // own stored field — so unchecking it can only mean "uncomplete
+    // whichever children are currently done." Each uncompleteTask call sets
+    // its own precise, snapshot-based undo (restores exact prior
+    // completed/streak state and re-inserts any deleted follow-up
+    // occurrence — see uncompleteTask) as get().lastAction; capture each one
+    // immediately so this can compose them into a single combined undo
+    // instead of just the last child's.
+    const children = get().groupChildrenOf(groupId).filter(c => c.completed);
+    if (children.length === 0) return;
+    const undos: Array<() => void> = [];
+    children.forEach(child => {
+      get().uncompleteTask(child.id);
+      const action = get().lastAction;
+      if (action) undos.push(action.undo);
+    });
+    get().setLastAction({
+      label: `${children.length} task${children.length === 1 ? '' : 's'} uncompleted`,
+      undo: () => undos.forEach(fn => fn()),
+    });
+  },
+
+  deferGroup(groupId, until) {
+    const ids = get().groupChildrenOf(groupId).map(c => c.id);
+    get().bulkDefer(ids, until);
+  },
+
+  focusGroup(groupId) {
+    const ids = get().groupChildrenOf(groupId).map(c => c.id);
+    if (ids.length === 0) return;
+    const allFocused = ids.every(id => get().tasks.find(t => t.id === id)?.focused);
+    const nextFocused = !allFocused;
+    dbBulkSetFocus(ids, nextFocused);
+    set(s => ({
+      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, focused: nextFocused } : t)),
+    }));
+  },
+
+  deleteGroup(groupId, opts) {
+    const children = get().groupChildrenOf(groupId);
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    const undos: Array<() => void> = [];
+    if (opts.cascade) {
+      children.forEach(child => {
+        get().deleteTask(child.id);
+        const action = get().lastAction;
+        if (action) undos.push(action.undo);
+      });
+    } else {
+      children.forEach(child => get().removeFromGroup(child.id));
+    }
+    useTaskGroupStore.getState().removeGroupRow(groupId);
+    if (!group) return;
+    get().setLastAction({
+      label: opts.cascade ? 'Group and its tasks deleted' : 'Group deleted',
+      undo: () => {
+        useTaskGroupStore.getState().restoreGroup(group);
+        if (opts.cascade) {
+          undos.forEach(fn => fn());
+        } else {
+          children.forEach(child => get().addExistingToGroup(child.id, groupId));
+        }
+      },
+    });
   },
 
   forgivVacationStreaks() {
