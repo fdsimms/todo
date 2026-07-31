@@ -40,6 +40,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
+import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -692,6 +693,8 @@ export function TodayScreen() {
               setExpandedTaskId(null);
               return;
             }
+            haptics.tap();
+            animateLayout();
             setRestExpanded(e => !e);
           }}
           activeOpacity={interaction.activeOpacity}
@@ -742,9 +745,11 @@ export function TodayScreen() {
             onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
             dimmed={headerDimmed}
           />
-          {!item.group.collapsed && item.children.map(child => (
-            <React.Fragment key={child.id}>{renderTaskRow(child, { indented: true })}</React.Fragment>
-          ))}
+          <AnimatedCollapsible expanded={!item.group.collapsed}>
+            {item.children.map(child => (
+              <React.Fragment key={child.id}>{renderTaskRow(child, { indented: true })}</React.Fragment>
+            ))}
+          </AnimatedCollapsible>
         </View>
       );
     }
