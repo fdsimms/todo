@@ -18,7 +18,7 @@ import {
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { getLogicalToday, getLogicalTomorrow, isBeforeDayReset } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import type { TimeOfDay, Effort } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -107,7 +107,6 @@ export function WhenPicker({
   const today = useMemo(() => getLogicalToday(dayResetTime), [visible, dayResetTime]);
   const tomorrow = useMemo(() => getLogicalTomorrow(dayResetTime), [visible, dayResetTime]);
   const tomorrowKey = dayKey(tomorrow);
-  const dateClarification = useMemo(() => isBeforeDayReset(dayResetTime), [visible, dayResetTime]);
 
   useEffect(() => {
     if (visible) {
@@ -248,7 +247,7 @@ export function WhenPicker({
                 colors={colors}
                 icon="star"
                 iconColor="#FFD60A"
-                label={dateClarification ? `Today · ${format(today, 'MMM d')}` : 'Today'}
+                label="Today"
                 pending={pendingKey === 'today'}
                 popAnim={popAnim}
                 onPress={handleToday}
@@ -258,7 +257,7 @@ export function WhenPicker({
                 colors={colors}
                 icon="sunny"
                 iconColor={colors.timeMorning}
-                label={dateClarification ? `Tomorrow · ${format(tomorrow, 'MMM d')}` : 'Tomorrow'}
+                label="Tomorrow"
                 pending={pendingKey === tomorrowKey}
                 popAnim={popAnim}
                 onPress={handleTomorrow}
