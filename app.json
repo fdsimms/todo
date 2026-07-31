@@ -39,7 +39,22 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "dc3d4782-26cd-4447-8b51-06af03290e9c"
+        "projectId": "dc3d4782-26cd-4447-8b51-06af03290e9c",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "targetName": "TodoWidget",
+                  "bundleIdentifier": "com.fdsimms.dundundun.TodoWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.com.fdsimms.dundundun"]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }
