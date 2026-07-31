@@ -807,7 +807,7 @@ describe('completeTask', () => {
       useTaskStore.getState().completeTask('t1');
       expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(500);
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
@@ -816,14 +816,14 @@ describe('completeTask', () => {
         tasks: [makeTask({ id: 't1', sortOrder: 1 }), makeTask({ id: 't2', sortOrder: 2 })],
       });
       useTaskStore.getState().completeTask('t1');
-      jest.advanceTimersByTime(1500);
+      jest.advanceTimersByTime(300);
       useTaskStore.getState().completeTask('t2');
-      jest.advanceTimersByTime(1500);
-      // t1 completed 3000ms ago, but t2's completion pushed the window out,
+      jest.advanceTimersByTime(300);
+      // t1 completed 600ms ago, but t2's completion pushed the window out,
       // so both are still held together.
       expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['t1', 't2']);
 
-      jest.advanceTimersByTime(500);
+      jest.advanceTimersByTime(200);
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
@@ -832,7 +832,7 @@ describe('completeTask', () => {
       useTaskStore.getState().completeTask('t1');
       expect(useTaskStore.getState().focusedTasks().map(t => t.id)).toEqual(['t1']);
 
-      jest.advanceTimersByTime(2000);
+      jest.advanceTimersByTime(500);
       expect(useTaskStore.getState().focusedTasks()).toHaveLength(0);
     });
   });
