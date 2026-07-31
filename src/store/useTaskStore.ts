@@ -110,6 +110,7 @@ interface TaskStore {
   // omitted, "this and future tasks") is a plain patch, same as always.
   updateTask: (id: string, updates: Partial<Task>, options?: { scope?: 'occurrence' | 'series' }) => void;
   markTaskSeen: (id: string) => void;
+  markTasksSeen: (ids: string[]) => void;
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
   deleteTask: (id: string) => void;
@@ -336,6 +337,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const now = new Date().toISOString();
     dbMarkTaskSeen(id, now);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? { ...t, seenAt: now } : t)) }));
+  },
+
+  markTasksSeen(ids) {
+    if (ids.length === 0) return;
+    const now = new Date().toISOString();
+    ids.forEach(id => dbMarkTaskSeen(id, now));
+    set(s => ({ tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, seenAt: now } : t)) }));
   },
 
   setLastAction(action) {

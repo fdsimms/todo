@@ -18,7 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
 import type { Task, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -48,6 +48,7 @@ import { SpotlightOverlay, useSpotlightElevation } from '../components/Spotlight
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
@@ -232,6 +233,7 @@ export function TodayScreen() {
   const bulkDefer = useTaskStore(s => s.bulkDefer);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const addCategory = useTaskStore(s => s.addCategory);
+  const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const dailyCapacityMinutes = useSettingsStore(s => s.dailyCapacityMinutes);
   const colors = useColors();
@@ -749,6 +751,15 @@ export function TodayScreen() {
     />
   );
 
+  const newTaskIds = useMemo(
+    () => visibleTasks.filter(isTaskNew).map(t => t.id),
+    [visibleTasks]
+  );
+  const dismissNewTasksBanner = () => {
+    animateLayout();
+    markTasksSeen(newTaskIds);
+  };
+
   const today = format(new Date(), 'EEEE, MMMM d');
 
   const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
@@ -868,6 +879,9 @@ export function TodayScreen() {
         ))}
       </View>
 
+      {viewMode === 'today' && newTaskIds.length > 0 && (
+        <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
+      )}
 
       <SpotlightOverlay
         visible={spotlightActive}
