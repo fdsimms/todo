@@ -220,7 +220,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     color: colors.text,
     fontSize: font.md,
+    lineHeight: 20,
+    height: 20,
     padding: 0,
+    textAlignVertical: 'center',
   },
 
   sectionHeader: {
