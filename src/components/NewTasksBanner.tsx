@@ -50,9 +50,9 @@ export function NewTasksBanner({ count, onDismiss }: Props) {
       ]}
     >
       <Text style={styles.text} numberOfLines={1}>
-        You have <Text style={styles.count}>{count}</Text> new to-do{count === 1 ? '' : 's'}
+        You have <Text style={styles.count}>{count}</Text> new todo{count === 1 ? '' : 's'}
       </Text>
-      <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new to-dos notice">
+      <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new todos notice">
         <Text style={styles.buttonText}>OK</Text>
       </PressableScale>
     </Animated.View>
@@ -66,6 +66,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     backgroundColor: colors.warningBg,
     marginHorizontal: spacing.md,
+    marginTop: spacing.md,
     marginBottom: spacing.sm,
     paddingVertical: spacing.sm,
     paddingLeft: spacing.md,
