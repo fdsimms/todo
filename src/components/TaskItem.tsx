@@ -65,15 +65,15 @@ function describeRecurrence(task: Task): string {
   const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
   let text = '';
   if (recurrenceType === 'daily') {
-    text = recurrenceInterval === 1 ? 'Repeats daily' : `Repeats every ${recurrenceInterval} days`;
+    text = recurrenceInterval === 1 ? 'Daily' : `Every ${recurrenceInterval} days`;
   } else if (recurrenceType === 'weekly') {
     const dayStr = recurrenceDays.map(d => DAY_NAMES[d]).join(', ');
-    const base = recurrenceInterval === 1 ? 'Repeats weekly' : `Every ${recurrenceInterval} weeks`;
+    const base = recurrenceInterval === 1 ? 'Weekly' : `Every ${recurrenceInterval} weeks`;
     text = dayStr ? `${base} on ${dayStr}` : base;
   } else if (recurrenceType === 'monthly') {
-    text = recurrenceInterval === 1 ? 'Repeats monthly' : `Every ${recurrenceInterval} months`;
+    text = recurrenceInterval === 1 ? 'Monthly' : `Every ${recurrenceInterval} months`;
   } else if (recurrenceType === 'yearly') {
-    text = recurrenceInterval === 1 ? 'Repeats yearly' : `Every ${recurrenceInterval} years`;
+    text = recurrenceInterval === 1 ? 'Yearly' : `Every ${recurrenceInterval} years`;
   }
   if (recurrenceFromCompletion) text += ' · from completion';
   return text;
