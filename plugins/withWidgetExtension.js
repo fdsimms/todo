@@ -11,6 +11,15 @@ const { APP_GROUP_ID } = require('./withAppGroup');
 // for a new `xcode` package version.
 const TARGET_NAME = 'TodoWidget';
 const BUNDLE_ID_SUFFIX = 'TodoWidget';
+// EAS Build's credential resolution only knows about the main app target
+// (declared via app.json's bundleIdentifier); it never discovers this
+// extension target, so it can't inject DEVELOPMENT_TEAM for it the way it
+// does for the main target. Without an explicit team, non-interactive
+// `xcodebuild -allowProvisioningUpdates` has no way to resolve which team to
+// request a profile from and the archive step fails. Apple Team ID for the
+// account this app is registered under (developer.apple.com/account →
+// Membership details).
+const DEVELOPMENT_TEAM = '4L5S4WA628';
 // Widget extensions may target a higher minimum iOS than their host app —
 // .containerBackground(for:) in TodoTodayWidget.swift requires iOS 17.
 const DEPLOYMENT_TARGET = '17.0';
@@ -124,6 +133,7 @@ const withWidgetExtension = config => {
       const buildSettings = buildConfigSection[configUuid].buildSettings;
       buildSettings.CODE_SIGN_ENTITLEMENTS = `${TARGET_NAME}/${ENTITLEMENTS_NAME}`;
       buildSettings.CODE_SIGN_STYLE = 'Automatic';
+      buildSettings.DEVELOPMENT_TEAM = DEVELOPMENT_TEAM;
       buildSettings.IPHONEOS_DEPLOYMENT_TARGET = DEPLOYMENT_TARGET;
       buildSettings.SWIFT_VERSION = '5.0';
       buildSettings.TARGETED_DEVICE_FAMILY = '"1,2"';
