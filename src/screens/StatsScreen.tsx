@@ -160,7 +160,10 @@ export function StatsScreen() {
           subtitle="Complete tasks to see your stats here"
         />
       ) : (
-        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 100 }]}
+          showsVerticalScrollIndicator={false}
+        >
 
           {/* Summary cards */}
           <StaggerIn index={0}>
