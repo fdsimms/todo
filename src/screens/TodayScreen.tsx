@@ -12,7 +12,7 @@ import {
   AppState,
   type GestureResponderEvent,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
@@ -213,6 +213,8 @@ function ExpiredSection({
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -965,6 +967,23 @@ export function TodayScreen() {
             </Text>
           </TouchableOpacity>
         ))}
+        <TouchableOpacity
+          style={styles.viewModePill}
+          onPress={() => {
+            haptics.tap();
+            navigation.navigate('Inbox' as never);
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={inboxCount > 0 ? `Inbox, ${inboxCount} to sort` : 'Inbox'}
+        >
+          <Text style={styles.viewModePillText}>Inbox</Text>
+          {inboxCount > 0 && (
+            <View style={styles.viewModePillBadge}>
+              <Text style={styles.viewModePillBadgeText}>{inboxCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {viewMode === 'today' && newTaskIds.length > 0 && (
@@ -1270,6 +1289,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   viewModePillActive: { backgroundColor: colors.accent },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  viewModePillBadge: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
+    backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
+  },
+  viewModePillBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
   sectionHeader: {
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
