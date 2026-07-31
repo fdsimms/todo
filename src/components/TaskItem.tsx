@@ -33,6 +33,7 @@ import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
+import { SortableList } from './SortableList';
 
 interface Props {
   task: Task;
@@ -103,6 +104,8 @@ export function TaskItem({
   const stopTimer = useTaskStore(s => s.stopTimer);
   const discardTimer = useTaskStore(s => s.discardTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const duplicateTask = useTaskStore(s => s.duplicateTask);
   const colors = useColors();
   const { shadows } = useTheme();
@@ -111,6 +114,8 @@ export function TaskItem({
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
   const [panelHeight, setPanelHeight] = useState(0);
@@ -150,6 +155,7 @@ export function TaskItem({
   const expansionProgress = useSharedValue(expanded ? 1 : 0);
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
+  const subtaskTitleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     // Timing rather than a spring: a spring is underdamped, so it overshoots
@@ -427,6 +433,20 @@ export function TaskItem({
     }
   };
 
+  const handleSubtaskTitleTap = (sub: Task) => {
+    setSubtaskTitleEdit(sub.title);
+    setEditingSubtaskId(sub.id);
+    setTimeout(() => subtaskTitleInputRef.current?.focus(), 50);
+  };
+
+  const saveSubtaskTitle = (sub: Task) => {
+    setEditingSubtaskId(null);
+    const trimmed = subtaskTitleEdit.trim();
+    if (trimmed && trimmed !== sub.title) {
+      updateTask(sub.id, { title: trimmed });
+    }
+  };
+
   const renderRightActions = () => (
     <TouchableOpacity
       style={styles.deleteAction}
@@ -644,34 +664,81 @@ export function TaskItem({
             {subtasks.length > 0 && (
               <View style={[
                 styles.expandSection,
+                styles.subtaskSection,
                 task.notes.length > 0 && styles.sectionDivider,
               ]}>
-                {subtasks.map(sub => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={styles.subtaskRow}
-                    onPress={() => {
-                      haptics.tap();
-                      toggleSubtask(sub.id);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: sub.completed }}
-                    accessibilityLabel={sub.title}
-                  >
-                    <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                      {sub.completed && (
-                        <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                <SortableList
+                  data={subtasks}
+                  onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                  renderItem={(sub, _i, drag) => (
+                    <View style={styles.subtaskRow}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.tap();
+                          toggleSubtask(sub.id);
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: sub.completed }}
+                        accessibilityLabel={sub.title}
+                      >
+                        <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                          {sub.completed && (
+                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      {editingSubtaskId === sub.id ? (
+                        <TextInput
+                          ref={subtaskTitleInputRef}
+                          style={styles.subtaskTitleInput}
+                          value={subtaskTitleEdit}
+                          onChangeText={setSubtaskTitleEdit}
+                          onBlur={() => saveSubtaskTitle(sub)}
+                          onSubmitEditing={() => saveSubtaskTitle(sub)}
+                          returnKeyType="done"
+                          maxLength={TITLE_MAX_LENGTH}
+                          blurOnSubmit
+                          autoFocus
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.subtaskTitleWrapper}
+                          onPress={() => handleSubtaskTitleTap(sub)}
+                          activeOpacity={interaction.activeOpacity}
+                        >
+                          <Text style={[
+                            styles.subtaskTitle,
+                            sub.completed && styles.subtaskTitleDone,
+                          ]} numberOfLines={2}>
+                            {sub.title}
+                          </Text>
+                        </TouchableOpacity>
                       )}
+                      <TouchableOpacity
+                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        delayLongPress={interaction.delayLongPress}
+                        hitSlop={8}
+                        style={styles.subtaskDragHandle}
+                        accessibilityLabel={`Reorder ${sub.title}`}
+                      >
+                        <Ionicons name="reorder-three" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.tap();
+                          deleteSubtask(sub.id);
+                        }}
+                        hitSlop={8}
+                        style={styles.subtaskDeleteBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${sub.title}`}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={[
-                      styles.subtaskTitle,
-                      sub.completed && styles.subtaskTitleDone,
-                    ]} numberOfLines={2}>
-                      {sub.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                  )}
+                />
               </View>
             )}
 
@@ -1145,6 +1212,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.xs,
   },
+  // Indents the subtask list a little to the right of the task's own content,
+  // so it visually nests under the task it belongs to.
+  subtaskSection: {
+    gap: 0,
+    paddingLeft: spacing.sm,
+  },
   sectionDivider: {
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
@@ -1154,6 +1227,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
   },
   subtaskCheck: {
     width: 18,
@@ -1169,14 +1245,30 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
-  subtaskTitle: {
+  subtaskTitleWrapper: {
     flex: 1,
+  },
+  subtaskTitle: {
     color: colors.textSecondary,
     fontSize: font.sm,
   },
   subtaskTitleDone: {
     color: colors.textTertiary,
     textDecorationLine: 'line-through',
+  },
+  subtaskTitleInput: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    padding: 0,
+    margin: 0,
+    includeFontPadding: false,
+  },
+  subtaskDragHandle: {
+    padding: 2,
+  },
+  subtaskDeleteBtn: {
+    padding: 2,
   },
   recurrenceRow: {
     flexDirection: 'row',
