@@ -1,5 +1,5 @@
 import type { Task, TimeOfDay, Category } from '../types';
-import { getCurrentDayStart, getTaskDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -340,6 +340,18 @@ export function isTaskNew(task: Task): boolean {
   if (!becameVisibleAt) return false;
   const seenAt = new Date(task.seenAt ?? task.createdAt);
   return becameVisibleAt > seenAt;
+}
+
+// True when a task counts toward its group's "N/M done today" tally — either
+// still visible/due (not yet done), or completed earlier today. A child
+// completed on some other day (e.g. a one-off task finished last week) stops
+// counting once today no longer matches, so the tally reflects today's
+// routine instead of accumulating forever. Deliberately doesn't require
+// recurrence: a plain one-off grouped task still counts on the day it's done.
+export function isRelevantToGroupToday(task: Task): boolean {
+  if (!task.completed) return isTaskVisible(task);
+  if (!task.completedAt) return false;
+  return +getDayStart(new Date(task.completedAt)) === +getCurrentDayStart();
 }
 
 export function getSegmentLabels(task: Task): string[] {

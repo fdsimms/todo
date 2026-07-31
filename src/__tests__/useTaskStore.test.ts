@@ -1,4 +1,5 @@
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import {
   initDatabase,
   dbGetSetting,
@@ -22,7 +23,7 @@ import {
   cancelTaskReminder,
   rescheduleAllReminders,
 } from '../utils/notifications';
-import type { Task } from '../types';
+import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -34,6 +35,10 @@ jest.mock('../db/database', () => ({
   dbInsertCategory: jest.fn(),
   dbUpdateCategory: jest.fn(),
   dbDeleteCategory: jest.fn(),
+  dbGetAllTaskGroups: jest.fn().mockReturnValue([]),
+  dbInsertTaskGroup: jest.fn(),
+  dbUpdateTaskGroup: jest.fn(),
+  dbDeleteTaskGroup: jest.fn(),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
@@ -122,6 +127,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   parentId: null,
+  groupId: null,
   reminderTime: null,
   chainEnabled: false,
   chainIndex: 0,
@@ -134,10 +140,23 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 });
 
+const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+  id: 'group-1',
+  title: 'Test Group',
+  notes: '',
+  tags: [],
+  priority: 0,
+  category: null,
+  sortOrder: 1,
+  collapsed: false,
+  ...overrides,
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
   useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [] });
+  useTaskGroupStore.setState({ groups: [], initialized: false });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -1277,6 +1296,222 @@ describe('deleteSubtask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'sub', parentId: 'p' })] });
     useTaskStore.getState().deleteSubtask('sub');
     expect(dbDeleteTask).toHaveBeenCalledWith('sub');
+  });
+});
+
+// ─── task groups ─────────────────────────────────────────────────────────────
+
+describe('groupChildrenOf', () => {
+  it('returns tasks with that groupId, sorted by sortOrder', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'b', groupId: 'g1', sortOrder: 2 }),
+        makeTask({ id: 'a', groupId: 'g1', sortOrder: 1 }),
+        makeTask({ id: 'other', groupId: 'g2', sortOrder: 1 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupChildrenOf('g1').map(t => t.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('addNewGroupedTask', () => {
+  it('creates a real top-level task with groupId set and no parentId', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'health' })] });
+    const task = useTaskStore.getState().addNewGroupedTask('g1', 'Iron');
+    expect(task.groupId).toBe('g1');
+    expect(task.parentId).toBeNull();
+    expect(task.title).toBe('Iron');
+    expect(task.category).toBe('health');
+  });
+
+  it('scopes sortOrder to siblings in the same group', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', sortOrder: 5 })],
+    });
+    const task = useTaskStore.getState().addNewGroupedTask('g1', 'Second');
+    expect(task.sortOrder).toBe(6);
+  });
+});
+
+describe('addExistingToGroup / removeFromGroup', () => {
+  it('sets groupId on an existing task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null })] });
+    useTaskStore.getState().addExistingToGroup('t1', 'g1');
+    expect(useTaskStore.getState().tasks[0].groupId).toBe('g1');
+  });
+
+  it('clears groupId, returning the task to standalone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: 'g1' })] });
+    useTaskStore.getState().removeFromGroup('t1');
+    expect(useTaskStore.getState().tasks[0].groupId).toBeNull();
+  });
+});
+
+describe('groupTasks', () => {
+  it('creates a group and assigns every given task to it', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' })],
+    });
+    const group = useTaskStore.getState().groupTasks(['a', 'b'], 'Take supplements', 'health');
+    expect(group.title).toBe('Take supplements');
+    expect(group.category).toBe('health');
+    expect(useTaskGroupStore.getState().groups).toContainEqual(group);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.groupId).toBe(group.id);
+    expect(tasks.find(t => t.id === 'b')?.groupId).toBe(group.id);
+    expect(tasks.find(t => t.id === 'c')?.groupId).toBeNull();
+  });
+});
+
+describe('completeGroup', () => {
+  it('completes every incomplete child', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'b', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
+  });
+
+  it('never force-completes a child not yet due (mismatched recurrence cadence)', () => {
+    const farFuture = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'due-today', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'not-due', groupId: 'g1', completed: false, recurrenceType: 'weekly', dueDate: farFuture }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'due-today')?.completed).toBe(true);
+    expect(tasks.find(t => t.id === 'not-due')?.completed).toBe(false);
+  });
+
+  it('skips children already completed and does nothing if none were newly completed', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: 'now' })],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('queues one combined undo that uncompletes every child it completed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'b', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks completed');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
+  });
+});
+
+describe('uncompleteGroup', () => {
+  it('uncompletes every currently-completed child', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: 'now' }),
+        makeTask({ id: 'b', groupId: 'g1', completed: true, completedAt: 'now' }),
+      ],
+    });
+    useTaskStore.getState().uncompleteGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => !t.completed)).toBe(true);
+  });
+
+  it('does nothing when no children are completed', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: false })],
+    });
+    useTaskStore.getState().uncompleteGroup('g1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+describe('deferGroup', () => {
+  it('defers every child without touching recurrence fields', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', recurrenceType: 'weekly', recurrenceInterval: 3 }),
+        makeTask({ id: 'b', groupId: 'g1', recurrenceType: 'none' }),
+      ],
+    });
+    const until = new Date('2025-06-01T12:00:00.000Z');
+    useTaskStore.getState().deferGroup('g1', until);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.deferUntil).toBe(until.toISOString());
+    expect(tasks.find(t => t.id === 'a')?.recurrenceType).toBe('weekly');
+    expect(tasks.find(t => t.id === 'a')?.recurrenceInterval).toBe(3);
+    expect(tasks.find(t => t.id === 'b')?.deferUntil).toBe(until.toISOString());
+  });
+});
+
+describe('focusGroup', () => {
+  it('focuses every child when none are focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', focused: false }),
+        makeTask({ id: 'b', groupId: 'g1', focused: false }),
+      ],
+    });
+    useTaskStore.getState().focusGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => t.focused)).toBe(true);
+  });
+
+  it('unfocuses every child when all are already focused', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', focused: true }),
+        makeTask({ id: 'b', groupId: 'g1', focused: true }),
+      ],
+    });
+    useTaskStore.getState().focusGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => !t.focused)).toBe(true);
+  });
+});
+
+describe('deleteGroup', () => {
+  it('orphans children (cascade: false) — they become standalone tasks', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
+    });
+    useTaskStore.getState().deleteGroup('g1', { cascade: false });
+    expect(useTaskStore.getState().tasks.every(t => t.groupId === null)).toBe(true);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(useTaskGroupStore.getState().groups).toHaveLength(0);
+  });
+
+  it('deletes children too (cascade: true)', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'keep', groupId: null })],
+    });
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['keep']);
+    expect(useTaskGroupStore.getState().groups).toHaveLength(0);
+  });
+
+  it('queues an undo that restores the group and its orphaned children', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', title: 'Supplements' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1' })] });
+    useTaskStore.getState().deleteGroup('g1', { cascade: false });
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual(['g1']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.groupId).toBe('g1');
+  });
+
+  it('queues an undo that restores the group and cascade-deleted children', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1', title: 'Iron' })] });
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual(['g1']);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['a']);
   });
 });
 

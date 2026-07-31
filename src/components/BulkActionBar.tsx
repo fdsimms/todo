@@ -28,13 +28,16 @@ interface Props {
   onAddCategory: (name: string) => void;
   onAddTags: (tags: string[]) => void;
   onSetPriority: (priority: Priority) => void;
+  // Grouping is Today/Later-only for now — other screens that bulk-select
+  // tasks (Categories, Inbox, Tags) simply omit this and the action hides.
+  onGroup?: (title: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onCancel: () => void;
   bottomInset: number;
 }
 
-type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category';
+type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category' | 'group';
 
 export function BulkActionBar({
   selectedCount,
@@ -48,6 +51,7 @@ export function BulkActionBar({
   onAddCategory,
   onAddTags,
   onSetPriority,
+  onGroup,
   onSelectAll,
   onDeselectAll,
   onCancel,
@@ -59,6 +63,7 @@ export function BulkActionBar({
   const [whenVisible, setWhenVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [newTagText, setNewTagText] = useState('');
+  const [groupTitle, setGroupTitle] = useState('');
   const [newCategoryText, setNewCategoryText] = useState('');
 
   const allSelected = selectedCount === totalCount;
@@ -91,6 +96,14 @@ export function BulkActionBar({
     setPanel('actions');
   };
 
+  const handleApplyGroup = () => {
+    const trimmed = groupTitle.trim();
+    if (!trimmed || !onGroup) return;
+    onGroup(trimmed);
+    setPanel('actions');
+    setGroupTitle('');
+  };
+
   const handleSetCategory = (category: string | null) => {
     haptics.tap();
     onSetCategory(category);
@@ -110,6 +123,7 @@ export function BulkActionBar({
     setPanel('actions');
     setSelectedTags(new Set());
     setNewTagText('');
+    setGroupTitle('');
     setNewCategoryText('');
   };
 
@@ -154,6 +168,15 @@ export function BulkActionBar({
                 <Ionicons name="folder" size={24} color={colors.purple} />
                 <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
               </PressableScale>
+              {onGroup && (
+                <PressableScale
+                  style={styles.actionBtn}
+                  onPress={() => { haptics.tap(); setPanel('group'); }}
+                >
+                  <Ionicons name="layers" size={24} color={colors.accent} />
+                  <Text style={[styles.actionLabel, { color: colors.accent }]}>Group</Text>
+                </PressableScale>
+              )}
               <PressableScale
                 style={styles.actionBtn}
                 onPress={() => { haptics.impactMedium(); onDelete(); }}
@@ -331,6 +354,37 @@ export function BulkActionBar({
                 returnKeyType="done"
                 onSubmitEditing={handleAddNewCategory}
                 autoCapitalize="words"
+              />
+            </View>
+          </View>
+        )}
+
+        {panel === 'group' && (
+          <View style={styles.subPanel}>
+            <View style={styles.subHeader}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={styles.subTitle}>Group Tasks</Text>
+              <TouchableOpacity
+                style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
+                onPress={handleApplyGroup}
+              >
+                <Text style={[styles.applyBtnText, !groupTitle.trim() && styles.applyBtnTextDisabled]}>
+                  Create
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={styles.tagInput}
+                placeholder="Group name, e.g. 'Take supplements'…"
+                placeholderTextColor={colors.textTertiary}
+                value={groupTitle}
+                onChangeText={setGroupTitle}
+                returnKeyType="done"
+                onSubmitEditing={handleApplyGroup}
+                autoFocus
               />
             </View>
           </View>

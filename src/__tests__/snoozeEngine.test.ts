@@ -40,6 +40,7 @@ const BASE: Task = {
   previousStreakDate: null,
   reminderTime: null,
   parentId: null,
+  groupId: null,
   category: null,
   chainEnabled: false,
   chainIndex: 0,

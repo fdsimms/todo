@@ -20,6 +20,24 @@ export interface ChainItem {
   notes: string;
 }
 
+// A lightweight, collapsible label for grouping several independent tasks
+// together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
+// its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
+// streak, or reminder, so it can never itself be "not due yet" and desync
+// from children on mismatched cadences (see completeGroup/deferGroup in
+// useTaskStore). Its completion state is derived live from children, not
+// stored here.
+export interface TaskGroup {
+  id: string;
+  title: string;
+  notes: string;
+  tags: string[];
+  priority: Priority;
+  category: string | null; // which category section it renders under
+  sortOrder: number;
+  collapsed: boolean;      // persisted expand/collapse state
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -70,6 +88,7 @@ export interface Task {
   previousStreakDate: string | null;
 
   parentId: string | null;   // null = root task; set = subtask of that id
+  groupId: string | null;    // null = ungrouped; set = grouped under that TaskGroup's id
 
   // Chain — steps through a list of items one at a time. Completing a
   // chained task advances to the next item and creates the next task on

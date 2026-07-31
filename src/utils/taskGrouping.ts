@@ -1,8 +1,9 @@
-import type { Task } from '../types';
+import type { Task, TaskGroup } from '../types';
 
 export type CategoryListItem =
   | { type: 'header'; label: string }
-  | { type: 'task'; task: Task };
+  | { type: 'task'; task: Task }
+  | { type: 'group'; group: TaskGroup; children: Task[] };
 
 const UNCATEGORIZED = '';
 
@@ -21,9 +22,23 @@ export const LATER_TODAY_LABEL = 'Later Today';
  * above every section becomes (see resolveDrop). That keeps the top of the
  * list from having a header a task can be stranded "above".
  */
+// Task groups (collapsible labels, see TaskGroup) are a third, optional
+// input: each group renders as a 'group' item at the START of its category
+// section, before that category's plain tasks. Passing groups here (rather
+// than as a separate post-processing pass over the header+task output) is
+// what lets a category made up ENTIRELY of a group with no loose tasks still
+// get a header — the header-selection logic below already needs to know
+// about every category's content once, so it might as well know about
+// groups too. resolveDrop/resolveCategoryReorder/categoryHeaderRange never
+// pass a `groups` argument (it defaults to none), so their own internal
+// makeCategoryGroups calls keep producing header+task-only output — groups
+// aren't draggable in v1 (see CLAUDE.md's ReorderableList fragility note),
+// and this keeps that whole call path exactly as ignorant of groups as
+// before.
 export function makeCategoryGroups(
   tasks: Task[],
   categoryOrder: string[] = [],
+  groups: { group: TaskGroup; children: Task[] }[] = [],
 ): CategoryListItem[] {
   const byCategory = new Map<string, Task[]>();
   tasks.forEach(task => {
@@ -32,12 +47,22 @@ export function makeCategoryGroups(
     byCategory.get(key)!.push(task);
   });
 
-  const order: string[] = [];
-  if (byCategory.has(UNCATEGORIZED)) order.push(UNCATEGORIZED);
-  categoryOrder.forEach(cat => {
-    if (byCategory.has(cat)) order.push(cat);
+  const groupsByCategory = new Map<string, { group: TaskGroup; children: Task[] }[]>();
+  groups.forEach(g => {
+    const key = g.group.category ?? UNCATEGORIZED;
+    if (!groupsByCategory.has(key)) groupsByCategory.set(key, []);
+    groupsByCategory.get(key)!.push(g);
   });
-  Array.from(byCategory.keys())
+  groupsByCategory.forEach(list => list.sort((a, b) => a.group.sortOrder - b.group.sortOrder));
+
+  const hasContent = (key: string) => byCategory.has(key) || groupsByCategory.has(key);
+
+  const order: string[] = [];
+  if (hasContent(UNCATEGORIZED)) order.push(UNCATEGORIZED);
+  categoryOrder.forEach(cat => {
+    if (hasContent(cat)) order.push(cat);
+  });
+  Array.from(new Set([...byCategory.keys(), ...groupsByCategory.keys()]))
     .filter(cat => cat !== UNCATEGORIZED && !order.includes(cat))
     .sort()
     .forEach(cat => order.push(cat));
@@ -45,7 +70,8 @@ export function makeCategoryGroups(
   const items: CategoryListItem[] = [];
   order.forEach(key => {
     if (key !== UNCATEGORIZED) items.push({ type: 'header', label: key });
-    byCategory.get(key)!.forEach(task => items.push({ type: 'task', task }));
+    (groupsByCategory.get(key) ?? []).forEach(g => items.push({ type: 'group', group: g.group, children: g.children }));
+    (byCategory.get(key) ?? []).forEach(task => items.push({ type: 'task', task }));
   });
   return items;
 }
@@ -101,6 +127,12 @@ export function resolveDrop(
       }
       continue;
     }
+    // Groups never actually reach this function (TodayScreen filters them
+    // out of `reordered` before calling resolveDrop — see its onReorder
+    // handler), but the shared CategoryListItem type includes them, so this
+    // keeps resolveDrop type-safe without needing to know anything about
+    // groups.
+    if (item.type === 'group') continue;
     taskIds.push(item.task.id);
     const isUpcoming = opts.isUpcoming(item.task.id);
     // Upcoming/"Later Today" tasks keep their own category; everything else
@@ -180,6 +212,9 @@ export function resolveCategoryReorder(
       if (item.label !== LATER_TODAY_LABEL) draggedOrder.push(item.label);
       continue;
     }
+    // See the matching note in resolveDrop — groups never actually reach
+    // this function.
+    if (item.type === 'group') continue;
     (opts.isUpcoming(item.task.id) ? upcomingTasks : mainTasks).push(item.task);
   }
 

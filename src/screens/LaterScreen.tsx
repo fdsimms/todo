@@ -46,6 +46,7 @@ export function LaterScreen() {
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const groupTasks = useTaskStore(s => s.groupTasks);
   const addCategory = useTaskStore(s => s.addCategory);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const colors = useColors();
@@ -305,6 +306,15 @@ export function LaterScreen() {
           onAddCategory={addCategory}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onGroup={title => {
+            const ids = Array.from(selectedIds);
+            const selectedCategories = new Set(
+              ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
+            );
+            const category = selectedCategories.size === 1 ? [...selectedCategories][0] : null;
+            groupTasks(ids, title, category);
+            exitSelection();
+          }}
           onSelectAll={() => selectAll(deferredTasks.map(t => t.id))}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}

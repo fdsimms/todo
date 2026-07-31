@@ -16,7 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
-import type { Task, SortOption, Priority, Effort } from '../types';
+import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
 import { getVisibleAt, isTaskNew } from '../utils/visibilityUtils';
 import {
@@ -34,12 +34,15 @@ import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
 import { suggestFocusTasks, suggestDeloadTasks } from '../services/aiSuggestions';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 import { TaskItem } from '../components/TaskItem';
+import { TaskGroupHeader } from '../components/TaskGroupHeader';
+import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -236,6 +239,14 @@ export function TodayScreen() {
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const dailyCapacityMinutes = useSettingsStore(s => s.dailyCapacityMinutes);
+  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
+  const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
+  const completeGroup = useTaskStore(s => s.completeGroup);
+  const uncompleteGroup = useTaskStore(s => s.uncompleteGroup);
+  const deferGroup = useTaskStore(s => s.deferGroup);
+  const focusGroup = useTaskStore(s => s.focusGroup);
+  const deleteGroup = useTaskStore(s => s.deleteGroup);
+  const groupTasks = useTaskStore(s => s.groupTasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -265,6 +276,8 @@ export function TodayScreen() {
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
   const [isDeloading, setIsDeloading] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
+  const [groupEditorVisible, setGroupEditorVisible] = useState(false);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -476,16 +489,48 @@ export function TodayScreen() {
     | { type: 'focus-header' }
     | { type: 'rest-header' }
     | { type: 'header'; label: string }
-    | { type: 'task'; task: Task };
+    | { type: 'task'; task: Task }
+    | { type: 'group'; group: TaskGroup; children: Task[] };
 
   const upcomingTaskIds = useMemo(
     () => new Set(upcomingTodayTasks.map(t => t.id)),
     [upcomingTodayTasks],
   );
 
-  // Hide task rows under a collapsed category header, leaving the header
-  // itself in place so it stays tappable to re-expand. The "Later Today"
-  // header is a time section, not a category, so it's never collapsible.
+  // Every task currently assigned to a group, regardless of its own
+  // visibility — TaskGroupHeader needs the full roster (not just what's
+  // visible right now) to compute its "N/M done today" tally.
+  const childrenByGroupId = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if (!t.groupId) continue;
+      const list = map.get(t.groupId);
+      if (list) list.push(t);
+      else map.set(t.groupId, [t]);
+    }
+    return map;
+  }, [allTasks]);
+
+  // Groups with at least one currently-visible child, each paired with just
+  // that visible-and-filtered subset — a group with nothing due today simply
+  // doesn't render, same as an empty category would. Only the default
+  // (non-focus) Today view groups/collapses; Focus mode and the "Everything
+  // else" reveal intentionally stay flat so focusing a task always pulls it
+  // out for individual attention.
+  const visibleGroupItems = useMemo(() => {
+    const filteredIds = new Set(filtered.map(t => t.id));
+    return taskGroups
+      .map(group => ({
+        group,
+        children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
+      }))
+      .filter(g => g.children.length > 0);
+  }, [taskGroups, childrenByGroupId, filtered]);
+
+  // Hide task/group rows under a collapsed category header, leaving the
+  // header itself in place so it stays tappable to re-expand. The "Later
+  // Today" header is a time section, not a category, so it's never
+  // collapsible.
   const applyCategoryCollapse = (items: ListItem[]): ListItem[] => {
     if (collapsedCategories.size === 0) return items;
     let currentCategory: string | null = null;
@@ -494,7 +539,11 @@ export function TodayScreen() {
         currentCategory = item.label === LATER_TODAY_LABEL ? null : item.label;
         return true;
       }
-      if (item.type === 'task' && currentCategory !== null && collapsedCategories.has(currentCategory)) {
+      if (
+        (item.type === 'task' || item.type === 'group') &&
+        currentCategory !== null &&
+        collapsedCategories.has(currentCategory)
+      ) {
         return false;
       }
       return true;
@@ -513,7 +562,8 @@ export function TodayScreen() {
       return applyCategoryCollapse(items);
     }
 
-    const items = makeCategoryGroups(filtered, allCategories);
+    const ungrouped = filtered.filter(t => !t.groupId);
+    const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
     if (showUpcoming && upcomingTodayTasks.length > 0) {
       let upcomingFiltered = upcomingTodayTasks;
       if (filterPriorities.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterPriorities.includes(t.priority));
@@ -525,12 +575,13 @@ export function TodayScreen() {
     }
     return applyCategoryCollapse(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories]);
+  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories, visibleGroupItems]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
     : item.type === 'rest-header' ? '__rest-header__'
     : item.type === 'header' ? `h-${item.label}`
+    : item.type === 'group' ? `g-${item.group.id}`
     : item.task.id;
 
   // Local copy of data fed to ReorderableList. onReorder writes the settled
@@ -581,6 +632,44 @@ export function TodayScreen() {
     }
     return map;
   }, [allTasks]);
+
+  // Shared by the plain 'task' row case and a group's expanded children —
+  // group children are full TaskItem rows with every normal capability
+  // (checkbox, swipe actions, timer, expand-for-notes, individual skip), just
+  // never draggable (no `drag` passed when rendered inside a group), so
+  // ReorderableList itself needs no changes to support them.
+  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean }) => {
+    const subs = subtasksByParent.get(task.id) ?? [];
+    return (
+      <TaskItem
+        task={task}
+        onPress={() => {
+          if (expandedTaskId !== null && expandedTaskId !== task.id) {
+            setExpandedTaskId(null);
+            return;
+          }
+          setExpandedTaskId(prev => prev === task.id ? null : task.id);
+        }}
+        expanded={expandedTaskId === task.id}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+        onEdit={() => openEditor(task)}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        drag={
+          selectionMode || !opts?.drag || upcomingTaskIds.has(task.id)
+            ? undefined
+            : () => { draggingCategoryRef.current = null; opts.drag!(); }
+        }
+        isActive={opts?.isActive}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(task.id)}
+        onSelect={() => toggleSelection(task.id)}
+        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
+        hideTodayLabel
+      />
+    );
+  };
 
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     // Headers sit in the same elevated list as task rows, above the spotlight
@@ -639,37 +728,36 @@ export function TodayScreen() {
         />
       );
     }
-    const subs = subtasksByParent.get(item.task.id) ?? [];
-    const taskNode = (
-      <TaskItem
-        task={item.task}
-        onPress={() => {
-          if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
-            setExpandedTaskId(null);
-            return;
-          }
-          setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
-        }}
-        expanded={expandedTaskId === item.task.id}
-        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
-        onEdit={() => openEditor(item.task)}
-        subtaskCount={subs.length}
-        subtaskDoneCount={subs.filter(t => t.completed).length}
-        subtasks={subs}
-        drag={
-          selectionMode || !drag || upcomingTaskIds.has(item.task.id)
-            ? undefined
-            : () => { draggingCategoryRef.current = null; drag(); }
-        }
-        isActive={isActive}
-        selectionMode={selectionMode}
-        selected={selectedIds.has(item.task.id)}
-        onSelect={() => toggleSelection(item.task.id)}
-        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
-        hideTodayLabel
-      />
-    );
-    return taskNode;
+    if (item.type === 'group') {
+      const allChildren = childrenByGroupId.get(item.group.id) ?? [];
+      return (
+        <View>
+          <TaskGroupHeader
+            group={item.group}
+            allChildren={allChildren}
+            onToggleCollapse={() => {
+              if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+              haptics.tap();
+              animateLayout();
+              setGroupCollapsed(item.group.id, !item.group.collapsed);
+            }}
+            onComplete={() => completeGroup(item.group.id)}
+            onUncomplete={() => uncompleteGroup(item.group.id)}
+            onDefer={date => deferGroup(item.group.id, date)}
+            onFocus={() => focusGroup(item.group.id)}
+            onDeleteGroupOnly={() => deleteGroup(item.group.id, { cascade: false })}
+            onDeleteWithTasks={() => deleteGroup(item.group.id, { cascade: true })}
+            onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
+            dimmed={headerDimmed}
+          />
+          {!item.group.collapsed && item.children.map(child => (
+            <React.Fragment key={child.id}>{renderTaskRow(child)}</React.Fragment>
+          ))}
+        </View>
+      );
+    }
+
+    return renderTaskRow(item.task, { drag, isActive });
   };
 
   // Revealed vacation-hidden tasks are peek-only: no drag, but they can still
@@ -1118,6 +1206,12 @@ export function TodayScreen() {
 
       <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
 
+      <TaskGroupEditor
+        visible={groupEditorVisible}
+        group={editingGroup}
+        onClose={() => { setGroupEditorVisible(false); setEditingGroup(null); }}
+      />
+
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
@@ -1131,6 +1225,15 @@ export function TodayScreen() {
           onAddCategory={addCategory}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+          onGroup={title => {
+            const ids = Array.from(selectedIds);
+            const selectedCategories = new Set(
+              ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
+            );
+            const category = selectedCategories.size === 1 ? [...selectedCategories][0] : null;
+            groupTasks(ids, title, category);
+            exitSelection();
+          }}
           onSelectAll={() => selectAll(
             viewMode === 'later' ? deferredTasks.map(t => t.id) : filtered.map(t => t.id)
           )}
