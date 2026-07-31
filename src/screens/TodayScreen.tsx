@@ -16,7 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
 import { getVisibleAt, isTaskNew } from '../utils/visibilityUtils';
@@ -36,11 +36,9 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { SettingsScreen } from './SettingsScreen';
-import { suggestFocusTasks, suggestDeloadTasks } from '../services/aiSuggestions';
-import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
+import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
@@ -235,12 +233,9 @@ export function TodayScreen() {
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
-  const bulkDefer = useTaskStore(s => s.bulkDefer);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const addCategory = useTaskStore(s => s.addCategory);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
-  const setLastAction = useTaskStore(s => s.setLastAction);
-  const dailyCapacityMinutes = useSettingsStore(s => s.dailyCapacityMinutes);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
   const completeGroup = useTaskStore(s => s.completeGroup);
@@ -277,7 +272,6 @@ export function TodayScreen() {
   const [showExpired, setShowExpired] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
-  const [isDeloading, setIsDeloading] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
 
@@ -389,41 +383,6 @@ export function TodayScreen() {
       Alert.alert('Could not suggest focus', e instanceof Error ? e.message : 'Unknown error');
     } finally {
       setIsSuggestingFocus(false);
-    }
-  };
-
-  // "How full is today" — the combined estimated time of everything visible
-  // today, so the header can show it at a glance and offer to deload once it
-  // exceeds the user's configured daily capacity.
-  const todayLoadMinutes = useMemo(() => sumEstimatedMinutes(visibleTasks), [visibleTasks]);
-  const isOverCapacity = todayLoadMinutes > dailyCapacityMinutes;
-
-  const handleDeload = async () => {
-    setIsDeloading(true);
-    try {
-      const overMinutes = todayLoadMinutes - dailyCapacityMinutes;
-      const ids = await suggestDeloadTasks(visibleTasks, overMinutes);
-      if (ids.length === 0) {
-        Alert.alert('Nothing to move', 'Every task today looks essential to keep in place.');
-        return;
-      }
-      const idSet = new Set(ids);
-      const moved = visibleTasks.filter(t => idSet.has(t.id));
-      const prevDefers = new Map(moved.map(t => [t.id, t.deferUntil]));
-      const freedMinutes = sumEstimatedMinutes(moved);
-      const tomorrow = addDays(new Date(), 1);
-      tomorrow.setHours(12, 0, 0, 0);
-      bulkDefer(ids, tomorrow);
-      setLastAction({
-        label: `Moved ${ids.length} task${ids.length === 1 ? '' : 's'} to tomorrow (freed ${formatDuration(freedMinutes)})`,
-        undo: () => {
-          prevDefers.forEach((deferUntil, id) => updateTask(id, { deferUntil }));
-        },
-      });
-    } catch (e) {
-      Alert.alert('Could not deload today', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setIsDeloading(false);
     }
   };
 
@@ -920,16 +879,6 @@ export function TodayScreen() {
           accessibilityLabel: 'Suggest focus tasks',
         }]
       : []),
-    ...(viewMode === 'today' && isOverCapacity
-      ? [{
-          icon: 'trending-down-outline' as const,
-          onPress: handleDeload,
-          tint: 'orange' as const,
-          disabled: isDeloading,
-          loading: isDeloading,
-          accessibilityLabel: 'Deload today',
-        }]
-      : []),
     { icon: 'settings-outline' as const, onPress: () => setSettingsVisible(true), accessibilityLabel: 'Settings' },
   ];
 
@@ -938,11 +887,6 @@ export function TodayScreen() {
       <ScreenHeader
         title={viewMode === 'today' ? 'Today' : 'Later'}
         overline={viewMode === 'today' ? today : undefined}
-        subtitle={
-          viewMode === 'today' && todayLoadMinutes > 0
-            ? `${formatDuration(todayLoadMinutes)} planned${isOverCapacity ? ` · over your ${formatDuration(dailyCapacityMinutes)} capacity` : ''}`
-            : undefined
-        }
         actions={headerActions}
       />
 
