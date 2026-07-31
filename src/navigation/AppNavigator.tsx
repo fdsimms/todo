@@ -117,7 +117,7 @@ export default function AppNavigator() {
             listeners={tabPressHaptic}
             options={{
               tabBarAccessibilityLabel: 'Today',
-              tabBarIcon: ({ color, size }) => <Ionicons name="sunny" size={size} color={color} />,
+              tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
             }}
           />
           <Tab.Screen
