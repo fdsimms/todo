@@ -9,6 +9,7 @@ import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions } from './src/utils/notifications';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
+import { useWidgetSync } from './src/utils/widgetSync';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
@@ -40,6 +41,9 @@ export default function App() {
   // Runs after the init effect above, so the SQLite DB exists before any
   // incoming link tries to insert a task.
   useTaskDeepLinks();
+
+  // Keeps the iOS Today widget's shared snapshot in sync with the task store.
+  useWidgetSync();
 
   return (
     <ErrorBoundary>

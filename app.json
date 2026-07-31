@@ -32,7 +32,9 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-asset",
-      "expo-font"
+      "expo-font",
+      "./plugins/withAppGroup",
+      "./plugins/withWidgetExtension"
     ],
     "extra": {
       "eas": {
