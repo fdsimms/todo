@@ -13,6 +13,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
@@ -213,6 +214,7 @@ function ExpiredSection({
 
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -1239,7 +1241,7 @@ export function TodayScreen() {
           )}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
-          bottomInset={insets.bottom}
+          bottomInset={tabBarHeight}
         />
       )}
     </View>

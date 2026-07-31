@@ -34,6 +34,7 @@ interface Props {
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onCancel: () => void;
+  /** Clearance to leave below the bar — the floating tab bar's rendered height, not just the safe-area inset. */
   bottomInset: number;
 }
 
@@ -129,7 +130,7 @@ export function BulkActionBar({
 
   return (
     <>
-      <View style={[styles.container, shadows.sheet, { paddingBottom: Math.max(bottomInset, spacing.sm) + spacing.sm }]}>
+      <View style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}>
         {panel === 'actions' && (
           <>
             <View style={styles.topRow}>
@@ -407,11 +408,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     position: 'absolute',
     left: spacing.md,
     right: spacing.md,
-    bottom: 0,
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
+    paddingBottom: spacing.md,
   },
   topRow: {
     flexDirection: 'row',
