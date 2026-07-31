@@ -53,6 +53,8 @@ interface Props {
   hideTodayLabel?: boolean;
   showCategory?: boolean;
   showActions?: boolean;
+  /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
+  indented?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -95,6 +97,7 @@ export function TaskItem({
   hideTodayLabel = false,
   showCategory = false,
   showActions = true,
+  indented = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -861,6 +864,7 @@ export function TaskItem({
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
             expanded && styles.itemWrapperElevated,
+            indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
           // touches inside the expanded card must not bubble up to that.
@@ -946,6 +950,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
+  },
+  // Nests a group's expanded children visually under the group header, which
+  // otherwise shares the exact same card treatment as a top-level task row.
+  itemWrapperIndented: {
+    marginLeft: spacing.md + spacing.lg,
   },
   // Lifted look while being dragged: elevated background so the floating card
   // reads as clearly distinct from the resting rows.
