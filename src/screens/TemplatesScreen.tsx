@@ -10,6 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -39,6 +40,7 @@ function itemHint(item: TemplateItem): string | null {
 
 export function TemplatesScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -166,71 +168,73 @@ export function TemplatesScreen() {
         </View>
       )}
 
-      {templates.length === 0 && !addingTemplate ? (
-        <EmptyState
-          icon="copy-outline"
-          title="No templates yet"
-          subtitle="Create a reusable group of tasks — like a pre-vacation checklist — and add them all in one tap"
-          actionLabel="Create template"
-          onAction={handleStartAdding}
-        />
-      ) : (
-        <FlatList
-          data={templates}
-          keyExtractor={t => t.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item: tpl }) => (
+      <FlatList
+        data={templates}
+        keyExtractor={t => t.id}
+        contentContainerStyle={styles.list}
+        ListEmptyComponent={
+          !addingTemplate ? (
+            <EmptyState
+              icon="copy-outline"
+              title="No templates yet"
+              subtitle="Create a reusable group of tasks — like a pre-vacation checklist — and add them all in one tap"
+              actionLabel="Create template"
+              onAction={handleStartAdding}
+              bottomOffset={tabBarHeight}
+            />
+          ) : null
+        }
+        renderItem={({ item: tpl }) => (
+          <TouchableOpacity
+            style={styles.tplRow}
+            onPress={() => setSelectedTemplateId(tpl.id)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${tpl.name}, ${tpl.items.length === 0 ? 'no items' : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}`}
+            accessibilityHint="Double tap to edit template"
+          >
+            <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
+              <Ionicons name="copy" size={18} color={colors.accent} />
+            </View>
+            <View style={styles.tplInfo}>
+              <Text style={styles.tplName}>{tpl.name}</Text>
+              <Text style={styles.tplHint}>
+                {tpl.items.length === 0
+                  ? 'No items'
+                  : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}
+              </Text>
+            </View>
             <TouchableOpacity
-              style={styles.tplRow}
-              onPress={() => setSelectedTemplateId(tpl.id)}
+              onPress={() => {
+                if (tpl.items.length === 0) {
+                  setSelectedTemplateId(tpl.id);
+                  return;
+                }
+                haptics.tap();
+                setApplyTemplateId(tpl.id);
+              }}
+              style={styles.rowButton}
               activeOpacity={interaction.activeOpacity}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel={`${tpl.name}, ${tpl.items.length === 0 ? 'no items' : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}`}
-              accessibilityHint="Double tap to edit template"
+              accessibilityLabel={`Apply template ${tpl.name}`}
             >
-              <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
-                <Ionicons name="copy" size={18} color={colors.accent} />
-              </View>
-              <View style={styles.tplInfo}>
-                <Text style={styles.tplName}>{tpl.name}</Text>
-                <Text style={styles.tplHint}>
-                  {tpl.items.length === 0
-                    ? 'No items'
-                    : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => {
-                  if (tpl.items.length === 0) {
-                    setSelectedTemplateId(tpl.id);
-                    return;
-                  }
-                  haptics.tap();
-                  setApplyTemplateId(tpl.id);
-                }}
-                style={styles.rowButton}
-                activeOpacity={interaction.activeOpacity}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Apply template ${tpl.name}`}
-              >
-                <Ionicons name="arrow-down-circle-outline" size={18} color={colors.accent} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => handleDeleteTemplate(tpl.id, tpl.name)}
-                style={styles.rowButton}
-                activeOpacity={interaction.activeOpacity}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Delete template ${tpl.name}`}
-              >
-                <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              <Ionicons name="arrow-down-circle-outline" size={18} color={colors.accent} />
             </TouchableOpacity>
-          )}
-        />
-      )}
+            <TouchableOpacity
+              onPress={() => handleDeleteTemplate(tpl.id, tpl.name)}
+              style={styles.rowButton}
+              activeOpacity={interaction.activeOpacity}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete template ${tpl.name}`}
+            >
+              <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      />
 
       {/* Template editor modal */}
       <Modal

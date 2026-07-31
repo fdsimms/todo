@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, isToday, isYesterday, parseISO } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -42,6 +43,7 @@ function formatTime(iso: string): string {
 
 export function LogbookScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -245,6 +247,7 @@ export function LogbookScreen() {
             icon="book-outline"
             title="No completed tasks"
             subtitle="Tasks you complete will appear here"
+            bottomOffset={tabBarHeight}
           />
         }
       />

@@ -121,6 +121,7 @@ export function InboxScreen() {
               icon="file-tray-outline"
               title="Inbox zero"
               subtitle="Voice-added and quick tasks land here to be sorted."
+              bottomOffset={tabBarHeight}
             />
           }
         />

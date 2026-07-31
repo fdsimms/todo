@@ -13,13 +13,20 @@ interface Props {
   /** Optional call-to-action pill button below the text. */
   actionLabel?: string;
   onAction?: () => void;
+  /**
+   * Extra bottom padding so content centers in the space actually visible
+   * above a floating (position: absolute) tab bar, instead of the full
+   * screen height behind it. Pass `useBottomTabBarHeight()` from screens
+   * that render this above the tab bar; omit in modals/sheets that don't.
+   */
+  bottomOffset?: number;
 }
 
 /**
  * Shared empty state: tinted icon circle + title + subtitle that gently
  * fades and rises in on mount. Use for every empty list in the app.
  */
-export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: Props) {
+export function EmptyState({ icon, title, subtitle, actionLabel, onAction, bottomOffset }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -53,6 +60,7 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction }: Pro
         styles.container,
         {
           opacity: progress,
+          paddingBottom: bottomOffset ?? 0,
           transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
         },
       ]}

@@ -800,6 +800,7 @@ export function TodayScreen() {
       icon="checkmark-circle"
       title="All clear"
       subtitle={activeFilterCount > 0 ? 'No tasks match these filters' : 'Nothing to do right now'}
+      bottomOffset={tabBarHeight}
     />
   );
 
@@ -1004,6 +1005,7 @@ export function TodayScreen() {
               icon="moon"
               title="Nothing deferred"
               subtitle="Swipe left on a task to defer it"
+              bottomOffset={tabBarHeight}
             />
           }
           ListFooterComponent={listFooter(laterSections.length === 0)}
