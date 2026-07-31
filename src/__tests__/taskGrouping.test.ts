@@ -19,6 +19,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   dueDate: null,
   deadline: null,
+  deadlineOffsetDays: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,

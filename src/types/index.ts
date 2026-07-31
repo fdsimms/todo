@@ -31,6 +31,11 @@ export interface Task {
 
   dueDate: string | null;
   deadline: string | null;   // separate target date to hit; shown as a subtle countdown, doesn't affect scheduling/visibility
+  // When set, `deadline` is derived as `dueDate` minus this many days instead of
+  // a fixed date, and gets recomputed against the new dueDate every time a
+  // recurring task spawns its next occurrence (see completeTask). Null means
+  // `deadline` is a one-off fixed date that doesn't carry forward.
+  deadlineOffsetDays: number | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day

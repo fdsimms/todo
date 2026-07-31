@@ -27,7 +27,7 @@ import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
-import { getNextDueDate, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
+import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
@@ -203,6 +203,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seenAt: now,
       dueDate: draft.dueDate ?? null,
       deadline: draft.deadline ?? null,
+      deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
       deferUntil: draft.deferUntil ?? null,
       timeSegments: draft.timeSegments ?? [],
       windowStart: draft.windowStart ?? null,
@@ -450,6 +451,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         const nextChainIndex = chainAdvances
           ? (atChainEnd ? 0 : task.chainIndex + 1)
           : task.chainIndex;
+        // A fixed deadline is a one-off target date and doesn't carry to the next
+        // occurrence. A relative deadline (deadlineOffsetDays set) recomputes
+        // against the new dueDate instead, so e.g. "the day before it's due"
+        // keeps meaning that on every future occurrence too.
+        const nextDeadline =
+          nextDue && effective.deadlineOffsetDays !== null
+            ? getDeadlineFromOffset(nextDue, effective.deadlineOffsetDays).toISOString()
+            : null;
         nextTask = {
           ...effective,
           id: generateId(),
@@ -458,7 +467,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
           dueDate: nextDue ? nextDue.toISOString() : null,
-          deadline: null, // deadline is a one-off target date, doesn't carry to the next occurrence
+          deadline: nextDeadline,
           deferUntil: null,
           focused: false, // focus resets on new occurrence
           streakCount: recurs ? newStreakCount : task.streakCount,
@@ -704,6 +713,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seenAt: now,
       dueDate: null,
       deadline: null,
+      deadlineOffsetDays: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,
