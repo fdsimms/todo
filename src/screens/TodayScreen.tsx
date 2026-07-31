@@ -37,7 +37,6 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useShallow } from 'zustand/react/shallow';
-import { SettingsScreen } from './SettingsScreen';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
@@ -257,7 +256,6 @@ export function TodayScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
     selectionMode,
@@ -881,7 +879,6 @@ export function TodayScreen() {
           accessibilityLabel: 'Suggest focus tasks',
         }]
       : []),
-    { icon: 'settings-outline' as const, onPress: () => setSettingsVisible(true), accessibilityLabel: 'Settings' },
   ];
 
   return (
@@ -1169,8 +1166,6 @@ export function TodayScreen() {
         efforts={filterEfforts}
         onEffortsChange={setFilterEfforts}
       />
-
-      <SettingsScreen visible={settingsVisible} onClose={() => setSettingsVisible(false)} />
 
       <TaskGroupEditor
         visible={groupEditorVisible}

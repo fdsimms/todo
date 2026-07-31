@@ -14,6 +14,7 @@ import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -45,11 +46,14 @@ export default function AppNavigator() {
   const colors = useColors();
   const { isDark } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [settingsVisible, setSettingsVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('Today');
   const navRef = useRef<NavigationContainerRef<any>>(null);
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const openSettings = useCallback(() => setSettingsVisible(true), []);
+  const closeSettings = useCallback(() => setSettingsVisible(false), []);
 
   // Light selection tick on every tab switch, matching native tab bars.
   const tabPressHaptic = useMemo(() => ({
@@ -162,8 +166,10 @@ export default function AppNavigator() {
         visible={menuOpen}
         onClose={closeMenu}
         onNavigate={handleDrawerNavigate}
+        onOpenSettings={openSettings}
         activeTab={activeTab}
       />
+      <SettingsScreen visible={settingsVisible} onClose={closeSettings} />
       {!menuOpen && (
         <View
           style={styles.edgeZone}

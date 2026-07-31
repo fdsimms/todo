@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -41,11 +42,13 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onNavigate: (tabName: string) => void;
+  onOpenSettings: () => void;
   activeTab: string;
 }
 
-export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Props) {
+export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, activeTab }: Props) {
   const colors = useColors();
+  const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
   // Live count of loose/untriaged tasks, shown as a badge next to "Inbox".
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
@@ -112,6 +115,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
     haptics.tap();
     onClose();
     onNavigate(tabName);
+  };
+
+  const handleSettings = () => {
+    haptics.tap();
+    onClose();
+    onOpenSettings();
   };
 
   if (!isRendered) return null;
@@ -212,6 +221,23 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, activeTab }: Prop
               );
             })}
           </View>
+
+          <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
+            <DrawerItemAppear index={MENU_ITEMS.length}>
+              <TouchableOpacity
+                style={styles.item}
+                onPress={handleSettings}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+              >
+                <View style={[styles.iconWrap, { backgroundColor: colors.bgTertiary }]}>
+                  <Ionicons name="settings-outline" size={20} color={colors.textSecondary} />
+                </View>
+                <Text style={[styles.itemLabel, { color: colors.text }]}>Settings</Text>
+              </TouchableOpacity>
+            </DrawerItemAppear>
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -276,8 +302,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   items: {
+    flex: 1,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
+  },
+  footer: {
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
   item: {
     flexDirection: 'row',
