@@ -287,6 +287,12 @@ export function LaterScreen() {
                 >
                   <Text style={styles.sectionTitle}>{item.label}</Text>
                   <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                  {/* Headers sit in the same elevated list as task rows, above the
+                      spotlight overlay, so each one draws its own scrim to dim in
+                      step with the rows (see TaskItem's spotlightScrim). */}
+                  {spotlightActive && (
+                    <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
+                  )}
                 </TouchableOpacity>
               );
             }
@@ -386,6 +392,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
+  },
+  sectionHeaderScrim: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
   },
   sectionTitle: {
     color: colors.textTertiary,

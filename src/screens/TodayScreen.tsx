@@ -59,6 +59,12 @@ type ViewMode = 'today' | 'later';
 // tappable collapse/expand control for its category (chevron reflects
 // `collapsed`); otherwise it renders as static text (used for the
 // non-category "Later Today" header).
+//
+// `dimmed` mirrors TaskItem's spotlight scrim: while another task is
+// spotlighted, this header needs the same fixed-alpha backdrop drawn over
+// it so it visually recedes with the rest of the list instead of sitting
+// undimmed above the spotlight overlay (the list itself is elevated above
+// that overlay, so headers must dim themselves).
 function SectionHeader({
   label,
   styles,
@@ -66,6 +72,7 @@ function SectionHeader({
   collapsed,
   onToggle,
   onDrag,
+  dimmed = false,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
@@ -73,11 +80,30 @@ function SectionHeader({
   collapsed?: boolean;
   onToggle?: () => void;
   onDrag?: () => void;
+  dimmed?: boolean;
 }) {
+  const scrimOpacity = useRef(new Animated.Value(dimmed ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(scrimOpacity, {
+      toValue: dimmed ? 1 : 0,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [dimmed]);
+
+  const scrim = (
+    <Animated.View
+      style={[styles.sectionHeaderScrim, { opacity: scrimOpacity, backgroundColor: colors.backdrop }]}
+      pointerEvents="none"
+    />
+  );
+
   if (!onToggle) {
     return (
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionHeaderText}>{label}</Text>
+        {scrim}
       </View>
     );
   }
@@ -97,6 +123,7 @@ function SectionHeader({
         <Text style={styles.sectionHeaderText}>{label}</Text>
       </View>
       <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      {scrim}
     </TouchableOpacity>
   );
 }
@@ -608,6 +635,9 @@ export function TodayScreen() {
   }, [allTasks]);
 
   const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
+    // Headers sit in the same elevated list as task rows, above the spotlight
+    // overlay, so each one draws its own scrim to dim in step with the rows.
+    const headerDimmed = expandedTaskId !== null && !selectionMode;
     if (item.type === 'focus-header') {
       return (
         <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
@@ -618,6 +648,9 @@ export function TodayScreen() {
           <TouchableOpacity onPress={clearAllFocus} hitSlop={8}>
             <Text style={styles.clearText}>Clear</Text>
           </TouchableOpacity>
+          {headerDimmed && (
+            <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
+          )}
         </Pressable>
       );
     }
@@ -636,6 +669,9 @@ export function TodayScreen() {
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
           <Ionicons name={restExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+          {headerDimmed && (
+            <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
+          )}
         </TouchableOpacity>
       );
     }
@@ -651,6 +687,7 @@ export function TodayScreen() {
           collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
           onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
           onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
+          dimmed={headerDimmed}
         />
       );
     }
@@ -1181,6 +1218,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   categorySectionHeaderLeft: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
+  },
+  sectionHeaderScrim: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
