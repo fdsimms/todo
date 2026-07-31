@@ -608,8 +608,11 @@ export function TaskItem({
                 <SortableList
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-                  renderItem={(sub, _i, drag) => (
-                    <View style={styles.subtaskRow}>
+                  renderItem={(sub, i, drag) => (
+                    <View style={[
+                      styles.subtaskRow,
+                      i === subtasks.length - 1 && styles.subtaskRowLast,
+                    ]}>
                       <TouchableOpacity
                         onPress={() => {
                           haptics.tap();
@@ -1159,6 +1162,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskSection: {
     gap: 0,
     paddingLeft: spacing.sm,
+    paddingTop: 0,
   },
   sectionDivider: {
     borderTopWidth: border.hairline,
@@ -1172,6 +1176,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
+  },
+  subtaskRowLast: {
+    borderBottomWidth: 0,
   },
   subtaskCheck: {
     width: 18,
