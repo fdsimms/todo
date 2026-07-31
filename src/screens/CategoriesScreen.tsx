@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -250,6 +251,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
 
 export function CategoriesScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const addCategory = useTaskStore(s => s.addCategory);
@@ -601,7 +603,7 @@ export function CategoriesScreen() {
               onSelectAll={() => selectAll(categoryTasks.map(t => t.id))}
               onDeselectAll={deselectAll}
               onCancel={exitSelection}
-              bottomInset={insets.bottom}
+              bottomInset={tabBarHeight}
             />
           )}
         </View>
