@@ -28,7 +28,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isLiveRecurring } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
@@ -48,6 +48,7 @@ interface Props {
   selectionMode?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  onSwipeSelect?: () => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
@@ -89,13 +90,13 @@ export function TaskItem({
   selectionMode = false,
   selected = false,
   onSelect,
+  onSwipeSelect,
   spotlightDisabled = false,
   hideTodayLabel = false,
   showCategory = false,
   showActions = true,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
-  const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
@@ -124,7 +125,6 @@ export function TaskItem({
   const [nowTick, setNowTick] = useState(() => Date.now());
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
-  const deleteAlertOpenRef = useRef(false);
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -344,80 +344,6 @@ export function TaskItem({
     collapseProgress.value = 1;
   };
 
-  const confirmDelete = () => {
-    // Opening the swipeable row (via drag-release) and tapping the revealed
-    // delete button both call this for the same swipe gesture; without this
-    // guard they stack two native alerts, so dismissing the first just
-    // reveals a second one underneath.
-    if (deleteAlertOpenRef.current) return;
-    deleteAlertOpenRef.current = true;
-
-    const performDelete = async () => {
-      deleteAlertOpenRef.current = false;
-      await haptics.impactHeavy();
-      // No animateLayout() here: this unmounts the row's Swipeable
-      // (react-native-gesture-handler), and firing a LayoutAnimation in
-      // the same tick a Swipeable unmounts crashes on iOS — see the
-      // matching note in useTaskStore's completeTask.
-      Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        deleteTask(task.id);
-      });
-    };
-
-    const cancelButton = {
-      text: 'Cancel',
-      style: 'cancel' as const,
-      onPress: () => {
-        deleteAlertOpenRef.current = false;
-        swipeableRef.current?.close();
-      },
-    };
-
-    // A live recurring task (not yet completed, series not exhausted) makes
-    // "delete" ambiguous: does the user want to skip just this occurrence, or
-    // end the series? Everything else (a completed/logbook row, or a
-    // recurring task whose series already ended) has only one outcome.
-    if (isLiveRecurring(task)) {
-      Alert.alert(
-        'Delete recurring task',
-        `"${task.title}" repeats. Skip just this occurrence, or delete it and stop the series?`,
-        [
-          cancelButton,
-          {
-            text: 'This Task',
-            onPress: async () => {
-              deleteAlertOpenRef.current = false;
-              swipeableRef.current?.close();
-              await haptics.impactMedium();
-              skipNextRecurrence(task.id);
-            },
-          },
-          {
-            text: 'This and Future Tasks',
-            style: 'destructive',
-            onPress: performDelete,
-          },
-        ],
-        { onDismiss: () => { deleteAlertOpenRef.current = false; } }
-      );
-      return;
-    }
-
-    Alert.alert(
-      'Delete Task',
-      `Delete "${task.title}"?`,
-      [
-        cancelButton,
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: performDelete,
-        },
-      ],
-      { onDismiss: () => { deleteAlertOpenRef.current = false; } }
-    );
-  };
-
   const handleTitleTap = () => {
     if (selectionMode) { onSelect?.(); return; }
     setTitleEdit(task.title);
@@ -431,6 +357,12 @@ export function TaskItem({
     if (trimmed && trimmed !== task.title) {
       updateTask(task.id, { title: trimmed });
     }
+  };
+
+  const handleSwipeSelect = () => {
+    haptics.impactMedium();
+    swipeableRef.current?.close();
+    onSwipeSelect?.();
   };
 
   const handleSubtaskTitleTap = (sub: Task) => {
@@ -449,15 +381,12 @@ export function TaskItem({
 
   const renderRightActions = () => (
     <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={() => {
-        haptics.impactHeavy();
-        confirmDelete();
-      }}
+      style={styles.selectAction}
+      onPress={handleSwipeSelect}
       accessibilityRole="button"
-      accessibilityLabel={`Delete ${task.title}`}
+      accessibilityLabel={`Select ${task.title}`}
     >
-      <Ionicons name="trash" size={iconSize.md} color={colors.text} />
+      <Ionicons name="checkmark-circle" size={iconSize.md} color={colors.onAccent} />
     </TouchableOpacity>
   );
 
@@ -952,7 +881,7 @@ export function TaskItem({
               }}
               onSwipeableOpen={(direction) => {
                 if (direction === 'right') {
-                  confirmDelete();
+                  handleSwipeSelect();
                 } else {
                   swipeableRef.current?.close();
                   setShowWhenPicker(true);
@@ -1167,8 +1096,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
-  deleteAction: {
-    backgroundColor: colors.red,
+  selectAction: {
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,

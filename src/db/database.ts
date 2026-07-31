@@ -344,6 +344,25 @@ export function dbBulkSetDefer(ids: string[], deferUntil: string): void {
   });
 }
 
+export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegments: TimeOfDay[]): void {
+  if (ids.length === 0) return;
+  const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET due_date = ?, time_of_day = ? WHERE id = ?', [dueDate, timeOfDay, id]);
+    }
+  });
+}
+
+export function dbBulkSetCategory(ids: string[], category: string | null): void {
+  if (ids.length === 0) return;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET category = ? WHERE id = ?', [category, id]);
+    }
+  });
+}
+
 export function dbBulkSetFocus(ids: string[], focused: boolean): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
