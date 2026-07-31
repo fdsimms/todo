@@ -8,39 +8,47 @@ import {
   ScrollView,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { DeferModal } from './DeferModal';
+import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority } from '../types';
+import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
 
 interface Props {
   selectedCount: number;
   totalCount: number;
   existingTags: string[];
+  existingCategories: string[];
   onComplete: () => void;
   onDelete: () => void;
-  onDefer: (date: Date) => void;
+  onSetWhen: (date: Date | null, timeSegments: TimeOfDay[]) => void;
+  onSetCategory: (category: string | null) => void;
+  onAddCategory: (name: string) => void;
   onAddTags: (tags: string[]) => void;
   onSetPriority: (priority: Priority) => void;
-  onGroup: (title: string) => void;
+  // Grouping is Today/Later-only for now — other screens that bulk-select
+  // tasks (Categories, Inbox, Tags) simply omit this and the action hides.
+  onGroup?: (title: string) => void;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onCancel: () => void;
   bottomInset: number;
 }
 
-type Panel = 'actions' | 'priority' | 'tags' | 'group';
+type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category' | 'group';
 
 export function BulkActionBar({
   selectedCount,
   totalCount,
   existingTags,
+  existingCategories,
   onComplete,
   onDelete,
-  onDefer,
+  onSetWhen,
+  onSetCategory,
+  onAddCategory,
   onAddTags,
   onSetPriority,
   onGroup,
@@ -52,16 +60,17 @@ export function BulkActionBar({
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [panel, setPanel] = useState<Panel>('actions');
-  const [deferVisible, setDeferVisible] = useState(false);
+  const [whenVisible, setWhenVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [newTagText, setNewTagText] = useState('');
   const [groupTitle, setGroupTitle] = useState('');
+  const [newCategoryText, setNewCategoryText] = useState('');
 
   const allSelected = selectedCount === totalCount;
 
-  const handleDefer = (date: Date) => {
-    setDeferVisible(false);
-    onDefer(date);
+  const handleConfirmWhen = (date: Date | null, segs: TimeOfDay[]) => {
+    setWhenVisible(false);
+    onSetWhen(date, segs);
   };
 
   const handleTagToggle = (tag: string) => {
@@ -89,10 +98,25 @@ export function BulkActionBar({
 
   const handleApplyGroup = () => {
     const trimmed = groupTitle.trim();
-    if (!trimmed) return;
+    if (!trimmed || !onGroup) return;
     onGroup(trimmed);
     setPanel('actions');
     setGroupTitle('');
+  };
+
+  const handleSetCategory = (category: string | null) => {
+    haptics.tap();
+    onSetCategory(category);
+    setPanel('actions');
+  };
+
+  const handleAddNewCategory = () => {
+    const trimmed = newCategoryText.trim();
+    if (!trimmed) return;
+    onAddCategory(trimmed);
+    onSetCategory(trimmed);
+    setNewCategoryText('');
+    setPanel('actions');
   };
 
   const goBack = () => {
@@ -100,6 +124,7 @@ export function BulkActionBar({
     setSelectedTags(new Set());
     setNewTagText('');
     setGroupTitle('');
+    setNewCategoryText('');
   };
 
   return (
@@ -131,32 +156,27 @@ export function BulkActionBar({
               </PressableScale>
               <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { haptics.tap(); setDeferVisible(true); }}
+                onPress={() => { haptics.tap(); setWhenVisible(true); }}
               >
-                <Ionicons name="time" size={24} color={colors.orange} />
-                <Text style={[styles.actionLabel, { color: colors.orange }]}>Defer</Text>
+                <Ionicons name="calendar" size={24} color={colors.accent} />
+                <Text style={[styles.actionLabel, { color: colors.accent }]}>When</Text>
               </PressableScale>
               <PressableScale
                 style={styles.actionBtn}
-                onPress={() => { haptics.tap(); setPanel('tags'); }}
+                onPress={() => { haptics.tap(); setPanel('category'); }}
               >
-                <Ionicons name="pricetag" size={24} color={colors.accent} />
-                <Text style={[styles.actionLabel, { color: colors.accent }]}>Tag</Text>
+                <Ionicons name="folder" size={24} color={colors.purple} />
+                <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
               </PressableScale>
-              <PressableScale
-                style={styles.actionBtn}
-                onPress={() => { haptics.tap(); setPanel('priority'); }}
-              >
-                <Ionicons name="flag" size={24} color={colors.purple} />
-                <Text style={[styles.actionLabel, { color: colors.purple }]}>Priority</Text>
-              </PressableScale>
-              <PressableScale
-                style={styles.actionBtn}
-                onPress={() => { haptics.tap(); setPanel('group'); }}
-              >
-                <Ionicons name="layers" size={24} color={colors.accent} />
-                <Text style={[styles.actionLabel, { color: colors.accent }]}>Group</Text>
-              </PressableScale>
+              {onGroup && (
+                <PressableScale
+                  style={styles.actionBtn}
+                  onPress={() => { haptics.tap(); setPanel('group'); }}
+                >
+                  <Ionicons name="layers" size={24} color={colors.accent} />
+                  <Text style={[styles.actionLabel, { color: colors.accent }]}>Group</Text>
+                </PressableScale>
+              )}
               <PressableScale
                 style={styles.actionBtn}
                 onPress={() => { haptics.impactMedium(); onDelete(); }}
@@ -164,8 +184,37 @@ export function BulkActionBar({
                 <Ionicons name="trash" size={24} color={colors.red} />
                 <Text style={[styles.actionLabel, { color: colors.red }]}>Delete</Text>
               </PressableScale>
+              <PressableScale
+                style={styles.actionBtn}
+                onPress={() => { haptics.tap(); setPanel('more'); }}
+              >
+                <Ionicons name="ellipsis-horizontal-circle" size={24} color={colors.textSecondary} />
+                <Text style={[styles.actionLabel, { color: colors.textSecondary }]}>More</Text>
+              </PressableScale>
             </View>
           </>
+        )}
+
+        {panel === 'more' && (
+          <View style={styles.subPanel}>
+            <View style={styles.subHeader}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={styles.subTitle}>More Actions</Text>
+              <View style={{ width: 28 }} />
+            </View>
+            <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('tags')}>
+              <Ionicons name="pricetag-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.moreRowText}>Tag</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('priority')}>
+              <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
+              <Text style={styles.moreRowText}>Priority</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
         )}
 
         {panel === 'priority' && (
@@ -263,6 +312,53 @@ export function BulkActionBar({
           </View>
         )}
 
+        {panel === 'category' && (
+          <View style={styles.subPanel}>
+            <View style={styles.subHeader}>
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <Text style={styles.subTitle}>Move to Category</Text>
+              <View style={{ width: 28 }} />
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.tagScroll}
+              contentContainerStyle={styles.tagScrollContent}
+            >
+              <TouchableOpacity
+                style={styles.categoryChip}
+                onPress={() => handleSetCategory(null)}
+              >
+                <Text style={styles.categoryChipText}>None</Text>
+              </TouchableOpacity>
+              {existingCategories.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  style={styles.categoryChip}
+                  onPress={() => handleSetCategory(cat)}
+                >
+                  <Ionicons name="folder-outline" size={13} color={colors.textSecondary} />
+                  <Text style={styles.categoryChipText}>{cat}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={styles.tagInput}
+                placeholder="New category…"
+                placeholderTextColor={colors.textTertiary}
+                value={newCategoryText}
+                onChangeText={setNewCategoryText}
+                returnKeyType="done"
+                onSubmitEditing={handleAddNewCategory}
+                autoCapitalize="words"
+              />
+            </View>
+          </View>
+        )}
+
         {panel === 'group' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
@@ -295,10 +391,12 @@ export function BulkActionBar({
         )}
       </View>
 
-      <DeferModal
-        visible={deferVisible}
-        onConfirm={handleDefer}
-        onCancel={() => setDeferVisible(false)}
+      <WhenPicker
+        visible={whenVisible}
+        value={null}
+        onConfirm={handleConfirmWhen}
+        onClear={() => handleConfirmWhen(null, [])}
+        onCancel={() => setWhenVisible(false)}
       />
     </>
   );
@@ -367,6 +465,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     fontWeight: '600',
   },
+  moreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+  },
+  moreRowText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: '500',
+  },
   priorityRow: {
     flexDirection: 'row',
     gap: spacing.sm,
@@ -433,6 +546,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 4,
   },
   tagChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: '500',
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    borderWidth: 1.5,
+    borderColor: colors.bgQuaternary,
+    backgroundColor: colors.bgTertiary,
+  },
+  categoryChipText: {
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: '500',

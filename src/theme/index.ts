@@ -17,6 +17,12 @@ export type Colors = {
   separator: string;
   /** Text/icon color on filled accent/colored surfaces (always white, iOS-style). */
   onAccent: string;
+  /** Bright yellow used for "new item" banners/alerts. */
+  warning: string;
+  /** Subtle tinted background behind warning banners. */
+  warningBg: string;
+  /** Text/icon color on filled warning surfaces (always dark, for contrast against yellow). */
+  onWarning: string;
   backdrop: string;
   blurFallback: string;
   timeMorning: string;
@@ -43,6 +49,9 @@ export const darkColors: Colors = {
   purple: '#BF5AF2',
   separator: '#38383A',
   onAccent: '#FFFFFF',
+  warning: '#FFD60A',
+  warningBg: 'rgba(255, 214, 10, 0.16)',
+  onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.45)',
   blurFallback: 'rgba(28, 28, 30, 0.85)',
   timeMorning: '#FF9F0A',
@@ -72,6 +81,9 @@ export const darkPurpleColors: Colors = {
   purple: '#BF5AF2',
   separator: '#3D3550',
   onAccent: '#FFFFFF',
+  warning: '#FFD60A',
+  warningBg: 'rgba(255, 214, 10, 0.16)',
+  onWarning: '#000000',
   backdrop: 'rgba(10, 6, 20, 0.5)',
   blurFallback: 'rgba(31, 26, 44, 0.85)',
   timeMorning: '#FF9F0A',
@@ -99,6 +111,9 @@ export const lightColors: Colors = {
   purple: '#AF52DE',
   separator: '#C6C6C8',
   onAccent: '#FFFFFF',
+  warning: '#FFCC00',
+  warningBg: 'rgba(255, 204, 0, 0.16)',
+  onWarning: '#000000',
   backdrop: 'rgba(0, 0, 0, 0.35)',
   blurFallback: 'rgba(255, 255, 255, 0.85)',
   timeMorning: '#FF9500',
@@ -173,7 +188,7 @@ export const iconSize = {
 export const interaction = {
   activeOpacity: 0.7,
   pressScale: 0.96,
-  delayLongPress: 120,
+  delayLongPress: 350,
   // Max finger travel (px) for a raw touchEnd to still count as a tap rather
   // than a scroll/drag release.
   tapMoveThreshold: 10,

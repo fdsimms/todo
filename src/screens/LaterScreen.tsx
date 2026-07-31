@@ -4,7 +4,6 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   AppState,
   type GestureResponderEvent,
 } from 'react-native';
@@ -12,6 +11,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { ReorderableList } from '../components/ReorderableList';
@@ -24,7 +24,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { getVisibleAt, isLiveRecurring } from '../utils/visibilityUtils';
+import { getVisibleAt } from '../utils/visibilityUtils';
 import { formatGroupHeader } from '../utils/dateUtils';
 import { dragRange } from '../utils/reorder';
 import {
@@ -40,13 +40,14 @@ export function LaterScreen() {
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
-  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
-  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkDefer = useTaskStore(s => s.bulkDefer);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const groupTasks = useTaskStore(s => s.groupTasks);
+  const addCategory = useTaskStore(s => s.addCategory);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -54,8 +55,16 @@ export function LaterScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+  } = useTaskSelection(allTasks);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   // Collapse any expanded task when navigating away from this tab so it
@@ -111,70 +120,6 @@ export function LaterScreen() {
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
-  };
-
-  const enterSelectionMode = () => {
-    haptics.impactHeavy();
-    animateLayout();
-    setSelectionMode(true);
-    setSelectedIds(new Set());
-    setExpandedTaskId(null);
-  };
-
-  const toggleSelection = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const exitSelection = () => {
-    animateLayout();
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-  };
-
-  // A live recurring task in the selection makes "delete" ambiguous — see
-  // the matching prompt in TaskItem's swipe-to-delete. For a mixed
-  // selection, "This Task(s)" skips just the recurring ones to their next
-  // occurrence and deletes the rest; "This and Future Tasks" deletes
-  // everything, ending any series in the selection.
-  const handleBulkDelete = () => {
-    const ids = Array.from(selectedIds);
-    const liveRecurringIds = ids.filter(id => {
-      const t = allTasks.find(x => x.id === id);
-      return t ? isLiveRecurring(t) : false;
-    });
-    if (liveRecurringIds.length === 0) {
-      bulkDeleteTasks(ids);
-      exitSelection();
-      return;
-    }
-    const restIds = ids.filter(id => !liveRecurringIds.includes(id));
-    Alert.alert(
-      'Delete recurring tasks',
-      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'This Task(s)',
-          onPress: () => {
-            liveRecurringIds.forEach(id => skipNextRecurrence(id));
-            bulkDeleteTasks(restIds);
-            exitSelection();
-          },
-        },
-        {
-          text: 'This and Future Tasks',
-          style: 'destructive',
-          onPress: () => {
-            bulkDeleteTasks(ids);
-            exitSelection();
-          },
-        },
-      ],
-    );
   };
 
   const toggleSectionCollapse = (label: string) => {
@@ -251,12 +196,6 @@ export function LaterScreen() {
       <ScreenHeader
         title="Later"
         subtitle={`${deferredTasks.length} waiting`}
-        actions={[{
-          icon: 'checkmark-circle-outline',
-          onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-          active: selectionMode,
-          accessibilityLabel: selectionMode ? 'Exit selection mode' : 'Select tasks',
-        }]}
       />
 
       <SpotlightOverlay
@@ -319,6 +258,7 @@ export function LaterScreen() {
                 selectionMode={selectionMode}
                 selected={selectedIds.has(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
+                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
                 showCategory
                 showActions={false}
               />
@@ -337,7 +277,7 @@ export function LaterScreen() {
             <EmptyState
               icon="moon"
               title="Nothing deferred"
-              subtitle="Swipe left on a task to defer it, or set a time of day in the task editor"
+              subtitle="Swipe right on a task to set a date, or set a time of day in the task editor"
             />
           }
           ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
@@ -358,9 +298,12 @@ export function LaterScreen() {
           selectedCount={selectedIds.size}
           totalCount={deferredTasks.length}
           existingTags={allTags}
+          existingCategories={allCategories}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
           onDelete={handleBulkDelete}
-          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+          onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+          onAddCategory={addCategory}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
           onGroup={title => {
@@ -372,8 +315,8 @@ export function LaterScreen() {
             groupTasks(ids, title, category);
             exitSelection();
           }}
-          onSelectAll={() => setSelectedIds(new Set(deferredTasks.map(t => t.id)))}
-          onDeselectAll={() => setSelectedIds(new Set())}
+          onSelectAll={() => selectAll(deferredTasks.map(t => t.id))}
+          onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={insets.bottom}
         />

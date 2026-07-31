@@ -1,0 +1,4 @@
+{
+  "message": "Reordering tasks by dragging now waits a bit longer before picking them up, so a slow scroll doesn't accidentally start a drag",
+  "date": "2026-07-31"
+}

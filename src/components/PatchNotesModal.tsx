@@ -6,7 +6,9 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
+  ScrollView,
   StyleSheet,
+  Dimensions,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -21,6 +23,9 @@ interface Props {
   visible: boolean;
   onDismiss: () => void;
 }
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const NOTES_MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
 
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -135,46 +140,52 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               <Text style={styles.title}>What's New</Text>
             </View>
 
-            {patchNotes.map((note, idx) => {
-              const qaStatus = patchNotesQaStatus[note.id];
-              return (
-                <React.Fragment key={note.id}>
-                  {idx > 0 && <View style={styles.sep} />}
-                  <View style={styles.noteRow}>
-                    <View style={styles.noteTextCol}>
-                      <Text style={styles.noteMessage}>{note.message}</Text>
-                      {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
+            <ScrollView
+              style={styles.notesScroll}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
+            >
+              {patchNotes.map((note, idx) => {
+                const qaStatus = patchNotesQaStatus[note.id];
+                return (
+                  <React.Fragment key={note.id}>
+                    {idx > 0 && <View style={styles.sep} />}
+                    <View style={styles.noteRow}>
+                      <View style={styles.noteTextCol}>
+                        <Text style={styles.noteMessage}>{note.message}</Text>
+                        {!!note.date && <Text style={styles.noteDate}>{formatDate(note.date)}</Text>}
+                      </View>
+                      <View style={styles.qaButtons}>
+                        <TouchableOpacity
+                          style={styles.qaButton}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => toggleQaStatus(note.id, 'pass')}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
+                            size={22}
+                            color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
+                          />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.qaButton}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => toggleQaStatus(note.id, 'fail')}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
+                            size={22}
+                            color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
+                          />
+                        </TouchableOpacity>
+                      </View>
                     </View>
-                    <View style={styles.qaButtons}>
-                      <TouchableOpacity
-                        style={styles.qaButton}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => toggleQaStatus(note.id, 'pass')}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons
-                          name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
-                          size={22}
-                          color={qaStatus === 'pass' ? colors.green : colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={styles.qaButton}
-                        activeOpacity={interaction.activeOpacity}
-                        onPress={() => toggleQaStatus(note.id, 'fail')}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons
-                          name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
-                          size={22}
-                          color={qaStatus === 'fail' ? colors.red : colors.textTertiary}
-                        />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </React.Fragment>
-              );
-            })}
+                  </React.Fragment>
+                );
+              })}
+            </ScrollView>
           </View>
 
           <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
@@ -227,6 +238,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
+  },
+  notesScroll: {
+    maxHeight: NOTES_MAX_HEIGHT,
   },
   noteRow: {
     flexDirection: 'row',

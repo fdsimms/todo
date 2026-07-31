@@ -18,7 +18,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isLiveRecurring } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -32,6 +32,7 @@ import {
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -50,6 +51,7 @@ import { SpotlightOverlay, useSpotlightElevation } from '../components/Spotlight
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
@@ -228,11 +230,13 @@ export function TodayScreen() {
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
-  const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
-  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkDefer = useTaskStore(s => s.bulkDefer);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const addCategory = useTaskStore(s => s.addCategory);
+  const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const dailyCapacityMinutes = useSettingsStore(s => s.dailyCapacityMinutes);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
@@ -256,8 +260,16 @@ export function TodayScreen() {
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [selectionMode, setSelectionMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+  } = useTaskSelection(allTasks);
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
@@ -411,70 +423,6 @@ export function TodayScreen() {
     } finally {
       setIsDeloading(false);
     }
-  };
-
-  const enterSelectionMode = () => {
-    haptics.impactHeavy();
-    animateLayout();
-    setSelectionMode(true);
-    setSelectedIds(new Set());
-    setExpandedTaskId(null);
-  };
-
-  const toggleSelection = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const exitSelection = () => {
-    animateLayout();
-    setSelectionMode(false);
-    setSelectedIds(new Set());
-  };
-
-  // A live recurring task in the selection makes "delete" ambiguous — see
-  // the matching prompt in TaskItem's swipe-to-delete. For a mixed
-  // selection, "This Task(s)" skips just the recurring ones to their next
-  // occurrence and deletes the rest; "This and Future Tasks" deletes
-  // everything, ending any series in the selection.
-  const handleBulkDelete = () => {
-    const ids = Array.from(selectedIds);
-    const liveRecurringIds = ids.filter(id => {
-      const t = allTasks.find(x => x.id === id);
-      return t ? isLiveRecurring(t) : false;
-    });
-    if (liveRecurringIds.length === 0) {
-      bulkDeleteTasks(ids);
-      exitSelection();
-      return;
-    }
-    const restIds = ids.filter(id => !liveRecurringIds.includes(id));
-    Alert.alert(
-      'Delete recurring tasks',
-      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'This Task(s)',
-          onPress: () => {
-            liveRecurringIds.forEach(id => skipNextRecurrence(id));
-            bulkDeleteTasks(restIds);
-            exitSelection();
-          },
-        },
-        {
-          text: 'This and Future Tasks',
-          style: 'destructive',
-          onPress: () => {
-            bulkDeleteTasks(ids);
-            exitSelection();
-          },
-        },
-      ],
-    );
   };
 
   const toggleCategoryCollapse = (label: string) => {
@@ -717,6 +665,7 @@ export function TodayScreen() {
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
         onSelect={() => toggleSelection(task.id)}
+        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
         hideTodayLabel
       />
     );
@@ -811,7 +760,9 @@ export function TodayScreen() {
     return renderTaskRow(item.task, { drag, isActive });
   };
 
-  // Revealed vacation-hidden tasks are peek-only: no drag, no selection.
+  // Revealed vacation-hidden tasks are peek-only: no drag, but they can still
+  // be swiped into selection like any other row so they don't lose delete
+  // capability now that per-row swipe-delete is gone.
   const renderHiddenTask = (task: Task) => {
     const subs = subtasksByParent.get(task.id) ?? [];
     return (
@@ -830,6 +781,10 @@ export function TodayScreen() {
         subtaskCount={subs.length}
         subtaskDoneCount={subs.filter(t => t.completed).length}
         subtasks={subs}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(task.id)}
+        onSelect={() => toggleSelection(task.id)}
+        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
         hideTodayLabel
       />
     );
@@ -884,6 +839,15 @@ export function TodayScreen() {
     />
   );
 
+  const newTaskIds = useMemo(
+    () => visibleTasks.filter(isTaskNew).map(t => t.id),
+    [visibleTasks]
+  );
+  const dismissNewTasksBanner = () => {
+    animateLayout();
+    markTasksSeen(newTaskIds);
+  };
+
   const today = format(new Date(), 'EEEE, MMMM d');
 
   const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
@@ -923,12 +887,6 @@ export function TodayScreen() {
   }, [laterData]);
 
   const headerActions: ScreenHeaderAction[] = [
-    {
-      icon: 'checkmark-circle-outline',
-      onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
-      active: selectionMode,
-      accessibilityLabel: selectionMode ? 'Exit selection mode' : 'Select tasks',
-    },
     ...(viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0
       ? [{
           icon: 'time-outline' as const,
@@ -995,8 +953,7 @@ export function TodayScreen() {
               haptics.tap();
               setViewMode(mode);
               setExpandedTaskId(null);
-              setSelectionMode(false);
-              setSelectedIds(new Set());
+              if (selectionMode) exitSelection();
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="tab"
@@ -1010,6 +967,9 @@ export function TodayScreen() {
         ))}
       </View>
 
+      {viewMode === 'today' && newTaskIds.length > 0 && (
+        <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
+      )}
 
       <SpotlightOverlay
         visible={spotlightActive}
@@ -1058,6 +1018,7 @@ export function TodayScreen() {
                 selectionMode={selectionMode}
                 selected={selectedIds.has(item.task.id)}
                 onSelect={() => toggleSelection(item.task.id)}
+                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
                 hideTodayLabel
                 showCategory
               />
@@ -1256,9 +1217,12 @@ export function TodayScreen() {
           selectedCount={selectedIds.size}
           totalCount={viewMode === 'later' ? deferredTasks.length : filtered.length}
           existingTags={allTags}
+          existingCategories={allCategories}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
           onDelete={handleBulkDelete}
-          onDefer={date => { bulkDefer(Array.from(selectedIds), date); exitSelection(); }}
+          onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+          onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+          onAddCategory={addCategory}
           onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
           onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
           onGroup={title => {
@@ -1270,10 +1234,10 @@ export function TodayScreen() {
             groupTasks(ids, title, category);
             exitSelection();
           }}
-          onSelectAll={() => setSelectedIds(new Set(
+          onSelectAll={() => selectAll(
             viewMode === 'later' ? deferredTasks.map(t => t.id) : filtered.map(t => t.id)
-          ))}
-          onDeselectAll={() => setSelectedIds(new Set())}
+          )}
+          onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={insets.bottom}
         />

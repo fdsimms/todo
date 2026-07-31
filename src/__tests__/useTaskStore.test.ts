@@ -16,6 +16,7 @@ import {
   dbBulkSetDefer,
   dbBulkSetFocus,
   dbBulkAddTags,
+  dbMarkTaskSeen,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -49,6 +50,7 @@ jest.mock('../db/database', () => ({
   dbBulkSetDefer: jest.fn(),
   dbBulkSetFocus: jest.fn(),
   dbBulkAddTags: jest.fn(),
+  dbMarkTaskSeen: jest.fn(),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
@@ -1654,6 +1656,33 @@ describe('bulkAddTags', () => {
     useTaskStore.getState().bulkAddTags([], ['new']);
     useTaskStore.getState().bulkAddTags(['a'], []);
     expect(dbBulkAddTags).not.toHaveBeenCalled();
+  });
+});
+
+describe('markTasksSeen', () => {
+  it('sets seenAt on every specified task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', seenAt: null }), makeTask({ id: 'b', seenAt: null }), makeTask({ id: 'c', seenAt: null })],
+    });
+    useTaskStore.getState().markTasksSeen(['a', 'b']);
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.find(t => t.id === 'a')?.seenAt).not.toBeNull();
+    expect(tasks.find(t => t.id === 'b')?.seenAt).not.toBeNull();
+    expect(tasks.find(t => t.id === 'c')?.seenAt).toBeNull();
+  });
+
+  it('calls dbMarkTaskSeen for each id', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })] });
+    useTaskStore.getState().markTasksSeen(['a', 'b']);
+    expect(dbMarkTaskSeen).toHaveBeenCalledWith('a', expect.any(String));
+    expect(dbMarkTaskSeen).toHaveBeenCalledWith('b', expect.any(String));
+  });
+
+  it('does nothing for an empty id list', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', seenAt: null })] });
+    useTaskStore.getState().markTasksSeen([]);
+    expect(dbMarkTaskSeen).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].seenAt).toBeNull();
   });
 });
 

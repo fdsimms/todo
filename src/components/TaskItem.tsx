@@ -28,11 +28,12 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isLiveRecurring } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
+import { SortableList } from './SortableList';
 
 interface Props {
   task: Task;
@@ -47,6 +48,7 @@ interface Props {
   selectionMode?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  onSwipeSelect?: () => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
@@ -88,13 +90,13 @@ export function TaskItem({
   selectionMode = false,
   selected = false,
   onSelect,
+  onSwipeSelect,
   spotlightDisabled = false,
   hideTodayLabel = false,
   showCategory = false,
   showActions = true,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
-  const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
@@ -103,6 +105,8 @@ export function TaskItem({
   const stopTimer = useTaskStore(s => s.stopTimer);
   const discardTimer = useTaskStore(s => s.discardTimer);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
+  const deleteSubtask = useTaskStore(s => s.deleteSubtask);
+  const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const duplicateTask = useTaskStore(s => s.duplicateTask);
   const colors = useColors();
   const { shadows } = useTheme();
@@ -111,6 +115,8 @@ export function TaskItem({
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
   const [panelHeight, setPanelHeight] = useState(0);
@@ -119,7 +125,6 @@ export function TaskItem({
   const [nowTick, setNowTick] = useState(() => Date.now());
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
-  const deleteAlertOpenRef = useRef(false);
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
@@ -150,6 +155,7 @@ export function TaskItem({
   const expansionProgress = useSharedValue(expanded ? 1 : 0);
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
+  const subtaskTitleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
     // Timing rather than a spring: a spring is underdamped, so it overshoots
@@ -338,80 +344,6 @@ export function TaskItem({
     collapseProgress.value = 1;
   };
 
-  const confirmDelete = () => {
-    // Opening the swipeable row (via drag-release) and tapping the revealed
-    // delete button both call this for the same swipe gesture; without this
-    // guard they stack two native alerts, so dismissing the first just
-    // reveals a second one underneath.
-    if (deleteAlertOpenRef.current) return;
-    deleteAlertOpenRef.current = true;
-
-    const performDelete = async () => {
-      deleteAlertOpenRef.current = false;
-      await haptics.impactHeavy();
-      // No animateLayout() here: this unmounts the row's Swipeable
-      // (react-native-gesture-handler), and firing a LayoutAnimation in
-      // the same tick a Swipeable unmounts crashes on iOS — see the
-      // matching note in useTaskStore's completeTask.
-      Animated.timing(rowOpacity, { toValue: 0, duration: 200, useNativeDriver: true }).start(() => {
-        deleteTask(task.id);
-      });
-    };
-
-    const cancelButton = {
-      text: 'Cancel',
-      style: 'cancel' as const,
-      onPress: () => {
-        deleteAlertOpenRef.current = false;
-        swipeableRef.current?.close();
-      },
-    };
-
-    // A live recurring task (not yet completed, series not exhausted) makes
-    // "delete" ambiguous: does the user want to skip just this occurrence, or
-    // end the series? Everything else (a completed/logbook row, or a
-    // recurring task whose series already ended) has only one outcome.
-    if (isLiveRecurring(task)) {
-      Alert.alert(
-        'Delete recurring task',
-        `"${task.title}" repeats. Skip just this occurrence, or delete it and stop the series?`,
-        [
-          cancelButton,
-          {
-            text: 'This Task',
-            onPress: async () => {
-              deleteAlertOpenRef.current = false;
-              swipeableRef.current?.close();
-              await haptics.impactMedium();
-              skipNextRecurrence(task.id);
-            },
-          },
-          {
-            text: 'This and Future Tasks',
-            style: 'destructive',
-            onPress: performDelete,
-          },
-        ],
-        { onDismiss: () => { deleteAlertOpenRef.current = false; } }
-      );
-      return;
-    }
-
-    Alert.alert(
-      'Delete Task',
-      `Delete "${task.title}"?`,
-      [
-        cancelButton,
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: performDelete,
-        },
-      ],
-      { onDismiss: () => { deleteAlertOpenRef.current = false; } }
-    );
-  };
-
   const handleTitleTap = () => {
     if (selectionMode) { onSelect?.(); return; }
     setTitleEdit(task.title);
@@ -427,17 +359,34 @@ export function TaskItem({
     }
   };
 
+  const handleSwipeSelect = () => {
+    haptics.impactMedium();
+    swipeableRef.current?.close();
+    onSwipeSelect?.();
+  };
+
+  const handleSubtaskTitleTap = (sub: Task) => {
+    setSubtaskTitleEdit(sub.title);
+    setEditingSubtaskId(sub.id);
+    setTimeout(() => subtaskTitleInputRef.current?.focus(), 50);
+  };
+
+  const saveSubtaskTitle = (sub: Task) => {
+    setEditingSubtaskId(null);
+    const trimmed = subtaskTitleEdit.trim();
+    if (trimmed && trimmed !== sub.title) {
+      updateTask(sub.id, { title: trimmed });
+    }
+  };
+
   const renderRightActions = () => (
     <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={() => {
-        haptics.impactHeavy();
-        confirmDelete();
-      }}
+      style={styles.selectAction}
+      onPress={handleSwipeSelect}
       accessibilityRole="button"
-      accessibilityLabel={`Delete ${task.title}`}
+      accessibilityLabel={`Select ${task.title}`}
     >
-      <Ionicons name="trash" size={iconSize.md} color={colors.text} />
+      <Ionicons name="checkmark-circle" size={iconSize.md} color={colors.onAccent} />
     </TouchableOpacity>
   );
 
@@ -556,6 +505,15 @@ export function TaskItem({
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
+            {subtaskCount > 0 && (
+              <View
+                style={styles.subtaskBadge}
+                accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
+              >
+                <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
+                <Text style={styles.subtaskBadgeText}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -644,34 +602,81 @@ export function TaskItem({
             {subtasks.length > 0 && (
               <View style={[
                 styles.expandSection,
+                styles.subtaskSection,
                 task.notes.length > 0 && styles.sectionDivider,
               ]}>
-                {subtasks.map(sub => (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={styles.subtaskRow}
-                    onPress={() => {
-                      haptics.tap();
-                      toggleSubtask(sub.id);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: sub.completed }}
-                    accessibilityLabel={sub.title}
-                  >
-                    <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
-                      {sub.completed && (
-                        <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                <SortableList
+                  data={subtasks}
+                  onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                  renderItem={(sub, _i, drag) => (
+                    <View style={styles.subtaskRow}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.tap();
+                          toggleSubtask(sub.id);
+                        }}
+                        hitSlop={8}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: sub.completed }}
+                        accessibilityLabel={sub.title}
+                      >
+                        <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
+                          {sub.completed && (
+                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                          )}
+                        </View>
+                      </TouchableOpacity>
+                      {editingSubtaskId === sub.id ? (
+                        <TextInput
+                          ref={subtaskTitleInputRef}
+                          style={styles.subtaskTitleInput}
+                          value={subtaskTitleEdit}
+                          onChangeText={setSubtaskTitleEdit}
+                          onBlur={() => saveSubtaskTitle(sub)}
+                          onSubmitEditing={() => saveSubtaskTitle(sub)}
+                          returnKeyType="done"
+                          maxLength={TITLE_MAX_LENGTH}
+                          blurOnSubmit
+                          autoFocus
+                        />
+                      ) : (
+                        <TouchableOpacity
+                          style={styles.subtaskTitleWrapper}
+                          onPress={() => handleSubtaskTitleTap(sub)}
+                          activeOpacity={interaction.activeOpacity}
+                        >
+                          <Text style={[
+                            styles.subtaskTitle,
+                            sub.completed && styles.subtaskTitleDone,
+                          ]} numberOfLines={2}>
+                            {sub.title}
+                          </Text>
+                        </TouchableOpacity>
                       )}
+                      <TouchableOpacity
+                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        delayLongPress={interaction.delayLongPress}
+                        hitSlop={8}
+                        style={styles.subtaskDragHandle}
+                        accessibilityLabel={`Reorder ${sub.title}`}
+                      >
+                        <Ionicons name="reorder-three" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          haptics.tap();
+                          deleteSubtask(sub.id);
+                        }}
+                        hitSlop={8}
+                        style={styles.subtaskDeleteBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${sub.title}`}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={[
-                      styles.subtaskTitle,
-                      sub.completed && styles.subtaskTitleDone,
-                    ]} numberOfLines={2}>
-                      {sub.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                  )}
+                />
               </View>
             )}
 
@@ -683,7 +688,11 @@ export function TaskItem({
                 <Ionicons name="repeat" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>{describeRecurrence(task)}</Text>
                 {task.streakCount > 0 && (
-                  <Text style={styles.expandMeta}> · 🔥 {task.streakCount}</Text>
+                  <>
+                    <Text style={styles.expandMeta}> · </Text>
+                    <Ionicons name="flame" size={12} color={colors.textTertiary} />
+                    <Text style={styles.expandMeta}> {task.streakCount}</Text>
+                  </>
                 )}
               </View>
             )}
@@ -885,7 +894,7 @@ export function TaskItem({
               }}
               onSwipeableOpen={(direction) => {
                 if (direction === 'right') {
-                  confirmDelete();
+                  handleSwipeSelect();
                 } else {
                   swipeableRef.current?.close();
                   setShowWhenPicker(true);
@@ -1100,8 +1109,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
-  deleteAction: {
-    backgroundColor: colors.red,
+  selectAction: {
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
@@ -1145,6 +1154,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.xs,
   },
+  // Indents the subtask list a little to the right of the task's own content,
+  // so it visually nests under the task it belongs to.
+  subtaskSection: {
+    gap: 0,
+    paddingLeft: spacing.sm,
+  },
   sectionDivider: {
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
@@ -1154,6 +1169,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
   },
   subtaskCheck: {
     width: 18,
@@ -1169,14 +1187,30 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
-  subtaskTitle: {
+  subtaskTitleWrapper: {
     flex: 1,
+  },
+  subtaskTitle: {
     color: colors.textSecondary,
     fontSize: font.sm,
   },
   subtaskTitleDone: {
     color: colors.textTertiary,
     textDecorationLine: 'line-through',
+  },
+  subtaskTitleInput: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    padding: 0,
+    margin: 0,
+    includeFontPadding: false,
+  },
+  subtaskDragHandle: {
+    padding: 2,
+  },
+  subtaskDeleteBtn: {
+    padding: 2,
   },
   recurrenceRow: {
     flexDirection: 'row',
@@ -1203,6 +1237,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chainBadgeText: {
     color: colors.accent,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+  },
+  subtaskBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  subtaskBadgeText: {
+    color: colors.textTertiary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },

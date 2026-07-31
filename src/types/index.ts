@@ -146,8 +146,8 @@ export interface TaskTemplate {
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',
-  '#64D2FF',
   '#30D158',
+  '#FFD60A',
   '#FF9F0A',
   '#FF453A',
 ] as const;
