@@ -14,7 +14,6 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   autoRemoveExpiredTasks: boolean;
-  dailyCapacityMinutes: number; // how much estimated work fits in a day before Today is "full"
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   initialized: boolean;
   initialize: () => void;
@@ -26,11 +25,8 @@ interface SettingsStore {
   setAnthropicApiKey: (key: string) => void;
   setVacationMode: (on: boolean) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
-  setDailyCapacityMinutes: (minutes: number) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
 }
-
-export const DEFAULT_DAILY_CAPACITY_MINUTES = 360; // 6 hours
 
 export const useSettingsStore = create<SettingsStore>(set => ({
   dayResetTime: '00:00',
@@ -42,7 +38,6 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationMode: false,
   vacationStart: null,
   autoRemoveExpiredTasks: false,
-  dailyCapacityMinutes: DEFAULT_DAILY_CAPACITY_MINUTES,
   patchNotesQaStatus: {},
   initialized: false,
 
@@ -56,8 +51,6 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
-    const storedCapacity = dbGetSetting('dailyCapacityMinutes');
-    const dailyCapacityMinutes = storedCapacity ? Number(storedCapacity) || DEFAULT_DAILY_CAPACITY_MINUTES : DEFAULT_DAILY_CAPACITY_MINUTES;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -67,7 +60,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, dailyCapacityMinutes, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -116,12 +109,6 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAutoRemoveExpiredTasks(on: boolean) {
     dbSetSetting('autoRemoveExpiredTasks', on ? 'true' : 'false');
     set({ autoRemoveExpiredTasks: on });
-  },
-
-  setDailyCapacityMinutes(minutes: number) {
-    const clamped = Math.max(30, Math.min(24 * 60, Math.round(minutes)));
-    dbSetSetting('dailyCapacityMinutes', String(clamped));
-    set({ dailyCapacityMinutes: clamped });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
