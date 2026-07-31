@@ -483,7 +483,6 @@ export function TaskItem({
             maxLength={TITLE_MAX_LENGTH}
             blurOnSubmit
             autoFocus
-            textAlignVertical="center"
           />
         ) : (
           <View style={styles.titleRow}>
@@ -1046,7 +1045,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: lineHeight.md,
-    height: lineHeight.md,
     padding: 0,
     margin: 0,
     includeFontPadding: false,
