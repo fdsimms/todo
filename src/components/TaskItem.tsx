@@ -411,11 +411,7 @@ export function TaskItem({
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
       {task.priority > 0 && (
-        <View style={[
-          styles.priorityBar,
-          expanded && styles.priorityBarExpanded,
-          { backgroundColor: priorityColor },
-        ]} />
+        <View style={[styles.priorityBar, { backgroundColor: priorityColor }]} />
       )}
 
       <TouchableOpacity
@@ -993,20 +989,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingRight: spacing.md,
     gap: spacing.sm,
   },
+  // Flush to the row's full height with no radius of its own: cardClip's
+  // overflow:hidden + borderRadius round it off wherever it meets a true
+  // card corner, so it never needs manual insets to avoid overflowing —
+  // and it matches the full-height defer button revealed behind it on swipe.
   priorityBar: {
     position: 'absolute',
     left: 0,
-    top: 4,
-    bottom: 4,
-    width: 3,
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
-  },
-  // When expanded, the row's bar meets the panel's bar flush (no gap or
-  // radius) so together they read as one continuous strip.
-  priorityBarExpanded: {
+    top: 0,
     bottom: 0,
-    borderBottomRightRadius: 0,
+    width: 3,
   },
   priorityBarPanel: {
     position: 'absolute',
