@@ -19,7 +19,7 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
-import { format, addMonths } from 'date-fns';
+import { format, addMonths, differenceInCalendarDays } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -30,7 +30,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
@@ -95,6 +95,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [windowStart, setWindowStart] = useState<string | null>(null);
@@ -154,6 +155,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       setDeadline(task.deadline ? new Date(task.deadline) : null);
+      setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
@@ -171,7 +173,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
-      setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
@@ -198,6 +200,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deadline: task?.deadline ?? null,
+      deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
       deferUntil: task?.deferUntil ?? null,
@@ -220,12 +223,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     });
   }, [visible, task]);
 
+  // Relative deadline ("N days before due") tracks the Date field live in the
+  // editor too, so the preview shown here always matches what completeTask
+  // will recompute on the next occurrence.
+  useEffect(() => {
+    if (deadlineOffsetDays !== null && dueDate) {
+      setDeadline(getDeadlineFromOffset(dueDate, deadlineOffsetDays));
+    }
+  }, [dueDate, deadlineOffsetDays]);
+
   const save = () => {
     if (!title.trim()) return;
     const data = {
       title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
+      deadlineOffsetDays,
       timeSegments, windowStart, windowEnd, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
@@ -346,6 +359,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       title, notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
+      deadlineOffsetDays,
       windowStart, windowEnd,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -911,13 +925,66 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <OptionRow
               icon="flag-outline"
               label="Deadline"
-              hint="A target date to hit — separate from Date"
-              value={deadline ? formatDueDate(deadline.toISOString()) : undefined}
-              onPress={() => setShowDeadlinePicker(true)}
-              onClear={deadline ? () => setDeadline(null) : undefined}
+              hint={deadlineOffsetDays === null ? 'A target date to hit — separate from Date' : undefined}
+              value={
+                deadlineOffsetDays !== null
+                  ? (deadline ? `${formatDueDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
+                  : (deadline ? formatDueDate(deadline.toISOString()) : undefined)
+              }
+              onPress={() => { if (deadlineOffsetDays === null) setShowDeadlinePicker(true); }}
+              onClear={(deadline || deadlineOffsetDays !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); } : undefined}
               colors={colors}
               styles={styles}
             />
+            {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null) && (
+              <>
+                <View style={styles.scheduleRow}>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, deadlineOffsetDays === null && styles.schedulePillActive]}
+                    onPress={() => setDeadlineOffsetDays(null)}
+                  >
+                    <Text style={[styles.schedulePillText, deadlineOffsetDays === null && styles.schedulePillTextActive]}>
+                      Fixed date
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, deadlineOffsetDays !== null && styles.schedulePillActive]}
+                    onPress={() => setDeadlineOffsetDays(prev => {
+                      if (prev !== null) return prev;
+                      if (deadline && dueDate) {
+                        const diff = differenceInCalendarDays(dueDate, deadline);
+                        if (diff > 0) return diff;
+                      }
+                      return 1;
+                    })}
+                  >
+                    <Text style={[styles.schedulePillText, deadlineOffsetDays !== null && styles.schedulePillTextActive]}>
+                      Before due date
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {deadlineOffsetDays !== null && (
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setDeadlineOffsetDays(d => Math.max(1, (d ?? 1) - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{deadlineOffsetDays}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setDeadlineOffsetDays(d => (d ?? 0) + 1)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>
+                      {deadlineOffsetDays === 1 ? 'day before due, every occurrence' : 'days before due, every occurrence'}
+                    </Text>
+                  </View>
+                )}
+              </>
+            )}
             <View style={styles.sep} />
             <View style={styles.optionRow}>
               <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />

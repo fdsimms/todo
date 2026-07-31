@@ -89,6 +89,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seenAt: null,
   dueDate: null,
   deadline: null,
+  deadlineOffsetDays: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,

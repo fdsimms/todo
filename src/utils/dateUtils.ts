@@ -3,6 +3,7 @@ import {
   addWeeks,
   addMonths,
   addYears,
+  subDays,
   format,
   isSameDay,
   isSameWeek,
@@ -199,6 +200,11 @@ export function getDeadlineCountdown(deadline: string, dayResetTime?: string): n
   const today = getDayStart(new Date(), dayResetTime);
   const target = getDayStart(new Date(deadline), dayResetTime);
   return differenceInCalendarDays(target, today);
+}
+
+/** Deadline expressed as N days before a due date, e.g. the Wednesday before a Thursday recurrence. */
+export function getDeadlineFromOffset(dueDate: Date, offsetDays: number): Date {
+  return subDays(dueDate, offsetDays);
 }
 
 /**

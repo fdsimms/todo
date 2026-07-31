@@ -97,6 +97,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   dueDate: null,
   deadline: null,
+  deadlineOffsetDays: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -529,6 +530,43 @@ describe('completeTask', () => {
     expect(next?.focused).toBe(false); // focus resets
     expect(next?.deferUntil).toBeNull();
     expect(new Date(next!.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+  });
+
+  it('drops a fixed deadline on the next occurrence', () => {
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      deadline: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+      deadlineOffsetDays: null,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.deadline).toBeNull();
+  });
+
+  it('recomputes a relative deadline against the next occurrence\'s dueDate', () => {
+    // Claim the free Epic Games game every Thursday, deadline the Wednesday before
+    // (i.e. before the next week's reset) — 1 day before dueDate, every occurrence.
+    jest.setSystemTime(new Date(2025, 5, 12, 10, 0, 0)); // Thursday, June 12 2025 — due today
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // Thursday, June 12 2025
+      deadline: new Date(2025, 5, 11, 0, 0, 0).toISOString(), // Wednesday, June 11 2025
+      deadlineOffsetDays: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.deadlineOffsetDays).toBe(1);
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString()); // next Thursday
+    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2025, 5, 18, 0, 0, 0).toISOString()); // next Wednesday
   });
 
   it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {
