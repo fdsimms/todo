@@ -480,6 +480,24 @@ describe('getNextDueDate', () => {
     };
     expect(getNextDueDate(task, '00:00')).not.toBeNull();
   });
+
+  it('advances a full day even when the previous dueDate\'s clock time precedes dayResetTime', () => {
+    // Fixed-schedule tasks anchor to their own dueDate rather than "now" — but
+    // the dueDate's clock time (e.g. a midnight anchor predating a later
+    // dayResetTime) must not be reinterpreted as "still the previous logical
+    // day" the way getDayStart's rollback does for "now". Doing so pulls the
+    // anchor back a day before +1 is applied, so the recurrence lands right
+    // back on the same day instead of advancing — the task looks permanently
+    // stuck (and overdue) rather than moving forward.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(), // June 9, midnight anchor
+    };
+    const result = getNextDueDate(task, '04:00')!;
+    expect(result.getDate()).toBe(10); // June 10 — not stuck on June 9
+  });
 });
 
 // ─── getStreakDisplay ─────────────────────────────────────────────────────────

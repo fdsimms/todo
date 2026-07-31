@@ -143,7 +143,7 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
   const base =
     !task.recurrenceFromCompletion && task.dueDate
-      ? getDayStart(new Date(task.dueDate), dayResetTime)
+      ? getTaskDayStart(new Date(task.dueDate), dayResetTime)
       : getDayStart(new Date(), dayResetTime);
   let next: Date;
   switch (task.recurrenceType) {

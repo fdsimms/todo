@@ -1,0 +1,4 @@
+{
+  "message": "Fixed recurring tasks and \"Later Today\" incorrectly showing as overdue or upcoming during the early-morning window before your day reset time",
+  "date": "2026-07-31"
+}
