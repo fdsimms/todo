@@ -13,6 +13,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format, addDays } from 'date-fns';
@@ -215,6 +216,7 @@ export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
+  const tabBarHeight = useBottomTabBarHeight();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -640,11 +642,12 @@ export function TodayScreen() {
   // (checkbox, swipe actions, timer, expand-for-notes, individual skip), just
   // never draggable (no `drag` passed when rendered inside a group), so
   // ReorderableList itself needs no changes to support them.
-  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean }) => {
+  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean; indented?: boolean }) => {
     const subs = subtasksByParent.get(task.id) ?? [];
     return (
       <TaskItem
         task={task}
+        indented={opts?.indented}
         onPress={() => {
           if (expandedTaskId !== null && expandedTaskId !== task.id) {
             setExpandedTaskId(null);
@@ -753,7 +756,7 @@ export function TodayScreen() {
             dimmed={headerDimmed}
           />
           {!item.group.collapsed && item.children.map(child => (
-            <React.Fragment key={child.id}>{renderTaskRow(child)}</React.Fragment>
+            <React.Fragment key={child.id}>{renderTaskRow(child, { indented: true })}</React.Fragment>
           ))}
         </View>
       );
@@ -1258,7 +1261,7 @@ export function TodayScreen() {
           )}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
-          bottomInset={insets.bottom}
+          bottomInset={tabBarHeight}
         />
       )}
     </View>

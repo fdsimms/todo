@@ -11,6 +11,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -31,6 +32,7 @@ import type { Task } from '../types';
 
 export function TagsScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByTag = useTaskStore(s => s.tasksByTag);
@@ -314,7 +316,7 @@ export function TagsScreen() {
               onSelectAll={() => selectAll(tagTasks.map(t => t.id))}
               onDeselectAll={deselectAll}
               onCancel={exitSelection}
-              bottomInset={insets.bottom}
+              bottomInset={tabBarHeight}
             />
           )}
         </View>

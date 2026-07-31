@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useCallback } from 'react';
 import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -21,6 +22,7 @@ import type { Task } from '../types';
 // It's a computed lens, so a task leaves the Inbox the moment it's organized.
 export function InboxScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -149,7 +151,7 @@ export function InboxScreen() {
           onSelectAll={() => selectAll(inboxTasks.map(t => t.id))}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
-          bottomInset={insets.bottom}
+          bottomInset={tabBarHeight}
         />
       )}
     </View>

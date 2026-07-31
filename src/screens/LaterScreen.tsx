@@ -8,6 +8,7 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -37,6 +38,7 @@ import type { Task } from '../types';
 
 export function LaterScreen() {
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -318,7 +320,7 @@ export function LaterScreen() {
           onSelectAll={() => selectAll(deferredTasks.map(t => t.id))}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
-          bottomInset={insets.bottom}
+          bottomInset={tabBarHeight}
         />
       )}
     </View>

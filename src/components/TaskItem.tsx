@@ -53,6 +53,8 @@ interface Props {
   hideTodayLabel?: boolean;
   showCategory?: boolean;
   showActions?: boolean;
+  /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
+  indented?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -95,6 +97,7 @@ export function TaskItem({
   hideTodayLabel = false,
   showCategory = false,
   showActions = true,
+  indented = false,
 }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -608,8 +611,11 @@ export function TaskItem({
                 <SortableList
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-                  renderItem={(sub, _i, drag) => (
-                    <View style={styles.subtaskRow}>
+                  renderItem={(sub, i, drag) => (
+                    <View style={[
+                      styles.subtaskRow,
+                      i === subtasks.length - 1 && styles.subtaskRowLast,
+                    ]}>
                       <TouchableOpacity
                         onPress={() => {
                           haptics.tap();
@@ -690,8 +696,10 @@ export function TaskItem({
                 {task.streakCount > 0 && (
                   <>
                     <Text style={styles.expandMeta}> · </Text>
-                    <Ionicons name="flame" size={12} color={colors.textTertiary} />
-                    <Text style={styles.expandMeta}> {task.streakCount}</Text>
+                    <View style={styles.streakBadge}>
+                      <Ionicons name="flame" size={12} color={colors.orange} />
+                      <Text style={styles.expandMeta}>{task.streakCount}</Text>
+                    </View>
                   </>
                 )}
               </View>
@@ -861,6 +869,7 @@ export function TaskItem({
             { opacity: isActive ? 1 : rowOpacity },
             isActive && styles.itemWrapperActive,
             expanded && styles.itemWrapperElevated,
+            indented && styles.itemWrapperIndented,
           ]}
           // Screens collapse the spotlight on any touch in the list area;
           // touches inside the expanded card must not bubble up to that.
@@ -946,6 +955,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
+  },
+  // Nests a group's expanded children visually under the group header, which
+  // otherwise shares the exact same card treatment as a top-level task row.
+  itemWrapperIndented: {
+    marginLeft: spacing.md + spacing.lg,
   },
   // Lifted look while being dragged: elevated background so the floating card
   // reads as clearly distinct from the resting rows.
@@ -1159,6 +1173,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskSection: {
     gap: 0,
     paddingLeft: spacing.sm,
+    paddingTop: 0,
   },
   sectionDivider: {
     borderTopWidth: border.hairline,
@@ -1172,6 +1187,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
+  },
+  subtaskRowLast: {
+    borderBottomWidth: 0,
   },
   subtaskCheck: {
     width: 18,
@@ -1221,6 +1239,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   expandMeta: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  streakBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
   },
   expandMetaActive: {
     color: colors.accent,
