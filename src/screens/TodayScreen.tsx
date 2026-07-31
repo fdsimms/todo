@@ -171,6 +171,45 @@ function VacationHiddenSection({
   );
 }
 
+// Collapsible reveal for tasks deferred to later today (a time segment or
+// window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
+// deemphasized by default, expands in place to show the tasks.
+function LaterTodaySection({
+  tasks,
+  expanded,
+  onToggle,
+  renderTask,
+  styles,
+  colors,
+}: {
+  tasks: Task[];
+  expanded: boolean;
+  onToggle: () => void;
+  renderTask: (task: Task) => React.ReactNode;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  if (tasks.length === 0) return null;
+  return (
+    <View style={styles.hiddenSection}>
+      <TouchableOpacity
+        style={styles.hiddenToggle}
+        onPress={onToggle}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons name="time-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.hiddenToggleText}>
+          {expanded ? 'Hide' : 'Show'} {tasks.length} later today
+        </Text>
+        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
+      {expanded && tasks.map(task => (
+        <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
+      ))}
+    </View>
+  );
+}
+
 // Collapsible reveal for tasks whose time window has closed. Stays put until
 // the user deletes it (or, for a recurring task, skips it) — expiring never
 // deletes automatically unless the "auto-remove" setting is on.
@@ -527,18 +566,9 @@ export function TodayScreen() {
 
     const ungrouped = filtered.filter(t => !t.groupId);
     const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
-    if (showUpcoming && upcomingTodayTasks.length > 0) {
-      let upcomingFiltered = upcomingTodayTasks;
-      if (filterPriorities.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterPriorities.includes(t.priority));
-      if (filterEfforts.length > 0) upcomingFiltered = upcomingFiltered.filter(t => filterEfforts.includes(t.effort));
-      if (upcomingFiltered.length > 0) {
-        items.push({ type: 'header', label: 'Later Today' });
-        upcomingFiltered.forEach(task => items.push({ type: 'task', task }));
-      }
-    }
     return applyCategoryCollapse(items);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, showUpcoming, upcomingTodayTasks, filterPriorities, filterEfforts, allCategories, collapsedCategories, visibleGroupItems]);
+  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
@@ -759,6 +789,21 @@ export function TodayScreen() {
   // state centered by stopping the spacer from growing.
   const listFooter = (fixedWhenEmpty = false) => (
     <>
+      {viewMode === 'today' && focusedTasks.length === 0 && (
+        <LaterTodaySection
+          tasks={upcomingTodayTasks}
+          expanded={showUpcoming}
+          onToggle={() => {
+            haptics.tap();
+            animateLayout();
+            setExpandedTaskId(null);
+            setShowUpcoming(v => !v);
+          }}
+          renderTask={renderHiddenTask}
+          styles={styles}
+          colors={colors}
+        />
+      )}
       {viewMode === 'today' && (
         <ExpiredSection
           tasks={expiredTasks}
@@ -851,16 +896,6 @@ export function TodayScreen() {
   }, [laterData]);
 
   const headerActions: ScreenHeaderAction[] = [
-    ...(viewMode === 'today' && focusedTasks.length === 0 && upcomingTodayTasks.length > 0
-      ? [{
-          icon: 'time-outline' as const,
-          onPress: () => setShowUpcoming(v => !v),
-          active: showUpcoming,
-          badge: showUpcoming ? undefined : upcomingTodayTasks.length,
-          badgeDot: true,
-          accessibilityLabel: showUpcoming ? 'Hide later-today tasks' : 'Show later-today tasks',
-        }]
-      : []),
     ...(viewMode === 'today'
       ? [{
           icon: 'options' as const,
