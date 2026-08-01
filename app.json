@@ -34,8 +34,7 @@
       "expo-asset",
       "expo-font",
       "./plugins/withAppGroup",
-      "./plugins/withWidgetExtension",
-      "./plugins/withResourceBundleCodeSigning"
+      "./plugins/withWidgetExtension"
     ],
     "extra": {
       "eas": {
