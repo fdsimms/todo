@@ -955,7 +955,7 @@ export function TodayScreen() {
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
       ? [{
-          icon: 'options' as const,
+          icon: 'funnel' as const,
           onPress: () => setFilterVisible(true),
           active: activeFilterCount > 0,
           badge: activeFilterCount,
