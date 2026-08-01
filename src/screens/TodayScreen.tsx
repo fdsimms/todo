@@ -606,19 +606,26 @@ export function TodayScreen() {
 
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
-  // pre-drag order while the store write propagates; the effect below then
-  // reconciles to the store-derived `data` on the next render.
+  // pre-drag order while the store write propagates; the render-time sync
+  // below then reconciles to the store-derived `data` as soon as it changes.
   //
   // Both values are produced by makeCategoryGroups over the same tasks in the
   // same order, so they're structurally identical — the reconcile moves no
   // cells (no stranded drop), but it is essential: it hands the drag library a
-  // fresh canonical array *after* the drop animation settles, so the library
-  // can't get stuck showing its own internal drag order (e.g. a task left
-  // resting above a header).
+  // fresh canonical array once the store catches up, so the library can't get
+  // stuck showing its own internal drag order (e.g. a task left resting above
+  // a header).
+  //
+  // Synced during render (comparing against a ref) rather than in a
+  // useEffect, so a `data` change — including the very first store load —
+  // reaches the list in the same render as everything else on screen, instead
+  // of landing a frame late and popping in after the rest of the UI.
   const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  useEffect(() => {
+  const syncedDataRef = useRef(data);
+  if (syncedDataRef.current !== data) {
+    syncedDataRef.current = data;
     setDraggableData(data);
-  }, [data]);
+  }
 
   // Set right before a category header's drag() starts, and cleared right
   // before any other drag starts, so onReorder below can tell whether the
