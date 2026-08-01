@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { enableScreens } from 'react-native-screens';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -12,6 +13,17 @@ import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
+
+// Disables react-native-screens' native optimizations app-wide, called once
+// before any navigator mounts. Workaround for a crash in
+// -[RNSTabBarController updateTabBarAppearance] on iOS 26 production builds
+// on newer Apple Silicon devices — see
+// https://github.com/software-mansion/react-native-screens/issues/3940.
+// react-native-screens falls back to plain React Native views for
+// navigation instead of native UIViewController-backed screens; the app's
+// tab bar and navigation behave identically, just without that native
+// optimization layer.
+enableScreens(false);
 
 function AppContent() {
   const { isDark } = useTheme();
