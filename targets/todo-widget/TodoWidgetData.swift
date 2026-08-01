@@ -1,8 +1,12 @@
 import Foundation
 import SwiftUI
 
-private let appGroupID = "group.com.fdsimms.dundundun"
-private let snapshotFileName = "widget_data.json"
+// Not `private` — CompleteTaskIntent.swift (same target) needs these too.
+let appGroupID = "group.com.fdsimms.dundundun"
+let snapshotFileName = "widget_data.json"
+// Must match the same literal in TodoWidgetBridgeModule.swift — a separate
+// Xcode target/compilation unit, so the string can't be shared directly.
+let pendingCompletionsFileName = "widget_pending_completions.json"
 
 struct WidgetTask: Codable, Identifiable {
     let id: String
@@ -51,6 +55,44 @@ func loadWidgetSnapshot() -> WidgetLoadResult {
         return .decodeFailed
     }
     return .success(snapshot)
+}
+
+private func pendingCompletionsFileURL() -> URL? {
+    guard let containerURL = FileManager.default.containerURL(
+        forSecurityApplicationGroupIdentifier: appGroupID
+    ) else {
+        return nil
+    }
+    return containerURL
+        .appendingPathComponent("Library/Application Support", isDirectory: true)
+        .appendingPathComponent(pendingCompletionsFileName)
+}
+
+// Tasks the widget has optimistically marked complete via CompleteTaskIntent
+// but that the app hasn't actually processed yet (recurrence/streaks/chains
+// only apply once the app itself calls completeTask() — see
+// TodoWidgetBridgeModule's drainPendingCompletions). Used purely to render a
+// checked state immediately; the underlying snapshot still lists these tasks
+// until the app catches up and writes a fresh one.
+func loadPendingCompletionIds() -> Set<String> {
+    guard let fileURL = pendingCompletionsFileURL(),
+          let data = try? Data(contentsOf: fileURL),
+          let ids = try? JSONDecoder().decode([String].self, from: data) else {
+        return []
+    }
+    return Set(ids)
+}
+
+func addPendingCompletion(taskId: String) {
+    guard let fileURL = pendingCompletionsFileURL() else { return }
+    var ids = loadPendingCompletionIds()
+    ids.insert(taskId)
+    guard let data = try? JSONEncoder().encode(Array(ids)) else { return }
+    try? FileManager.default.createDirectory(
+        at: fileURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+    )
+    try? data.write(to: fileURL, options: .atomic)
 }
 
 extension Color {

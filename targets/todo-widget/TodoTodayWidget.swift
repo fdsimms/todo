@@ -1,25 +1,27 @@
 import WidgetKit
 import SwiftUI
+import AppIntents
 
 struct TodoEntry: TimelineEntry {
     let date: Date
     let result: WidgetLoadResult
+    let pendingCompletionIds: Set<String>
 }
 
 struct TodoTodayProvider: TimelineProvider {
     func placeholder(in context: Context) -> TodoEntry {
-        TodoEntry(date: Date(), result: .noSnapshotYet)
+        TodoEntry(date: Date(), result: .noSnapshotYet, pendingCompletionIds: [])
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TodoEntry) -> Void) {
-        completion(TodoEntry(date: Date(), result: loadWidgetSnapshot()))
+        completion(TodoEntry(date: Date(), result: loadWidgetSnapshot(), pendingCompletionIds: loadPendingCompletionIds()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodoEntry>) -> Void) {
-        let entry = TodoEntry(date: Date(), result: loadWidgetSnapshot())
+        let entry = TodoEntry(date: Date(), result: loadWidgetSnapshot(), pendingCompletionIds: loadPendingCompletionIds())
         // The app calls WidgetCenter.reloadAllTimelines() after every task
-        // mutation, so this fallback only matters if the app hasn't been
-        // opened in a while.
+        // mutation (and CompleteTaskIntent does the same), so this fallback
+        // only matters if the app hasn't been opened in a while.
         let nextRefresh = Calendar.current.date(byAdding: .minute, value: 15, to: Date()) ?? Date()
         completion(Timeline(entries: [entry], policy: .after(nextRefresh)))
     }
@@ -28,33 +30,53 @@ struct TodoTodayProvider: TimelineProvider {
 struct TaskRowView: View {
     let task: WidgetTask
     let palette: WidgetPalette
+    let isPendingCompletion: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            Rectangle()
-                .fill(priorityColor(task.priority))
-                .frame(width: 3)
-                .padding(.vertical, 4)
+        HStack(spacing: 8) {
+            if task.priority > 0 {
+                Rectangle()
+                    .fill(priorityColor(task.priority))
+                    .frame(width: 3)
+                    .padding(.vertical, 3)
+            }
 
-            Circle()
-                .stroke(palette.separator, lineWidth: 2)
-                .frame(width: 18, height: 18)
+            Button(intent: CompleteTaskIntent(taskId: task.id)) {
+                ZStack {
+                    Circle()
+                        .stroke(palette.separator, lineWidth: 2)
+                    if isPendingCompletion {
+                        Circle()
+                            .fill(palette.accent)
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .frame(width: 16, height: 16)
+                // Padding here (not on the row) widens the actual tap
+                // target beyond the visible circle without affecting layout.
+                .padding(6)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             Text(task.title)
-                .font(.system(size: 13))
-                .foregroundColor(palette.text)
+                .font(.system(size: 12))
+                .foregroundColor(isPendingCompletion ? palette.textTertiary : palette.text)
+                .strikethrough(isPendingCompletion)
                 .lineLimit(1)
+                .truncationMode(.tail)
 
-            Spacer()
-
-            if task.focused {
+            if task.focused && !isPendingCompletion {
                 Image(systemName: "star.fill")
                     .foregroundColor(Color(hex: "FF9F0A"))
-                    .font(.system(size: 10))
+                    .font(.system(size: 8))
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 5)
+        .padding(.leading, 10)
+        .padding(.trailing, 6)
+        .padding(.vertical, 1)
     }
 }
 
@@ -77,7 +99,13 @@ struct TodoTodayWidgetEntryView: View {
             if case .success(let snapshot) = entry.result { return snapshot }
             return nil
         }()
-        let tasks = snapshot?.visibleTasks ?? []
+        let allTasks = snapshot?.visibleTasks ?? []
+        // Two columns of up to 4 rows each fit the medium widget's fixed
+        // height without the last row getting clipped.
+        let shown = Array(allTasks.prefix(8))
+        let leftColumn = Array(shown.prefix(4))
+        let rightColumn = Array(shown.dropFirst(4))
+        let remaining = max(0, allTasks.count - entry.pendingCompletionIds.count)
 
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -88,7 +116,7 @@ struct TodoTodayWidgetEntryView: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundColor(palette.textSecondary)
                 Spacer()
-                Text("\(tasks.count) tasks")
+                Text("\(remaining) tasks")
                     .font(.system(size: 12))
                     .foregroundColor(palette.textSecondary)
             }
@@ -96,7 +124,7 @@ struct TodoTodayWidgetEntryView: View {
             .padding(.top, 12)
             .padding(.bottom, 8)
 
-            if tasks.isEmpty {
+            if allTasks.isEmpty {
                 Spacer()
                 HStack {
                     Spacer()
@@ -109,8 +137,30 @@ struct TodoTodayWidgetEntryView: View {
                 }
                 Spacer()
             } else {
-                ForEach(tasks.prefix(5)) { task in
-                    TaskRowView(task: task, palette: palette)
+                HStack(alignment: .top, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(leftColumn) { task in
+                            TaskRowView(
+                                task: task,
+                                palette: palette,
+                                isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
+                            )
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if !rightColumn.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(rightColumn) { task in
+                                TaskRowView(
+                                    task: task,
+                                    palette: palette,
+                                    isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 Spacer(minLength: 0)
             }
