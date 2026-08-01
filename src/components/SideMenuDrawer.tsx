@@ -18,7 +18,6 @@ import { useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
-import { useTaskStore } from '../store/useTaskStore';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -29,7 +28,7 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
-  { name: 'Inbox', icon: 'file-tray-outline', label: 'Inbox' },
+  { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
@@ -49,8 +48,6 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
-  // Live count of loose/untriaged tasks, shown as a badge next to "Inbox".
-  const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
@@ -205,13 +202,6 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   >
                     {item.label}
                   </Text>
-                  {item.name === 'Inbox' && inboxCount > 0 && (
-                    <View style={[styles.countBadge, { backgroundColor: colors.accent }]}>
-                      <Text style={[styles.countBadgeText, { color: colors.onAccent }]}>
-                        {inboxCount}
-                      </Text>
-                    </View>
-                  )}
                   {isActive && (
                     <View style={[styles.activeDot, { backgroundColor: colors.accent }]} />
                   )}
@@ -335,17 +325,5 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
-  },
-  countBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  countBadgeText: {
-    fontSize: font.xs,
-    fontWeight: fontWeight.bold,
   },
 });
