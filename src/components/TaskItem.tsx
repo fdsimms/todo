@@ -135,8 +135,8 @@ export function TaskItem({
   // Drives the whole row's height to 0 once the completion fade finishes, so
   // the space it took up collapses right away instead of sitting there
   // invisible for the rest of completeTask's completionHoldIds window (see
-  // useTaskStore) — that hold keeps the row mounted for a couple seconds so a
-  // burst of completions doesn't reflow the list after every tap, but with no
+  // useTaskStore) — that hold keeps the row mounted briefly so a burst of
+  // completions doesn't reflow the list after every tap, but with no
   // visual collapse of its own it just reads as the app freezing. Runs on the
   // UI thread for the same reason the expand panel below does: a JS-driven
   // height change stutters once other rows have to re-layout under it.
