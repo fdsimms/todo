@@ -33,6 +33,14 @@
       "@react-native-community/datetimepicker",
       "expo-asset",
       "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "buildReactNativeFromSource": true
+          }
+        }
+      ],
       "./plugins/withAppGroup",
       "./plugins/withWidgetExtension"
     ],
