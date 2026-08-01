@@ -52,6 +52,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
+  const pendingActionRef = useRef<(() => void) | null>(null);
 
   const swipePanResponder = useRef(
     PanResponder.create({
@@ -103,7 +104,13 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           duration: 180,
           useNativeDriver: true,
         }),
-      ]).start(() => setIsRendered(false));
+      ]).start(() => {
+        setIsRendered(false);
+        // Let the native Modal fully unmount before presenting another one —
+        // two RN Modals visible at once on iOS can leave touches inert.
+        pendingActionRef.current?.();
+        pendingActionRef.current = null;
+      });
     }
   }, [visible]);
 
@@ -115,8 +122,8 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
 
   const handleSettings = () => {
     haptics.tap();
+    pendingActionRef.current = onOpenSettings;
     onClose();
-    onOpenSettings();
   };
 
   if (!isRendered) return null;
