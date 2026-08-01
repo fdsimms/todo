@@ -57,12 +57,13 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 
 // A completed task keeps appearing wherever it would if it were still
 // incomplete, for COMPLETION_HOLD_MS after it's completed. TaskItem's own row
-// collapses to zero height ~animation.duration.normal (250ms) after
-// completeTask() is called, so this only needs to outlast that collapse
-// (with a little slack for near-simultaneous taps) — anything longer just
-// strands a now-empty category header on screen after its last task has
-// already visibly disappeared.
-const COMPLETION_HOLD_MS = 500;
+// collapses to zero height ~animation.duration.normal (250ms, src/theme —
+// not imported here to keep this store out of react-native's module graph
+// for tests) after completeTask() is called, so this only needs to outlast
+// that collapse (with a little slack for near-simultaneous taps) — anything
+// longer just strands a now-empty category header on screen after its last
+// task has already visibly disappeared.
+const COMPLETION_HOLD_MS = 300;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Caches the masked (completed: false) copy of each held task, keyed by the

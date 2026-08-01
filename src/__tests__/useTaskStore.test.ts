@@ -875,14 +875,14 @@ describe('completeTask', () => {
         tasks: [makeTask({ id: 't1', sortOrder: 1 }), makeTask({ id: 't2', sortOrder: 2 })],
       });
       useTaskStore.getState().completeTask('t1');
-      jest.advanceTimersByTime(300);
+      jest.advanceTimersByTime(100);
       useTaskStore.getState().completeTask('t2');
-      jest.advanceTimersByTime(300);
-      // t1 completed 600ms ago, but t2's completion pushed the window out,
+      jest.advanceTimersByTime(200);
+      // t1 completed 300ms ago, but t2's completion pushed the window out,
       // so both are still held together.
       expect(useTaskStore.getState().visibleTasks().map(t => t.id).sort()).toEqual(['t1', 't2']);
 
-      jest.advanceTimersByTime(200);
+      jest.advanceTimersByTime(100);
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 

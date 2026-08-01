@@ -1,0 +1,4 @@
+{
+  "message": "Fixed category headers lingering on screen for a moment after their last task finished completing, instead of disappearing at the same time",
+  "date": "2026-08-01"
+}
