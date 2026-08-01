@@ -158,6 +158,14 @@ export function WhenPicker({
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => confirmWithFeedback(noonOf(tomorrow), tomorrowKey);
 
+  // Lets the time-of-day segment be changed on its own, without also
+  // having to tap a calendar day just to commit the change.
+  const handleSave = () => {
+    if (pendingRef.current) return;
+    haptics.tap();
+    onConfirm(value ?? null, segments);
+  };
+
   const handleSuggest = async () => {
     if (aiLoading || pendingRef.current) return;
     setAiLoading(true);
@@ -194,10 +202,12 @@ export function WhenPicker({
         <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.headerSpacer} />
+            <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.headerTextBtn}>
+              <Text style={styles.headerBtnText}>Cancel</Text>
+            </TouchableOpacity>
             <Text style={styles.headerTitle}>When?</Text>
-            <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn}>
-              <Ionicons name="close" size={20} color={colors.textSecondary} />
+            <TouchableOpacity onPress={handleSave} hitSlop={10} style={styles.headerTextBtn}>
+              <Text style={[styles.headerBtnText, styles.headerSaveText]}>Save</Text>
             </TouchableOpacity>
           </View>
 
@@ -445,21 +455,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  headerSpacer: {
-    width: 28,
-  },
   headerTitle: {
     color: colors.text,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },
-  closeBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerTextBtn: {
+    minWidth: 28,
+  },
+  headerBtnText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  headerSaveText: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+    textAlign: 'right',
   },
   sectionLabel: {
     color: colors.textTertiary,
