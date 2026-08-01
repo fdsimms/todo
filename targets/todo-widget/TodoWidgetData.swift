@@ -21,22 +21,36 @@ struct WidgetSnapshot: Codable {
     let focusedTasks: [WidgetTask]
 }
 
+// Distinguishing these matters: "no App Group access" (an entitlement/
+// provisioning problem) and "no snapshot written yet" (the normal state on
+// a fresh install, before the app has run once) look identical as a bare
+// nil and are very different problems to chase. "decodeFailed" catches a
+// schema mismatch between what the app writes and what this target expects.
+enum WidgetLoadResult {
+    case success(WidgetSnapshot)
+    case noAppGroupAccess
+    case noSnapshotYet
+    case decodeFailed
+}
+
 // Reads the snapshot written by TodoWidgetBridgeModule from the shared App
-// Group container. Returns nil if the app hasn't run yet (fresh install) or
-// the file is momentarily mid-write — the widget falls back to a placeholder.
-func loadWidgetSnapshot() -> WidgetSnapshot? {
+// Group container.
+func loadWidgetSnapshot() -> WidgetLoadResult {
     guard let containerURL = FileManager.default.containerURL(
         forSecurityApplicationGroupIdentifier: appGroupID
     ) else {
-        return nil
+        return .noAppGroupAccess
     }
 
     let fileURL = containerURL
         .appendingPathComponent("Library/Application Support", isDirectory: true)
         .appendingPathComponent(snapshotFileName)
 
-    guard let data = try? Data(contentsOf: fileURL) else { return nil }
-    return try? JSONDecoder().decode(WidgetSnapshot.self, from: data)
+    guard let data = try? Data(contentsOf: fileURL) else { return .noSnapshotYet }
+    guard let snapshot = try? JSONDecoder().decode(WidgetSnapshot.self, from: data) else {
+        return .decodeFailed
+    }
+    return .success(snapshot)
 }
 
 extension Color {
