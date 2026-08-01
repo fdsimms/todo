@@ -43,9 +43,12 @@ function writeToNativeBridge(jsonString: string): void {
   if (Platform.OS !== 'ios') return;
   try {
     const { writeWidgetSnapshot } = require('todo-widget-bridge') as {
-      writeWidgetSnapshot: (jsonString: string) => void;
+      writeWidgetSnapshot: (jsonString: string) => Promise<void>;
     };
-    writeWidgetSnapshot(jsonString);
+    // Fire-and-forget: nothing here needs to block on the native write
+    // completing. Swallowing a rejection here is intentional — a failed
+    // widget refresh should never surface anywhere in the app UI.
+    writeWidgetSnapshot(jsonString).catch(() => {});
   } catch {
     // No dev client build with the native module present (e.g. Expo Go) — no-op.
   }
@@ -77,7 +80,10 @@ function scheduleSnapshotWrite(): void {
 export function useWidgetSync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
-    writeSnapshotNow();
+    // Deferred rather than called synchronously during mount — avoids
+    // making the very first native module call while the app (and its
+    // native module registry) is still mid-launch.
+    scheduleSnapshotWrite();
     const unsubscribe = useTaskStore.subscribe((state, prevState) => {
       if (state.tasks !== prevState.tasks) scheduleSnapshotWrite();
     });
