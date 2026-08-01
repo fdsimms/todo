@@ -102,6 +102,35 @@ const withWidgetExtension = config => {
 
     const target = project.addTarget(TARGET_NAME, 'app_extension', TARGET_NAME, bundleIdentifier);
 
+    // addTarget() pre-wraps several string fields in literal quote
+    // characters (e.g. `name: '"' + targetName + '"'`) instead of leaving
+    // them plain and letting the pbxproj writer quote them as needed on
+    // serialization (which it does correctly — see CODE_SIGN_ENTITLEMENTS
+    // below, set as a plain string and written out fine). Xcode's own PBX
+    // parser tolerates the redundant quoting, but any Node-side tool reading
+    // these fields back for an exact string match — including EAS Build's
+    // own credential-to-target correlation during non-interactive builds —
+    // will never match "TodoWidget" / the plain bundle identifier against a
+    // value that's actually `"TodoWidget"` / `"com.fdsimms...TodoWidget"`
+    // with the quotes baked into the string itself. Overwrite with clean
+    // values immediately so nothing downstream has to know about this.
+    target.pbxNativeTarget.name = TARGET_NAME;
+    target.pbxNativeTarget.productName = TARGET_NAME;
+
+    // The PBXNativeTarget section's own `/* comment */` for this target's
+    // uuid, and its entry in the PBXProject's `targets = (...)` list, were
+    // both captured from the same still-quoted name at the point addTarget()
+    // called addToPbxNativeTargetSection/addToPbxProjectSection internally —
+    // overwriting .name above doesn't retroactively fix comments that were
+    // already copied from it. Comments are cosmetic for xcodebuild itself,
+    // but leaving one of these inconsistent with every other target's plain
+    // (unquoted) comment is exactly the kind of thing a naive string match
+    // elsewhere could trip on, so clean them up too.
+    project.pbxNativeTargetSection()[`${target.uuid}_comment`] = TARGET_NAME;
+    const projectTargets = project.pbxProjectSection()[project.getFirstProject().uuid].targets;
+    const targetsListEntry = projectTargets.find(t => t.value === target.uuid);
+    if (targetsListEntry) targetsListEntry.comment = TARGET_NAME;
+
     // addTarget() only writes signing info into the XCBuildConfigurations
     // below — it does NOT register the target in the PBXProject's
     // `attributes.TargetAttributes` dict. Xcode's own "requires a
@@ -141,6 +170,9 @@ const withWidgetExtension = config => {
     const buildConfigSection = project.pbxXCBuildConfigurationSection();
     for (const { value: configUuid } of configList.buildConfigurations) {
       const buildSettings = buildConfigSection[configUuid].buildSettings;
+      buildSettings.PRODUCT_NAME = TARGET_NAME;
+      buildSettings.PRODUCT_BUNDLE_IDENTIFIER = bundleIdentifier;
+      buildSettings.INFOPLIST_FILE = `${TARGET_NAME}/${INFO_PLIST_NAME}`;
       buildSettings.CODE_SIGN_ENTITLEMENTS = `${TARGET_NAME}/${ENTITLEMENTS_NAME}`;
       buildSettings.CODE_SIGN_STYLE = 'Automatic';
       buildSettings.DEVELOPMENT_TEAM = DEVELOPMENT_TEAM;
