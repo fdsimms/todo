@@ -1,25 +1,22 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
   SectionList,
   TouchableOpacity,
-  Pressable,
-  Animated,
-  PanResponder,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format, isToday, isYesterday, parseISO } from 'date-fns';
+import { format, isToday, isYesterday } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
-import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, fontWeight, radius, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
@@ -48,22 +45,9 @@ export function LogbookScreen() {
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const colors = useColors();
-  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
-  const [dragTask, setDragTask] = useState<Task | null>(null);
-  const [overlayLayout, setOverlayLayout] = useState<{ top: number; left: number; width: number } | null>(null);
-  const [hoverDateKey, setHoverDateKey] = useState<string | null>(null);
-
-  const containerRef = useRef<View>(null);
-  const rowRefs = useRef(new Map<string, View>()).current;
-  const headerRefs = useRef(new Map<string, View>()).current;
-  const headerLayouts = useRef(new Map<string, number>()).current;
-  const dragTaskRef = useRef<Task | null>(null);
-  const hoverDateKeyRef = useRef<string | null>(null);
-  const overlayTranslate = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
-  const startTouch = useRef({ x: 0, y: 0 });
 
   const sections = useMemo((): LogbookSection[] => {
     const sorted = [...completedTasks].sort(
@@ -84,130 +68,21 @@ export function LogbookScreen() {
     }));
   }, [completedTasks]);
 
-  const resetDrag = () => {
-    dragTaskRef.current = null;
-    setDragTask(null);
-    setOverlayLayout(null);
-    hoverDateKeyRef.current = null;
-    setHoverDateKey(null);
-    headerLayouts.clear();
-  };
-
-  const commitDrag = () => {
-    const task = dragTaskRef.current;
-    const targetKey = hoverDateKeyRef.current;
-    resetDrag();
-    if (!task || !targetKey) return;
-
-    const original = new Date(task.completedAt!);
-    const currentKey = format(original, 'yyyy-MM-dd');
-    if (targetKey === currentKey) return;
-
-    const updated = parseISO(targetKey);
-    updated.setHours(original.getHours(), original.getMinutes(), original.getSeconds(), original.getMilliseconds());
-
-    haptics.success();
-    animateLayout();
-    updateTask(task.id, { completedAt: updated.toISOString() });
-  };
-
-  const updateHover = (touchY: number) => {
-    let best: string | null = null;
-    let bestTop = -Infinity;
-    headerLayouts.forEach((top, dateKey) => {
-      if (top <= touchY && top > bestTop) {
-        best = dateKey;
-        bestTop = top;
-      }
-    });
-    if (best !== hoverDateKeyRef.current) {
-      hoverDateKeyRef.current = best;
-      setHoverDateKey(best);
-      haptics.tap();
-    }
-  };
-
-  const startDrag = (task: Task) => {
-    if (dragTaskRef.current) return;
-    const rowRef = rowRefs.get(task.id);
-    const containerNode = containerRef.current;
-    if (!rowRef || !containerNode) return;
-
-    containerNode.measureInWindow((cx, cy) => {
-      rowRef.measureInWindow((rx, ry, width) => {
-        overlayTranslate.setValue({ x: 0, y: 0 });
-        setOverlayLayout({ top: ry - cy, left: rx - cx, width });
-        dragTaskRef.current = task;
-        setDragTask(task);
-        haptics.impactMedium();
-
-        headerLayouts.clear();
-        headerRefs.forEach((ref, dateKey) => {
-          ref.measureInWindow((_x, y) => {
-            headerLayouts.set(dateKey, y);
-          });
-        });
-      });
-    });
-  };
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: () => dragTaskRef.current !== null,
-      onMoveShouldSetPanResponderCapture: () => dragTaskRef.current !== null,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: e => {
-        startTouch.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
-      },
-      onPanResponderMove: e => {
-        if (!dragTaskRef.current) return;
-        overlayTranslate.setValue({
-          x: e.nativeEvent.pageX - startTouch.current.x,
-          y: e.nativeEvent.pageY - startTouch.current.y,
-        });
-        updateHover(e.nativeEvent.pageY);
-      },
-      onPanResponderRelease: () => commitDrag(),
-      onPanResponderTerminate: () => resetDrag(),
-    })
-  ).current;
-
   return (
-    <View
-      ref={containerRef}
-      collapsable={false}
-      style={[styles.container, { paddingTop: insets.top }]}
-      {...panResponder.panHandlers}
-    >
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Logbook" subtitle={`${completedTasks.length} completed`} />
 
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
-        scrollEnabled={!dragTask}
         contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
         renderSectionHeader={({ section }) => (
-          <View
-            ref={el => {
-              if (el) headerRefs.set(section.dateKey, el);
-              else headerRefs.delete(section.dateKey);
-            }}
-            collapsable={false}
-            style={[styles.sectionHeader, hoverDateKey === section.dateKey && styles.sectionHeaderHover]}
-          >
+          <View style={styles.sectionHeader}>
             <Text style={styles.sectionHeaderText}>{section.title}</Text>
           </View>
         )}
         renderItem={({ item }) => (
-          <View
-            ref={el => {
-              if (el) rowRefs.set(item.id, el);
-              else rowRefs.delete(item.id);
-            }}
-            collapsable={false}
-            style={[styles.row, dragTask?.id === item.id && styles.rowDragging]}
-          >
+          <View style={styles.row}>
             <TouchableOpacity
               style={styles.checkCircle}
               onPress={() => {
@@ -222,15 +97,14 @@ export function LogbookScreen() {
             >
               <Ionicons name="checkmark" size={14} color={colors.green} />
             </TouchableOpacity>
-            <Pressable
+            <View
               style={styles.rowContent}
-              onLongPress={() => startDrag(item)}
-              delayLongPress={interaction.delayLongPress}
+              accessible
               accessibilityLabel={`${item.title}, completed ${formatTime(item.completedAt!)}`}
             >
               <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
               <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
-            </Pressable>
+            </View>
             <TouchableOpacity
               style={styles.menuButton}
               onPress={() => setMenuTask(item)}
@@ -252,41 +126,16 @@ export function LogbookScreen() {
         }
       />
 
-      {dragTask && overlayLayout && (
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            styles.overlay,
-            shadows.fab,
-            {
-              top: overlayLayout.top,
-              left: overlayLayout.left,
-              width: overlayLayout.width,
-              transform: [
-                { translateX: overlayTranslate.x },
-                { translateY: overlayTranslate.y },
-              ],
-            },
-          ]}
-        >
-          <View style={styles.rowOverlay}>
-            <View style={styles.checkCircle}>
-              <Ionicons name="checkmark" size={14} color={colors.green} />
-            </View>
-            <View style={styles.rowContent}>
-              <Text style={styles.taskTitle} numberOfLines={2}>{dragTask.title}</Text>
-              <Text style={styles.taskTime}>{formatTime(dragTask.completedAt!)}</Text>
-            </View>
-            <View style={styles.menuButton}>
-              <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-            </View>
-          </View>
-        </Animated.View>
-      )}
-
       <LogbookEntryMenu
         visible={!!menuTask}
         value={menuTask?.completedAt ? new Date(menuTask.completedAt) : null}
+        onMarkIncomplete={() => {
+          if (menuTask) {
+            animateLayout();
+            uncompleteTask(menuTask.id);
+          }
+          setMenuTask(null);
+        }}
         onChangeDate={date => {
           if (menuTask) {
             animateLayout();
@@ -308,12 +157,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
   },
-  sectionHeaderHover: {
-    backgroundColor: colors.accentSubtle,
-    borderRadius: radius.md,
-    marginHorizontal: spacing.md,
-    paddingHorizontal: 0,
-  },
   sectionHeaderText: {
     color: colors.textTertiary,
     fontSize: font.xs,
@@ -323,36 +166,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listContent: { paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
-  // Same inset-grouped card footprint as TaskItem rows.
+  // Deliberately flat, not the inset-grouped card TaskItem rows use — a
+  // completed entry isn't draggable or tappable-to-edit like a live task,
+  // so it shouldn't be styled to invite that interaction.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     gap: spacing.sm,
-  },
-  rowDragging: {
-    opacity: 0.3,
-  },
-  // Same visual treatment as `row`, minus the outer margins — used for the
-  // floating drag overlay, which is already positioned via measured coords.
-  rowOverlay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    gap: spacing.sm,
-  },
-  overlay: {
-    position: 'absolute',
-    borderRadius: radius.md,
-    shadowColor: '#000',
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
   },
   checkCircle: {
     width: 24,
@@ -369,8 +193,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.md,
     fontWeight: '400',
-    textDecorationLine: 'line-through',
-    textDecorationColor: colors.textTertiary,
   },
   taskTime: {
     color: colors.textTertiary,

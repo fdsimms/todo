@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, animation, interaction, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { CalendarPicker } from './CalendarPicker';
 
@@ -17,15 +17,16 @@ interface Props {
   visible: boolean;
   /** Current completion date/time of the entry the menu was opened for. */
   value: Date | null;
+  onMarkIncomplete: () => void;
   onChangeDate: (date: Date) => void;
   onClose: () => void;
 }
 
 /**
- * Bottom action sheet for a Logbook entry. Currently offers a single action —
- * editing the completion date/time — presented via CalendarPicker.
+ * Bottom action sheet for a Logbook entry: marking it incomplete, or editing
+ * the completion date/time via CalendarPicker.
  */
-export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Props) {
+export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDate, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -56,14 +57,21 @@ export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Prop
     };
   }, []);
 
-  const dismiss = () => {
+  const closeThen = (cb: () => void) => {
     Animated.parallel([
       Animated.spring(translateY, { toValue: 500, ...animation.spring.bouncy, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(400);
-      onClose();
+      cb();
     });
+  };
+
+  const dismiss = () => closeThen(onClose);
+
+  const markIncomplete = () => {
+    haptics.tap();
+    closeThen(onMarkIncomplete);
   };
 
   const openCalendar = () => {
@@ -80,6 +88,11 @@ export function LogbookEntryMenu({ visible, value, onChangeDate, onClose }: Prop
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.optionsCard}>
+          <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity}>
+            <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
+            <Text style={[styles.optionLabel, { color: colors.accent }]}>Mark Incomplete</Text>
+          </TouchableOpacity>
+          <View style={styles.inlineSep} />
           <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
             <Text style={[styles.optionLabel, { color: colors.accent }]}>Change Completion Date</Text>
@@ -142,6 +155,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionLabel: {
     fontSize: font.md,
     fontWeight: fontWeight.medium,
+  },
+  inlineSep: {
+    height: border.hairline,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
