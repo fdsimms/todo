@@ -1,0 +1,26 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 2a67797..ab8b94f 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -435,7 +435,20 @@ void ObjCTurboModule::performVoidMethodInvocation(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      if (shouldVoidMethodsExecuteSync_) {
++        throw convertNSExceptionToJSError(runtime, exception, std::string{moduleName}, methodNameStr);
++      } else {
++        // Async void methods run their block on a background queue with no
++        // caller able to catch a rethrown JS error — converting and
++        // rethrowing here escapes as an uncaught C++ exception and aborts
++        // the whole process. Log and swallow instead. See
++        // https://github.com/reactwg/react-native-new-architecture/discussions/276.
++        NSLog(
++            @"[RCTTurboModule] Uncaught exception in async void method %s.%s: %@",
++            moduleName,
++            methodName,
++            exception);
++      }
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }
