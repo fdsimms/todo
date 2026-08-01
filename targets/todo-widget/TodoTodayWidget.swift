@@ -3,20 +3,20 @@ import SwiftUI
 
 struct TodoEntry: TimelineEntry {
     let date: Date
-    let snapshot: WidgetSnapshot?
+    let result: WidgetLoadResult
 }
 
 struct TodoTodayProvider: TimelineProvider {
     func placeholder(in context: Context) -> TodoEntry {
-        TodoEntry(date: Date(), snapshot: nil)
+        TodoEntry(date: Date(), result: .noSnapshotYet)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (TodoEntry) -> Void) {
-        completion(TodoEntry(date: Date(), snapshot: loadWidgetSnapshot()))
+        completion(TodoEntry(date: Date(), result: loadWidgetSnapshot()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<TodoEntry>) -> Void) {
-        let entry = TodoEntry(date: Date(), snapshot: loadWidgetSnapshot())
+        let entry = TodoEntry(date: Date(), result: loadWidgetSnapshot())
         // The app calls WidgetCenter.reloadAllTimelines() after every task
         // mutation, so this fallback only matters if the app hasn't been
         // opened in a while.
@@ -62,9 +62,22 @@ struct TodoTodayWidgetEntryView: View {
     var entry: TodoTodayProvider.Entry
     @Environment(\.colorScheme) var colorScheme
 
+    var emptyStateMessage: String {
+        switch entry.result {
+        case .noAppGroupAccess: return "Can't access shared data (App Group)"
+        case .noSnapshotYet: return "Open the app to get started"
+        case .decodeFailed: return "Couldn't read task data"
+        case .success: return "All clear"
+        }
+    }
+
     var body: some View {
         let palette = WidgetPalette.forScheme(colorScheme)
-        let tasks = entry.snapshot?.visibleTasks ?? []
+        let snapshot: WidgetSnapshot? = {
+            if case .success(let snapshot) = entry.result { return snapshot }
+            return nil
+        }()
+        let tasks = snapshot?.visibleTasks ?? []
 
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -87,9 +100,11 @@ struct TodoTodayWidgetEntryView: View {
                 Spacer()
                 HStack {
                     Spacer()
-                    Text(entry.snapshot == nil ? "Open the app to get started" : "All clear")
+                    Text(emptyStateMessage)
                         .font(.system(size: 14))
                         .foregroundColor(palette.textTertiary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
                     Spacer()
                 }
                 Spacer()
