@@ -1232,7 +1232,7 @@ export function TodayScreen() {
       )}
       </View>
 
-      {viewMode === 'today' && (
+      {viewMode === 'today' && !selectionMode && (
         <Animated.View
           style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
           pointerEvents={spotlightActive ? 'none' : 'box-none'}
