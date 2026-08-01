@@ -28,13 +28,33 @@ const SWIFT_FILES = ['TodoWidgetBundle.swift', 'TodoWidgetData.swift', 'TodoToda
 const INFO_PLIST_NAME = `${TARGET_NAME}-Info.plist`;
 const ENTITLEMENTS_NAME = `${TARGET_NAME}.entitlements`;
 
+// Every key here besides NSExtension/CFBundleDisplayName is one Xcode's own
+// "New Target" template always includes as a $(BUILD_SETTING) placeholder —
+// Xcode only substitutes these during Info.plist processing if the key is
+// actually present in the source file; it does not inject any of them into
+// a compiled Info.plist that omits the key entirely (confirmed the hard way:
+// omitting CFBundleIdentifier produced a compiled .appex with a `(null)`
+// bundle identifier, failing Apple's "embedded binary must be prefixed with
+// the parent app's bundle identifier" packaging validation).
 function widgetInfoPlist() {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
 	<string>Today</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
