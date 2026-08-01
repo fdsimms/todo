@@ -8,21 +8,23 @@ public class TodoWidgetBridgeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("TodoWidgetBridge")
 
-    // AsyncFunction (Promise-based) rather than Function (synchronous void) —
-    // still routes through the same RCTTurboModule void-invocation machinery
-    // under the hood (confirmed from a crash trace; this does NOT sidestep
-    // it as originally assumed), but a rejected promise is at least
-    // JS-catchable, unlike the plain sync path.
+    // Returns a Bool rather than Void deliberately. Per
+    // facebook/react-native#54859: an earlier RN fix (PR #50193) patched the
+    // exception-to-JSError conversion for performMethodInvocation (methods
+    // that return a value) but never extended it to
+    // performVoidMethodInvocation (methods that return nothing) — that
+    // second, unpatched path is exactly what two crash reports on this
+    // device traced back to, byte-identical down to the instruction offset,
+    // across both the plain Function and the later AsyncFunction version of
+    // this method. Neither of those changed the fact that it returned Void.
+    // Returning a value routes through the already-fixed path instead.
     //
-    // The whole body is wrapped in TodoWidgetExceptionCatcher because Swift's
-    // throws/try?/guard only catch Swift `Error` — never a raw Objective-C
-    // NSException, which WidgetKit/FileManager can still raise synchronously.
-    // An uncaught one escaping this closure crashes the entire app on iOS 26
-    // release builds with the New Architecture (see
-    // facebook/react-native#54859, expo/expo#44680) — the exception-to-
-    // JSError conversion rethrows on a background queue where nothing can
-    // catch it, aborting the process.
-    AsyncFunction("writeSnapshot") { (jsonString: String) in
+    // The whole body is still wrapped in TodoWidgetExceptionCatcher because
+    // Swift's throws/try?/guard only catch Swift `Error` — never a raw
+    // Objective-C NSException, which WidgetKit/FileManager can still raise
+    // synchronously.
+    AsyncFunction("writeSnapshot") { (jsonString: String) -> Bool in
+      var succeeded = false
       TodoWidgetExceptionCatcher.tryBlock {
         guard let containerURL = FileManager.default.containerURL(
           forSecurityApplicationGroupIdentifier: appGroupID
@@ -39,7 +41,9 @@ public class TodoWidgetBridgeModule: Module {
         try? data.write(to: fileURL, options: .atomic)
 
         WidgetCenter.shared.reloadAllTimelines()
+        succeeded = true
       }
+      return succeeded
     }
   }
 }

@@ -43,7 +43,7 @@ function writeToNativeBridge(jsonString: string): void {
   if (Platform.OS !== 'ios') return;
   try {
     const { writeWidgetSnapshot } = require('todo-widget-bridge') as {
-      writeWidgetSnapshot: (jsonString: string) => Promise<void>;
+      writeWidgetSnapshot: (jsonString: string) => Promise<boolean>;
     };
     // Fire-and-forget: nothing here needs to block on the native write
     // completing. Swallowing a rejection here is intentional — a failed
