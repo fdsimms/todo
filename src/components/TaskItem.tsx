@@ -793,6 +793,10 @@ export function TaskItem({
                       onPress={async () => {
                         await haptics.impactMedium();
                         skipNextRecurrence(task.id);
+                        // The task disappears from the list immediately, but nothing
+                        // else clears the parent's expanded-row state — collapse it
+                        // ourselves so the spotlight overlay doesn't get stuck.
+                        if (expanded) onPress();
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
