@@ -264,7 +264,6 @@ export function TodayScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
-  const initialize = useTaskStore(s => s.initialize);
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllFocus = useTaskStore(s => s.clearAllFocus);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
@@ -293,7 +292,7 @@ export function TodayScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
+  const [pullingToAdd, setPullingToAdd] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -453,11 +452,15 @@ export function TodayScreen() {
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
 
-  const handleRefresh = useCallback(() => {
-    setRefreshing(true);
-    initialize();
-    setRefreshing(false);
-  }, [initialize]);
+  // Today stays current on its own (see the tick effect above), so pulling
+  // down no longer refreshes anything — it opens quick add instead, which
+  // is otherwise a reach to the FAB.
+  const handlePullToAdd = useCallback(() => {
+    setPullingToAdd(true);
+    haptics.impactLight();
+    setQuickAddVisible(true);
+    setPullingToAdd(false);
+  }, []);
 
   const openEditor = (task?: Task) => {
     setEditingTask(task ?? null);
@@ -1113,8 +1116,8 @@ export function TodayScreen() {
           contentContainerStyle={styles.listContent}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
+              refreshing={pullingToAdd}
+              onRefresh={handlePullToAdd}
               tintColor={colors.textSecondary}
             />
           }
@@ -1213,8 +1216,8 @@ export function TodayScreen() {
           contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
           refreshControl={
             <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
+              refreshing={pullingToAdd}
+              onRefresh={handlePullToAdd}
               tintColor={colors.textSecondary}
             />
           }
