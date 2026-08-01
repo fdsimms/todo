@@ -2,10 +2,10 @@
 
 @implementation TodoWidgetExceptionCatcher
 
-+ (void)tryBlock:(void (^)(void))tryBlock
++ (void)runCatchingExceptions:(void (^)(void))block
 {
   @try {
-    tryBlock();
+    block();
   }
   @catch (NSException *exception) {
     // Swallow deliberately. An uncaught NSException escaping an async void

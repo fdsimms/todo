@@ -25,7 +25,7 @@ public class TodoWidgetBridgeModule: Module {
     // synchronously.
     AsyncFunction("writeSnapshot") { (jsonString: String) -> Bool in
       var succeeded = false
-      TodoWidgetExceptionCatcher.tryBlock {
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
         guard let containerURL = FileManager.default.containerURL(
           forSecurityApplicationGroupIdentifier: appGroupID
         ) else {
