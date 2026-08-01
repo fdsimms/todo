@@ -308,7 +308,7 @@ export function TaskItem({
     // invisible but keeps its place in the list — completeTask holds it
     // there (see useTaskStore's completionHoldIds) so completing several
     // tasks in a row doesn't reflow the list after every tap. The row only
-    // collapses once completions pause for a couple seconds. The task isn't
+    // collapses once completions pause for about a second. The task isn't
     // actually marked complete in the store until this sequence finishes,
     // so a tap during the window (handleUndoComplete) can cancel it outright.
     checkScale.setValue(0);
