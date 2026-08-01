@@ -121,7 +121,7 @@ struct TodoTodayWidgetEntryView: View {
                     .foregroundColor(palette.textSecondary)
             }
             .padding(.horizontal, 14)
-            .padding(.top, 12)
+            .padding(.top, 20)
             .padding(.bottom, 8)
 
             if allTasks.isEmpty {
