@@ -423,6 +423,11 @@ export function TodayScreen() {
     try {
       const ids = await suggestFocusTasks(visibleTasks, focusedTasks.length, completedTasks);
       for (const id of ids) updateTask(id, { focused: true });
+      // AI focus picks tasks in one shot rather than one tap at a time, so the
+      // grace period that protects manual multi-star tapping doesn't apply here.
+      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
+      focusViewGraceTimer.current = null;
+      setFocusViewGraceActive(false);
     } catch (e) {
       Alert.alert('Could not suggest focus', e instanceof Error ? e.message : 'Unknown error');
     } finally {
