@@ -91,6 +91,21 @@ Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with 
 
 Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`) AND in a registry (`tag_registry` / `category_registry` keys in the `settings` table). The registry tracks tags/categories that exist even if no task currently uses them.
 
+### iOS native extension targets (widgets, and future Watch/Live Activity targets)
+
+The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config plugins rather than a checked-in `ios/` folder — see `plugins/withAppGroup.js` (adds the App Group entitlement to the main app) and `plugins/withWidgetExtension.js` (adds the WidgetKit extension as a whole new Xcode target via the raw `xcode` npm package). Any future target that needs to share data with the app — a Watch app, a Live Activity, a share extension — will hit the same handful of sharp edges this one did. Before adding one:
+
+- **A new target must be declared in `app.json`'s `extra.eas.build.experimental.ios.appExtensions`** (name, bundle id, entitlements), or EAS Build's non-interactive credential resolution never discovers it and can't provision it — the archive step fails with an opaque signing error.
+- **Signing needs `PBXProject.attributes.TargetAttributes`, not just `buildSettings`.** `project.addTargetAttribute('DevelopmentTeam', ...)` / `('ProvisioningStyle', 'Automatic', ...)` — Xcode's own "requires a development team" validation reads the former; setting `DEVELOPMENT_TEAM` in buildSettings alone isn't enough.
+- **The `xcode` package's `addTarget()` and `addPbxGroup()` have real bugs**, not just missing convenience: `addTarget()` pre-wraps `name`/`productName` in literal quote characters (breaks any later string match, including EAS's own target lookup) — overwrite `target.pbxNativeTarget.name`/`.productName` right after calling it. `addPbxGroup()` with no `path` argument writes a literal `path = undefined;` into the pbxproj — `delete group.pbxGroup.path` immediately after.
+- **Every `$(BUILD_SETTING)` placeholder used in the target's Info.plist must have a real key in the source plist**, even ones Xcode's "New Target" template fills in for you normally (e.g. `CFBundleIdentifier`). A key that's just absent doesn't get a value substituted in — it silently compiles to `(null)`, which then fails Apple's "embedded binary must be prefixed with the parent bundle id" validation at submission, not at build time.
+- **A local `expo-modules-core` bridge module needs an actual podspec** to get linked into a second target's Pod install, even though autolinking usually infers one from `expo-module.config.json` alone for the main app target.
+- **The App Group container path convention already in use**: `<container>/Library/Application Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed. Reuse this path shape for anything new sharing the group rather than inventing another location.
+
+Two fixes that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
+- `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
+- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.81.4.patch` (applied via `patch-package` on `postinstall`) — RN 0.81 downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call gets rethrown across a dispatch-queue boundary instead of converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build.
+
 ## Key conventions
 
 - **Path alias**: `@/` maps to `src/` (configured in `tsconfig.json` and `package.json` Jest `moduleNameMapper`).
