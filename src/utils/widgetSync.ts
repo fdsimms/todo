@@ -54,6 +54,28 @@ function writeToNativeBridge(jsonString: string): void {
   }
 }
 
+// Applies task completions queued by the widget's checkbox
+// (CompleteTaskIntent, running in the separate widget extension process —
+// see modules/todo-widget-bridge). The widget can only optimistically mark
+// a task checked; it has no access to the JS logic for recurrence, streaks,
+// or chains, so the actual completeTask() call — the same one the app's own
+// UI uses — only happens here, once per app launch.
+async function processPendingWidgetCompletions(): Promise<void> {
+  if (Platform.OS !== 'ios') return;
+  try {
+    const { drainPendingWidgetCompletions } = require('todo-widget-bridge') as {
+      drainPendingWidgetCompletions: () => Promise<string[]>;
+    };
+    const ids = await drainPendingWidgetCompletions();
+    const { completeTask } = useTaskStore.getState();
+    for (const id of ids) {
+      completeTask(id);
+    }
+  } catch {
+    // No dev client build with the native module present (e.g. Expo Go) — no-op.
+  }
+}
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const { visibleTasks, focusedTasks } = useTaskStore.getState();
@@ -80,12 +102,18 @@ function scheduleSnapshotWrite(): void {
 export function useWidgetSync(): void {
   useEffect(() => {
     if (Platform.OS !== 'ios') return;
-    // Deferred rather than called synchronously during mount — avoids
-    // making the very first native module call while the app (and its
-    // native module registry) is still mid-launch.
-    scheduleSnapshotWrite();
     const unsubscribe = useTaskStore.subscribe((state, prevState) => {
       if (state.tasks !== prevState.tasks) scheduleSnapshotWrite();
+    });
+    // Subscription is registered before this resolves, so any completions
+    // applied here also trigger the debounced write above like any other
+    // mutation would — no separate write path needed for the drain itself,
+    // just an initial one below in case there was nothing to drain.
+    processPendingWidgetCompletions().finally(() => {
+      // Deferred rather than called synchronously during mount — avoids
+      // making the very first native module call while the app (and its
+      // native module registry) is still mid-launch.
+      scheduleSnapshotWrite();
     });
     return unsubscribe;
   }, []);

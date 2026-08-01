@@ -3,6 +3,9 @@ import WidgetKit
 
 private let appGroupID = "group.com.fdsimms.dundundun"
 private let snapshotFileName = "widget_data.json"
+// Must match the same literal in TodoWidgetData.swift — a separate Xcode
+// target/compilation unit, so the string can't be shared directly.
+private let pendingCompletionsFileName = "widget_pending_completions.json"
 
 public class TodoWidgetBridgeModule: Module {
   public func definition() -> ModuleDefinition {
@@ -44,6 +47,34 @@ public class TodoWidgetBridgeModule: Module {
         succeeded = true
       }
       return succeeded
+    }
+
+    // Reads and clears the queue of task ids the widget's checkbox
+    // (CompleteTaskIntent, in the widget extension process) has
+    // optimistically marked complete. The widget can't reach the app's
+    // SQLite database or the JS logic for recurrence/streaks/chains, so it
+    // only queues an id; this is where that queue actually gets applied via
+    // the real completeTask() — see useWidgetSync() in widgetSync.ts, which
+    // drains this on every app launch before writing a fresh snapshot.
+    AsyncFunction("drainPendingCompletions") { () -> [String] in
+      var ids: [String] = []
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingCompletionsFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
+        ids = decoded
+        try? FileManager.default.removeItem(at: fileURL)
+      }
+      return ids
     }
   }
 }

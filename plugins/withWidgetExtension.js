@@ -24,7 +24,12 @@ const DEVELOPMENT_TEAM = '4L5S4WA628';
 // .containerBackground(for:) in TodoTodayWidget.swift requires iOS 17.
 const DEPLOYMENT_TARGET = '17.0';
 const SOURCE_DIR = path.join(__dirname, '..', 'targets', 'todo-widget');
-const SWIFT_FILES = ['TodoWidgetBundle.swift', 'TodoWidgetData.swift', 'TodoTodayWidget.swift'];
+const SWIFT_FILES = [
+  'TodoWidgetBundle.swift',
+  'TodoWidgetData.swift',
+  'TodoTodayWidget.swift',
+  'CompleteTaskIntent.swift',
+];
 const INFO_PLIST_NAME = `${TARGET_NAME}-Info.plist`;
 const ENTITLEMENTS_NAME = `${TARGET_NAME}.entitlements`;
 
@@ -193,6 +198,10 @@ const withWidgetExtension = config => {
 
     project.addFramework('WidgetKit.framework', { target: target.uuid });
     project.addFramework('SwiftUI.framework', { target: target.uuid });
+    // CompleteTaskIntent.swift's Button(intent:)-driven interactive
+    // checkbox needs this — App Intents-based widget interactivity is
+    // iOS 17+, matching DEPLOYMENT_TARGET below.
+    project.addFramework('AppIntents.framework', { target: target.uuid });
 
     const configListUuid = target.pbxNativeTarget.buildConfigurationList;
     const configList = project.pbxXCConfigurationList()[configListUuid];
