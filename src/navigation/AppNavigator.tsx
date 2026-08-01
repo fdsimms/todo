@@ -41,6 +41,74 @@ const styles = StyleSheet.create({
   },
 });
 
+interface MainTabsProps {
+  navRef: React.RefObject<NavigationContainerRef<any> | null>;
+  onStateChange: () => void;
+  screenOptions: any;
+  tabPressHaptic: { tabPress: () => void };
+  menuOpen: boolean;
+  accentColor: string;
+  onOpenMenu: () => void;
+}
+
+// Memoized so toggling unrelated screen-level state elsewhere in
+// AppNavigator (e.g. opening Settings) doesn't force every tab screen to
+// re-render and recompute its derived task lists — that recompute was
+// blocking the settings modal's open animation.
+const MainTabs = React.memo(function MainTabs({
+  navRef, onStateChange, screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
+}: MainTabsProps) {
+  return (
+    <NavigationContainer ref={navRef} onStateChange={onStateChange}>
+      <Tab.Navigator screenOptions={screenOptions}>
+        <Tab.Screen
+          name="Today"
+          component={TodayScreen}
+          listeners={tabPressHaptic}
+          options={{
+            tabBarAccessibilityLabel: 'Today',
+            tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="Search"
+          component={SearchScreen}
+          listeners={tabPressHaptic}
+          options={{
+            tabBarAccessibilityLabel: 'Search',
+            tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="More"
+          component={MorePlaceholder}
+          listeners={{
+            tabPress: (e) => {
+              e.preventDefault();
+              haptics.tap();
+              onOpenMenu();
+            },
+          }}
+          options={{
+            tabBarAccessibilityLabel: 'More, opens menu',
+            tabBarIcon: ({ color }) => (
+              <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+            ),
+          }}
+        />
+
+        {/* Drawer-only screens — not visible in the tab bar */}
+        <Tab.Screen name="Inbox" component={InboxScreen} options={HIDDEN} />
+        <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
+        <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
+        <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
+        <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
+        <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
+      </Tab.Navigator>
+    </NavigationContainer>
+  );
+});
+
 export default function AppNavigator() {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -112,53 +180,15 @@ export default function AppNavigator() {
 
   return (
     <>
-      <NavigationContainer ref={navRef} onStateChange={handleStateChange}>
-        <Tab.Navigator screenOptions={screenOptions}>
-          <Tab.Screen
-            name="Today"
-            component={TodayScreen}
-            listeners={tabPressHaptic}
-            options={{
-              tabBarAccessibilityLabel: 'Today',
-              tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
-            }}
-          />
-          <Tab.Screen
-            name="Search"
-            component={SearchScreen}
-            listeners={tabPressHaptic}
-            options={{
-              tabBarAccessibilityLabel: 'Search',
-              tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
-            }}
-          />
-          <Tab.Screen
-            name="More"
-            component={MorePlaceholder}
-            listeners={{
-              tabPress: (e) => {
-                e.preventDefault();
-                haptics.tap();
-                openMenu();
-              },
-            }}
-            options={{
-              tabBarAccessibilityLabel: 'More, opens menu',
-              tabBarIcon: ({ color }) => (
-                <Ionicons name="menu" size={24} color={menuOpen ? colors.accent : color} />
-              ),
-            }}
-          />
-
-          {/* Drawer-only screens — not visible in the tab bar */}
-          <Tab.Screen name="Inbox" component={InboxScreen} options={HIDDEN} />
-          <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
-          <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
-          <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
-          <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
-          <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
-        </Tab.Navigator>
-      </NavigationContainer>
+      <MainTabs
+        navRef={navRef}
+        onStateChange={handleStateChange}
+        screenOptions={screenOptions}
+        tabPressHaptic={tabPressHaptic}
+        menuOpen={menuOpen}
+        accentColor={colors.accent}
+        onOpenMenu={openMenu}
+      />
 
       <SideMenuDrawer
         visible={menuOpen}
