@@ -196,7 +196,6 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
                 <View style={[
                   styles.dayCircle,
                   isSelected && styles.dayCircleSelected,
-                  !isSelected && todayDay && styles.dayCircleToday,
                 ]}>
                   <Text style={[
                     styles.dayText,
@@ -206,6 +205,12 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
                   ]}>
                     {format(day, 'd')}
                   </Text>
+                  {todayDay && (
+                    <View style={[
+                      styles.todayDot,
+                      isSelected && styles.todayDotSelected,
+                    ]} />
+                  )}
                 </View>
               </TouchableOpacity>
             );
@@ -334,18 +339,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: (CELL_SIZE - 4) / 2,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   dayCircleSelected: {
     backgroundColor: colors.accent,
-  },
-  dayCircleToday: {
-    borderWidth: 1.5,
-    borderColor: colors.accent,
   },
   dayText: {
     color: colors.text,
     fontSize: font.sm,
     fontWeight: '400',
+  },
+  todayDot: {
+    position: 'absolute',
+    bottom: 5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+  },
+  todayDotSelected: {
+    backgroundColor: colors.onAccent,
   },
   dayTextOtherMonth: {
     color: colors.textTertiary,
