@@ -152,6 +152,15 @@ const withWidgetExtension = config => {
       [`${TARGET_NAME}/${INFO_PLIST_NAME}`, `${TARGET_NAME}/${ENTITLEMENTS_NAME}`],
       TARGET_NAME
     );
+    // addPbxGroup() unconditionally assigns its (here, omitted) `path`
+    // parameter to pbxGroup.path — with no third argument, that's the JS
+    // value `undefined`, which the writer serializes as the literal token
+    // `path = undefined;` rather than omitting the key. Xcode then resolves
+    // every child file in this group relative to a path that is literally
+    // the 9-character string "undefined" (see e.g. the "Libraries"/
+    // "Products" groups elsewhere in this same file, which correctly have
+    // no `path` key at all since they're virtual, not disk-backed).
+    delete group.pbxGroup.path;
     const mainGroupKey = project.getFirstProject().firstProject.mainGroup;
     project.getPBXGroupByKey(mainGroupKey).children.push({ value: group.uuid, comment: TARGET_NAME });
 
