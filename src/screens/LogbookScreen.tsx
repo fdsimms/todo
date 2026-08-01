@@ -16,7 +16,7 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
@@ -166,17 +166,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listContent: { paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
-  // Same inset-grouped card footprint as TaskItem rows.
+  // Deliberately flat, not the inset-grouped card TaskItem rows use — a
+  // completed entry isn't draggable or tappable-to-edit like a live task,
+  // so it shouldn't be styled to invite that interaction.
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm + 2,
     gap: spacing.sm,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
   },
   checkCircle: {
     width: 24,
