@@ -63,6 +63,8 @@ const baseTask: Task = {
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
+  archived: false,
+  archivedAt: null,
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

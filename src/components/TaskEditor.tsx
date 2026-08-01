@@ -32,6 +32,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
+import { findArchivedMatch } from '../utils/archiveMatch';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
@@ -78,6 +79,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const subtasksOf = useTaskStore(s => s.subtasksOf);
+  const archiveTask = useTaskStore(s => s.archiveTask);
+  const unarchiveTask = useTaskStore(s => s.unarchiveTask);
+  const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const addCategory = useTaskStore(s => s.addCategory);
@@ -234,6 +238,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const save = () => {
     if (!title.trim()) return;
+
+    if (!task) {
+      const archivedMatch = findArchivedMatch(archivedTasks, title.trim());
+      if (archivedMatch) {
+        Alert.alert(
+          'Resume archived task?',
+          `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+          [
+            { text: 'Create New', onPress: () => proceedWithSave() },
+            {
+              text: 'Resume',
+              style: 'default',
+              onPress: () => {
+                haptics.success();
+                unarchiveTask(archivedMatch.id);
+                onClose();
+              },
+            },
+          ],
+        );
+        return;
+      }
+    }
+    proceedWithSave();
+  };
+
+  const proceedWithSave = () => {
     const data = {
       title: title.trim(), notes, category, tags,
       dueDate: dueDate?.toISOString() ?? null,
@@ -911,6 +942,37 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            {task && task.recurrenceType !== 'none' && (
+              <>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    if (task.archived) {
+                      unarchiveTask(task.id);
+                    } else {
+                      haptics.success();
+                      archiveTask(task.id);
+                      onClose();
+                    }
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Archive</Text>
+                    <Text style={styles.optionHint}>
+                      {task.archived
+                        ? 'Hidden from every list — resuming resets your streak'
+                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
             <View style={styles.sep} />
             <OptionRow
               icon="calendar"

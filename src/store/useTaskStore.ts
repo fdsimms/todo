@@ -121,6 +121,14 @@ interface TaskStore {
   deferTask: (id: string, until: Date) => void;
   skipNextRecurrence: (id: string) => void;
   toggleFocus: (id: string) => void;
+  // Hides a recurring task indefinitely (unlike vacationPause, not tied to
+  // vacation mode) without touching its completion history. Streak fields
+  // are left as-is on archive; unarchiveTask is what breaks the streak.
+  archiveTask: (id: string) => void;
+  // Resuming an archived task deliberately breaks its streak (resets
+  // streakCount/streakDate to 0/null) since the gap is real, but leaves past
+  // completions untouched so Stats/Logbook history "picks up where it left off."
+  unarchiveTask: (id: string) => void;
   clearAllFocus: () => void;
   focusCategory: (category: string) => void;
   startTimer: (id: string) => void;
@@ -175,6 +183,7 @@ interface TaskStore {
   vacationHiddenTasks: () => Task[];
   focusedTasks: () => Task[];
   completedTasks: () => Task[];
+  archivedTasks: () => Task[];
   subtasksOf: (parentId: string) => Task[];
   allTags: () => string[];
   tasksByTag: (tag: string) => Task[];
@@ -256,6 +265,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: draft.actualMinutes ?? null,
       previousOccurrenceId: draft.previousOccurrenceId ?? null,
       seriesDefaults: null,
+      archived: false,
+      archivedAt: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -283,6 +294,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       previousOccurrenceId: null,
       seriesDefaults: null,
+      archived: false,
+      archivedAt: null,
     };
     const copy: Task = {
       ...original,
@@ -640,6 +653,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { focused: !task.focused });
   },
 
+  archiveTask(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.archived) return;
+    get().updateTask(id, { archived: true, archivedAt: new Date().toISOString() });
+    get().setLastAction({
+      label: 'Task archived',
+      undo: () => get().updateTask(id, { archived: false, archivedAt: null }),
+    });
+  },
+
+  unarchiveTask(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !task.archived) return;
+    get().updateTask(id, {
+      archived: false,
+      archivedAt: null,
+      streakCount: 0,
+      streakDate: null,
+    });
+  },
+
   clearAllFocus() {
     dbClearAllFocus();
     set(s => ({
@@ -774,6 +808,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       previousOccurrenceId: null,
       seriesDefaults: null,
+      archived: false,
+      archivedAt: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -873,6 +909,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       previousOccurrenceId: null,
       seriesDefaults: null,
+      archived: false,
+      archivedAt: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -1174,12 +1212,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && t.focused && !t.completed && !(vacationMode && t.vacationPause))
+      .filter(t => !t.parentId && t.focused && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   completedTasks() {
     return get().tasks.filter(t => !t.parentId && t.completed && t.completedAt);
+  },
+
+  archivedTasks() {
+    return get().tasks
+      .filter(t => !t.parentId && t.archived && !t.completed)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
   subtasksOf(parentId) {
@@ -1241,11 +1285,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   tasksByTag(tag) {
     const { tasks, completionHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && t.tags.includes(tag));
+    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.archived && t.tags.includes(tag));
   },
 
   tasksByCategory(category) {
     const { tasks, completionHoldIds } = get();
-    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.parentId && t.category === category);
+    return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.archived && !t.parentId && t.category === category);
   },
 }));

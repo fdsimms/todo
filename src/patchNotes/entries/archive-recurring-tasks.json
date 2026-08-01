@@ -1,0 +1,4 @@
+{
+  "message": "Added Archive for recurring tasks — pause one indefinitely from the editor without losing its history, then resume it later from the new Archived screen. Resuming restarts the streak but keeps past completions. Adding a task with a name close to an archived one now offers to resume it instead.",
+  "date": "2026-08-01"
+}

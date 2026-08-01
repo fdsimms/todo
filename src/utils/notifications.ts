@@ -22,7 +22,7 @@ export async function requestNotificationPermissions(): Promise<boolean> {
 }
 
 export async function scheduleTaskReminder(task: Task): Promise<void> {
-  if (!task.reminderTime || task.completed) return;
+  if (!task.reminderTime || task.completed || task.archived) return;
   const triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
 
@@ -49,7 +49,7 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
   const now = new Date();
   for (const task of tasks) {
-    if (task.completed || !task.reminderTime || new Date(task.reminderTime) <= now) {
+    if (task.completed || task.archived || !task.reminderTime || new Date(task.reminderTime) <= now) {
       await cancelTaskReminder(task.id);
     } else {
       await scheduleTaskReminder(task);

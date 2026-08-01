@@ -137,6 +137,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
+  archived: false,
+  archivedAt: null,
   ...overrides,
 });
 
@@ -1109,6 +1111,71 @@ describe('toggleFocus', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', focused: true })] });
     useTaskStore.getState().toggleFocus('t1');
     expect(useTaskStore.getState().tasks[0].focused).toBe(false);
+  });
+});
+
+// ─── archiveTask / unarchiveTask ────────────────────────────────────────────
+
+describe('archiveTask', () => {
+  it('sets archived and archivedAt, leaving streak fields untouched', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', recurrenceType: 'daily', streakCount: 12, streakDate: '2025-06-10T00:00:00.000Z' })],
+    });
+    useTaskStore.getState().archiveTask('t1');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.archived).toBe(true);
+    expect(task.archivedAt).not.toBeNull();
+    expect(task.streakCount).toBe(12);
+    expect(task.streakDate).toBe('2025-06-10T00:00:00.000Z');
+  });
+
+  it('is a no-op on an already-archived task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
+    useTaskStore.getState().archiveTask('t1');
+    expect(useTaskStore.getState().tasks[0].archivedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('is undoable via lastAction', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })], lastAction: null });
+    useTaskStore.getState().archiveTask('t1');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].archived).toBe(false);
+    expect(useTaskStore.getState().tasks[0].archivedAt).toBeNull();
+  });
+});
+
+describe('unarchiveTask', () => {
+  it('clears archived state and breaks the streak', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z', streakCount: 30, streakDate: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.getState().unarchiveTask('t1');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.archived).toBe(false);
+    expect(task.archivedAt).toBeNull();
+    expect(task.streakCount).toBe(0);
+    expect(task.streakDate).toBeNull();
+  });
+
+  it('is a no-op on a task that is not archived', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false, streakCount: 5 })] });
+    useTaskStore.getState().unarchiveTask('t1');
+    expect(useTaskStore.getState().tasks[0].streakCount).toBe(5);
+  });
+});
+
+describe('archivedTasks', () => {
+  it('returns only archived, incomplete, top-level tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', archived: true }),
+        makeTask({ id: 'b', archived: false }),
+        makeTask({ id: 'c', archived: true, completed: true, completedAt: '2025-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'd', archived: true, parentId: 'a' }),
+      ],
+    });
+    const ids = useTaskStore.getState().archivedTasks().map(t => t.id);
+    expect(ids).toEqual(['a']);
   });
 });
 
