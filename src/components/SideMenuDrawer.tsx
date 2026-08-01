@@ -30,7 +30,6 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   { name: 'Inbox', icon: 'file-tray-outline', label: 'Inbox' },
-  { name: 'Later', icon: 'time-outline', label: 'Later' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },

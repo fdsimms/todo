@@ -332,7 +332,7 @@ export function TodayScreen() {
   // re-derived when a render happens; a task's visibility can flip purely
   // from time passing (a defer/time-segment threshold crossing, a window
   // expiring), with no store mutation to trigger that render. Tick while
-  // focused so the list stays current on its own, matching LaterScreen.
+  // focused so the list stays current on its own.
   const [, forceRefresh] = useState(0);
   useFocusEffect(
     useCallback(() => {
