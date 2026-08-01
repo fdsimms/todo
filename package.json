@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "build:patchnotes": "node scripts/build-patch-notes.js",
-    "postinstall": "npm run build:patchnotes",
+    "postinstall": "patch-package && npm run build:patchnotes",
     "prestart": "npm run build:patchnotes",
     "preandroid": "npm run build:patchnotes",
     "preios": "npm run build:patchnotes",
@@ -78,6 +78,7 @@
     "better-sqlite3": "^12.10.0",
     "jest": "~29.7.0",
     "jest-environment-node": "~29.7.0",
+    "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
   "private": true
