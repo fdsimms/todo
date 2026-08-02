@@ -28,6 +28,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
+import { useProjectStore, projectProgress } from './useProjectStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
@@ -159,6 +160,10 @@ interface TaskStore {
   focusGroup: (groupId: string) => void;
   deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
 
+  addExistingToProject: (taskId: string, projectId: string) => void;
+  removeFromProject: (taskId: string) => void;
+  deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
+
   forgivVacationStreaks: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
@@ -201,6 +206,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useCategoryStore.getState().initialize();
     useTemplateStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
+    useProjectStore.getState().initialize();
     let tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 
@@ -256,6 +262,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       parentId: draft.parentId ?? null,
       groupId: draft.groupId ?? null,
+      projectId: draft.projectId ?? null,
       reminderTime: draft.reminderTime ?? null,
       chainEnabled: draft.chainEnabled ?? false,
       chainIndex: draft.chainIndex ?? 0,
@@ -534,6 +541,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completionHoldIds: [...s.completionHoldIds, id],
     }));
 
+    // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
+    // finishing a project never happens automatically otherwise; the user
+    // decides when a 100%-complete project actually gets archived.
+    if (task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
+      const progress = projectProgress(task.projectId, get().tasks);
+      if (progress.total > 0 && progress.done === progress.total) {
+        useProjectStore.getState().archiveProject(task.projectId);
+      }
+    }
+
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
@@ -799,6 +816,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       parentId,
       groupId: null,
+      projectId: null,
       reminderTime: null,
       chainEnabled: false,
       chainIndex: 0,
@@ -900,6 +918,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       parentId: null,
       groupId,
+      projectId: null,
       reminderTime: null,
       chainEnabled: false,
       chainIndex: 0,
@@ -1034,6 +1053,42 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           undos.forEach(fn => fn());
         } else {
           children.forEach(child => get().addExistingToGroup(child.id, groupId));
+        }
+      },
+    });
+  },
+
+  addExistingToProject(taskId, projectId) {
+    get().updateTask(taskId, { projectId });
+  },
+
+  removeFromProject(taskId) {
+    get().updateTask(taskId, { projectId: null });
+  },
+
+  deleteProject(projectId, opts) {
+    const members = get().tasks.filter(t => t.projectId === projectId);
+    const project = useProjectStore.getState().getProjectById(projectId);
+    const undos: Array<() => void> = [];
+    if (opts.cascade) {
+      members.forEach(member => {
+        get().deleteTask(member.id);
+        const action = get().lastAction;
+        if (action) undos.push(action.undo);
+      });
+    } else {
+      members.forEach(member => get().removeFromProject(member.id));
+    }
+    useProjectStore.getState().removeProjectRow(projectId);
+    if (!project) return;
+    get().setLastAction({
+      label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',
+      undo: () => {
+        useProjectStore.getState().restoreProject(project);
+        if (opts.cascade) {
+          undos.forEach(fn => fn());
+        } else {
+          members.forEach(member => get().addExistingToProject(member.id, projectId));
         }
       },
     });

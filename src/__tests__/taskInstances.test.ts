@@ -35,6 +35,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   groupId: null,
+  projectId: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],

@@ -1088,6 +1088,7 @@ export function TodayScreen() {
                 onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
                 hideTodayLabel
                 showCategory
+                showProject
                 showActions={false}
               />
             );

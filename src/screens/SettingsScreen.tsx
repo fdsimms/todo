@@ -58,6 +58,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
+    autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
@@ -368,6 +369,38 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
             <Text style={styles.sectionFooter}>
               A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.
             </Text>
+          </View>
+
+          {/* Projects */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Projects</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setAutoArchiveProjectsOnComplete(!autoArchiveProjectsOnComplete)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: autoArchiveProjectsOnComplete }}
+                accessibilityLabel="Auto-archive projects"
+              >
+                <Ionicons
+                  name="flag-outline"
+                  size={18}
+                  color={autoArchiveProjectsOnComplete ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Auto-archive projects</Text>
+                  <Text style={styles.rowHint}>
+                    {autoArchiveProjectsOnComplete
+                      ? 'On — a project archives itself once every task in it is done'
+                      : 'Off — a finished project just sits at 100% until you archive it'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, autoArchiveProjectsOnComplete && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, autoArchiveProjectsOnComplete && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* AI Suggestions */}

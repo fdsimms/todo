@@ -14,6 +14,7 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   autoRemoveExpiredTasks: boolean;
+  autoArchiveProjectsOnComplete: boolean;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   initialized: boolean;
   initialize: () => void;
@@ -25,6 +26,7 @@ interface SettingsStore {
   setAnthropicApiKey: (key: string) => void;
   setVacationMode: (on: boolean) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
+  setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
 }
 
@@ -38,6 +40,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationMode: false,
   vacationStart: null,
   autoRemoveExpiredTasks: false,
+  autoArchiveProjectsOnComplete: false,
   patchNotesQaStatus: {},
   initialized: false,
 
@@ -51,6 +54,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
+    const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -60,7 +64,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -109,6 +113,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAutoRemoveExpiredTasks(on: boolean) {
     dbSetSetting('autoRemoveExpiredTasks', on ? 'true' : 'false');
     set({ autoRemoveExpiredTasks: on });
+  },
+
+  setAutoArchiveProjectsOnComplete(on: boolean) {
+    dbSetSetting('autoArchiveProjectsOnComplete', on ? 'true' : 'false');
+    set({ autoArchiveProjectsOnComplete: on });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
