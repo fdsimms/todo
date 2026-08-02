@@ -199,11 +199,27 @@ export function DemoScreen({ visible, onClose }: Props) {
     [demoTasks]
   );
 
+  // Restrict the editor's category/tag autocomplete to what the demo itself
+  // uses, derived live from the seeded tasks rather than hardcoded, so it
+  // never surfaces real category/tag names (see TaskEditor's categoryOptions).
+  const demoCategoryOptions = useMemo(
+    () => Array.from(new Set(demoTasks.map(t => t.category).filter((c): c is string => !!c))),
+    [demoTasks]
+  );
+  const demoTagOptions = useMemo(
+    () => Array.from(new Set(demoTasks.flatMap(t => t.tags))),
+    [demoTasks]
+  );
+
   return (
+    // fullScreen, not pageSheet (see SettingsScreen): pageSheet is
+    // swipe-to-dismiss on iOS and leaves the real app dimly visible behind
+    // it on iPad — either would expose real tasks to whoever's holding the
+    // phone during a demo. fullScreen has no dismiss gesture but our own.
     <Modal
       visible={visible}
       animationType="slide"
-      presentationStyle="pageSheet"
+      presentationStyle="fullScreen"
       onRequestClose={onClose}
     >
       <View style={styles.root}>
@@ -253,6 +269,8 @@ export function DemoScreen({ visible, onClose }: Props) {
         visible={editorVisible}
         task={editingTask}
         onClose={() => { setEditorVisible(false); setExpandedTaskId(null); }}
+        categoryOptions={demoCategoryOptions}
+        tagOptions={demoTagOptions}
       />
     </Modal>
   );

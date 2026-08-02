@@ -58,6 +58,12 @@ interface Props {
   task?: Task | null;
   initialDraft?: Partial<TaskDraft> | null;
   onClose: () => void;
+  // Overrides for the category/tag pickers' autocomplete lists. Used by
+  // DemoScreen so editing a sample task can't leak real category/tag names
+  // (e.g. a "Supplements" category) into the suggestion pills — omit to use
+  // every real category/tag, as every other call site does.
+  categoryOptions?: string[];
+  tagOptions?: string[];
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -70,7 +76,7 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
+export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
@@ -82,8 +88,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
+  const allCategoriesStore = useTaskStore(useShallow(s => s.allCategories()));
+  const allTags = tagOptions ?? allTagsStore;
+  const allCategories = categoryOptions ?? allCategoriesStore;
   const addCategory = useTaskStore(s => s.addCategory);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
