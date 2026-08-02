@@ -16,6 +16,8 @@ import type { TaskGroup, Priority } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, type Colors } from '../theme';
@@ -33,6 +35,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
   const groupChildrenOf = useTaskStore(s => s.groupChildrenOf);
   const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
@@ -159,7 +162,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
                     style={[styles.pill, category === cat && styles.pillActive]}
                     onPress={() => setCategory(cat)}
                   >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

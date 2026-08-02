@@ -12,6 +12,7 @@ export interface Category {
   scheduleEnd: string | null;      // "HH:MM"
   hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
   sortOrder: number;
+  emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
 }
 
 export interface ChainItem {

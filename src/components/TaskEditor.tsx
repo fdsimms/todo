@@ -29,6 +29,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
@@ -98,6 +100,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const allCategoriesStore = useTaskStore(useShallow(s => s.allCategories()));
   const allTags = tagOptions ?? allTagsStore;
   const allCategories = categoryOptions ?? allCategoriesStore;
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
@@ -579,7 +582,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     style={[styles.pill, category === cat && styles.pillActiveNeutral]}
                     onPress={() => setCategory(cat)}
                   >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
                   </TouchableOpacity>
                 ))}
                 {addingCategory ? (

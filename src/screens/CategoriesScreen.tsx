@@ -277,7 +277,11 @@ export function CategoriesScreen() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryText, setNewCategoryText] = useState('');
+  const [newCategoryEmoji, setNewCategoryEmoji] = useState('');
+  const [emojiEditCategory, setEmojiEditCategory] = useState<string | null>(null);
+  const [emojiEditText, setEmojiEditText] = useState('');
   const inputRef = useRef<TextInput>(null);
+  const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const {
     selectionMode,
     selectedIds,
@@ -336,8 +340,11 @@ export function CategoriesScreen() {
       haptics.success();
       animateLayout();
       addCategory(trimmed);
+      const trimmedEmoji = newCategoryEmoji.trim();
+      if (trimmedEmoji) setCategoryEmoji(trimmed, trimmedEmoji);
     }
     setNewCategoryText('');
+    setNewCategoryEmoji('');
     setAddingCategory(false);
   };
 
@@ -345,6 +352,18 @@ export function CategoriesScreen() {
     animateLayout();
     setAddingCategory(true);
     setTimeout(() => inputRef.current?.focus(), 50);
+  };
+
+  const openEmojiEditor = (name: string) => {
+    haptics.tap();
+    setEmojiEditText(getCategoryObj(name)?.emoji ?? '');
+    setEmojiEditCategory(name);
+  };
+
+  const handleSaveEmoji = () => {
+    if (!emojiEditCategory) return;
+    setCategoryEmoji(emojiEditCategory, emojiEditText);
+    setEmojiEditCategory(null);
   };
 
   const handleDeleteCategory = (name: string) => {
@@ -377,8 +396,21 @@ export function CategoriesScreen() {
       {addingCategory && (
         <View style={styles.addRow}>
           <View style={[styles.catIcon, { backgroundColor: colors.bgSecondary }]}>
-            <Ionicons name="folder-outline" size={18} color={colors.textTertiary} />
+            {newCategoryEmoji.trim() ? (
+              <Text style={styles.catIconEmoji}>{newCategoryEmoji.trim()}</Text>
+            ) : (
+              <Ionicons name="folder-outline" size={18} color={colors.textTertiary} />
+            )}
           </View>
+          <TextInput
+            style={styles.addEmojiInput}
+            value={newCategoryEmoji}
+            onChangeText={setNewCategoryEmoji}
+            placeholder="🙂"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={4}
+            accessibilityLabel="Category emoji"
+          />
           <TextInput
             ref={inputRef}
             style={styles.addInput}
@@ -398,7 +430,7 @@ export function CategoriesScreen() {
             <Ionicons name="checkmark" size={20} color={colors.accent} />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => { setNewCategoryText(''); setAddingCategory(false); }}
+            onPress={() => { setNewCategoryText(''); setNewCategoryEmoji(''); setAddingCategory(false); }}
             style={styles.addCancel}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -452,11 +484,22 @@ export function CategoriesScreen() {
                 accessibilityHint="Double tap to view tasks in this category. Long press to reorder."
               >
                 <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                <View style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}>
-                  <Ionicons name="folder" size={18} color={colors.accent} />
-                </View>
+                <TouchableOpacity
+                  onPress={() => openEmojiEditor(cat)}
+                  style={[styles.catIcon, { backgroundColor: colors.accent + '22' }]}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Change emoji for ${cat}`}
+                >
+                  {catObj?.emoji ? (
+                    <Text style={styles.catIconEmoji}>{catObj.emoji}</Text>
+                  ) : (
+                    <Ionicons name="folder" size={18} color={colors.accent} />
+                  )}
+                </TouchableOpacity>
                 <View style={styles.catInfo}>
-                  <Text style={styles.catName}>{cat}</Text>
+                  <Text style={styles.catName}>{catObj?.emoji ? `${catObj.emoji} ${cat}` : cat}</Text>
                   {hint.length > 0 && (
                     <Text style={styles.scheduleHint} numberOfLines={1}>{hint}</Text>
                   )}
@@ -523,9 +566,17 @@ export function CategoriesScreen() {
             </TouchableOpacity>
             <View style={styles.detailTitle}>
               <View style={[styles.catIconSm, { backgroundColor: colors.accent + '22' }]}>
-                <Ionicons name="folder" size={14} color={colors.accent} />
+                {selectedCategory && getCategoryObj(selectedCategory)?.emoji ? (
+                  <Text style={styles.catIconEmojiSm}>{getCategoryObj(selectedCategory)?.emoji}</Text>
+                ) : (
+                  <Ionicons name="folder" size={14} color={colors.accent} />
+                )}
               </View>
-              <Text style={styles.detailTitleText}>{selectedCategory}</Text>
+              <Text style={styles.detailTitleText}>
+                {selectedCategory && getCategoryObj(selectedCategory)?.emoji
+                  ? `${getCategoryObj(selectedCategory)?.emoji} ${selectedCategory}`
+                  : selectedCategory}
+              </Text>
             </View>
             <TouchableOpacity
               onPress={handleFocusCategory}
@@ -627,6 +678,59 @@ export function CategoriesScreen() {
         </View>
       </Modal>
 
+      {/* Emoji editor modal */}
+      <Modal
+        visible={emojiEditCategory !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setEmojiEditCategory(null)}
+      >
+        <TouchableOpacity
+          style={styles.emojiBackdrop}
+          activeOpacity={1}
+          onPress={() => setEmojiEditCategory(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.emojiCard}>
+            <Text style={styles.emojiCardTitle}>Emoji for "{emojiEditCategory}"</Text>
+            <TextInput
+              style={styles.emojiCardInput}
+              value={emojiEditText}
+              onChangeText={setEmojiEditText}
+              placeholder="🙂"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={4}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveEmoji}
+              accessibilityLabel="Category emoji"
+            />
+            <View style={styles.emojiCardButtons}>
+              <TouchableOpacity
+                onPress={() => { setEmojiEditText(''); }}
+                style={styles.emojiCardBtn}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Text style={[styles.emojiCardBtnText, { color: colors.textSecondary }]}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setEmojiEditCategory(null)}
+                style={styles.emojiCardBtn}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Text style={[styles.emojiCardBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveEmoji}
+                style={styles.emojiCardBtn}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Text style={[styles.emojiCardBtnText, { color: colors.accent, fontWeight: '600' }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
@@ -662,6 +766,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     fontWeight: '500',
     paddingVertical: 0,
+  },
+  addEmojiInput: {
+    width: 36,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: 0,
+    textAlign: 'center',
   },
   addConfirm: {
     padding: 4,
@@ -703,6 +814,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  catIconEmoji: {
+    fontSize: 18,
+  },
+  catIconEmojiSm: {
+    fontSize: 14,
   },
   catInfo: {
     flex: 1,
@@ -883,5 +1000,44 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.red,
     fontSize: font.md,
     fontWeight: '500',
+  },
+  emojiBackdrop: {
+    flex: 1,
+    backgroundColor: colors.backdrop,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+  },
+  emojiCard: {
+    width: '100%',
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  emojiCardTitle: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  emojiCardInput: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    color: colors.text,
+    fontSize: font.xl,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+  },
+  emojiCardButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  emojiCardBtn: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  emojiCardBtnText: {
+    fontSize: font.md,
   },
 });

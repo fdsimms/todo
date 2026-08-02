@@ -31,6 +31,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { SortableList } from './SortableList';
@@ -99,6 +100,7 @@ export function TaskItem({
   showActions = true,
   indented = false,
 }: Props) {
+  const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
@@ -534,7 +536,9 @@ export function TaskItem({
         {showCategory && task.category && (
           <View style={styles.categoryRow}>
             <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
+            <Text style={styles.categoryLabel} numberOfLines={1}>
+              {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+            </Text>
           </View>
         )}
         {windowActive && task.windowEnd && (
@@ -880,23 +884,24 @@ export function TaskItem({
               (Separate from itemWrapper: overflow hidden there would clip the
               card shadow on iOS.) */}
           <View style={styles.cardClip}>
-          {spotlightDisabled && !selectionMode ? (
-            // While another task is spotlighted this row must not react to
-            // touches itself — any tap on it just dismisses the spotlight.
-            <Pressable style={styles.swipeContainer} onPress={onPress}>
-              <View pointerEvents="none">{rowBody}</View>
-            </Pressable>
-          ) : selectionMode || spotlightDisabled ? (
+          {selectionMode ? (
             <View style={styles.swipeContainer}>
               {rowBody}
             </View>
           ) : (
+            // Swipeable stays mounted regardless of spotlightDisabled — toggling
+            // between it and a plain View/Pressable here used to remount rowBody
+            // (a different element type at this tree position) every time any
+            // other task got tapped, which read as the whole row flashing.
+            // Disabling the gesture and overlaying a dismiss-tap Pressable keeps
+            // the same tree shape across that toggle.
             <Swipeable
               ref={swipeableRef}
               renderRightActions={renderRightActions}
               renderLeftActions={renderLeftActions}
               overshootRight={false}
               overshootLeft={false}
+              enabled={!spotlightDisabled}
               onSwipeableWillOpen={() => {
                 haptics.impactMedium();
               }}
@@ -909,7 +914,16 @@ export function TaskItem({
                 }
               }}
             >
-              {rowBody}
+              <View style={styles.swipeContainer}>
+                <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
+                  {rowBody}
+                </View>
+                {spotlightDisabled && (
+                  // While another task is spotlighted this row must not react
+                  // to touches itself — any tap on it just dismisses the spotlight.
+                  <Pressable style={StyleSheet.absoluteFill} onPress={onPress} />
+                )}
+              </View>
             </Swipeable>
           )}
           {expandedPanel}
