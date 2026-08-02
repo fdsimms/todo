@@ -19,7 +19,7 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
-import { format, addMonths, differenceInCalendarDays } from 'date-fns';
+import { format, addMonths, addDays, subDays, differenceInCalendarDays } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -32,7 +32,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
@@ -146,6 +146,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [focused, setFocused] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
+  const [streakEditorOpen, setStreakEditorOpen] = useState(false);
+  const [streakDraft, setStreakDraft] = useState(0);
 
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
@@ -212,6 +214,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setLogTimeOpen(false); setLogTimeText(''); setLogTimeUnit('min');
     setEffortNote(null); setEffortAiLoading(false);
+    setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
     initialStateRef.current = JSON.stringify({
@@ -342,6 +345,53 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       }
     }
     commitSave();
+  };
+
+  // Manually correcting a streak is for the "I actually did this yesterday
+  // but forgot to tap complete" case — so a count increase also pushes the
+  // streakDate anchor forward (never past yesterday), preserving continuity
+  // for the next real completion instead of leaving it to see a gap and
+  // reset anyway. Reset always clears the anchor.
+  const applyStreakChange = (rawCount: number) => {
+    if (!task) return;
+    const clamped = Math.max(0, Math.round(rawCount));
+    if (clamped === task.streakCount) {
+      setStreakEditorOpen(false);
+      return;
+    }
+
+    const { dayResetTime } = useSettingsStore.getState();
+    const yesterday = subDays(getCurrentDayStart(), 1);
+    let newStreakDate: string | null;
+    if (clamped === 0) {
+      newStreakDate = null;
+    } else if (task.streakDate) {
+      const delta = clamped - task.streakCount;
+      const shifted = addDays(getDayStart(new Date(task.streakDate), dayResetTime), delta);
+      newStreakDate = (shifted > yesterday ? yesterday : shifted).toISOString();
+    } else {
+      newStreakDate = yesterday.toISOString();
+    }
+
+    const increasing = clamped > task.streakCount;
+    Alert.alert(
+      clamped === 0 ? 'Reset streak?' : `Set streak to ${clamped} day${clamped === 1 ? '' : 's'}?`,
+      clamped === 0
+        ? 'This clears the current streak count and history.'
+        : `This manually ${increasing ? 'credits' : 'reduces'} the streak, as if it had been ${increasing ? 'completed' : 'not completed'} on schedule. Only do this to fix a task you actually completed but forgot to mark done.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: clamped === 0 ? 'Reset' : 'Confirm',
+          style: clamped === 0 ? 'destructive' : 'default',
+          onPress: () => {
+            haptics.success();
+            updateTask(task.id, { streakCount: clamped, streakDate: newStreakDate });
+            setStreakEditorOpen(false);
+          },
+        },
+      ],
+    );
   };
 
   const openPicker = (mode: PickerMode) => {
@@ -988,6 +1038,51 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
                   </View>
                 </TouchableOpacity>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    setStreakDraft(task.streakCount);
+                    setStreakEditorOpen(o => !o);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak</Text>
+                    <Text style={styles.optionHint}>
+                      {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
+                    </Text>
+                  </View>
+                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+                {streakEditorOpen && (
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{streakDraft}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => d + 1)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
+                    <TouchableOpacity
+                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
+                      onPress={() => applyStreakChange(streakDraft)}
+                      disabled={streakDraft === task.streakCount}
+                    >
+                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
+                        {streakDraft === 0 ? 'Reset' : 'Apply'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </>
             )}
             <View style={styles.sep} />
@@ -1677,6 +1772,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text, fontSize: font.md, fontWeight: '600',
     minWidth: 24, textAlign: 'center',
   },
+  streakApplyBtn: {
+    marginLeft: 'auto', paddingHorizontal: 14, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.orange,
+  },
+  streakApplyBtnDisabled: { backgroundColor: colors.bgTertiary },
+  streakApplyText: { color: colors.onAccent, fontSize: font.sm, fontWeight: '600' },
+  streakApplyTextDisabled: { color: colors.textTertiary },
   toggle: {
     width: 46, height: 27, borderRadius: 14,
     backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
