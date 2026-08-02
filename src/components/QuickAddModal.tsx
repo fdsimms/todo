@@ -561,15 +561,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
               onPress={() => setWhenPickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={dueDate ? `Date: ${formatDate(dueDate)}` : 'Set date'}
             >
               <Ionicons
                 name="calendar-outline"
                 size={13}
                 color={dueDate ? colors.accent : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, dueDate != null && styles.toolChipTextSet]}>
-                {dueDate ? formatDate(dueDate) : 'Date'}
-              </Text>
+              {dueDate != null && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {formatDate(dueDate)}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Repeat chip */}
@@ -577,15 +581,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'repeat' && styles.toolChipActive, recurrenceType !== 'none' && styles.toolChipSet]}
               onPress={() => togglePanel('repeat')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={recurrenceType !== 'none' ? `Repeat: ${RECURRENCE_LABELS[recurrenceType]}` : 'Set repeat'}
             >
               <Ionicons
                 name="repeat"
                 size={13}
                 color={recurrenceType !== 'none' ? colors.accent : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, recurrenceType !== 'none' && styles.toolChipTextSet]}>
-                {recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : 'Repeat'}
-              </Text>
+              {recurrenceType !== 'none' && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {RECURRENCE_LABELS[recurrenceType]}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Segment chip */}
@@ -593,6 +601,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'segment' && styles.toolChipActive, timeSegments.length > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('segment')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={timeSegments.length > 0 ? `Segment: ${SEGMENTS.find(s => s.key === timeSegments[0])!.label}` : 'Set time segment'}
             >
               <Ionicons
                 name={timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline'}
@@ -603,9 +613,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                   evening: colors.timeEvening,
                 }[timeSegments[0]] : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, timeSegments.length > 0 && styles.toolChipTextSet]}>
-                {timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.label : 'Segment'}
-              </Text>
+              {timeSegments.length > 0 && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {SEGMENTS.find(s => s.key === timeSegments[0])!.label}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Priority chip */}
@@ -613,11 +625,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('priority')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={priority > 0 ? `Priority: ${PRIORITY_LABELS_SHORT[priority]}` : 'Set priority'}
             >
               <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
-              <Text style={[styles.toolChipText, priority > 0 && styles.toolChipTextSet]}>
-                {priority > 0 ? PRIORITY_LABELS_SHORT[priority] : 'Priority'}
-              </Text>
+              {priority > 0 && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {PRIORITY_LABELS_SHORT[priority]}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Effort chip */}
@@ -625,15 +641,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('effort')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={effort > 0 ? `Effort: ${estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}` : 'Set effort'}
             >
               <Ionicons
                 name="flash-outline"
                 size={13}
                 color={effort > 0 ? colors.accent : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, effort > 0 && styles.toolChipTextSet]}>
-                {estimatedMinutes != null ? formatDuration(estimatedMinutes) : effort > 0 ? EFFORT_LABELS[effort] : 'Effort'}
-              </Text>
+              {effort > 0 && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Tags chip */}
@@ -641,15 +661,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
               onPress={() => togglePanel('tags')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={tags.length > 0 ? `Tags: ${tags.join(', ')}` : 'Set tags'}
             >
               <Ionicons
                 name="pricetag-outline"
                 size={13}
                 color={tags.length > 0 ? colors.accent : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, tags.length > 0 && styles.toolChipTextSet]}>
-                {tags.length > 0 ? tags.slice(0, 2).join(', ') : 'Tags'}
-              </Text>
+              {tags.length > 0 && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {tags.slice(0, 2).join(', ')}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* Category chip */}
@@ -657,15 +681,19 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
               onPress={() => togglePanel('category')}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={category !== null ? `Category: ${categoryLabel(category, categories)}` : 'Set category'}
             >
               <Ionicons
                 name="folder-outline"
                 size={13}
                 color={category ? colors.accent : colors.textTertiary}
               />
-              <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]}>
-                {category ? categoryLabel(category, categories) : 'Category'}
-              </Text>
+              {category !== null && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {categoryLabel(category, categories)}
+                </Text>
+              )}
             </TouchableOpacity>
 
             {/* AI Suggest chip */}
