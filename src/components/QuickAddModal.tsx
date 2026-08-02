@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Animated,
   StyleSheet,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   ScrollView,
 } from 'react-native';
@@ -78,6 +78,35 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const translateYAnim = useRef(new Animated.Value(16)).current;
   const sheetOpacity = useRef(new Animated.Value(0)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // Independent of the keyboard's own slide-up motion — rather than tracking
+  // it 1:1 (which reads as the sheet getting shoved), the sheet glides to its
+  // new centered resting spot on its own spring once the keyboard height is
+  // known, landing shortly after the keyboard settles.
+  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      const height = e.endCoordinates?.height ?? 0;
+      Animated.spring(keyboardOffsetAnim, {
+        toValue: -height / 2,
+        ...animation.spring.smooth,
+        useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      Animated.spring(keyboardOffsetAnim, {
+        toValue: 0,
+        ...animation.spring.smooth,
+        useNativeDriver: true,
+      }).start();
+    });
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const dismiss = () => {
     Animated.parallel([
@@ -147,6 +176,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       translateYAnim.setValue(16);
       sheetOpacity.setValue(0);
       backdropOpacity.setValue(0);
+      keyboardOffsetAnim.setValue(0);
       Animated.parallel([
         Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
         Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -384,12 +414,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
-      <KeyboardAvoidingView
-        style={styles.centeredContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        pointerEvents="box-none"
-      >
-        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] }]}>
+      <View style={styles.centeredContainer} pointerEvents="box-none">
+        <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
@@ -927,7 +953,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
             <Text style={styles.moreBtnText}>More details</Text>
           </TouchableOpacity>
         </Animated.View>
-      </KeyboardAvoidingView>
+      </View>
       <WhenPicker
         visible={whenPickerVisible}
         value={dueDate}
