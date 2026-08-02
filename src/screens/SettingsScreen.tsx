@@ -26,6 +26,7 @@ import { PatchNotesModal } from '../components/PatchNotesModal';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  onOpenDemo: () => void;
 }
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
@@ -48,7 +49,7 @@ function dateToHhmm(d: Date): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export function SettingsScreen({ visible, onClose }: Props) {
+export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
   const {
     dayResetTime, setDayResetTime,
     afternoonStart, setAfternoonStart,
@@ -399,6 +400,27 @@ export function SettingsScreen({ visible, onClose }: Props) {
             <Text style={styles.sectionFooter}>
               Get a key at console.anthropic.com. Stored locally on device only.
             </Text>
+          </View>
+
+          {/* Demo */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Demo</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={onOpenDemo}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="View demo tasks"
+              >
+                <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>View demo tasks</Text>
+                  <Text style={styles.rowHint}>Sample tasks showcasing every feature — great for QA or showing a friend</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* About */}
