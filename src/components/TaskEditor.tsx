@@ -30,6 +30,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
@@ -102,6 +103,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const allCategories = categoryOptions ?? allCategoriesStore;
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
+  const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
@@ -113,6 +115,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const [project, setProject] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
@@ -175,7 +178,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   useEffect(() => {
     if (!visible) return;
     if (task) {
-      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setTags(task.tags);
+      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       setDeadline(task.deadline ? new Date(task.deadline) : null);
       setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
@@ -195,7 +198,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
     } else {
-      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
@@ -221,6 +224,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       title: task ? task.title : (initialDraft?.title ?? ''),
       notes: task ? task.notes : '',
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
+      projectId: task ? (task.projectId ?? null) : null,
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deadline: task?.deadline ?? null,
@@ -286,7 +290,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
 
   const proceedWithSave = () => {
     const data = {
-      title: title.trim(), notes, category, tags,
+      title: title.trim(), notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -454,7 +458,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
 
   const handleCancel = () => {
     const current = JSON.stringify({
-      title, notes, category, tags,
+      title, notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -664,6 +668,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                 )}
               </View>
             </View>
+
+            {projects.length > 0 && (
+              <>
+                <View style={styles.cardSep} />
+                <View style={styles.cardSection}>
+                  <Text style={styles.sectionLabel}>Project</Text>
+                  <View style={styles.pillRow}>
+                    <TouchableOpacity
+                      style={[styles.pill, !project && styles.pillActiveNeutral]}
+                      onPress={() => setProject(null)}
+                    >
+                      <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
+                    </TouchableOpacity>
+                    {projects.map(p => (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
+                        onPress={() => setProject(p.id)}
+                      >
+                        <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </>
+            )}
 
             <View style={styles.cardSep} />
 

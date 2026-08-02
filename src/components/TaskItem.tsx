@@ -32,6 +32,7 @@ import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } f
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { SortableList } from './SortableList';
@@ -53,6 +54,7 @@ interface Props {
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
+  showProject?: boolean;
   showActions?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
@@ -97,10 +99,12 @@ export function TaskItem({
   spotlightDisabled = false,
   hideTodayLabel = false,
   showCategory = false,
+  showProject = false,
   showActions = true,
   indented = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
+  const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
@@ -539,6 +543,12 @@ export function TaskItem({
             <Text style={styles.categoryLabel} numberOfLines={1}>
               {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
             </Text>
+          </View>
+        )}
+        {showProject && projectTitle && (
+          <View style={styles.projectRow}>
+            <Ionicons name="flag-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
           </View>
         )}
         {windowActive && task.windowEnd && (
@@ -1088,6 +1098,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 4,
   },
   categoryLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  projectRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  projectLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },

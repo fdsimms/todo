@@ -1,5 +1,6 @@
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useProjectStore } from '../store/useProjectStore';
 import {
   initDatabase,
   dbGetSetting,
@@ -39,6 +40,11 @@ jest.mock('../db/database', () => ({
   dbInsertTaskGroup: jest.fn(),
   dbUpdateTaskGroup: jest.fn(),
   dbDeleteTaskGroup: jest.fn(),
+  dbGetAllProjects: jest.fn().mockReturnValue([]),
+  dbInsertProject: jest.fn(),
+  dbUpdateProject: jest.fn(),
+  dbDeleteProject: jest.fn(),
+  dbBatchUpdateProjectSortOrders: jest.fn(),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
@@ -74,7 +80,7 @@ jest.mock('../store/useCategoryStore', () => ({
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ dayResetTime: '00:00' }),
+    getState: jest.fn(() => ({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false })),
   },
 }));
 
@@ -128,6 +134,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   groupId: null,
+  projectId: null,
   reminderTime: null,
   chainEnabled: false,
   chainIndex: 0,
@@ -154,11 +161,27 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   ...overrides,
 });
 
+const makeProject = (overrides: Partial<import('../types').Project> = {}): import('../types').Project => ({
+  id: 'project-1',
+  title: 'Test Project',
+  notes: '',
+  targetStartDate: null,
+  targetEndDate: null,
+  sortOrder: 1,
+  archived: false,
+  archivedAt: null,
+  createdAt: '2025-01-01T00:00:00.000Z',
+  ...overrides,
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
   useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [] });
   useTaskGroupStore.setState({ groups: [], initialized: false });
+  useProjectStore.setState({ projects: [], initialized: false });
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+  useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -2029,5 +2052,92 @@ describe('timers', () => {
     expect(next.actualMinutes).toBe(10);
     expect(next.estimatedMinutes).toBe(10);
     expect(next.timerStartedAt).toBeNull();
+  });
+});
+
+// ─── deleteProject / addExistingToProject / removeFromProject ─────────────────
+
+describe('deleteProject', () => {
+  it('orphans member tasks (cascade: false) — they stay, just unassigned', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().deleteProject('p1', { cascade: false });
+    expect(useTaskStore.getState().tasks.every(t => t.projectId === null)).toBe(true);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+    expect(useProjectStore.getState().projects).toHaveLength(0);
+  });
+
+  it('deletes member tasks too (cascade: true)', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'keep', projectId: null })],
+    });
+    useTaskStore.getState().deleteProject('p1', { cascade: true });
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['keep']);
+    expect(useProjectStore.getState().projects).toHaveLength(0);
+  });
+
+  it('queues an undo that restores the project and its orphaned tasks', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', title: 'Summer Bucket List' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().deleteProject('p1', { cascade: false });
+    useTaskStore.getState().lastAction?.undo();
+    expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['p1']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
+  });
+});
+
+describe('addExistingToProject / removeFromProject', () => {
+  it('assigns an existing task to a project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
+    useTaskStore.getState().addExistingToProject('a', 'p1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
+  });
+
+  it('clears a task\'s project assignment', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().removeFromProject('a');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBeNull();
+  });
+});
+
+// ─── completeTask: project auto-archive ────────────────────────────────────────
+
+describe('completeTask auto-archiving a finished project', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+
+  it('does nothing when autoArchiveProjectsOnComplete is off (default)', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+  });
+
+  it('archives the project when the last task completes and the setting is on', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(true);
+  });
+
+  it('does not archive the project while other tasks in it are still incomplete', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1', completed: false })],
+    });
+    useTaskStore.getState().completeTask('a');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+  });
+
+  it('ignores tasks with no projectId', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
+    expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
   });
 });

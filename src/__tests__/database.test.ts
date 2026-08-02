@@ -33,8 +33,13 @@ import {
   dbInsertTemplate,
   dbUpdateTemplate,
   dbDeleteTemplate,
+  dbGetAllProjects,
+  dbInsertProject,
+  dbUpdateProject,
+  dbDeleteProject,
+  dbBatchUpdateProjectSortOrders,
 } from '../db/database';
-import type { Task, TaskTemplate, TemplateItem } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -113,6 +118,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakDate: null,
   parentId: null,
   groupId: null,
+  projectId: null,
   reminderTime: null,
   chainEnabled: false,
   chainIndex: 0,
@@ -136,7 +142,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates;');
+  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects;');
 });
 
 // ---------------------------------------------------------------------------
@@ -243,6 +249,12 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(result.title).toBe('My Task');
     expect(result.notes).toBe('some notes');
     expect(result.sortOrder).toBe(5);
+  });
+
+  it('round-trips projectId', () => {
+    dbInsertTask(makeTask({ id: 'proj', projectId: 'project-1' }));
+    const [t] = dbGetAllTasks();
+    expect(t.projectId).toBe('project-1');
   });
 
   it('round-trips estimatedMinutes (precise time estimate)', () => {
@@ -833,5 +845,64 @@ describe('Templates', () => {
       tags: [],
       priority: 0,
     });
+  });
+});
+
+describe('Projects', () => {
+  const makeProject = (overrides: Partial<Project> = {}): Project => ({
+    id: 'project-1',
+    title: 'Summer Bucket List',
+    notes: '',
+    targetStartDate: null,
+    targetEndDate: null,
+    sortOrder: 1,
+    archived: false,
+    archivedAt: null,
+    createdAt: '2025-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('insert → getAll round-trips a project', () => {
+    dbInsertProject(makeProject({ targetStartDate: '2026-06-01T00:00:00.000Z', targetEndDate: '2026-09-01T00:00:00.000Z' }));
+    const [p] = dbGetAllProjects();
+    expect(p.title).toBe('Summer Bucket List');
+    expect(p.targetStartDate).toBe('2026-06-01T00:00:00.000Z');
+    expect(p.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(p.archived).toBe(false);
+  });
+
+  it('orders by sort_order', () => {
+    dbInsertProject(makeProject({ id: 'b', title: 'B', sortOrder: 2 }));
+    dbInsertProject(makeProject({ id: 'a', title: 'A', sortOrder: 1 }));
+    expect(dbGetAllProjects().map(p => p.title)).toEqual(['A', 'B']);
+  });
+
+  it('updates fields in place', () => {
+    dbInsertProject(makeProject());
+    dbUpdateProject(makeProject({ title: 'Renamed', archived: true, archivedAt: '2025-02-01T00:00:00.000Z' }));
+    const [p] = dbGetAllProjects();
+    expect(p.title).toBe('Renamed');
+    expect(p.archived).toBe(true);
+    expect(p.archivedAt).toBe('2025-02-01T00:00:00.000Z');
+  });
+
+  it('deletes a project', () => {
+    dbInsertProject(makeProject());
+    dbDeleteProject('project-1');
+    expect(dbGetAllProjects()).toHaveLength(0);
+  });
+
+  it('batch-updates sort orders', () => {
+    dbInsertProject(makeProject({ id: 'a', sortOrder: 1 }));
+    dbInsertProject(makeProject({ id: 'b', sortOrder: 2 }));
+    dbBatchUpdateProjectSortOrders([{ id: 'a', sortOrder: 2 }, { id: 'b', sortOrder: 1 }]);
+    expect(dbGetAllProjects().map(p => p.id)).toEqual(['b', 'a']);
+  });
+
+  it('a task references a project by id', () => {
+    dbInsertProject(makeProject());
+    dbInsertTask(makeTask({ id: 't1', projectId: 'project-1' }));
+    const [t] = dbGetAllTasks();
+    expect(t.projectId).toBe('project-1');
   });
 });

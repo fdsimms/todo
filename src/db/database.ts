@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -67,6 +67,18 @@ export function initDatabase(): void {
       collapsed INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS projects (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      target_start_date TEXT,
+      target_end_date TEXT,
+      sort_order REAL NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
@@ -125,6 +137,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN archived_at TEXT',
     'ALTER TABLE categories ADD COLUMN emoji TEXT',
+    'ALTER TABLE tasks ADD COLUMN project_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -225,6 +238,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     streakDate: (row.streak_date as string) ?? null,
     parentId: (row.parent_id as string) ?? null,
     groupId: (row.group_id as string) ?? null,
+    projectId: (row.project_id as string) ?? null,
     reminderTime: (row.reminder_time as string) ?? null,
     // Column names stay cycle_* — this is the pre-rename "Cycle" feature
     // (now "Chain") and renaming the columns would need a data migration
@@ -259,8 +273,8 @@ export function dbInsertTask(task: Task): void {
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
-      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deferUntil,
@@ -278,6 +292,7 @@ export function dbInsertTask(task: Task): void {
       task.seriesDefaults ? JSON.stringify(task.seriesDefaults) : null,
       task.groupId ?? null,
       task.archived ? 1 : 0, task.archivedAt ?? null,
+      task.projectId ?? null,
     ]
   );
 }
@@ -292,7 +307,7 @@ export function dbUpdateTask(task: Task): void {
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
-      archived=?, archived_at=?
+      archived=?, archived_at=?, project_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -311,6 +326,7 @@ export function dbUpdateTask(task: Task): void {
       task.seriesDefaults ? JSON.stringify(task.seriesDefaults) : null,
       task.groupId ?? null,
       task.archived ? 1 : 0, task.archivedAt ?? null,
+      task.projectId ?? null,
       task.id,
     ]
   );
@@ -572,6 +588,59 @@ export function dbBatchUpdateTaskGroupSortOrders(updates: { id: string; sortOrde
   db.withTransactionSync(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE task_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
+// ─── Projects ───────────────────────────────────────────────────────────────
+
+function rowToProject(row: Record<string, unknown>): Project {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    notes: row.notes as string,
+    targetStartDate: (row.target_start_date as string) ?? null,
+    targetEndDate: (row.target_end_date as string) ?? null,
+    sortOrder: row.sort_order as number,
+    archived: Boolean(row.archived),
+    archivedAt: (row.archived_at as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllProjects(): Project[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM projects ORDER BY sort_order ASC');
+  return rows.map(rowToProject);
+}
+
+export function dbInsertProject(project: Project): void {
+  db.runSync(
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, sort_order, archived, archived_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    [
+      project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
+      project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateProject(project: Project): void {
+  db.runSync(
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, sort_order=?, archived=?, archived_at=? WHERE id=?',
+    [
+      project.title, project.notes, project.targetStartDate, project.targetEndDate,
+      project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.id,
+    ]
+  );
+}
+
+export function dbDeleteProject(id: string): void {
+  db.runSync('DELETE FROM projects WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdateProjectSortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE projects SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
   });
 }

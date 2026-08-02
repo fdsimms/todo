@@ -39,6 +39,27 @@ export interface TaskGroup {
   collapsed: boolean;      // persisted expand/collapse state
 }
 
+// A themed, long-running collection of loosely-dated tasks the user tracks
+// and picks off over time (e.g. "Summer Bucket List") — independent of
+// TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to
+// all four at once. Unlike TaskGroup, a Project has its own optional
+// targetStartDate/targetEndDate and can be browsed on its own even when
+// nothing inside it is due today. It has no persisted "completed" state —
+// completion is always derived from its tasks (see projectProgress in
+// useProjectStore) — only an explicit archived flag the user (or, if the
+// autoArchiveProjectsOnComplete setting is on, completeTask) sets.
+export interface Project {
+  id: string;
+  title: string;
+  notes: string;
+  targetStartDate: string | null;
+  targetEndDate: string | null;
+  sortOrder: number;
+  archived: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -90,6 +111,7 @@ export interface Task {
 
   parentId: string | null;   // null = root task; set = subtask of that id
   groupId: string | null;    // null = ungrouped; set = grouped under that TaskGroup's id
+  projectId: string | null;  // null = not in a project; independent of groupId/category — a task can carry both
 
   // Chain — steps through a list of items one at a time. Completing a
   // chained task advances to the next item and creates the next task on

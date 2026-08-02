@@ -9,6 +9,7 @@ import { InboxScreen } from '../screens/InboxScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { SearchScreen } from '../screens/SearchScreen';
+import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
@@ -79,6 +80,15 @@ const MainTabs = React.memo(function MainTabs({
           options={{
             tabBarAccessibilityLabel: 'Search',
             tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
+          }}
+        />
+        <Tab.Screen
+          name="Projects"
+          component={ProjectsScreen}
+          listeners={tabPressHaptic}
+          options={{
+            tabBarAccessibilityLabel: 'Projects',
+            tabBarIcon: ({ color, size }) => <Ionicons name="flag" size={size} color={color} />,
           }}
         />
         <Tab.Screen
