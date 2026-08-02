@@ -31,6 +31,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { SortableList } from './SortableList';
@@ -99,6 +100,7 @@ export function TaskItem({
   showActions = true,
   indented = false,
 }: Props) {
+  const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
@@ -534,7 +536,9 @@ export function TaskItem({
         {showCategory && task.category && (
           <View style={styles.categoryRow}>
             <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.categoryLabel} numberOfLines={1}>{task.category}</Text>
+            <Text style={styles.categoryLabel} numberOfLines={1}>
+              {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+            </Text>
           </View>
         )}
         {windowActive && task.windowEnd && (

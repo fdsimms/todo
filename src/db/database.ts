@@ -124,6 +124,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN group_id TEXT',
     'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN archived_at TEXT',
+    'ALTER TABLE categories ADD COLUMN emoji TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -473,6 +474,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleEnd: (row.schedule_end as string) ?? null,
     hideOnVacation: Boolean(row.hide_on_vacation),
     sortOrder: row.sort_order as number,
+    emoji: (row.emoji as string | null) ?? null,
   };
 }
 
@@ -486,7 +488,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder, emoji: null };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -499,6 +501,10 @@ export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder
 
 export function dbSetCategoryHideOnVacation(id: string, hide: boolean): void {
   db.runSync('UPDATE categories SET hide_on_vacation = ? WHERE id = ?', [hide ? 1 : 0, id]);
+}
+
+export function dbSetCategoryEmoji(id: string, emoji: string | null): void {
+  db.runSync('UPDATE categories SET emoji = ? WHERE id = ?', [emoji, id]);
 }
 
 export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'scheduleDays' | 'scheduleStart' | 'scheduleEnd'>>): void {

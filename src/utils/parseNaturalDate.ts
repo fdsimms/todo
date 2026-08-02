@@ -40,6 +40,24 @@ export const WEEKDAYS: Record<string, Day> = {
   saturday: 6, sat: 6,
 };
 
+const FULL_WEEKDAYS: [string, Day][] = [
+  ['sunday', 0], ['monday', 1], ['tuesday', 2], ['wednesday', 3],
+  ['thursday', 4], ['friday', 5], ['saturday', 6],
+];
+
+/**
+ * Resolve a typed token to a weekday, including while the user is still
+ * mid-word (e.g. "frid" between the "fri" abbreviation and "friday").
+ * Falls back to a unique-prefix match against the full day names so the
+ * suggestion doesn't flicker off between recognized forms.
+ */
+function matchWeekday(token: string): Day | undefined {
+  if (token in WEEKDAYS) return WEEKDAYS[token];
+  if (token.length < 3) return undefined;
+  const matches = FULL_WEEKDAYS.filter(([name]) => name.startsWith(token));
+  return matches.length === 1 ? matches[0][1] : undefined;
+}
+
 const MONTHS: Record<string, number> = {
   january: 0, jan: 0,
   february: 1, feb: 1,
@@ -188,7 +206,7 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
 
   // "oxt monday" — the weekday after "next X" (i.e. two occurrences away)
   if ((m = text.match(/^oxt\s+([a-z]+)$/))) {
-    const wd = WEEKDAYS[m[1]];
+    const wd = matchWeekday(m[1]);
     if (wd !== undefined) {
       let date = nextDay(now, wd);
       if (isSameWeek(date, now)) date = addWeeks(date, 1);
@@ -199,7 +217,7 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
 
   // Weekday, optionally prefixed: "monday", "this fri", "next monday", "on tuesday"
   if ((m = text.match(/^(?:(this|next|coming|on)\s+)?([a-z]+)$/))) {
-    const wd = WEEKDAYS[m[2]];
+    const wd = matchWeekday(m[2]);
     if (wd !== undefined) {
       let date = nextDay(now, wd); // strictly the next occurrence (1–7 days ahead)
       if (m[1] === 'next' && isSameWeek(date, now)) date = addWeeks(date, 1);
