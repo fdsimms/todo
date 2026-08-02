@@ -183,6 +183,21 @@ describe('parseNaturalDate', () => {
       expect(d.getHours()).toBe(9);
     });
 
+    it('keeps resolving to Friday through every mid-word prefix, so the suggestion never disappears while typing', () => {
+      // "fri" (abbreviation) -> "frid"/"frida" (unique prefix of "friday") -> "friday" (full word)
+      for (const token of ['fri', 'frid', 'frida', 'friday']) {
+        const d = parse(`next ${token}`)!;
+        expect(d).not.toBeNull();
+        expect(d.getDay()).toBe(5);
+        expect(d.getDate()).toBe(20);
+      }
+    });
+
+    it('does not resolve an ambiguous or non-matching prefix', () => {
+      expect(parse('next fris')).toBeNull(); // not a prefix of "friday"
+      expect(parse('next tu')).toBeNull(); // too short (< 3 chars) to prefix-match
+    });
+
     it('parses abbreviations, e.g. "next mon"', () => {
       const d = parse('next mon')!;
       expect(d.getDay()).toBe(1);

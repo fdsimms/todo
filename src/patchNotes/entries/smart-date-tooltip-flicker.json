@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the smart date suggestion flickering off mid-word while typing a weekday, like \"next fri\" → \"next frid\" → \"next friday\"",
+  "date": "2026-08-02"
+}
