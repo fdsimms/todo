@@ -35,6 +35,7 @@ import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useShallow } from 'zustand/react/shallow';
 import { suggestFocusTasks } from '../services/aiSuggestions';
@@ -269,6 +270,7 @@ export function TodayScreen() {
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
@@ -771,7 +773,7 @@ export function TodayScreen() {
       const isCategory = item.label !== LATER_TODAY_LABEL;
       return (
         <SectionHeader
-          label={item.label}
+          label={isCategory ? categoryLabel(item.label, categories) : item.label}
           styles={styles}
           colors={colors}
           collapsed={isCategory ? (autoCollapseForDrag || collapsedCategories.has(item.label)) : undefined}

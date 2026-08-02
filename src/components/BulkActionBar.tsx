@@ -15,6 +15,9 @@ import { spacing, font, fontWeight, radius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { PRIORITY_LABELS, PRIORITY_COLORS, type Priority, type TimeOfDay } from '../types';
 import { tagColor } from '../utils/tagColor';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
+import { useShallow } from 'zustand/react/shallow';
 
 interface Props {
   selectedCount: number;
@@ -60,6 +63,7 @@ export function BulkActionBar({
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const [panel, setPanel] = useState<Panel>('actions');
   const [whenVisible, setWhenVisible] = useState(false);
   const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
@@ -341,7 +345,7 @@ export function BulkActionBar({
                   onPress={() => handleSetCategory(cat)}
                 >
                   <Ionicons name="folder-outline" size={13} color={colors.textSecondary} />
-                  <Text style={styles.categoryChipText}>{cat}</Text>
+                  <Text style={styles.categoryChipText}>{categoryLabel(cat, categories)}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>

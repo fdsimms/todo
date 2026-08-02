@@ -22,6 +22,8 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import type { Priority, Effort, TimeOfDay, RecurrenceType } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
@@ -69,6 +71,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -661,7 +664,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                 color={category ? colors.accent : colors.textTertiary}
               />
               <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]}>
-                {category ?? 'Category'}
+                {category ? categoryLabel(category, categories) : 'Category'}
               </Text>
             </TouchableOpacity>
 
@@ -969,7 +972,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
-                      {cat}
+                      {categoryLabel(cat, categories)}
                     </Text>
                   </TouchableOpacity>
                 ))}
