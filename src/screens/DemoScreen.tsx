@@ -271,6 +271,7 @@ export function DemoScreen({ visible, onClose }: Props) {
         onClose={() => { setEditorVisible(false); setExpandedTaskId(null); }}
         categoryOptions={demoCategoryOptions}
         tagOptions={demoTagOptions}
+        allowCreatingCategoryOrTag={false}
       />
     </Modal>
   );
