@@ -64,10 +64,12 @@ interface Props {
   // every real category/tag, as every other call site does.
   categoryOptions?: string[];
   tagOptions?: string[];
-  // When false, hides the "New" category and "Add tag" controls so typing
-  // one can't create a real, permanent entry in the category/tag registry
-  // from within a restricted editor (e.g. DemoScreen). Defaults to true.
-  allowCreatingCategoryOrTag?: boolean;
+  // Fired right after a brand-new category is registered (via the "New"
+  // field or the AI suggestion sheet) — categories are a permanent registry
+  // entry (unlike tags, which vanish with the last task using them), so a
+  // restricted editor (e.g. DemoScreen) needs this to know what to clean up
+  // afterward rather than blocking creation outright.
+  onCategoryCreated?: (name: string) => void;
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -80,7 +82,7 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   yearly: 'Yearly',
 };
 
-export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, allowCreatingCategoryOrTag = true }: Props) {
+export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, onCategoryCreated }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
@@ -580,7 +582,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
-                {allowCreatingCategoryOrTag && (addingCategory ? (
+                {addingCategory ? (
                   <TextInput
                     autoFocus
                     style={styles.tagInput}
@@ -588,12 +590,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     onChangeText={setNewCategory}
                     onSubmitEditing={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     onBlur={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     placeholder="category name"
@@ -606,7 +608,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <Ionicons name="add" size={14} color={colors.accent} />
                     <Text style={styles.addTagText}>New</Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
             </View>
 
@@ -615,7 +617,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             <View style={styles.cardSection}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionLabel}>Tags</Text>
-                {!!anthropicApiKey && allowCreatingCategoryOrTag && (
+                {!!anthropicApiKey && (
                   <TouchableOpacity
                     style={styles.suggestBtn}
                     onPress={handleSuggest}
@@ -646,7 +648,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <Ionicons name="close" size={12} color={tagColor(tag)} />
                   </TouchableOpacity>
                 ))}
-                {allowCreatingCategoryOrTag && (addingTag ? (
+                {addingTag ? (
                   <TextInput
                     autoFocus
                     style={styles.tagInput}
@@ -664,7 +666,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <Ionicons name="add" size={14} color={colors.accent} />
                     <Text style={styles.addTagText}>Add tag</Text>
                   </TouchableOpacity>
-                ))}
+                )}
               </View>
               {allTags.filter(t => !tags.includes(t)).length > 0 && (
                 <View style={styles.tagSuggestions}>
@@ -1452,6 +1454,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             if (pendingCategory) {
               addCategory(pendingCategory);
               setCategory(pendingCategory);
+              onCategoryCreated?.(pendingCategory);
               haptics.success();
             }
             setPendingCategory(null);

@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -37,13 +37,25 @@ export function DemoScreen({ visible, onClose }: Props) {
   const updateTask = useTaskStore(s => s.updateTask);
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
   const addCategory = useTaskStore(s => s.addCategory);
+  const deleteCategory = useTaskStore(s => s.deleteCategory);
 
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
 
+  // Categories are a permanent registry entry — unlike tags, they don't
+  // vanish on their own once the last task using them is deleted — so
+  // anything created while poking around a demo task (the seeded category,
+  // or a new one typed/AI-suggested mid-edit) needs to be tracked here to
+  // be wiped alongside the tasks on "Remove Demo Tasks".
+  const createdCategoriesRef = useRef<Set<string>>(new Set());
+  const handleCategoryCreated = useCallback((name: string) => {
+    createdCategoriesRef.current.add(name);
+  }, []);
+
   const seedDemoTasks = useCallback(() => {
     addCategory(DEMO_CATEGORY);
+    createdCategoriesRef.current.add(DEMO_CATEGORY);
     const today = getCurrentDayStart();
 
     const urgent = addTask({
@@ -182,13 +194,17 @@ export function DemoScreen({ visible, onClose }: Props) {
   const confirmRemove = () => {
     Alert.alert(
       'Remove Demo Tasks',
-      'Deletes every sample task created by this screen. Nothing else in your list is touched.',
+      'Deletes every sample task created by this screen, and any category created while trying it out. Nothing else in your list is touched.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => bulkDeleteTasks(demoTasks.map(t => t.id)),
+          onPress: () => {
+            bulkDeleteTasks(demoTasks.map(t => t.id));
+            createdCategoriesRef.current.forEach(deleteCategory);
+            createdCategoriesRef.current.clear();
+          },
         },
       ]
     );
@@ -271,7 +287,7 @@ export function DemoScreen({ visible, onClose }: Props) {
         onClose={() => { setEditorVisible(false); setExpandedTaskId(null); }}
         categoryOptions={demoCategoryOptions}
         tagOptions={demoTagOptions}
-        allowCreatingCategoryOrTag={false}
+        onCategoryCreated={handleCategoryCreated}
       />
     </Modal>
   );
