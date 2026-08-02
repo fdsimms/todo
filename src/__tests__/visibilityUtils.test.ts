@@ -98,6 +98,8 @@ const baseTask: Task = {
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
+  archived: false,
+  archivedAt: null,
 };
 
 // June 10, 2025 at 10:00 AM
@@ -121,6 +123,13 @@ describe('isTaskVisible', () => {
 
   it('shows uncompleted tasks with no constraints', () => {
     expect(isTaskVisible(baseTask)).toBe(true);
+  });
+
+  it('hides archived tasks unconditionally, regardless of vacation mode', () => {
+    expect(isTaskVisible({ ...baseTask, archived: true })).toBe(false);
+    mockSettingsState.vacationMode = true;
+    expect(isTaskVisible({ ...baseTask, archived: true })).toBe(false);
+    mockSettingsState.vacationMode = false;
   });
 
   it('hides tasks deferred to a future day', () => {
@@ -340,6 +349,11 @@ describe('isTaskDeferred', () => {
 
   it('returns false for completed tasks', () => {
     expect(isTaskDeferred({ ...baseTask, completed: true })).toBe(false);
+  });
+
+  it('returns false for archived tasks', () => {
+    const deferUntil = new Date(2025, 5, 11, 12, 0, 0).toISOString();
+    expect(isTaskDeferred({ ...baseTask, archived: true, deferUntil })).toBe(false);
   });
 
   it('returns false for visible tasks with no constraints', () => {

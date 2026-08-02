@@ -100,6 +100,15 @@ export interface Task {
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
+  // Hides the task from every list (Today, Later, etc.) indefinitely, unlike
+  // vacationPause which only hides while vacation mode is on. Completion
+  // history stays in SQLite untouched; unarchiving resets streakCount to 0
+  // (see unarchiveTask) since the streak is meaningfully broken, but leaves
+  // past completions alone so Stats/Logbook/habit tracking pick up where
+  // they left off.
+  archived: boolean;
+  archivedAt: string | null;
+
   // Time tracking — measure how long a task actually takes
   timerStartedAt: string | null; // ISO timestamp while a live timer runs; null when stopped
   actualMinutes: number | null;  // measured duration once timed/logged; null = never timed
@@ -115,7 +124,7 @@ export interface Task {
   seriesDefaults: Partial<Task> | null;
 }
 
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt'>;
 
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the

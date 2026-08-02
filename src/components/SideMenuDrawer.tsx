@@ -34,6 +34,7 @@ const MENU_ITEMS: MenuItem[] = [
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
+  { name: 'Archived', icon: 'archive-outline', label: 'Archived' },
 ];
 
 interface Props {

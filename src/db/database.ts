@@ -122,6 +122,8 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN series_defaults TEXT',
     'ALTER TABLE tasks ADD COLUMN deadline_offset_days INTEGER',
     'ALTER TABLE tasks ADD COLUMN group_id TEXT',
+    'ALTER TABLE tasks ADD COLUMN archived INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN archived_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -236,6 +238,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
+    archived: Boolean(row.archived),
+    archivedAt: (row.archived_at as string) ?? null,
   };
 }
 
@@ -254,8 +258,8 @@ export function dbInsertTask(task: Task): void {
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
-      previous_streak_count, previous_streak_date, series_defaults, group_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deferUntil,
@@ -272,6 +276,7 @@ export function dbInsertTask(task: Task): void {
       task.previousStreakCount, task.previousStreakDate,
       task.seriesDefaults ? JSON.stringify(task.seriesDefaults) : null,
       task.groupId ?? null,
+      task.archived ? 1 : 0, task.archivedAt ?? null,
     ]
   );
 }
@@ -285,7 +290,8 @@ export function dbUpdateTask(task: Task): void {
       tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
-      previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?
+      previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
+      archived=?, archived_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -303,6 +309,7 @@ export function dbUpdateTask(task: Task): void {
       task.previousStreakCount, task.previousStreakDate,
       task.seriesDefaults ? JSON.stringify(task.seriesDefaults) : null,
       task.groupId ?? null,
+      task.archived ? 1 : 0, task.archivedAt ?? null,
       task.id,
     ]
   );

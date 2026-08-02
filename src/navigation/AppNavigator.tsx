@@ -11,6 +11,7 @@ import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
+import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -25,7 +26,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Inbox', 'Tags', 'Categories', 'Templates', 'Logbook', 'Stats']);
+const DRAWER_TABS = new Set(['Inbox', 'Tags', 'Categories', 'Templates', 'Logbook', 'Stats', 'Archived']);
 
 function MorePlaceholder() {
   return null;
@@ -104,6 +105,7 @@ const MainTabs = React.memo(function MainTabs({
         <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
         <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
         <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
+        <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
       </Tab.Navigator>
     </NavigationContainer>
   );

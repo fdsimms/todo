@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -29,6 +30,7 @@ import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
+import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
@@ -64,8 +66,10 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
+  const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -249,9 +253,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
     setRecurrenceDays(parsed.schedule.recurrenceDays);
   };
 
-  const handleAdd = () => {
-    const finalTitle = title.trim();
-    if (!finalTitle) return;
+  const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
     addTask({
@@ -269,6 +271,34 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       recurrenceFromCompletion,
     });
     dismiss();
+  };
+
+  const handleAdd = () => {
+    const finalTitle = title.trim();
+    if (!finalTitle) return;
+
+    const archivedMatch = findArchivedMatch(archivedTasks, finalTitle);
+    if (archivedMatch) {
+      Alert.alert(
+        'Resume archived task?',
+        `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
+        [
+          { text: 'Create New', onPress: () => createTask(finalTitle) },
+          {
+            text: 'Resume',
+            style: 'default',
+            onPress: () => {
+              haptics.success();
+              unarchiveTask(archivedMatch.id);
+              dismiss();
+            },
+          },
+        ],
+      );
+      return;
+    }
+
+    createTask(finalTitle);
   };
 
   const handleOpenFull = () => {

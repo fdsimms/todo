@@ -110,7 +110,7 @@ export function hasDayArrived(task: Task): boolean {
 // (windowStart has passed, windowEnd hasn't) — used to surface the
 // "time-limited, act now" indicator.
 export function isTaskWindowActive(task: Task): boolean {
-  if (task.completed || !task.windowStart) return false;
+  if (task.completed || task.archived || !task.windowStart) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
@@ -125,7 +125,7 @@ export function isTaskWindowActive(task: Task): boolean {
 // "deferred" — they move to their own Expired bucket and stay there until the
 // user deals with them (delete, or skip/reschedule a recurring task).
 export function isTaskExpired(task: Task): boolean {
-  if (task.completed || !task.windowEnd) return false;
+  if (task.completed || task.archived || !task.windowEnd) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
@@ -134,6 +134,7 @@ export function isTaskExpired(task: Task): boolean {
 
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
+  if (task.archived) return false;
 
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
 
@@ -190,6 +191,7 @@ export function isLiveRecurring(task: Task): boolean {
 
 export function isTaskDeferred(task: Task): boolean {
   if (task.completed) return false;
+  if (task.archived) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (isTaskExpired(task)) return false;
@@ -208,6 +210,7 @@ export function isInboxTask(task: Task): boolean {
   return (
     !task.parentId &&
     !task.completed &&
+    !task.archived &&
     task.category == null &&
     task.tags.length === 0 &&
     task.dueDate == null &&
@@ -225,7 +228,7 @@ export function isInboxTask(task: Task): boolean {
 // True when a task is hidden solely because its time-of-day segment hasn't started yet today.
 // Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
-  if (task.completed || task.timeSegments.length === 0) return false;
+  if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
 
