@@ -19,7 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -529,10 +529,14 @@ export function TodayScreen() {
 
   // Groups with at least one currently-visible child, each paired with just
   // that visible-and-filtered subset — a group with nothing due today simply
-  // doesn't render, same as an empty category would. Only the default
-  // (non-focus) Today view groups/collapses; Focus mode and the "Everything
-  // else" reveal intentionally stay flat so focusing a task always pulls it
-  // out for individual attention.
+  // doesn't render, same as an empty category would. A group whose children
+  // are ALL completed today still renders (with an empty visible-children
+  // list, since completed tasks aren't shown individually) so finishing the
+  // last child doesn't make the whole stack vanish out from under the
+  // user — it stays put, checked off, until they collapse/act on it
+  // themselves. Only the default (non-focus) Today view groups/collapses;
+  // Focus mode and the "Everything else" reveal intentionally stay flat so
+  // focusing a task always pulls it out for individual attention.
   const visibleGroupItems = useMemo(() => {
     const filteredIds = new Set(filtered.map(t => t.id));
     return taskGroups
@@ -540,7 +544,10 @@ export function TodayScreen() {
         group,
         children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
       }))
-      .filter(g => g.children.length > 0);
+      .filter(g =>
+        g.children.length > 0 ||
+        (childrenByGroupId.get(g.group.id) ?? []).some(isRelevantToGroupToday),
+      );
   }, [taskGroups, childrenByGroupId, filtered]);
 
   // Hide task/group rows under a collapsed category header, leaving the
