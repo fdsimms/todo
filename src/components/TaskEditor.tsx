@@ -88,6 +88,8 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
 export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, onCategoryCreated }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const deleteTask = useTaskStore(s => s.deleteTask);
+  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -482,6 +484,52 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     } else {
       onClose();
     }
+  };
+
+  const handleDelete = () => {
+    if (!task) return;
+    if (task.recurrenceType !== 'none') {
+      Alert.alert(
+        'Delete recurring task',
+        'This task repeats. Skip just this occurrence, or delete it and stop the series?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Skip This Occurrence',
+            onPress: () => {
+              skipNextRecurrence(task.id);
+              onClose();
+            },
+          },
+          {
+            text: 'Delete and Stop Series',
+            style: 'destructive',
+            onPress: () => {
+              haptics.success();
+              deleteTask(task.id);
+              onClose();
+            },
+          },
+        ],
+      );
+      return;
+    }
+    Alert.alert(
+      'Delete task?',
+      `Delete "${task.title}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            haptics.success();
+            deleteTask(task.id);
+            onClose();
+          },
+        },
+      ],
+    );
   };
 
   const handleSuggest = async () => {
@@ -1524,6 +1572,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               )}
             </View>
           </View>
+
+          {task && (
+            <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
+              <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
+                <Ionicons name="trash-outline" size={18} color={colors.red} />
+                <View style={styles.optionContent}>
+                  <Text style={[styles.optionLabel, { color: colors.red }]}>Delete Task</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+          )}
         </ScrollView>
 
         <RemindMePicker
