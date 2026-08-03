@@ -126,8 +126,8 @@ function SectionHeader({
       <View style={styles.categorySectionHeaderLeft}>
         {onDrag && <Ionicons name="reorder-three" size={14} color={colors.textTertiary} />}
         <Text style={styles.sectionHeaderText}>{label}</Text>
+        <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
       </View>
-      <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
       {scrim}
     </TouchableOpacity>
   );

@@ -132,6 +132,7 @@ export function TaskGroupHeader({
                   <View style={styles.titleRow}>
                     <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                     <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
+                    <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
                     {totalToday > 0 && (
                       <View style={styles.progressBadge}>
                         <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
@@ -167,16 +168,6 @@ export function TaskGroupHeader({
                   accessibilityLabel={`Edit ${group.title} group`}
                 >
                   <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => { haptics.tap(); onToggleCollapse(); }}
-                  hitSlop={8}
-                  style={styles.chevronBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={group.collapsed ? `Expand ${group.title}` : `Collapse ${group.title}`}
-                >
-                  <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
                 </TouchableOpacity>
               </View>
             </Swipeable>
@@ -250,7 +241,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 6,
   },
   title: {
-    flex: 1,
+    flexShrink: 1,
     color: colors.text,
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
@@ -284,11 +275,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtn: {
     padding: spacing.sm,
-  },
-  chevronBtn: {
-    paddingVertical: spacing.sm,
-    paddingLeft: spacing.xs,
-    paddingRight: spacing.md,
   },
   scrim: {
     ...StyleSheet.absoluteFillObject,
