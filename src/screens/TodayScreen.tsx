@@ -12,7 +12,7 @@ import {
   AppState,
   type GestureResponderEvent,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -253,6 +253,7 @@ function ExpiredSection({
 export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const route = useRoute<any>();
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const tabBarHeight = useBottomTabBarHeight();
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
@@ -328,6 +329,24 @@ export function TodayScreen() {
       return () => setExpandedTaskId(null);
     }, [])
   );
+
+  // Tapping the Today tab in the bottom nav should always land on the Today
+  // sub-view, even if the screen was left showing Later (e.g. switched to
+  // Search, then back). tabPress fires whether or not the tab was already
+  // focused, unlike useFocusEffect.
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('tabPress' as never, () => {
+      setViewMode('today');
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  // Tapping the Today widget navigates here programmatically (resetToToday()
+  // in src/navigation/navigationRef.ts), which doesn't fire tabPress. It
+  // stamps a fresh `resetToToday` param each time, so react to it changing.
+  useEffect(() => {
+    if (route.params?.resetToToday !== undefined) setViewMode('today');
+  }, [route.params?.resetToToday]);
 
   // visibleTasks()/expiredTasks()/upcomingTodayTasks() etc. are only
   // re-derived when a render happens; a task's visibility can flip purely

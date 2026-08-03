@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { haptics } from './haptics';
+import { resetToToday } from '../navigation/navigationRef';
 
 export interface AddTaskLink {
   title: string;
@@ -62,14 +63,28 @@ export function handleIncomingUrl(url: string | null): boolean {
   return true;
 }
 
+// Matches the bare scheme with no path — what the Today widget's
+// `.widgetURL` opens (see targets/todo-widget/TodoTodayWidget.swift). Tapping
+// the widget should always surface the Today tab's Today sub-view, even if
+// the app was left on a different tab/view when backgrounded.
+const OPEN_APP_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?$`, 'i');
+
+export function isOpenAppUrl(url: string): boolean {
+  return typeof url === 'string' && OPEN_APP_RE.test(url.trim());
+}
+
 // Wires up deep-link handling for the app: the cold-start URL (the Shortcut
 // launching the app) via getInitialURL, and warm links (app already running)
 // via the 'url' event. Call once from the root component, after the store's
 // initialize() has run so the SQLite DB exists.
 export function useTaskDeepLinks(): void {
   useEffect(() => {
-    Linking.getInitialURL().then(handleIncomingUrl).catch(() => {});
-    const sub = Linking.addEventListener('url', ({ url }) => handleIncomingUrl(url));
+    const handle = (url: string | null) => {
+      handleIncomingUrl(url);
+      if (url && isOpenAppUrl(url)) resetToToday();
+    };
+    Linking.getInitialURL().then(handle).catch(() => {});
+    const sub = Linking.addEventListener('url', ({ url }) => handle(url));
     return () => sub.remove();
   }, []);
 }
