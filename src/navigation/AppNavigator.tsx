@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
 import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { navigationRef } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from '../components/SafeBlurView';
@@ -129,7 +130,7 @@ export default function AppNavigator() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [demoVisible, setDemoVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('Today');
-  const navRef = useRef<NavigationContainerRef<any>>(null);
+  const navRef = navigationRef;
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
