@@ -49,6 +49,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
@@ -340,6 +341,7 @@ export function TodayScreen() {
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [pullingToAdd, setPullingToAdd] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -570,7 +572,7 @@ export function TodayScreen() {
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down no longer refreshes anything — it opens quick add instead, which
@@ -1265,6 +1267,14 @@ export function TodayScreen() {
           accessibilityLabel: 'Sort and filter',
         }]
       : []),
+    ...(viewMode === 'today'
+      ? [{
+          icon: 'ellipsis-horizontal' as const,
+          onPress: () => setOptionsMenuVisible(true),
+          active: hideCategories,
+          accessibilityLabel: 'More options',
+        }]
+      : []),
     ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
@@ -1436,6 +1446,7 @@ export function TodayScreen() {
           keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => renderItem({ item })}
           contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
@@ -1563,6 +1574,7 @@ export function TodayScreen() {
         <FlatList
           data={unscheduledTasks}
           keyExtractor={t => t.id}
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => {
             const subs = subtasksByParent.get(item.id) ?? [];
             return (
@@ -1648,6 +1660,11 @@ export function TodayScreen() {
         onPrioritiesChange={setFilterPriorities}
         efforts={filterEfforts}
         onEffortsChange={setFilterEfforts}
+      />
+
+      <TodayOptionsMenu
+        visible={optionsMenuVisible}
+        onClose={() => setOptionsMenuVisible(false)}
         hideCategories={hideCategories}
         onHideCategoriesChange={setHideCategories}
       />
