@@ -183,7 +183,7 @@ export function ProjectsScreen() {
 
       {visibleProjects.length === 0 && !addingProject ? (
         <EmptyState
-          icon={showArchived ? 'archive-outline' : 'flag-outline'}
+          icon={showArchived ? 'archive-outline' : 'briefcase-outline'}
           title={showArchived ? 'No archived projects' : 'No projects yet'}
           subtitle={showArchived ? 'Projects you archive will show up here' : 'Tap + to start a themed collection, like a summer bucket list'}
           bottomOffset={tabBarHeight}
@@ -305,7 +305,7 @@ export function ProjectsScreen() {
               }}
               ListEmptyComponent={
                 completedProjectTasks.length === 0 ? (
-                  <EmptyState icon="flag-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
+                  <EmptyState icon="briefcase-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
                 ) : null
               }
               ListFooterComponent={

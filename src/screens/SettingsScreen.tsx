@@ -384,7 +384,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
                 accessibilityLabel="Auto-archive projects"
               >
                 <Ionicons
-                  name="flag-outline"
+                  name="briefcase-outline"
                   size={18}
                   color={autoArchiveProjectsOnComplete ? colors.accent : colors.textSecondary}
                 />

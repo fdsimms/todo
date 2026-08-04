@@ -545,7 +545,7 @@ export function TaskItem({
         )}
         {showProject && projectTitle && (
           <View style={styles.projectRow}>
-            <Ionicons name="flag-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
             <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
           </View>
         )}
