@@ -62,6 +62,11 @@ import { animateLayout } from '../utils/layoutAnimation';
 
 type ViewMode = 'today' | 'later' | 'unscheduled';
 
+// Shared with the Later screen's own day/segment grouping (see laterGroupKeys
+// below) so "later today" sub-headers read the same way in both places.
+const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+const SEGMENT_ORDER = ['morning', 'afternoon', 'evening'] as const;
+
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
 // `collapsed`); otherwise it renders as static text (used for the
@@ -174,12 +179,22 @@ function VacationHiddenSection({
   );
 }
 
+export type LaterTodaySectionData = {
+  key: string;
+  // null for tasks with no time segment (e.g. plain windowStart/deferUntil) —
+  // they render without a sub-header rather than under a manufactured one.
+  label: string | null;
+  tasks: Task[];
+  groups: { group: TaskGroup; children: Task[] }[];
+};
+
 // Collapsible reveal for tasks deferred to later today (a time segment or
 // window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
-// deemphasized by default, expands in place to show the tasks.
+// deemphasized by default, expands in place to show the tasks, sub-grouped by
+// time segment (Morning/Afternoon/Evening) the same way the Later screen
+// sub-groups by segment within a day.
 function LaterTodaySection({
-  tasks,
-  groups,
+  sections,
   expanded,
   onToggle,
   renderTask,
@@ -187,8 +202,7 @@ function LaterTodaySection({
   styles,
   colors,
 }: {
-  tasks: Task[];
-  groups: { group: TaskGroup; children: Task[] }[];
+  sections: LaterTodaySectionData[];
   expanded: boolean;
   onToggle: () => void;
   renderTask: (task: Task) => React.ReactNode;
@@ -196,7 +210,10 @@ function LaterTodaySection({
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const totalCount = tasks.length + groups.reduce((sum, g) => sum + g.children.length, 0);
+  const totalCount = sections.reduce(
+    (sum, s) => sum + s.tasks.length + s.groups.reduce((gSum, g) => gSum + g.children.length, 0),
+    0,
+  );
   if (totalCount === 0) return null;
   return (
     <View style={styles.hiddenSection}>
@@ -211,16 +228,21 @@ function LaterTodaySection({
         </Text>
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
-      {expanded && (
-        <>
-          {groups.map(g => (
+      {expanded && sections.map(section => (
+        <View key={section.key}>
+          {section.label && (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.label}</Text>
+            </View>
+          )}
+          {section.groups.map(g => (
             <React.Fragment key={g.group.id}>{renderGroup(g.group, g.children)}</React.Fragment>
           ))}
-          {tasks.map(task => (
+          {section.tasks.map(task => (
             <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
           ))}
-        </>
-      )}
+        </View>
+      ))}
     </View>
   );
 }
@@ -540,8 +562,6 @@ export function TodayScreen() {
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
-  const pinnedOnlyMode = useSettingsStore(s => s.pinnedOnlyMode);
-  const setPinnedOnlyMode = useSettingsStore(s => s.setPinnedOnlyMode);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
@@ -656,6 +676,51 @@ export function TodayScreen() {
     [upcomingTodayTasks],
   );
 
+  // Sub-groups Later Today's tasks/groups by time segment, mirroring the
+  // Later screen's own segment sub-headers. A task with no timeSegments falls
+  // into the 'none' bucket, which renders without a header. A group is
+  // assigned to every segment bucket any of its later-today children belong
+  // to, but only once per bucket — with its full later-today children roster
+  // underneath, not just the ones matching that segment — so a stack doesn't
+  // fragment into duplicate headers when its children have mixed segments.
+  const laterTodaySections = useMemo((): LaterTodaySectionData[] => {
+    type Bucket = { tasks: Task[]; groups: Map<string, { group: TaskGroup; children: Task[] }> };
+    const bySegment = new Map<string, Bucket>();
+    const ensure = (key: string): Bucket => {
+      let bucket = bySegment.get(key);
+      if (!bucket) {
+        bucket = { tasks: [], groups: new Map() };
+        bySegment.set(key, bucket);
+      }
+      return bucket;
+    };
+
+    upcomingUngroupedTasks.forEach(task => {
+      const segs = task.timeSegments.length > 0 ? task.timeSegments : ['none'];
+      segs.forEach(seg => ensure(seg).tasks.push(task));
+    });
+
+    laterGroupItems.forEach(({ group, children }) => {
+      const segs = new Set<string>();
+      children.forEach(child => {
+        (child.timeSegments.length > 0 ? child.timeSegments : ['none']).forEach(seg => segs.add(seg));
+      });
+      segs.forEach(seg => {
+        const bucket = ensure(seg);
+        if (!bucket.groups.has(group.id)) bucket.groups.set(group.id, { group, children });
+      });
+    });
+
+    return [...SEGMENT_ORDER, 'none']
+      .filter(key => bySegment.has(key))
+      .map(key => ({
+        key,
+        label: key === 'none' ? null : SEGMENT_LABELS[key],
+        tasks: bySegment.get(key)!.tasks,
+        groups: Array.from(bySegment.get(key)!.groups.values()),
+      }));
+  }, [upcomingUngroupedTasks, laterGroupItems]);
+
   // Hide task/group rows under a collapsed category header, leaving the
   // header itself in place so it stays tappable to re-expand. The "Later
   // Today" header is a time section, not a category, so it's never
@@ -691,12 +756,10 @@ export function TodayScreen() {
     if (pinnedTasks.length > 0 && !pinViewGraceActive) {
       const items: ListItem[] = [{ type: 'pinned-header' }];
       pinnedTasks.forEach(task => items.push({ type: 'pinned-task', task }));
-      if (!pinnedOnlyMode) {
-        const restTasks = filtered.filter(t => !t.pinned);
-        if (restTasks.length > 0) {
-          items.push({ type: 'rest-header' });
-          if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
-        }
+      const restTasks = filtered.filter(t => !t.pinned);
+      if (restTasks.length > 0) {
+        items.push({ type: 'rest-header' });
+        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
       return stripCategoryHeaders(applyCategoryCollapse(items));
     }
@@ -705,7 +768,7 @@ export function TodayScreen() {
     const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
     return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pinnedTasks, pinViewGraceActive, pinnedOnlyMode, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
+  }, [filtered, pinnedTasks, pinViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -862,19 +925,6 @@ export function TodayScreen() {
             <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
           </View>
           <View style={styles.pinnedSectionActions}>
-            <TouchableOpacity
-              onPress={() => { haptics.tap(); setPinnedOnlyMode(!pinnedOnlyMode); }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: pinnedOnlyMode }}
-              accessibilityLabel={pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks'}
-            >
-              <Ionicons
-                name={pinnedOnlyMode ? 'eye-off' : 'eye-off-outline'}
-                size={16}
-                color={pinnedOnlyMode ? colors.orange : colors.textSecondary}
-              />
-            </TouchableOpacity>
             <TouchableOpacity onPress={clearAllPins} hitSlop={8}>
               <Text style={styles.clearText}>Clear</Text>
             </TouchableOpacity>
@@ -964,11 +1014,13 @@ export function TodayScreen() {
   // Revealed vacation-hidden tasks are peek-only: no drag, but they can still
   // be swiped into selection like any other row so they don't lose delete
   // capability now that per-row swipe-delete is gone.
-  const renderHiddenTask = (task: Task) => {
+  const renderHiddenTask = (task: Task, opts?: { indented?: boolean }) => {
     const subs = subtasksByParent.get(task.id) ?? [];
     return (
       <TaskItem
         task={task}
+        indented={opts?.indented}
+        showCategory
         onPress={() => {
           if (expandedTaskId !== null && expandedTaskId !== task.id) {
             setExpandedTaskId(null);
@@ -992,8 +1044,12 @@ export function TodayScreen() {
   };
 
   // Group header + children for a stack rendered inside the "Later Today"
-  // reveal — mirrors renderItem's 'group' branch, but children use
-  // renderHiddenTask (no drag, since Later Today rows are peek-only).
+  // reveal — mirrors renderItem's 'group' branch, including indenting
+  // children under the header, but children use renderHiddenTask (no drag,
+  // since Later Today rows are peek-only). The badge's "N/M" tally uses only
+  // this group's later-today children (dueTodayOverride) rather than
+  // TaskGroupHeader's default isRelevantToGroupToday filter, since those
+  // children aren't currently visible yet and would otherwise never count.
   const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? [];
     return (
@@ -1001,6 +1057,7 @@ export function TodayScreen() {
         <TaskGroupHeader
           group={group}
           allChildren={allChildren}
+          dueTodayOverride={children}
           onToggleCollapse={() => {
             haptics.tap();
             animateLayout();
@@ -1016,7 +1073,7 @@ export function TodayScreen() {
         />
         <AnimatedCollapsible expanded={!group.collapsed}>
           {children.map(child => (
-            <React.Fragment key={child.id}>{renderHiddenTask(child)}</React.Fragment>
+            <React.Fragment key={child.id}>{renderHiddenTask(child, { indented: true })}</React.Fragment>
           ))}
         </AnimatedCollapsible>
       </View>
@@ -1030,8 +1087,7 @@ export function TodayScreen() {
     <>
       {viewMode === 'today' && pinnedTasks.length === 0 && (
         <LaterTodaySection
-          tasks={upcomingUngroupedTasks}
-          groups={laterGroupItems}
+          sections={laterTodaySections}
           expanded={showUpcoming}
           onToggle={() => {
             haptics.tap();
@@ -1101,13 +1157,11 @@ export function TodayScreen() {
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
-  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
-
   const laterGroupKeys = (task: Task): string[] => {
     const visibleAt = getVisibleAt(task);
     const dayLabel = formatGroupHeader(visibleAt.toISOString());
     if (task.timeSegments.length > 0) {
-      return task.timeSegments.map(seg => `${dayLabel} — ${SEG_LABELS[seg]}`);
+      return task.timeSegments.map(seg => `${dayLabel} — ${SEGMENT_LABELS[seg]}`);
     }
     if (task.windowStart) {
       const windowLabel = task.windowEnd
@@ -1176,15 +1230,6 @@ export function TodayScreen() {
           active: activeFilterCount > 0,
           badge: activeFilterCount,
           accessibilityLabel: 'Sort and filter',
-        }]
-      : []),
-    ...(viewMode === 'today' && pinnedTasks.length > 0
-      ? [{
-          icon: (pinnedOnlyMode ? 'eye-off' : 'eye-off-outline') as ScreenHeaderAction['icon'],
-          onPress: () => setPinnedOnlyMode(!pinnedOnlyMode),
-          active: pinnedOnlyMode,
-          tint: 'orange' as const,
-          accessibilityLabel: pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks',
         }]
       : []),
     ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
@@ -1352,16 +1397,7 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && pinnedOnlyMode && pinnedTasks.length === 0 && (
-        <EmptyState
-          icon="pin-outline"
-          title="No pinned tasks"
-          subtitle="Pin a task to see it here"
-          bottomOffset={tabBarHeight}
-        />
-      )}
-
-      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length > 0 && (
+      {viewMode === 'today' && pinnedTasks.length > 0 && (
         <FlatList
           data={data}
           keyExtractor={listItemKey}
@@ -1381,7 +1417,7 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length === 0 && (
+      {viewMode === 'today' && pinnedTasks.length === 0 && (
         <ReorderableList
           data={draggableData}
           keyExtractor={listItemKey}
@@ -1653,7 +1689,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   viewModePills: {
-    flexDirection: 'row', gap: spacing.xs,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: 4,
   },
   viewModePill: {

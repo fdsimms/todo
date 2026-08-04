@@ -181,17 +181,59 @@ export interface TemplateItem {
   anchor: TemplateAnchor;
   dueOffsetDays: number | null;
   deferOffsetDays: number | null;
+  // Resolved like dueOffsetDays against `anchor` at apply time — the offset
+  // analog of Task.deadlineOffsetDays, since a template can't bake in a fixed
+  // calendar date.
+  deadlineOffsetDays: number | null;
+  windowStart: string | null; // "HH:MM" — carried through unchanged, no date component
+  windowEnd: string | null;   // "HH:MM"
+  // Minutes before the item's *resolved* due date. Only meaningful (and only
+  // editable) when dueOffsetDays is set — there's no date to count back from
+  // otherwise.
+  reminderOffsetMinutes: number | null;
   timeSegments: TimeOfDay[];
   tags: string[];
   category: string | null;
   priority: Priority;
   effort: Effort;
+
+  recurrenceType: RecurrenceType;
+  recurrenceInterval: number;
+  recurrenceDays: number[];
+  recurrenceMonthDay: number | null;
+  recurrenceFromCompletion: boolean;
+  recurrenceCount: number | null;
+
+  vacationPause: boolean;
+  estimatedMinutes: number | null;
+  focused: boolean;
+
+  chainEnabled: boolean;
+  chainItems: ChainItem[];
+
+  // Title-only stubs; created as real subtask Task rows once the parent task
+  // exists at apply time. No completed/dates — a subtask always starts unchecked.
+  subtasks: { id: string; title: string }[];
+
+  // Which of the template's itemGroups this item belongs to; null = ungrouped.
+  groupId: string | null;
+}
+
+// A lightweight named group scoped to one template, mirroring TaskGroup's
+// shape but with no notes/priority/category/collapsed — those are irrelevant
+// before items become real tasks. Collapse state for display is local
+// component state in the detail screen, not persisted.
+export interface TemplateItemGroup {
+  id: string;
+  title: string;
+  sortOrder: number;
 }
 
 export interface TaskTemplate {
   id: string;
   name: string;
   items: TemplateItem[];
+  itemGroups: TemplateItemGroup[];
   createdAt: string;
   sortOrder: number;
 }

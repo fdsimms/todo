@@ -41,7 +41,7 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
       priority: 0 as Priority,
       category,
       sortOrder: maxOrder + 1,
-      collapsed: false,
+      collapsed: true,
     };
     dbInsertTaskGroup(group);
     set(s => ({ groups: [...s.groups, group] }));

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Modal,
   View,
@@ -11,9 +11,10 @@ import {
   Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem } from '../types';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { tagColor } from '../utils/tagColor';
@@ -21,12 +22,33 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatOffsetLabel } from '../utils/templateUtils';
+import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
+import { generateId } from '../utils/id';
+import { WeekdaySelector } from './WeekdaySelector';
+import { SortableList } from './SortableList';
+import { RECURRENCE_LABELS, ordinal } from './TaskEditor';
+
+const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
+  daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year',
+};
+function recurrenceUnitLabel(type: RecurrenceType, interval: number): string {
+  if (type === 'none') return '';
+  const unit = RECURRENCE_UNIT_SINGULAR[type];
+  return interval === 1 ? unit : `${unit}s`;
+}
+function formatMinutesOffset(mins: number): string {
+  if (mins % 1440 === 0) { const d = mins / 1440; return `${d} day${d === 1 ? '' : 's'} before`; }
+  if (mins % 60 === 0) { const h = mins / 60; return `${h} hour${h === 1 ? '' : 's'} before`; }
+  return `${mins} min before`;
+}
 
 interface Props {
   visible: boolean;
   templateId: string;
   /** Item being edited, or null to create a new one. */
   item: TemplateItem | null;
+  /** Pre-fill for a new item handed off from TemplateItemQuickAdd. Ignored when editing an existing item. */
+  initialDraft?: Partial<TemplateItem> | null;
   onClose: () => void;
 }
 
@@ -35,8 +57,9 @@ interface Props {
  * optional flag, due/defer offsets relative to the anchor date, time of day,
  * category, tags, priority and effort.
  */
-export function TemplateItemEditor({ visible, templateId, item, onClose }: Props) {
+export function TemplateItemEditor({ visible, templateId, item, initialDraft, onClose }: Props) {
   const colors = useColors();
+  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -49,30 +72,91 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
   const [anchor, setAnchor] = useState<TemplateAnchor>('start');
   const [dueOffsetDays, setDueOffsetDays] = useState<number | null>(null);
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
+  const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
+  const [windowStart, setWindowStart] = useState<string | null>(null);
+  const [windowEnd, setWindowEnd] = useState<string | null>(null);
+  const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
+  const [windowPickerDate, setWindowPickerDate] = useState(new Date());
+  const [reminderOffsetMinutes, setReminderOffsetMinutes] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
+  const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
+  const [focused, setFocused] = useState(false);
+  const [vacationPause, setVacationPause] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
+  const [chainEnabled, setChainEnabled] = useState(false);
+  const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [addingChainItem, setAddingChainItem] = useState(false);
+  const [newChainItemTitle, setNewChainItemTitle] = useState('');
+  const chainInputRef = useRef<TextInput>(null);
+  const chainItemSavedRef = useRef(false);
+  const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
+  const [addingSubtask, setAddingSubtask] = useState(false);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const subtaskInputRef = useRef<TextInput>(null);
+  const subtaskSavedRef = useRef(false);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
 
   useEffect(() => {
     if (!visible) return;
-    setTitle(item?.title ?? '');
-    setNotes(item?.notes ?? '');
-    setOptional(item?.optional ?? false);
-    setAnchor(item?.anchor ?? 'start');
-    setDueOffsetDays(item?.dueOffsetDays ?? null);
-    setDeferOffsetDays(item?.deferOffsetDays ?? null);
-    setTimeSegments(item?.timeSegments ?? []);
-    setTags(item?.tags ?? []);
-    setCategory(item?.category ?? null);
-    setPriority(item?.priority ?? 0);
-    setEffort(item?.effort ?? 0);
+    const draft = item ? null : initialDraft;
+    setTitle(item?.title ?? draft?.title ?? '');
+    setNotes(item?.notes ?? draft?.notes ?? '');
+    setOptional(item?.optional ?? draft?.optional ?? false);
+    setAnchor(item?.anchor ?? draft?.anchor ?? 'start');
+    setDueOffsetDays(item?.dueOffsetDays ?? draft?.dueOffsetDays ?? null);
+    setDeferOffsetDays(item?.deferOffsetDays ?? draft?.deferOffsetDays ?? null);
+    setDeadlineOffsetDays(item?.deadlineOffsetDays ?? draft?.deadlineOffsetDays ?? null);
+    setWindowStart(item?.windowStart ?? draft?.windowStart ?? null);
+    setWindowEnd(item?.windowEnd ?? draft?.windowEnd ?? null);
+    setReminderOffsetMinutes(item?.reminderOffsetMinutes ?? draft?.reminderOffsetMinutes ?? null);
+    setTimeSegments(item?.timeSegments ?? draft?.timeSegments ?? []);
+    setTags(item?.tags ?? draft?.tags ?? []);
+    setCategory(item?.category ?? draft?.category ?? null);
+    setPriority(item?.priority ?? draft?.priority ?? 0);
+    setEffort(item?.effort ?? draft?.effort ?? 0);
+    setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
+    setFocused(item?.focused ?? draft?.focused ?? false);
+    setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
+    setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
+    setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
+    setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
+    setRecurrenceMonthDay(item?.recurrenceMonthDay ?? draft?.recurrenceMonthDay ?? null);
+    setRecurrenceFromCompletion(item?.recurrenceFromCompletion ?? draft?.recurrenceFromCompletion ?? false);
+    setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
+    setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
+    setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
+    setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
     setAddingTag(false);
     setNewTag('');
-  }, [visible, item]);
+    setAddingChainItem(false);
+    setNewChainItemTitle('');
+    setAddingSubtask(false);
+    setNewSubtaskTitle('');
+  }, [visible, item, initialDraft]);
+
+  const openWindowPicker = (which: 'start' | 'end') => {
+    const current = which === 'start' ? windowStart : windowEnd;
+    const fallback = which === 'start' ? '08:00' : '13:00';
+    setWindowPickerDate(hhmmToDate(current ?? fallback));
+    setWindowPickerMode(which);
+  };
+
+  const confirmWindowPicker = () => {
+    const hhmm = dateToHHMM(windowPickerDate);
+    if (windowPickerMode === 'start') setWindowStart(hhmm);
+    else if (windowPickerMode === 'end') setWindowEnd(hhmm);
+    setWindowPickerMode('none');
+  };
 
   const handleSave = () => {
     if (!title.trim()) return;
@@ -84,11 +168,27 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
       anchor,
       dueOffsetDays,
       deferOffsetDays,
+      deadlineOffsetDays,
+      windowStart,
+      windowEnd,
+      reminderOffsetMinutes: dueOffsetDays !== null ? reminderOffsetMinutes : null,
       timeSegments,
       tags,
       category,
       priority,
       effort,
+      estimatedMinutes,
+      focused,
+      vacationPause,
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
+      recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
+      recurrenceFromCompletion,
+      recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
+      chainEnabled: chainEnabled && chainItems.length > 0,
+      chainItems,
+      subtasks,
     };
     if (item) {
       updateItem(templateId, item.id, updates);
@@ -191,6 +291,15 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
               styles={styles}
             />
             <View style={styles.sep} />
+            <OffsetRow
+              icon="flag-outline"
+              label="Deadline"
+              offset={deadlineOffsetDays}
+              onChange={setDeadlineOffsetDays}
+              colors={colors}
+              styles={styles}
+            />
+            <View style={styles.sep} />
             <View style={styles.optionRow}>
               <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
@@ -236,6 +345,451 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
                 <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            <View style={styles.sep} />
+            <View style={styles.optionRow}>
+              <Ionicons
+                name="hourglass-outline"
+                size={18}
+                color={(windowStart || windowEnd) ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Time window</Text>
+                {!windowStart && !windowEnd && (
+                  <Text style={styles.optionHint}>Only active for part of the day, then expires</Text>
+                )}
+              </View>
+              {(windowStart || windowEnd) && (
+                <TouchableOpacity onPress={() => { setWindowStart(null); setWindowEnd(null); }} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <View style={styles.timePillRow}>
+              <TouchableOpacity
+                style={[styles.timePill, !!windowStart && styles.timePillActive]}
+                onPress={() => openWindowPicker('start')}
+              >
+                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                  {windowStart ? formatHHMM(windowStart) : 'Start'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.timePill, !!windowEnd && styles.timePillActive]}
+                onPress={() => openWindowPicker('end')}
+              >
+                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {windowPickerMode !== 'none' && (
+              <>
+                <DateTimePicker
+                  value={windowPickerDate}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_e, d) => d && setWindowPickerDate(d)}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                />
+                <View style={styles.intervalRow}>
+                  <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
+                    <Ionicons name="close" size={16} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
+                    <Ionicons name="checkmark" size={16} color={colors.accent} />
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+            <View style={styles.sep} />
+            <View style={styles.optionRow}>
+              <Ionicons
+                name="notifications"
+                size={18}
+                color={reminderOffsetMinutes !== null ? colors.accent : colors.textSecondary}
+              />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Remind me</Text>
+                {dueOffsetDays === null ? (
+                  <Text style={styles.optionHint}>Set a due date first</Text>
+                ) : reminderOffsetMinutes === null ? (
+                  <Text style={styles.optionHint}>Minutes before the resolved due date</Text>
+                ) : null}
+              </View>
+              {dueOffsetDays !== null && (
+                reminderOffsetMinutes !== null ? (
+                  <TouchableOpacity onPress={() => setReminderOffsetMinutes(null)} hitSlop={8}>
+                    <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }} hitSlop={8}>
+                    <Text style={styles.setOffsetText}>Set</Text>
+                  </TouchableOpacity>
+                )
+              )}
+            </View>
+            {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
+              <View style={styles.intervalRow}>
+                <TouchableOpacity
+                  style={styles.intervalBtn}
+                  onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
+                >
+                  <Ionicons name="remove" size={16} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.intervalValue}>{formatMinutesOffset(reminderOffsetMinutes)}</Text>
+                <TouchableOpacity
+                  style={styles.intervalBtn}
+                  onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
+                >
+                  <Ionicons name="add" size={16} color={colors.text} />
+                </TouchableOpacity>
+              </View>
+            )}
+            <View style={styles.sep} />
+            <View style={styles.optionRow}>
+              <Ionicons name="repeat" size={18} color={recurrenceType !== 'none' ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Repeat</Text>
+                {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
+              </View>
+              {recurrenceType !== 'none' ? (
+                <TouchableOpacity onPress={() => setRecurrenceType('none')} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity onPress={() => { haptics.tap(); setRecurrenceType('daily'); }} hitSlop={8}>
+                  <Text style={styles.setOffsetText}>Set</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {recurrenceType !== 'none' && (
+              <>
+                <View style={styles.pillRow2}>
+                  {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.schedulePill, recurrenceType === type && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceType(type)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceType === type && styles.schedulePillTextActive]}>
+                        {RECURRENCE_LABELS[type]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.intervalRow}>
+                  <Text style={styles.intervalLabelSm}>Every</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setRecurrenceInterval(Math.max(1, recurrenceInterval - 1))}
+                  >
+                    <Ionicons name="remove" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalValueSm}>{recurrenceInterval}</Text>
+                  <TouchableOpacity
+                    style={styles.intervalBtn}
+                    onPress={() => setRecurrenceInterval(recurrenceInterval + 1)}
+                  >
+                    <Ionicons name="add" size={16} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={styles.intervalLabelSm}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
+                </View>
+                {recurrenceType === 'weekly' && (
+                  <View style={styles.weekdayRow}>
+                    <WeekdaySelector value={recurrenceDays} onChange={setRecurrenceDays} />
+                  </View>
+                )}
+                {recurrenceType === 'monthly' && (
+                  <View style={styles.pillRow2}>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay === null && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(null)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay === null && styles.schedulePillTextActive]}>
+                        Same day as due date
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : 1)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
+                        On a day
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(-1)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
+                        Last day
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
+                  <View style={styles.intervalRow}>
+                    <Text style={styles.intervalLabelSm}>On the</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValueSm}>{ordinal(recurrenceMonthDay)}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1))}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <View style={styles.pillRow2}>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceFromCompletion(false)}
+                  >
+                    <Text style={[styles.schedulePillText, !recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      On schedule
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceFromCompletion && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceFromCompletion(true)}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceFromCompletion && styles.schedulePillTextActive]}>
+                      After completion
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.intervalRow}>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceCount === null && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceCount(null)}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceCount === null && styles.schedulePillTextActive]}>
+                      Never ends
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceCount !== null && styles.schedulePillActive]}
+                    onPress={() => setRecurrenceCount(c => c ?? 5)}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceCount !== null && styles.schedulePillTextActive]}>
+                      After N
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {recurrenceCount !== null && (
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceCount(c => Math.max(1, (c ?? 1) - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValueSm}>{recurrenceCount}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceCount(c => (c ?? 0) + 1)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabelSm}>occurrences</Text>
+                  </View>
+                )}
+              </>
+            )}
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Pause on vacation</Text>
+              </View>
+              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setFocused(!focused); }}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <Ionicons name="star-outline" size={18} color={focused ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Focused</Text>
+              </View>
+              <View style={[styles.toggle, focused && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Chain */}
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <View style={styles.chainHeader}>
+                <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
+                <TouchableOpacity
+                  style={[styles.toggle, chainEnabled && styles.toggleOn]}
+                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                >
+                  <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
+                </TouchableOpacity>
+              </View>
+              {!chainEnabled && (
+                <Text style={styles.optionHint}>
+                  Step through a list of items, one per completion — finishing one reveals the next.
+                  {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
+                </Text>
+              )}
+              {chainEnabled && (
+                <>
+                  <SortableList
+                    data={chainItems}
+                    onReorder={setChainItems}
+                    renderItem={(chainItem, displayIndex, drag) => (
+                      <View style={styles.chainItemRow}>
+                        <View style={styles.chainItemDot}>
+                          <Text style={styles.chainItemDotText}>{displayIndex + 1}</Text>
+                        </View>
+                        <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
+                        <TouchableOpacity
+                          onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                          delayLongPress={150}
+                          hitSlop={8}
+                          style={styles.dragHandle}
+                        >
+                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => setChainItems(prev => prev.filter(c => c.id !== chainItem.id))}
+                          hitSlop={8}
+                          style={styles.chainItemDelete}
+                        >
+                          <Ionicons name="close" size={14} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  />
+                  {addingChainItem ? (
+                    <View style={styles.chainInputRow}>
+                      <View style={styles.chainItemDot}>
+                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                      </View>
+                      <TextInput
+                        ref={chainInputRef}
+                        autoFocus
+                        style={styles.chainInput}
+                        value={newChainItemTitle}
+                        onChangeText={setNewChainItemTitle}
+                        placeholder="Item title"
+                        placeholderTextColor={colors.textTertiary}
+                        maxLength={TITLE_MAX_LENGTH}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          chainItemSavedRef.current = true;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewChainItemTitle('');
+                          setTimeout(() => {
+                            chainItemSavedRef.current = false;
+                            chainInputRef.current?.focus();
+                          }, 50);
+                        }}
+                        onBlur={() => {
+                          if (chainItemSavedRef.current) return;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                          setNewChainItemTitle('');
+                          setAddingChainItem(false);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingChainItem(true)}>
+                      <Ionicons name="add" size={14} color={colors.accent} />
+                      <Text style={styles.addTagText}>Add item</Text>
+                    </TouchableOpacity>
+                  )}
+                </>
+              )}
+            </View>
+          </View>
+
+          {/* Subtasks */}
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabel}>Subtasks</Text>
+              <SortableList
+                data={subtasks}
+                onReorder={setSubtasks}
+                renderItem={(sub, _displayIndex, drag) => (
+                  <View style={styles.chainItemRow}>
+                    <Text style={styles.chainItemTitle}>{sub.title}</Text>
+                    <TouchableOpacity
+                      onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                      delayLongPress={150}
+                      hitSlop={8}
+                      style={styles.dragHandle}
+                    >
+                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
+                      hitSlop={8}
+                      style={styles.chainItemDelete}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              />
+              {addingSubtask ? (
+                <View style={styles.chainInputRow}>
+                  <TextInput
+                    ref={subtaskInputRef}
+                    autoFocus
+                    style={styles.chainInput}
+                    value={newSubtaskTitle}
+                    onChangeText={setNewSubtaskTitle}
+                    placeholder="Subtask title"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={TITLE_MAX_LENGTH}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      subtaskSavedRef.current = true;
+                      const t = newSubtaskTitle.trim();
+                      if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
+                      setNewSubtaskTitle('');
+                      setTimeout(() => {
+                        subtaskSavedRef.current = false;
+                        subtaskInputRef.current?.focus();
+                      }, 50);
+                    }}
+                    onBlur={() => {
+                      if (subtaskSavedRef.current) return;
+                      const t = newSubtaskTitle.trim();
+                      if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
+                      setNewSubtaskTitle('');
+                      setAddingSubtask(false);
+                    }}
+                  />
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingSubtask(true)}>
+                  <Ionicons name="add" size={14} color={colors.accent} />
+                  <Text style={styles.addTagText}>Add subtask</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* Category + Tags */}
@@ -355,6 +909,32 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
                     ) : null}
                   </TouchableOpacity>
                 ))}
+              </View>
+              <View style={styles.intervalRow}>
+                {estimatedMinutes !== null ? (
+                  <>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setEstimatedMinutes(null)} hitSlop={8}>
+                      <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity onPress={() => { haptics.tap(); setEstimatedMinutes(30); }}>
+                    <Text style={styles.addTagText}>Set a custom estimate</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
@@ -527,4 +1107,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
+  pillRow2: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md, flexWrap: 'wrap',
+  },
+  schedulePill: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  schedulePillActive: { backgroundColor: colors.accent },
+  schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  schedulePillTextActive: { color: colors.bg },
+  weekdayRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  intervalLabelSm: { color: colors.textSecondary, fontSize: font.sm },
+  intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
+  chainHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm,
+  },
+  chainItemRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  chainItemDot: {
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+  },
+  chainItemDotText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  chainItemTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  dragHandle: { padding: 4 },
+  chainItemDelete: { padding: 4 },
+  chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
+  chainInput: {
+    flex: 1, color: colors.text, fontSize: font.md,
+    borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2,
+  },
 });
