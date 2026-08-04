@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -93,6 +93,12 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS project_categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      sort_order REAL NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS templates (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
@@ -161,6 +167,21 @@ export function initDatabase(): void {
         db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
       } catch (_) {}
     }
+  }
+
+  // One-time migration: projects previously stored a category name drawn from
+  // the shared task-category pool (see `categories` table). Now that projects
+  // have their own separate category pool, seed project_categories with
+  // whatever names existing projects were already using so they don't lose
+  // their assignment.
+  const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
+  if (projCatCount === 0) {
+    const rows = db.getAllSync<{ category: string }>(
+      "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
+    );
+    rows.forEach((row, i) => {
+      try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
+    });
   }
 
   // One-time migration: give existing categories a stable sort_order (their
@@ -558,6 +579,29 @@ export function dbRenameCategory(id: string, oldName: string, newName: string): 
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
   });
+}
+
+// ─── Project Categories ─────────────────────────────────────────────────────
+
+function rowToProjectCategory(row: Record<string, unknown>): ProjectCategory {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+  };
+}
+
+export function dbGetAllProjectCategories(): ProjectCategory[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM project_categories ORDER BY sort_order ASC, name ASC');
+  return rows.map(rowToProjectCategory);
+}
+
+export function dbInsertProjectCategory(name: string): ProjectCategory {
+  const id = generateId();
+  const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM project_categories')?.m ?? 0;
+  const sortOrder = maxOrder + 1;
+  db.runSync('INSERT INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
+  return { id, name, sortOrder };
 }
 
 // ─── Task Groups ────────────────────────────────────────────────────────────
