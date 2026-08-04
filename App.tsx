@@ -39,15 +39,19 @@ function AppContent() {
 export default function App() {
   const initTasks = useTaskStore(s => s.initialize);
   const initSettings = useSettingsStore(s => s.initialize);
+  const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
 
   useEffect(() => {
     // initTasks calls initDatabase() which creates all tables first
     initTasks();
     // Then load settings from the now-initialized DB
     initSettings();
+    // Turn vacation mode back off if its end date already passed while the
+    // app was closed
+    checkVacationExpiry();
     // Request notification permissions
     requestNotificationPermissions();
-  }, [initTasks, initSettings]);
+  }, [initTasks, initSettings, checkVacationExpiry]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

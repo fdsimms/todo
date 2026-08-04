@@ -22,6 +22,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
 import { PatchNotesModal } from '../components/PatchNotesModal';
+import { CalendarPicker } from '../components/CalendarPicker';
 
 interface Props {
   visible: boolean;
@@ -57,6 +58,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
+    vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
   } = useSettingsStore();
@@ -70,6 +72,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const [showPatchNotes, setShowPatchNotes] = useState(false);
+  const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
@@ -307,9 +310,37 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
                   <View style={[styles.toggleKnob, vacationMode && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+              {vacationMode && (
+                <>
+                  <View style={styles.sep} />
+                  <TouchableOpacity
+                    style={styles.row}
+                    onPress={() => setShowVacationEndPicker(true)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel="Vacation end date"
+                  >
+                    <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>End date</Text>
+                      <Text style={styles.rowHint}>
+                        {vacationEnd ? 'Turns off automatically on this day' : 'Optional — turn off manually if not set'}
+                      </Text>
+                    </View>
+                    <Text style={styles.rowValue}>
+                      {vacationEnd ? format(new Date(vacationEnd), 'MMM d, yyyy') : 'None'}
+                    </Text>
+                    {vacationEnd && (
+                      <TouchableOpacity onPress={() => setVacationEnd(null)} hitSlop={8} style={{ marginLeft: spacing.xs }}>
+                        <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    )}
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
             <Text style={styles.sectionFooter}>
-              While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically.
+              While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.
             </Text>
           </View>
 
@@ -491,6 +522,20 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
       </View>
 
       <PatchNotesModal visible={showPatchNotes} onDismiss={() => setShowPatchNotes(false)} />
+
+      <CalendarPicker
+        visible={showVacationEndPicker}
+        value={vacationEnd ? new Date(vacationEnd) : null}
+        mode="date"
+        title="Vacation End Date"
+        onConfirm={date => {
+          const endOfDay = new Date(date);
+          endOfDay.setHours(23, 59, 59, 999);
+          setVacationEnd(endOfDay.toISOString());
+          setShowVacationEndPicker(false);
+        }}
+        onCancel={() => setShowVacationEndPicker(false)}
+      />
     </Modal>
   );
 }

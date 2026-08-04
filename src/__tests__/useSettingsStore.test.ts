@@ -145,3 +145,55 @@ describe('setPatchNoteQaStatus', () => {
     expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'note-a': 'pass' });
   });
 });
+
+// ─── setVacationMode / setVacationEnd ───────────────────────────────────────
+
+describe('setVacationMode', () => {
+  it('turns on with a vacationStart timestamp and no end date by default', () => {
+    useSettingsStore.getState().setVacationMode(true);
+    const state = useSettingsStore.getState();
+    expect(state.vacationMode).toBe(true);
+    expect(state.vacationStart).not.toBeNull();
+    expect(state.vacationEnd).toBeNull();
+  });
+
+  it('turns on with an optional end date', () => {
+    useSettingsStore.getState().setVacationMode(true, '2025-07-10T23:59:59.999Z');
+    expect(useSettingsStore.getState().vacationEnd).toBe('2025-07-10T23:59:59.999Z');
+  });
+
+  it('clears vacationStart and vacationEnd when turned off', () => {
+    useSettingsStore.getState().setVacationMode(true, '2025-07-10T23:59:59.999Z');
+    useSettingsStore.getState().setVacationMode(false);
+    const state = useSettingsStore.getState();
+    expect(state.vacationMode).toBe(false);
+    expect(state.vacationStart).toBeNull();
+    expect(state.vacationEnd).toBeNull();
+  });
+
+  it('restores a stored vacationEnd on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'vacationEnd' ? '2025-08-01T23:59:59.999Z' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().vacationEnd).toBe('2025-08-01T23:59:59.999Z');
+  });
+});
+
+describe('setVacationEnd', () => {
+  it('updates vacationEnd independently of vacationMode', () => {
+    useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');
+    expect(useSettingsStore.getState().vacationEnd).toBe('2025-09-01T23:59:59.999Z');
+  });
+
+  it('persists the value to the database', () => {
+    useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');
+    expect(dbSetSetting).toHaveBeenCalledWith('vacationEnd', '2025-09-01T23:59:59.999Z');
+  });
+
+  it('clears the end date when passed null', () => {
+    useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');
+    useSettingsStore.getState().setVacationEnd(null);
+    expect(useSettingsStore.getState().vacationEnd).toBeNull();
+  });
+});

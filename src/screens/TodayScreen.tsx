@@ -361,7 +361,10 @@ export function TodayScreen() {
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
       const subscription = AppState.addEventListener('change', state => {
-        if (state === 'active') forceRefresh(n => n + 1);
+        if (state === 'active') {
+          useTaskStore.getState().checkVacationExpiry();
+          forceRefresh(n => n + 1);
+        }
       });
       return () => {
         clearInterval(interval);
