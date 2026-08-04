@@ -979,11 +979,42 @@ export function TodayScreen() {
     return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
   }, [deferredTasks]);
 
-  const laterData = useMemo(() => flattenLaterSections(laterSections), [laterSections]);
+  // The Later list can grow unboundedly (nothing prunes it), and its
+  // ReorderableList renders every row unmounted-free (no virtualization — see
+  // the file's own comments on why that's deliberate for drag-and-drop). To
+  // keep the initial mount cheap, only feed it sections up to a task budget,
+  // growing that budget as the user scrolls near the bottom (see the Later
+  // ReorderableList's onEndReached below). Whole sections are always included
+  // together so a header never renders without at least one of its tasks.
+  const LATER_INITIAL_TASK_LIMIT = 60;
+  const LATER_TASK_PAGE_SIZE = 60;
+  const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
+
+  const visibleLaterSections = useMemo(() => {
+    const result: typeof laterSections = [];
+    let count = 0;
+    for (const section of laterSections) {
+      result.push(section);
+      count += section.data.length;
+      if (count >= laterTaskLimit) break;
+    }
+    return result;
+  }, [laterSections, laterTaskLimit]);
+
+  const hasMoreLaterSections = useMemo(
+    () => visibleLaterSections.length < laterSections.length,
+    [visibleLaterSections, laterSections],
+  );
+
+  const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
   const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
   useEffect(() => {
     setLaterDraggableData(laterData);
   }, [laterData]);
+
+  const handleLaterEndReached = useCallback(() => {
+    setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
+  }, []);
 
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
@@ -1127,6 +1158,8 @@ export function TodayScreen() {
             setLaterDraggableData(reordered);
             reorderTasks(laterTaskOrder(reordered));
           }}
+          onEndReached={handleLaterEndReached}
+          onEndReachedThreshold={400}
           contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
           ListEmptyComponent={
             <EmptyState
@@ -1136,7 +1169,16 @@ export function TodayScreen() {
               bottomOffset={tabBarHeight}
             />
           }
-          ListFooterComponent={listFooter(laterSections.length === 0)}
+          ListFooterComponent={
+            <>
+              {hasMoreLaterSections && (
+                <View style={styles.laterLoadingMore}>
+                  <Text style={styles.laterLoadingMoreText}>Loading more…</Text>
+                </View>
+              )}
+              {listFooter(laterSections.length === 0)}
+            </>
+          }
         />
       )}
 
@@ -1426,6 +1468,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs, paddingVertical: spacing.md, paddingHorizontal: spacing.md,
   },
   hiddenToggleText: {
+    color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium,
+  },
+  laterLoadingMore: {
+    paddingVertical: spacing.md, alignItems: 'center',
+  },
+  laterLoadingMoreText: {
     color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium,
   },
   // Subtle slot marking where a dragged task will land; mirrors the task
