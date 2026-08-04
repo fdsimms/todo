@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import {
   Modal,
   View,
@@ -25,7 +25,7 @@ interface Props {
 }
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
-const NOTES_MAX_HEIGHT = SCREEN_HEIGHT * 0.55;
+const NOTES_MAX_HEIGHT = SCREEN_HEIGHT * 0.7;
 
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -42,11 +42,22 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const patchNotesQaStatus = useSettingsStore(s => s.patchNotesQaStatus);
   const setPatchNoteQaStatus = useSettingsStore(s => s.setPatchNoteQaStatus);
+  const [hideReviewed, setHideReviewed] = useState(false);
 
   const toggleQaStatus = (id: string, status: PatchNoteQaStatus) => {
     haptics.tap();
     setPatchNoteQaStatus(id, patchNotesQaStatus[id] === status ? null : status);
   };
+
+  const toggleHideReviewed = () => {
+    haptics.tap();
+    setHideReviewed(prev => !prev);
+  };
+
+  const visibleNotes = useMemo(
+    () => (hideReviewed ? patchNotes.filter(note => !patchNotesQaStatus[note.id]) : patchNotes),
+    [hideReviewed, patchNotesQaStatus]
+  );
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -138,6 +149,19 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
             <View style={styles.titleRow}>
               <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
               <Text style={styles.title}>What's New</Text>
+              <View style={styles.titleSpacer} />
+              <TouchableOpacity
+                style={styles.hideReviewedButton}
+                activeOpacity={interaction.activeOpacity}
+                onPress={toggleHideReviewed}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons
+                  name={hideReviewed ? 'eye-off' : 'eye-off-outline'}
+                  size={20}
+                  color={hideReviewed ? colors.accent : colors.textTertiary}
+                />
+              </TouchableOpacity>
             </View>
 
             <ScrollView
@@ -145,7 +169,10 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               showsVerticalScrollIndicator={false}
               bounces={false}
             >
-              {patchNotes.map((note, idx) => {
+              {visibleNotes.length === 0 && (
+                <Text style={styles.emptyText}>All caught up — nothing left to review.</Text>
+              )}
+              {visibleNotes.map((note, idx) => {
                 const qaStatus = patchNotesQaStatus[note.id];
                 return (
                   <React.Fragment key={note.id}>
@@ -239,8 +266,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
   },
+  titleSpacer: {
+    flex: 1,
+  },
+  hideReviewedButton: {
+    padding: 2,
+  },
   notesScroll: {
     maxHeight: NOTES_MAX_HEIGHT,
+  },
+  emptyText: {
+    color: colors.textTertiary,
+    fontSize: font.md,
+    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xl,
   },
   noteRow: {
     flexDirection: 'row',

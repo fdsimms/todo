@@ -16,6 +16,9 @@ import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
+import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
+import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
+import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { DemoScreen } from '../screens/DemoScreen';
@@ -162,7 +165,8 @@ export default function AppNavigator() {
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
     if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More'
-      && currentName !== 'Settings' && currentName !== 'Demo') {
+      && currentName !== 'Settings' && currentName !== 'Demo'
+      && currentName !== 'TemplateDetail' && currentName !== 'ProjectDetail' && currentName !== 'CategoryDetail') {
       setActiveTab(currentName);
     }
   }, []);
@@ -215,6 +219,21 @@ export default function AppNavigator() {
             name="Demo"
             component={DemoScreen}
             options={{ presentation: 'fullScreenModal' }}
+          />
+          <RootStack.Screen
+            name="TemplateDetail"
+            component={TemplateDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="ProjectDetail"
+            component={ProjectDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="CategoryDetail"
+            component={CategoryDetailScreen}
+            options={{ presentation: 'card' }}
           />
         </RootStack.Navigator>
       </NavigationContainer>
