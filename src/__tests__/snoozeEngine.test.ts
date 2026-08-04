@@ -30,7 +30,7 @@ const BASE: Task = {
   recurrenceFromCompletion: false,
   tags: [],
   sortOrder: 0,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,

@@ -257,7 +257,7 @@ export function CategoriesScreen() {
   const addCategory = useTaskStore(s => s.addCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
   const renameCategory = useTaskStore(s => s.renameCategory);
-  const focusCategory = useTaskStore(s => s.focusCategory);
+  const pinCategory = useTaskStore(s => s.pinCategory);
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -326,13 +326,13 @@ export function CategoriesScreen() {
   };
 
   const categoryTasks = selectedCategory ? tasksByCategory(selectedCategory) : [];
-  const categoryAllFocused = categoryTasks.length > 0 && categoryTasks.every(t => t.focused);
+  const categoryAllPinned = categoryTasks.length > 0 && categoryTasks.every(t => t.pinned);
 
-  const handleFocusCategory = () => {
+  const handlePinCategory = () => {
     if (!selectedCategory || categoryTasks.length === 0) return;
     haptics.tap();
     animateLayout();
-    focusCategory(selectedCategory);
+    pinCategory(selectedCategory);
   };
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
@@ -615,17 +615,17 @@ export function CategoriesScreen() {
               </Text>
             </View>
             <TouchableOpacity
-              onPress={handleFocusCategory}
+              onPress={handlePinCategory}
               disabled={categoryTasks.length === 0}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllFocused }}
-              accessibilityLabel={categoryAllFocused ? `Remove ${selectedCategory} from focus` : `Focus all tasks in ${selectedCategory}`}
+              accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllPinned }}
+              accessibilityLabel={categoryAllPinned ? `Unpin all tasks in ${selectedCategory}` : `Pin all tasks in ${selectedCategory}`}
             >
               <Ionicons
-                name={categoryAllFocused ? 'star' : 'star-outline'}
+                name={categoryAllPinned ? 'pin' : 'pin-outline'}
                 size={22}
-                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllFocused ? colors.orange : colors.textSecondary)}
+                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
               />
             </TouchableOpacity>
           </View>

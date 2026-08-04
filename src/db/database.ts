@@ -139,6 +139,7 @@ export function initDatabase(): void {
     'ALTER TABLE categories ADD COLUMN emoji TEXT',
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE projects ADD COLUMN category TEXT',
+    'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -192,6 +193,14 @@ export function initDatabase(): void {
     }
     dbSetSetting('effort_xxs_migration_done', '1');
   }
+
+  // One-time migration: the "focus" feature was renamed to "pin" — carry
+  // over any tasks that were focused into the new pinned column. The old
+  // focused column is left in place, unused, rather than dropped.
+  if (dbGetSetting('pinned_backfill_from_focused_done') !== '1') {
+    try { db.runSync('UPDATE tasks SET pinned = focused WHERE focused = 1'); } catch (_) {}
+    dbSetSetting('pinned_backfill_from_focused_done', '1');
+  }
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -231,7 +240,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
-    focused: Boolean(row.focused),
+    pinned: Boolean(row.pinned),
     priority: ((row.priority as number) ?? 0) as Task['priority'],
     effort: ((row.effort as number) ?? 0) as Task['effort'],
     estimatedMinutes: (row.estimated_minutes as number | null) ?? null,
@@ -272,7 +281,7 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at, seen_at,
       due_date, deadline, deadline_offset_days, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_end_date, recurrence_count, recurrence_from_completion,
-      tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
+      tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -284,7 +293,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
+      task.pinned ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
@@ -304,7 +313,7 @@ export function dbUpdateTask(task: Task): void {
       title=?, notes=?, completed=?, completed_at=?, seen_at=?,
       due_date=?, deadline=?, deadline_offset_days=?, defer_until=?, time_of_day=?, window_start=?, window_end=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
-      tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
+      tags=?, category=?, sort_order=?, pinned=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
@@ -318,7 +327,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
+      task.pinned ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
@@ -353,8 +362,8 @@ export function dbDeleteSubtasks(parentId: string): void {
   db.runSync('DELETE FROM tasks WHERE parent_id = ?', [parentId]);
 }
 
-export function dbClearAllFocus(): void {
-  db.runSync('UPDATE tasks SET focused = 0 WHERE focused = 1');
+export function dbClearAllPins(): void {
+  db.runSync('UPDATE tasks SET pinned = 0 WHERE pinned = 1');
 }
 
 export function dbBulkDeleteTasks(ids: string[]): void {
@@ -404,11 +413,11 @@ export function dbBulkSetCategory(ids: string[], category: string | null): void 
   });
 }
 
-export function dbBulkSetFocus(ids: string[], focused: boolean): void {
+export function dbBulkSetPinned(ids: string[], pinned: boolean): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
     for (const id of ids) {
-      db.runSync('UPDATE tasks SET focused = ? WHERE id = ?', [focused ? 1 : 0, id]);
+      db.runSync('UPDATE tasks SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id]);
     }
   });
 }

@@ -167,7 +167,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [logTimeOpen, setLogTimeOpen] = useState(false);
   const [logTimeText, setLogTimeText] = useState('');
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
-  const [focused, setFocused] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
@@ -212,7 +212,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
-      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setFocused(task.focused);
+      setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned);
       setActualMinutes(task.actualMinutes ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
@@ -225,7 +225,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
-      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setFocused(false);
+      setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
       setChainEnabled(false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
@@ -263,7 +263,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       actualMinutes: task?.actualMinutes ?? null,
-      focused: task?.focused ?? false,
+      pinned: task?.pinned ?? false,
       chainEnabled: task?.chainEnabled ?? false,
       chainItems: task?.chainItems ?? [],
       chainIndex: task?.chainIndex ?? 0,
@@ -322,7 +322,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      focused, priority, effort, estimatedMinutes, actualMinutes,
+      pinned, priority, effort, estimatedMinutes, actualMinutes,
       chainEnabled: chainEnabled && chainItems.length > 0,
       chainItems,
       chainIndex,
@@ -487,7 +487,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, focused, chainEnabled, chainItems, chainIndex, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(

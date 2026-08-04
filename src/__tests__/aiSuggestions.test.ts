@@ -9,7 +9,7 @@ import {
   suggestTaskAttributes,
   suggestTaskDate,
   suggestTaskEffort,
-  suggestFocusTasks,
+  suggestPinTasks,
   suggestTemplateItems,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
@@ -52,7 +52,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   tags: [],
   category: null,
   sortOrder: 1,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -423,27 +423,27 @@ describe('suggestTaskDate', () => {
 });
 
 // ============================================================================
-// suggestFocusTasks
+// suggestPinTasks
 // ============================================================================
 
-describe('suggestFocusTasks', () => {
+describe('suggestPinTasks', () => {
   it('throws when no API key is configured', async () => {
     jest.spyOn(
       require('../store/useSettingsStore').useSettingsStore,
       'getState',
     ).mockReturnValue({ anthropicApiKey: '' });
 
-    await expect(suggestFocusTasks([makeTask()], 0)).rejects.toThrow('No API key');
+    await expect(suggestPinTasks([makeTask()], 0)).rejects.toThrow('No API key');
   });
 
-  it('returns [] when already 3 tasks are focused', async () => {
-    const result = await suggestFocusTasks([makeTask()], 3);
+  it('returns [] when already 5 tasks are pinned', async () => {
+    const result = await suggestPinTasks([makeTask()], 5);
     expect(result).toEqual([]);
   });
 
-  it('returns [] when there are no non-focused candidate tasks', async () => {
-    const result = await suggestFocusTasks(
-      [makeTask({ focused: true })],
+  it('returns [] when there are no non-pinned candidate tasks', async () => {
+    const result = await suggestPinTasks(
+      [makeTask({ pinned: true })],
       0,
     );
     expect(result).toEqual([]);
@@ -451,10 +451,10 @@ describe('suggestFocusTasks', () => {
 
   it('returns all candidate IDs without calling the API when candidates ≤ needed', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
-    // 2 already focused → need 1 more; only 1 unfocused candidate
-    const result = await suggestFocusTasks(
-      [makeTask({ id: 'a', focused: false })],
-      2,
+    // 4 already pinned → need 1 more; only 1 unpinned candidate
+    const result = await suggestPinTasks(
+      [makeTask({ id: 'a', pinned: false })],
+      4,
     );
     expect(result).toEqual(['a']);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -463,13 +463,13 @@ describe('suggestFocusTasks', () => {
   it('throws on a non-OK HTTP response', async () => {
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
     mockFetchOnce({}, 500);
-    await expect(suggestFocusTasks(tasks, 0)).rejects.toThrow('API error 500');
+    await expect(suggestPinTasks(tasks, 2)).rejects.toThrow('API error 500');
   });
 
   it('throws when the response contains no tool_use block', async () => {
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
     mockFetchOnce({ content: [{ type: 'text' }] });
-    await expect(suggestFocusTasks(tasks, 0)).rejects.toThrow('No suggestion returned');
+    await expect(suggestPinTasks(tasks, 2)).rejects.toThrow('No suggestion returned');
   });
 
   it('returns the suggested task IDs', async () => {
@@ -479,57 +479,59 @@ describe('suggestFocusTasks', () => {
       makeTask({ id: 'c' }),
       makeTask({ id: 'd' }),
     ];
-    mockFetchOnce(toolUseResponse('focus', { task_ids: ['b', 'c', 'd'] }));
-    const result = await suggestFocusTasks(tasks, 0);
+    // 2 already pinned → need 3, so all 4 candidates aren't auto-returned
+    mockFetchOnce(toolUseResponse('pin', { task_ids: ['b', 'c', 'd'] }));
+    const result = await suggestPinTasks(tasks, 2);
     expect(result).toEqual(['b', 'c', 'd']);
   });
 
   it('filters out IDs that are not valid candidate tasks', async () => {
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
     // Model returns a hallucinated ID alongside valid ones
-    mockFetchOnce(toolUseResponse('focus', { task_ids: ['a', 'hallucinated-id', 'c'] }));
-    const result = await suggestFocusTasks(tasks, 0);
+    mockFetchOnce(toolUseResponse('pin', { task_ids: ['a', 'hallucinated-id', 'c'] }));
+    const result = await suggestPinTasks(tasks, 2);
     expect(result).toContain('a');
     expect(result).toContain('c');
     expect(result).not.toContain('hallucinated-id');
   });
 
-  it('never returns more IDs than needed to reach 3 focused', async () => {
-    // 2 already focused → need 1; model returns 3
+  it('never returns more IDs than needed to reach 5 pinned', async () => {
+    // 4 already pinned → need 1; model returns 3
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
-    mockFetchOnce(toolUseResponse('focus', { task_ids: ['a', 'b', 'c'] }));
-    const result = await suggestFocusTasks(tasks, 2);
+    mockFetchOnce(toolUseResponse('pin', { task_ids: ['a', 'b', 'c'] }));
+    const result = await suggestPinTasks(tasks, 4);
     expect(result).toHaveLength(1);
   });
 
-  it('excludes already-focused tasks from the candidate list sent to the API', async () => {
+  it('excludes already-pinned tasks from the candidate list sent to the API', async () => {
     const tasks = [
-      makeTask({ id: 'focused', focused: true }),
-      makeTask({ id: 'unfocused-a' }),
-      makeTask({ id: 'unfocused-b' }),
-      makeTask({ id: 'unfocused-c' }),
-      makeTask({ id: 'unfocused-d' }),
+      makeTask({ id: 'pinned', pinned: true }),
+      makeTask({ id: 'unpinned-a' }),
+      makeTask({ id: 'unpinned-b' }),
+      makeTask({ id: 'unpinned-c' }),
+      makeTask({ id: 'unpinned-d' }),
     ];
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(toolUseResponse('focus', { task_ids: ['unfocused-a'] })),
+      json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['unpinned-a'] })),
     } as Response);
 
-    await suggestFocusTasks(tasks, 0);
+    // 2 already pinned → need 3, less than the 4 unpinned candidates, so the API is called
+    await suggestPinTasks(tasks, 2);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
-    expect(content).not.toContain('id:focused');
-    expect(content).toContain('id:unfocused-a');
+    expect(content).not.toContain('id:pinned');
+    expect(content).toContain('id:unpinned-a');
   });
 });
 
 // ============================================================================
-// buildCoCompletionHints (tested indirectly via suggestFocusTasks)
+// buildCoCompletionHints (tested indirectly via suggestPinTasks)
 // ============================================================================
 
-describe('co-completion hints in suggestFocusTasks prompt', () => {
+describe('co-completion hints in suggestPinTasks prompt', () => {
   it('includes co-completion pairs that appear more than once within 2 hours', async () => {
     const base = new Date('2025-06-09T09:00:00.000Z').getTime();
     const hr = 60 * 60 * 1000;
@@ -553,10 +555,11 @@ describe('co-completion hints in suggestFocusTasks prompt', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(toolUseResponse('focus', { task_ids: ['x1', 'x2', 'x3'] })),
+      json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['x1', 'x2', 'x3'] })),
     } as Response);
 
-    await suggestFocusTasks(candidates, 0, completedTasks);
+    // 2 already pinned → need 3, less than the 4 candidates, so the API is called
+    await suggestPinTasks(candidates, 2, completedTasks);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
@@ -584,10 +587,11 @@ describe('co-completion hints in suggestFocusTasks prompt', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(toolUseResponse('focus', { task_ids: ['x1'] })),
+      json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['x1'] })),
     } as Response);
 
-    await suggestFocusTasks(candidates, 0, completedTasks);
+    // 2 already pinned → need 3, less than the 4 candidates, so the API is called
+    await suggestPinTasks(candidates, 2, completedTasks);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
@@ -617,10 +621,11 @@ describe('co-completion hints in suggestFocusTasks prompt', () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(toolUseResponse('focus', { task_ids: ['x1'] })),
+      json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['x1'] })),
     } as Response);
 
-    await suggestFocusTasks(candidates, 0, completedTasks);
+    // 2 already pinned → need 3, less than the 4 candidates, so the API is called
+    await suggestPinTasks(candidates, 2, completedTasks);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;

@@ -93,7 +93,7 @@ export interface Task {
   category: string | null;
   sortOrder: number;
 
-  focused: boolean;
+  pinned: boolean;
   priority: Priority;
   effort: Effort;
   estimatedMinutes: number | null; // precise time estimate; effort is the derived coarse bucket

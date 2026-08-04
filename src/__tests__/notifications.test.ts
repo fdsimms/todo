@@ -47,7 +47,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceFromCompletion: false,
   tags: [],
   sortOrder: 1,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,

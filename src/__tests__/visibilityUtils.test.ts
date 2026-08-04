@@ -78,7 +78,7 @@ const baseTask: Task = {
   recurrenceCount: null,
   tags: [],
   sortOrder: 0,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -836,7 +836,7 @@ describe('isInboxTask', () => {
     expect(isInboxTask({ ...baseTask, parentId: 'p1' })).toBe(false);
   });
 
-  it('stays true for notes/effort/focus (they do not file a task)', () => {
-    expect(isInboxTask({ ...baseTask, notes: 'a note', effort: 3, focused: true })).toBe(true);
+  it('stays true for notes/effort/pin (they do not file a task)', () => {
+    expect(isInboxTask({ ...baseTask, notes: 'a note', effort: 3, pinned: true })).toBe(true);
   });
 });

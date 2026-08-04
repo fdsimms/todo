@@ -15,7 +15,7 @@ import {
   dbUpdateTask,
   dbDeleteTask,
   dbDeleteSubtasks,
-  dbClearAllFocus,
+  dbClearAllPins,
   dbBatchUpdateSortOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
@@ -108,7 +108,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   tags: [],
   category: null,
   sortOrder: 1,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -169,7 +169,7 @@ describe('initDatabase', () => {
       mockRawDb.prepare('PRAGMA table_info(tasks)').all() as { name: string }[]
     ).map((c) => c.name);
     for (const col of [
-      'focused', 'priority', 'effort', 'streak_count', 'streak_date',
+      'focused', 'pinned', 'priority', 'effort', 'streak_count', 'streak_date',
       'recurrence_from_completion', 'parent_id', 'reminder_time',
       'cycle_enabled', 'cycle_index', 'cycle_items',
       'time_of_day', 'category', 'vacation_pause', 'estimated_minutes',
@@ -275,7 +275,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         id: 'bools',
         completed: true,
         completedAt: '2025-06-10T10:00:00.000Z',
-        focused: true,
+        pinned: true,
         recurrenceFromCompletion: true,
         chainEnabled: true,
         vacationPause: true,
@@ -283,7 +283,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     );
     const [t] = dbGetAllTasks();
     expect(t.completed).toBe(true);
-    expect(t.focused).toBe(true);
+    expect(t.pinned).toBe(true);
     expect(t.recurrenceFromCompletion).toBe(true);
     expect(t.chainEnabled).toBe(true);
     expect(t.vacationPause).toBe(true);
@@ -293,7 +293,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'falsy' }));
     const [t] = dbGetAllTasks();
     expect(t.completed).toBe(false);
-    expect(t.focused).toBe(false);
+    expect(t.pinned).toBe(false);
     expect(t.recurrenceFromCompletion).toBe(false);
     expect(t.chainEnabled).toBe(false);
     expect(t.vacationPause).toBe(false);
@@ -447,7 +447,7 @@ describe('dbUpdateTask', () => {
       tags: ['updated'],
       category: 'Work',
       sortOrder: 99,
-      focused: true,
+      pinned: true,
       priority: 3,
       effort: 2,
       estimatedMinutes: 75,
@@ -540,21 +540,21 @@ describe('dbDeleteSubtasks', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Focus
+// Pin
 // ---------------------------------------------------------------------------
 
-describe('dbClearAllFocus', () => {
-  it('sets focused = false on every focused task', () => {
-    dbInsertTask(makeTask({ id: 'f1', focused: true }));
-    dbInsertTask(makeTask({ id: 'f2', focused: true }));
-    dbInsertTask(makeTask({ id: 'n', focused: false }));
-    dbClearAllFocus();
-    dbGetAllTasks().forEach((t) => expect(t.focused).toBe(false));
+describe('dbClearAllPins', () => {
+  it('sets pinned = false on every pinned task', () => {
+    dbInsertTask(makeTask({ id: 'f1', pinned: true }));
+    dbInsertTask(makeTask({ id: 'f2', pinned: true }));
+    dbInsertTask(makeTask({ id: 'n', pinned: false }));
+    dbClearAllPins();
+    dbGetAllTasks().forEach((t) => expect(t.pinned).toBe(false));
   });
 
-  it('is safe to call when no tasks are focused', () => {
+  it('is safe to call when no tasks are pinned', () => {
     dbInsertTask(makeTask({ id: 'n' }));
-    expect(() => dbClearAllFocus()).not.toThrow();
+    expect(() => dbClearAllPins()).not.toThrow();
   });
 });
 
