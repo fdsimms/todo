@@ -58,6 +58,7 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
   { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline' },
   { key: 'evening', label: 'Evening', icon: 'moon-outline' },
+  { key: 'night', label: 'Night', icon: 'moon' },
 ];
 
 // Singular/plural units for the interval stepper ("Every 2 weeks").
@@ -627,6 +628,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                   morning: colors.timeMorning,
                   afternoon: colors.timeAfternoon,
                   evening: colors.timeEvening,
+                  night: colors.timeNight,
                 }[timeSegments[0]] : colors.textTertiary}
               />
               {timeSegments.length > 0 && (
@@ -739,6 +741,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                     morning: colors.timeMorning,
                     afternoon: colors.timeAfternoon,
                     evening: colors.timeEvening,
+                    night: colors.timeNight,
                   }[seg.key];
                   return (
                     <TouchableOpacity

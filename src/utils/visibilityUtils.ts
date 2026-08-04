@@ -9,10 +9,11 @@ import { useCategoryStore } from '../store/useCategoryStore';
 // to be "later today" (pointing at a clock time hours in the future) instead
 // of already having passed for the logical day that's still in progress.
 function getTimeOfDayThreshold(timeOfDay: TimeOfDay): Date {
-  const { morningStart, afternoonStart, eveningStart } = useSettingsStore.getState();
+  const { morningStart, afternoonStart, eveningStart, nightStart } = useSettingsStore.getState();
   const hhmm = timeOfDay === 'morning' ? morningStart
     : timeOfDay === 'afternoon' ? afternoonStart
-    : eveningStart;
+    : timeOfDay === 'evening' ? eveningStart
+    : nightStart;
   const [h, m] = hhmm.split(':').map(Number);
   const t = getCurrentDayStart();
   t.setHours(h, m, 0, 0);
@@ -405,6 +406,6 @@ export function isRelevantToGroupToday(task: Task): boolean {
 }
 
 export function getSegmentLabels(task: Task): string[] {
-  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
+  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
   return task.timeSegments.map(s => SEG_LABELS[s]);
 }

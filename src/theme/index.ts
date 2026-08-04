@@ -28,6 +28,7 @@ export type Colors = {
   timeMorning: string;
   timeAfternoon: string;
   timeEvening: string;
+  timeNight: string;
   tagPalette: string[];
 };
 
@@ -57,6 +58,7 @@ export const darkColors: Colors = {
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
+  timeNight: '#5E5CE6',
   tagPalette: [
     '#0A84FF', '#30D158', '#FF9F0A', '#FF453A', '#BF5AF2',
     '#5E5CE6', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68',
@@ -89,6 +91,7 @@ export const darkPurpleColors: Colors = {
   timeMorning: '#FF9F0A',
   timeAfternoon: '#0A84FF',
   timeEvening: '#BF5AF2',
+  timeNight: '#5E5CE6',
   tagPalette: [
     '#0A84FF', '#30D158', '#FF9F0A', '#FF453A', '#BF5AF2',
     '#5E5CE6', '#FF375F', '#64D2FF', '#FFD60A', '#AC8E68',
@@ -119,6 +122,7 @@ export const lightColors: Colors = {
   timeMorning: '#FF9500',
   timeAfternoon: '#007AFF',
   timeEvening: '#AF52DE',
+  timeNight: '#5856D6',
   tagPalette: [
     '#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE',
     '#5856D6', '#FF2D55', '#32ADE6', '#FFCC00', '#A2845E',

@@ -313,7 +313,7 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
               )}
             </View>
             <View style={styles.timePillRow}>
-              {(['morning', 'afternoon', 'evening'] as TimeOfDay[]).map(tod => {
+              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
                 const active = timeSegments.includes(tod);
                 return (
                   <TouchableOpacity

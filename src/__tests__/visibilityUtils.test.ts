@@ -20,6 +20,7 @@ const mockSettingsState = {
   morningStart: '06:00',
   afternoonStart: '12:00',
   eveningStart: '18:00',
+  nightStart: '21:00',
   vacationMode: false,
 };
 

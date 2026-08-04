@@ -31,7 +31,7 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
-type ActivePicker = 'dayReset' | 'morning' | 'afternoon' | 'evening' | null;
+type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | null;
 
 function hhmmToDate(hhmm: string): Date {
   const [h, m] = hhmm.split(':').map(Number);
@@ -53,6 +53,7 @@ export function SettingsScreen() {
     dayResetTime, setDayResetTime,
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
+    nightStart, setNightStart,
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
@@ -88,7 +89,8 @@ export function SettingsScreen() {
     if (activePicker === which) { setActivePicker(null); return; }
     const current = which === 'dayReset' ? dayResetTime
       : which === 'afternoon' ? afternoonStart
-      : eveningStart;
+      : which === 'evening' ? eveningStart
+      : nightStart;
     setPickerDate(hhmmToDate(current!));
     setActivePicker(which);
   };
@@ -98,6 +100,7 @@ export function SettingsScreen() {
     if (activePicker === 'dayReset') setDayResetTime(hhmm);
     else if (activePicker === 'afternoon') setAfternoonStart(hhmm);
     else if (activePicker === 'evening') setEveningStart(hhmm);
+    else if (activePicker === 'night') setNightStart(hhmm);
     setActivePicker(null);
   };
 
@@ -114,9 +117,17 @@ export function SettingsScreen() {
     );
   };
 
-  const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string }[] = [
-    { key: 'afternoon', label: 'Afternoon starts', icon: 'sunny', value: formatTime(afternoonStart) },
+  const segmentRows: { key: ActivePicker & string; label: string; icon: string; value: string; hint?: string }[] = [
+    {
+      key: 'dayReset',
+      label: 'Morning',
+      icon: 'sunny',
+      value: formatTime(dayResetTime),
+      hint: '"Today" flips and streaks reset at this time',
+    },
+    { key: 'afternoon', label: 'Afternoon starts', icon: 'partly-sunny', value: formatTime(afternoonStart) },
     { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatTime(eveningStart) },
+    { key: 'night', label: 'Night starts', icon: 'moon', value: formatTime(nightStart) },
   ];
 
   return (
@@ -177,7 +188,7 @@ export function SettingsScreen() {
 
           {/* Day segments */}
           <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Afternoon & Evening</Text>
+            <Text style={styles.sectionLabel}>Day</Text>
             <View style={styles.card}>
               {segmentRows.map((row, i) => (
                 <React.Fragment key={row.key}>
@@ -187,7 +198,14 @@ export function SettingsScreen() {
                     onPress={() => openPicker(row.key as ActivePicker)}
                   >
                     <Ionicons name={row.icon as never} size={18} color={colors.accent} />
-                    <Text style={styles.rowLabel}>{row.label}</Text>
+                    {row.hint ? (
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>{row.label}</Text>
+                        <Text style={styles.rowHint}>{row.hint}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.rowLabel}>{row.label}</Text>
+                    )}
                     <Text style={styles.rowValue}>{row.value}</Text>
                   </TouchableOpacity>
                   {activePicker === row.key && (
@@ -215,58 +233,7 @@ export function SettingsScreen() {
               ))}
             </View>
             <Text style={styles.sectionFooter}>
-              Morning starts at the same time as your day reset below. Tasks with a time category only appear after that part of the day begins.
-            </Text>
-          </View>
-
-          {/* Day reset time */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Day reset</Text>
-            <View style={styles.card}>
-              <TouchableOpacity
-                style={styles.row}
-                onPress={() => openPicker('dayReset')}
-              >
-                <Ionicons name="moon" size={18} color={colors.accent} />
-                <View style={styles.rowContent}>
-                  <Text style={styles.rowLabel}>New day starts at</Text>
-                  <Text style={styles.rowHint}>
-                    "Today" flips and streaks reset at this time
-                  </Text>
-                </View>
-                <Text style={styles.rowValue}>{formatTime(dayResetTime)}</Text>
-              </TouchableOpacity>
-
-              {activePicker === 'dayReset' && (
-                <>
-                  <View style={styles.sep} />
-                  <DateTimePicker
-                    value={pickerDate}
-                    mode="time"
-                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                    onChange={(_e, d) => d && setPickerDate(d)}
-                    themeVariant={isDark ? 'dark' : 'light'}
-                    style={styles.picker}
-                  />
-                  <View style={styles.pickerButtons}>
-                    <TouchableOpacity
-                      style={styles.pickerBtn}
-                      onPress={() => setActivePicker(null)}
-                    >
-                      <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.pickerBtn, styles.pickerBtnPrimary]}
-                      onPress={confirmPicker}
-                    >
-                      <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
-            <Text style={styles.sectionFooter}>
-              Default is midnight (12:00 AM). Set to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done.
+              Default day start is midnight (12:00 AM). Set it to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done. Tasks with a time category only appear once their part of the day begins.
             </Text>
           </View>
 
