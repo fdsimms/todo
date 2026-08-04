@@ -5,6 +5,7 @@ import {
   dbInsertCategory,
   dbUpdateCategory,
   dbDeleteCategory,
+  dbRenameCategory,
   dbSetCategoryHideOnVacation,
   dbSetCategoryEmoji,
   dbBatchUpdateCategorySortOrders,
@@ -16,6 +17,7 @@ interface CategoryStore {
   initialize: () => void;
   addCategory: (name: string) => Category;
   deleteCategory: (name: string) => void;
+  renameCategory: (name: string, newName: string) => boolean;
   setCategorySchedule: (name: string, scheduleDays: number[], scheduleStart: string, scheduleEnd: string) => void;
   removeCategorySchedule: (name: string) => void;
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
@@ -44,6 +46,19 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
   deleteCategory(name) {
     dbDeleteCategory(name);
     set(s => ({ categories: s.categories.filter(c => c.name !== name) }));
+  },
+
+  renameCategory(name, newName) {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === name) return false;
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return false;
+    if (get().categories.some(c => c.name === trimmed)) return false;
+    dbRenameCategory(cat.id, name, trimmed);
+    set(s => ({
+      categories: s.categories.map(c => (c.id === cat.id ? { ...c, name: trimmed } : c)),
+    }));
+    return true;
   },
 
   setCategorySchedule(name, scheduleDays, scheduleStart, scheduleEnd) {

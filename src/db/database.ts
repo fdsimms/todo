@@ -540,6 +540,14 @@ export function dbDeleteCategory(name: string): void {
   db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
 }
 
+export function dbRenameCategory(id: string, oldName: string, newName: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE categories SET name = ? WHERE id = ?', [newName, id]);
+    db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
+    db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
+  });
+}
+
 // ─── Task Groups ────────────────────────────────────────────────────────────
 
 function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
