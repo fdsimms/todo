@@ -523,15 +523,13 @@ export function TaskItem({
                 style={styles.deadlineBadge}
                 accessibilityLabel={
                   deadlineDays < 0
-                    ? `${Math.abs(deadlineDays)} days past deadline`
-                    : deadlineDays === 0
-                    ? 'Deadline today'
-                    : `${deadlineDays} days until deadline`
+                    ? `Deadline was ${formatDueDate(task.deadline!)}`
+                    : `Deadline ${formatDueDate(task.deadline!)}`
                 }
               >
                 <Ionicons name="flag" size={9} color={deadlineColor} />
                 <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]}>
-                  {Math.abs(deadlineDays)}
+                  {formatDueDate(task.deadline!)}
                 </Text>
               </View>
             )}
