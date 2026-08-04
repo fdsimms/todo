@@ -121,6 +121,7 @@ export function TaskItem({
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
   const togglePin = useTaskStore(s => s.togglePin);
@@ -987,14 +988,24 @@ export function TaskItem({
           taskEffort={task.effort}
           taskEstimatedMinutes={task.estimatedMinutes}
           onConfirm={(date, segs) => {
+            const snapshot = { ...task };
             updateTask(task.id, {
               dueDate: date ? date.toISOString() : null,
               timeSegments: segs,
             });
+            setLastAction({
+              label: 'Task rescheduled',
+              undo: () => updateTask(snapshot.id, snapshot),
+            });
             setShowWhenPicker(false);
           }}
           onClear={() => {
+            const snapshot = { ...task };
             updateTask(task.id, { dueDate: null, timeSegments: [] });
+            setLastAction({
+              label: 'Task rescheduled',
+              undo: () => updateTask(snapshot.id, snapshot),
+            });
             setShowWhenPicker(false);
           }}
           onCancel={() => setShowWhenPicker(false)}

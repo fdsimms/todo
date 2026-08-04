@@ -665,7 +665,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deferTask(id, until) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    const snapshot = { ...task };
     get().updateTask(id, { deferUntil: until.toISOString() });
+    get().setLastAction({
+      label: 'Task rescheduled',
+      undo: () => get().updateTask(snapshot.id, snapshot),
+    });
   },
 
   skipNextRecurrence(id) {
@@ -1231,19 +1238,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkDefer(ids, until) {
     if (ids.length === 0) return;
     const deferUntil = until.toISOString();
+    const snapshots = ids
+      .map(id => get().tasks.find(t => t.id === id))
+      .filter((t): t is Task => t !== undefined)
+      .map(t => ({ ...t }));
     dbBulkSetDefer(ids, deferUntil);
     set(s => ({
       tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, deferUntil } : t),
     }));
+    if (snapshots.length > 0) {
+      get().setLastAction({
+        label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+      });
+    }
   },
 
   bulkSetWhen(ids, date, timeSegments) {
     if (ids.length === 0) return;
     const dueDate = date ? date.toISOString() : null;
+    const snapshots = ids
+      .map(id => get().tasks.find(t => t.id === id))
+      .filter((t): t is Task => t !== undefined)
+      .map(t => ({ ...t }));
     dbBulkSetWhen(ids, dueDate, timeSegments);
     set(s => ({
       tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, dueDate, timeSegments } : t),
     }));
+    if (snapshots.length > 0) {
+      get().setLastAction({
+        label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+      });
+    }
   },
 
   bulkSetCategory(ids, category) {
