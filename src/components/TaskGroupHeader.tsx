@@ -132,12 +132,12 @@ export function TaskGroupHeader({
                   <View style={styles.titleRow}>
                     <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                     <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
-                    <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
                     {totalToday > 0 && (
                       <View style={styles.progressBadge}>
                         <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
                       </View>
                     )}
+                    <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
                   </View>
                   {group.tags.length > 0 && (
                     <View style={styles.tagsRow}>
