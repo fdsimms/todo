@@ -64,7 +64,7 @@ export function initDatabase(): void {
       priority INTEGER NOT NULL DEFAULT 0,
       category TEXT,
       sort_order REAL NOT NULL DEFAULT 0,
-      collapsed INTEGER NOT NULL DEFAULT 0
+      collapsed INTEGER NOT NULL DEFAULT 1
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -194,6 +194,12 @@ export function initDatabase(): void {
       try { db.runSync('UPDATE categories SET sort_order = ? WHERE id = ?', [i + 1, row.id]); } catch (_) {}
     });
     dbSetSetting('category_sort_order_migration_done', '1');
+  }
+
+  // One-time migration: collapse all existing task groups by default.
+  if (dbGetSetting('task_groups_collapsed_default_done') !== '1') {
+    try { db.runSync('UPDATE task_groups SET collapsed = 1'); } catch (_) {}
+    dbSetSetting('task_groups_collapsed_default_done', '1');
   }
 
   // One-time migration: introducing the XXS bucket at effort=1 shifts every
