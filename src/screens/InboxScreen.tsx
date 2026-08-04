@@ -1,19 +1,24 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { PressableScale } from '../components/PressableScale';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { isInboxTask, isTaskVisible } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
 // The Inbox is a triage view of "loose" tasks — title only, no category, tag,
@@ -22,6 +27,7 @@ import type { Task } from '../types';
 // It's a computed lens, so a task leaves the Inbox the moment it's organized.
 export function InboxScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const tabBarHeight = useBottomTabBarHeight();
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const allTasks = useTaskStore(s => s.tasks);
@@ -39,6 +45,10 @@ export function InboxScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  const justCreatedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     selectionMode,
     selectedIds,
@@ -64,6 +74,32 @@ export function InboxScreen() {
   const openEditor = (task: Task) => {
     setEditingTask(task);
     setEditorVisible(true);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+    };
+  }, []);
+
+  // A task quick-added here usually stays in the Inbox (no date/tags/etc set),
+  // but the picker can still send it straight to Today or Later — jump there
+  // and hand off the highlight so the user can see where it landed.
+  const handleTaskCreated = (task: Task) => {
+    if (isInboxTask(task)) {
+      if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+      setJustCreatedId(task.id);
+      justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
+      return;
+    }
+    navigation.navigate({
+      name: 'Today',
+      params: {
+        targetViewMode: isTaskVisible(task) ? 'today' : 'later',
+        highlightTaskId: task.id,
+        jump: Date.now(),
+      },
+    } as never);
   };
 
   return (
@@ -111,6 +147,7 @@ export function InboxScreen() {
                 selected={selectedIds.has(item.id)}
                 onSelect={() => toggleSelection(item.id)}
                 onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                justCreated={item.id === justCreatedId}
               />
             );
           }}
@@ -127,11 +164,42 @@ export function InboxScreen() {
         />
       </View>
 
+      {!selectionMode && (
+        <View style={[styles.fabContainer, { bottom: insets.bottom + tabBarHeight + spacing.lg }]}>
+          <PressableScale
+            style={styles.fab}
+            pressScale={0.9}
+            onPress={() => {
+              haptics.impactLight();
+              setQuickAddVisible(true);
+            }}
+            accessibilityLabel="Add task"
+          >
+            <Ionicons name="add" size={28} color={colors.onAccent} />
+          </PressableScale>
+        </View>
+      )}
+
+      <QuickAddModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={draft => {
+          setQuickAddVisible(false);
+          setEditingTask(null);
+          setEditorVisible(true);
+          setEditorInitialDraft(draft);
+        }}
+        context="inbox"
+        onCreated={handleTaskCreated}
+      />
+
       <TaskEditor
         visible={editorVisible}
         task={editingTask}
+        initialDraft={editorInitialDraft}
         onClose={() => {
           setEditorVisible(false);
+          setEditorInitialDraft(null);
           setExpandedTaskId(null);
         }}
       />
@@ -172,4 +240,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listFooter: { flexGrow: 1, minHeight: 120 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
+  fabContainer: {
+    position: 'absolute', right: spacing.lg,
+    zIndex: 20,
+  },
+  fab: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
+  },
 });
