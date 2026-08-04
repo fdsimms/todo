@@ -186,9 +186,14 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
   return addDays(from, 7 - dow + sorted[0]);
 }
 
-/** Next occurrence of a fixed day-of-month (e.g. "the 5th"), clamped to the last day of short months. */
+/**
+ * Next occurrence of a fixed day-of-month (e.g. "the 5th"), clamped to the
+ * last day of short months. `day === -1` means "the last day of the month",
+ * whatever that is for each occurrence (28-31).
+ */
 function getNextMonthDayOccurrence(day: number, from: Date): Date {
-  const clampToMonth = (d: Date) => setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
+  const clampToMonth = (d: Date) =>
+    day === -1 ? lastDayOfMonth(d) : setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
   const thisMonth = clampToMonth(from);
   if (thisMonth > from) return thisMonth;
   return clampToMonth(addMonths(from, 1));

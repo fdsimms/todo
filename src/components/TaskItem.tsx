@@ -80,7 +80,11 @@ function describeRecurrence(task: Task): string {
     text = dayStr ? `${base} on ${dayStr}` : base;
   } else if (recurrenceType === 'monthly') {
     const base = recurrenceInterval === 1 ? 'Monthly' : `Every ${recurrenceInterval} months`;
-    text = recurrenceMonthDay ? `Monthly on the ${ordinalMonthDay(recurrenceMonthDay)}` : base;
+    text = recurrenceMonthDay === -1
+      ? 'Monthly on the last day'
+      : recurrenceMonthDay
+        ? `Monthly on the ${ordinalMonthDay(recurrenceMonthDay)}`
+        : base;
   } else if (recurrenceType === 'yearly') {
     text = recurrenceInterval === 1 ? 'Yearly' : `Every ${recurrenceInterval} years`;
   }

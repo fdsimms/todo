@@ -854,20 +854,32 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceMonthDay !== null && styles.schedulePillActive]}
+                    style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
                     onPress={() => {
                       haptics.tap();
-                      setRecurrenceMonthDay(recurrenceMonthDay ?? (dueDate ?? new Date()).getDate());
+                      setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate());
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
-                    <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && styles.schedulePillTextActive]}>
+                    <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
                       On a day
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceMonthDay(-1);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
+                      Last day
                     </Text>
                   </TouchableOpacity>
                 </View>
               )}
-              {recurrenceType === 'monthly' && recurrenceMonthDay !== null && (
+              {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>On the</Text>
                   <TouchableOpacity

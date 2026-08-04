@@ -1398,16 +1398,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceMonthDay !== null && styles.schedulePillActive]}
-                      onPress={() => setRecurrenceMonthDay(recurrenceMonthDay ?? (dueDate ?? new Date()).getDate())}
+                      style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate())}
                     >
-                      <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && styles.schedulePillTextActive]}>
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
                         On a day
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(-1)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
+                        Last day
                       </Text>
                     </TouchableOpacity>
                   </View>
                 )}
-                {recurrenceType === 'monthly' && recurrenceMonthDay !== null && (
+                {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
                   <View style={styles.intervalRow}>
                     <Text style={styles.intervalLabel}>On the</Text>
                     <TouchableOpacity
