@@ -36,7 +36,7 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
-import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
@@ -210,7 +210,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
   // phrase is highlighted in the input and described in a tooltip; nothing is
   // applied until the user taps the tooltip.
-  const parsed = useMemo(() => (title.trim() ? parseTaskInput(title) : null), [title]);
+  const parsed = useMemo(
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    [title, dayResetTime]
+  );
   const matchEnd = parsed ? parsed.matchStart + parsed.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -559,7 +562,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                     size={14}
                     color={colors.onAccent}
                   />
-                  <Text style={styles.tooltipText}>{describeSchedule(parsed.schedule)}</Text>
+                  <Text style={styles.tooltipText}>{describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}</Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>
                 </PressableScale>

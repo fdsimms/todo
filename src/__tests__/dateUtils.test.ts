@@ -8,6 +8,7 @@ import {
   getDeadlineCountdown,
   getLogicalToday,
   getLogicalTomorrow,
+  getLogicalNow,
   isBeforeDayReset,
   hhmmToDate,
   formatHHMM,
@@ -43,7 +44,7 @@ const baseTask: Task = {
   recurrenceCount: null,
   tags: [],
   sortOrder: 0,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -145,7 +146,11 @@ describe('formatDueDate', () => {
 
   it('returns "MMM d" for dates beyond this week', () => {
     expect(formatDueDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
-    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
+    expect(formatDueDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
   });
 
   it('is not "overdue" for a task due on the logical day, checked after midnight but before dayResetTime', () => {
@@ -186,6 +191,11 @@ describe('formatDeferUntil', () => {
   it('returns "MMM d" for dates beyond this week', () => {
     const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
     expect(result).toBe('Jul 20');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    const result = formatDeferUntil(new Date(2029, 7, 19, 14, 45, 0).toISOString());
+    expect(result).toBe('Aug 19, 2029');
   });
 });
 
@@ -271,6 +281,34 @@ describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
 
     expect(isBeforeDayReset('00:00')).toBe(false);
+  });
+});
+
+// ─── getLogicalNow ─────────────────────────────────────────────────────────
+
+describe('getLogicalNow', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches the wall clock when well after the reset hour', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+
+    expect(getLogicalNow('02:00').getTime()).toBe(NOW.getTime());
+  });
+
+  it('rolls back to the previous calendar day, preserving the clock time, during the early-morning grace window', () => {
+    // 1:30 AM on June 11 — before the 2:00 AM reset, so "tomorrow" typed here
+    // should resolve relative to June 10 (the logical day), not June 11.
+    jest.useFakeTimers();
+    const wallClock = new Date(2025, 5, 11, 1, 30, 0);
+    jest.setSystemTime(wallClock);
+
+    const logicalNow = getLogicalNow('02:00');
+    expect(logicalNow.getDate()).toBe(10);
+    expect(logicalNow.getHours()).toBe(1);
+    expect(logicalNow.getMinutes()).toBe(30);
   });
 });
 

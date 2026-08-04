@@ -16,7 +16,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { resolveOffsetDate, formatOffsetLabel } from '../utils/templateUtils';
+import { resolveOffsetDate, formatOffsetLabel, anchorLabel, type TemplateAnchors } from '../utils/templateUtils';
 import { formatDueDate } from '../utils/dateUtils';
 import { CalendarPicker } from './CalendarPicker';
 import type { TaskTemplate, TemplateItem } from '../types';
@@ -27,9 +27,10 @@ interface Props {
   onClose: () => void;
 }
 
-/** Sub-label for a checklist row: live dates when an anchor is set, offset labels otherwise. */
-function itemSublabel(item: TemplateItem, anchor: Date | null): string | null {
+/** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
+function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | null {
   const parts: string[] = [];
+  const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
   const due = resolveOffsetDate(anchor, item.dueOffsetDays);
   const defer = resolveOffsetDate(anchor, item.deferOffsetDays);
   if (due) {
@@ -44,6 +45,9 @@ function itemSublabel(item: TemplateItem, anchor: Date | null): string | null {
   }
   if (item.timeSegments.length > 0) {
     parts.push(item.timeSegments.join(', '));
+  }
+  if ((item.dueOffsetDays !== null || item.deferOffsetDays !== null) && !anchor) {
+    parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
   }
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -60,8 +64,10 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   const applyTemplate = useTemplateStore(s => s.applyTemplate);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [anchor, setAnchor] = useState<Date | null>(null);
-  const [showCalendar, setShowCalendar] = useState(false);
+  const [startAnchor, setStartAnchor] = useState<Date | null>(null);
+  const [endAnchor, setEndAnchor] = useState<Date | null>(null);
+  const [calendarTarget, setCalendarTarget] = useState<'start' | 'end' | null>(null);
+  const anchors: TemplateAnchors = { start: startAnchor, end: endAnchor };
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -70,8 +76,9 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
     if (visible && template) {
       // Non-optional items start checked; optional ones start unchecked.
       setSelectedIds(new Set(template.items.filter(i => !i.optional).map(i => i.id)));
-      setAnchor(null);
-      setShowCalendar(false);
+      setStartAnchor(null);
+      setEndAnchor(null);
+      setCalendarTarget(null);
       translateY.setValue(600);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -110,19 +117,19 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
   // Slide the sheet away before showing the calendar — rendering both at once
   // causes touch conflicts (same choreography as DeferModal).
-  const openCalendar = () => {
+  const openCalendar = (target: 'start' | 'end') => {
     Animated.spring(translateY, {
       toValue: 700,
       damping: 28,
       stiffness: 320,
       useNativeDriver: true,
     }).start(() => {
-      setShowCalendar(true);
+      setCalendarTarget(target);
     });
   };
 
   const restoreSheet = () => {
-    setShowCalendar(false);
+    setCalendarTarget(null);
     Animated.spring(translateY, {
       toValue: 0,
       ...animation.spring.smooth,
@@ -165,14 +172,16 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   };
 
   const selectedCount = selectedIds.size;
-  const anchorless = anchor === null && template.items.some(
-    i => selectedIds.has(i.id) && (i.dueOffsetDays !== null || i.deferOffsetDays !== null)
-  );
+  const anchorless = template.items.some(i => {
+    if (!selectedIds.has(i.id)) return false;
+    if (i.dueOffsetDays === null && i.deferOffsetDays === null) return false;
+    return i.anchor === 'end' ? endAnchor === null : startAnchor === null;
+  });
 
   const handleApply = () => {
     if (selectedCount === 0) return;
     haptics.success();
-    applyTemplate(template.id, selectedIds, anchor);
+    applyTemplate(template.id, selectedIds, anchors);
     dismiss();
   };
 
@@ -201,26 +210,28 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>{template.name}</Text>
 
-          {/* Anchor date */}
-          <TouchableOpacity style={styles.anchorRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
-            <Ionicons name="calendar-outline" size={18} color={anchor ? colors.accent : colors.textSecondary} />
-            <View style={styles.anchorContent}>
-              <Text style={styles.anchorLabel}>Anchor date</Text>
-              {!anchor && <Text style={styles.anchorHint}>Item dates are relative to this day</Text>}
-            </View>
-            {anchor ? (
-              <View style={styles.anchorValueRow}>
-                <Text style={styles.anchorValue}>
-                  {anchor.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                </Text>
-                <TouchableOpacity onPress={() => setAnchor(null)} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-            )}
-          </TouchableOpacity>
+          {/* Anchor dates */}
+          <AnchorRow
+            icon="play-outline"
+            label="Start date"
+            hint="Items anchored to the start are relative to this day"
+            value={startAnchor}
+            onPress={() => openCalendar('start')}
+            onClear={() => setStartAnchor(null)}
+            colors={colors}
+            styles={styles}
+          />
+          <View style={styles.inlineSep} />
+          <AnchorRow
+            icon="flag-outline"
+            label="End date"
+            hint="Items anchored to the end are relative to this day"
+            value={endAnchor}
+            onPress={() => openCalendar('end')}
+            onClear={() => setEndAnchor(null)}
+            colors={colors}
+            styles={styles}
+          />
 
           <View style={styles.inlineSep} />
 
@@ -228,7 +239,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
           <ScrollView style={styles.itemList} bounces={false}>
             {template.items.map((item, idx) => {
               const checked = selectedIds.has(item.id);
-              const sublabel = itemSublabel(item, anchor);
+              const sublabel = itemSublabel(item, anchors);
               return (
                 <React.Fragment key={item.id}>
                   <TouchableOpacity
@@ -256,7 +267,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              No anchor date — scheduled items will be added without dates
+              Some scheduled items are missing their anchor date and will be added without dates
             </Text>
           )}
 
@@ -280,19 +291,56 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
       </Animated.View>
 
       <CalendarPicker
-        visible={showCalendar}
-        value={anchor}
+        visible={calendarTarget !== null}
+        value={calendarTarget === 'end' ? endAnchor : startAnchor}
         mode="date"
-        title="Anchor Date"
+        title={calendarTarget === 'end' ? 'End Date' : 'Start Date'}
         onConfirm={date => {
           const noon = new Date(date);
           noon.setHours(12, 0, 0, 0);
-          setAnchor(noon);
+          if (calendarTarget === 'end') setEndAnchor(noon);
+          else setStartAnchor(noon);
           restoreSheet();
         }}
         onCancel={restoreSheet}
       />
     </Modal>
+  );
+}
+
+/** One of the two anchor date pickers (start / end) shown atop the sheet. */
+function AnchorRow({
+  icon, label, hint, value, onPress, onClear, colors, styles,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  hint: string;
+  value: Date | null;
+  onPress: () => void;
+  onClear: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <TouchableOpacity style={styles.anchorRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
+      <Ionicons name={icon} size={18} color={value ? colors.accent : colors.textSecondary} />
+      <View style={styles.anchorContent}>
+        <Text style={styles.anchorLabel}>{label}</Text>
+        {!value && <Text style={styles.anchorHint}>{hint}</Text>}
+      </View>
+      {value ? (
+        <View style={styles.anchorValueRow}>
+          <Text style={styles.anchorValue}>
+            {value.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+          </Text>
+          <TouchableOpacity onPress={onClear} hitSlop={8}>
+            <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+      )}
+    </TouchableOpacity>
   );
 }
 

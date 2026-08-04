@@ -10,12 +10,12 @@ import {
   dbUpdateTask,
   dbDeleteTask,
   dbDeleteSubtasks,
-  dbClearAllFocus,
+  dbClearAllPins,
   dbBatchUpdateSortOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
-  dbBulkSetFocus,
+  dbBulkSetPinned,
   dbBulkAddTags,
   dbMarkTaskSeen,
 } from '../db/database';
@@ -49,12 +49,12 @@ jest.mock('../db/database', () => ({
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),
   dbDeleteSubtasks: jest.fn(),
-  dbClearAllFocus: jest.fn(),
+  dbClearAllPins: jest.fn(),
   dbBatchUpdateSortOrders: jest.fn(),
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
-  dbBulkSetFocus: jest.fn(),
+  dbBulkSetPinned: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
@@ -126,7 +126,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   tags: [],
   category: null,
   sortOrder: 1,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -236,7 +236,7 @@ describe('addTask', () => {
     expect(task.notes).toBe('');
     expect(task.tags).toEqual([]);
     expect(task.recurrenceType).toBe('none');
-    expect(task.focused).toBe(false);
+    expect(task.pinned).toBe(false);
     expect(task.parentId).toBeNull();
   });
 
@@ -459,7 +459,7 @@ describe('duplicateTask', () => {
         timerStartedAt: '2025-01-01T00:00:00.000Z',
         actualMinutes: 30,
         previousOccurrenceId: 'prev',
-        focused: true,
+        pinned: true,
       })],
     });
     const copy = useTaskStore.getState().duplicateTask('t1')!;
@@ -470,7 +470,7 @@ describe('duplicateTask', () => {
     expect(copy.timerStartedAt).toBeNull();
     expect(copy.actualMinutes).toBeNull();
     expect(copy.previousOccurrenceId).toBeNull();
-    expect(copy.focused).toBe(false);
+    expect(copy.pinned).toBe(false);
   });
 
   it('sets sortOrder to maxExisting + 1', () => {
@@ -537,6 +537,24 @@ describe('completeTask', () => {
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
   });
 
+  it('keeps pinned true through the completion hold, then clears it', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
+  });
+
+  it('does not clear pinned if the completion is undone before the hold expires', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
+    useTaskStore.getState().completeTask('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+  });
+
   it('cancels the reminder when completed', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
     useTaskStore.getState().completeTask('t1');
@@ -577,7 +595,7 @@ describe('completeTask', () => {
     const next = tasks.find(t => t.id !== 'recurring');
     expect(original?.completed).toBe(true);
     expect(next?.completed).toBe(false);
-    expect(next?.focused).toBe(false); // focus resets
+    expect(next?.pinned).toBe(false); // pin resets
     expect(next?.deferUntil).toBeNull();
     expect(new Date(next!.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
   });
@@ -924,13 +942,13 @@ describe('completeTask', () => {
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
-    it('also holds a just-completed task in focusedTasks', () => {
-      useTaskStore.setState({ tasks: [makeTask({ id: 't1', focused: true })] });
+    it('also holds a just-completed task in pinnedTasks', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
       useTaskStore.getState().completeTask('t1');
-      expect(useTaskStore.getState().focusedTasks().map(t => t.id)).toEqual(['t1']);
+      expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t1']);
 
       jest.advanceTimersByTime(1200);
-      expect(useTaskStore.getState().focusedTasks()).toHaveLength(0);
+      expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
     });
   });
 });
@@ -1188,19 +1206,19 @@ describe('skipNextRecurrence', () => {
   });
 });
 
-// ─── toggleFocus ─────────────────────────────────────────────────────────────
+// ─── togglePin ─────────────────────────────────────────────────────────────
 
-describe('toggleFocus', () => {
-  it('sets focused to true when currently false', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', focused: false })] });
-    useTaskStore.getState().toggleFocus('t1');
-    expect(useTaskStore.getState().tasks[0].focused).toBe(true);
+describe('togglePin', () => {
+  it('sets pinned to true when currently false', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: false })] });
+    useTaskStore.getState().togglePin('t1');
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
   });
 
-  it('sets focused to false when currently true', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', focused: true })] });
-    useTaskStore.getState().toggleFocus('t1');
-    expect(useTaskStore.getState().tasks[0].focused).toBe(false);
+  it('sets pinned to false when currently true', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
+    useTaskStore.getState().togglePin('t1');
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
 });
 
@@ -1231,6 +1249,12 @@ describe('archiveTask', () => {
     useTaskStore.getState().undoLastAction();
     expect(useTaskStore.getState().tasks[0].archived).toBe(false);
     expect(useTaskStore.getState().tasks[0].archivedAt).toBeNull();
+  });
+
+  it('clears pinned when archiving a pinned task', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
+    useTaskStore.getState().archiveTask('t1');
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
 });
 
@@ -1269,65 +1293,65 @@ describe('archivedTasks', () => {
   });
 });
 
-// ─── clearAllFocus ────────────────────────────────────────────────────────────
+// ─── clearAllPins ────────────────────────────────────────────────────────────
 
-describe('clearAllFocus', () => {
-  it('sets focused to false on all focused tasks', () => {
+describe('clearAllPins', () => {
+  it('sets pinned to false on all pinned tasks', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 't1', focused: true }),
-        makeTask({ id: 't2', focused: true }),
-        makeTask({ id: 't3', focused: false }),
+        makeTask({ id: 't1', pinned: true }),
+        makeTask({ id: 't2', pinned: true }),
+        makeTask({ id: 't3', pinned: false }),
       ],
     });
-    useTaskStore.getState().clearAllFocus();
+    useTaskStore.getState().clearAllPins();
     const { tasks } = useTaskStore.getState();
-    expect(tasks.every(t => !t.focused)).toBe(true);
+    expect(tasks.every(t => !t.pinned)).toBe(true);
   });
 
-  it('calls dbClearAllFocus', () => {
-    useTaskStore.getState().clearAllFocus();
-    expect(dbClearAllFocus).toHaveBeenCalledTimes(1);
+  it('calls dbClearAllPins', () => {
+    useTaskStore.getState().clearAllPins();
+    expect(dbClearAllPins).toHaveBeenCalledTimes(1);
   });
 });
 
-// ─── focusCategory ───────────────────────────────────────────────────────────
+// ─── pinCategory ───────────────────────────────────────────────────────────
 
-describe('focusCategory', () => {
-  it('focuses every incomplete task in the category when not all are focused', () => {
+describe('pinCategory', () => {
+  it('pins every incomplete task in the category when not all are pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 't1', category: 'Work', focused: false }),
-        makeTask({ id: 't2', category: 'Work', focused: true }),
-        makeTask({ id: 't3', category: 'Home', focused: false }),
+        makeTask({ id: 't1', category: 'Work', pinned: false }),
+        makeTask({ id: 't2', category: 'Work', pinned: true }),
+        makeTask({ id: 't3', category: 'Home', pinned: false }),
       ],
     });
-    useTaskStore.getState().focusCategory('Work');
+    useTaskStore.getState().pinCategory('Work');
     const { tasks } = useTaskStore.getState();
-    expect(tasks.find(t => t.id === 't1')?.focused).toBe(true);
-    expect(tasks.find(t => t.id === 't2')?.focused).toBe(true);
-    expect(tasks.find(t => t.id === 't3')?.focused).toBe(false);
-    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], true);
+    expect(tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 't2')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 't3')?.pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['t1', 't2'], true);
   });
 
-  it('unfocuses every task in the category when all are already focused', () => {
+  it('unpins every task in the category when all are already pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 't1', category: 'Work', focused: true }),
-        makeTask({ id: 't2', category: 'Work', focused: true }),
+        makeTask({ id: 't1', category: 'Work', pinned: true }),
+        makeTask({ id: 't2', category: 'Work', pinned: true }),
       ],
     });
-    useTaskStore.getState().focusCategory('Work');
+    useTaskStore.getState().pinCategory('Work');
     const { tasks } = useTaskStore.getState();
-    expect(tasks.every(t => !t.focused)).toBe(true);
-    expect(dbBulkSetFocus).toHaveBeenCalledWith(['t1', 't2'], false);
+    expect(tasks.every(t => !t.pinned)).toBe(true);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['t1', 't2'], false);
   });
 
   it('does nothing when the category has no tasks', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Home', focused: false })] });
-    useTaskStore.getState().focusCategory('Work');
-    expect(dbBulkSetFocus).not.toHaveBeenCalled();
-    expect(useTaskStore.getState().tasks[0].focused).toBe(false);
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Home', pinned: false })] });
+    useTaskStore.getState().pinCategory('Work');
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
 });
 
@@ -1643,27 +1667,27 @@ describe('deferGroup', () => {
   });
 });
 
-describe('focusGroup', () => {
-  it('focuses every child when none are focused', () => {
+describe('pinGroup', () => {
+  it('pins every child when none are pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', groupId: 'g1', focused: false }),
-        makeTask({ id: 'b', groupId: 'g1', focused: false }),
+        makeTask({ id: 'a', groupId: 'g1', pinned: false }),
+        makeTask({ id: 'b', groupId: 'g1', pinned: false }),
       ],
     });
-    useTaskStore.getState().focusGroup('g1');
-    expect(useTaskStore.getState().tasks.every(t => t.focused)).toBe(true);
+    useTaskStore.getState().pinGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => t.pinned)).toBe(true);
   });
 
-  it('unfocuses every child when all are already focused', () => {
+  it('unpins every child when all are already pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', groupId: 'g1', focused: true }),
-        makeTask({ id: 'b', groupId: 'g1', focused: true }),
+        makeTask({ id: 'a', groupId: 'g1', pinned: true }),
+        makeTask({ id: 'b', groupId: 'g1', pinned: true }),
       ],
     });
-    useTaskStore.getState().focusGroup('g1');
-    expect(useTaskStore.getState().tasks.every(t => !t.focused)).toBe(true);
+    useTaskStore.getState().pinGroup('g1');
+    expect(useTaskStore.getState().tasks.every(t => !t.pinned)).toBe(true);
   });
 });
 
@@ -1905,24 +1929,24 @@ describe('visibleTasks', () => {
   });
 });
 
-describe('focusedTasks', () => {
-  it('returns focused, non-completed, non-subtask tasks sorted by sortOrder', () => {
+describe('pinnedTasks', () => {
+  it('returns pinned, non-completed, non-subtask tasks sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'f2', focused: true, sortOrder: 2 }),
-        makeTask({ id: 'f1', focused: true, sortOrder: 1 }),
-        makeTask({ id: 'n1', focused: false }),
+        makeTask({ id: 'f2', pinned: true, sortOrder: 2 }),
+        makeTask({ id: 'f1', pinned: true, sortOrder: 1 }),
+        makeTask({ id: 'n1', pinned: false }),
       ],
     });
-    const focused = useTaskStore.getState().focusedTasks();
-    expect(focused.map(t => t.id)).toEqual(['f1', 'f2']);
+    const pinned = useTaskStore.getState().pinnedTasks();
+    expect(pinned.map(t => t.id)).toEqual(['f1', 'f2']);
   });
 
-  it('excludes completed focused tasks', () => {
+  it('excludes completed pinned tasks', () => {
     useTaskStore.setState({
-      tasks: [makeTask({ id: 't1', focused: true, completed: true, completedAt: 'now' })],
+      tasks: [makeTask({ id: 't1', pinned: true, completed: true, completedAt: 'now' })],
     });
-    expect(useTaskStore.getState().focusedTasks()).toHaveLength(0);
+    expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
   });
 });
 

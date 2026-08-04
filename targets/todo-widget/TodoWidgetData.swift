@@ -12,7 +12,7 @@ struct WidgetTask: Codable, Identifiable {
     let id: String
     let title: String
     let priority: Int
-    let focused: Bool
+    let pinned: Bool
     let dueDate: String?
     let category: String?
     let streakCount: Int
@@ -22,7 +22,7 @@ struct WidgetTask: Codable, Identifiable {
 struct WidgetSnapshot: Codable {
     let updatedAt: String
     let visibleTasks: [WidgetTask]
-    let focusedTasks: [WidgetTask]
+    let pinnedTasks: [WidgetTask]
 }
 
 // Distinguishing these matters: "no App Group access" (an entitlement/

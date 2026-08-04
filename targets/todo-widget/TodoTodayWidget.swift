@@ -61,8 +61,8 @@ struct TaskRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
 
-            if task.focused && !isPendingCompletion {
-                Image(systemName: "star.fill")
+            if task.pinned && !isPendingCompletion {
+                Image(systemName: "pin.fill")
                     .foregroundColor(Color(hex: "FF9F0A"))
                     .font(.system(size: 8))
             }

@@ -174,8 +174,8 @@ export function DemoScreen({ visible, onClose }: Props) {
 
     addTask({
       title: 'Finish onboarding flow',
-      notes: 'Focused: pinned to the top of Today regardless of category or sort order.',
-      focused: true,
+      notes: 'Pinned: stays at the top of Today regardless of category or sort order.',
+      pinned: true,
       category: DEMO_CATEGORY,
       tags: [DEMO_TAG],
     });

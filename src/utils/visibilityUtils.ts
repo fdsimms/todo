@@ -219,7 +219,7 @@ export function isTaskDeferred(task: Task): boolean {
 // It's a pure computed view: as soon as a task gains a category, tag, date,
 // time window, recurrence, reminder or priority it leaves the Inbox on its own,
 // so there's no stored flag to keep in sync. Deliberately NOT disqualifying:
-// notes, effort, estimatedMinutes, focused, vacationPause — those don't file a
+// notes, effort, estimatedMinutes, pinned, vacationPause — those don't file a
 // task anywhere. Inbox tasks don't appear on Today (see isTaskVisible) — the
 // Inbox is where they wait until triaged (dated, filed under a project, or
 // otherwise organized).

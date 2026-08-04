@@ -5,13 +5,13 @@ import { useTaskStore } from '../store/useTaskStore';
 
 const DEBOUNCE_MS = 300;
 const MAX_VISIBLE_TASKS = 50;
-const MAX_FOCUSED_TASKS = 10;
+const MAX_PINNED_TASKS = 10;
 
 interface WidgetTask {
   id: string;
   title: string;
   priority: Priority;
-  focused: boolean;
+  pinned: boolean;
   dueDate: string | null;
   category: string | null;
   streakCount: number;
@@ -21,7 +21,7 @@ interface WidgetTask {
 interface WidgetSnapshot {
   updatedAt: string;
   visibleTasks: WidgetTask[];
-  focusedTasks: WidgetTask[];
+  pinnedTasks: WidgetTask[];
 }
 
 function toWidgetTask(task: Task): WidgetTask {
@@ -29,7 +29,7 @@ function toWidgetTask(task: Task): WidgetTask {
     id: task.id,
     title: task.title,
     priority: task.priority,
-    focused: task.focused,
+    pinned: task.pinned,
     dueDate: task.dueDate,
     category: task.category,
     streakCount: task.streakCount,
@@ -78,11 +78,11 @@ async function processPendingWidgetCompletions(): Promise<void> {
 
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
-  const { visibleTasks, focusedTasks } = useTaskStore.getState();
+  const { visibleTasks, pinnedTasks } = useTaskStore.getState();
   const snapshot: WidgetSnapshot = {
     updatedAt: new Date().toISOString(),
     visibleTasks: visibleTasks().slice(0, MAX_VISIBLE_TASKS).map(toWidgetTask),
-    focusedTasks: focusedTasks().slice(0, MAX_FOCUSED_TASKS).map(toWidgetTask),
+    pinnedTasks: pinnedTasks().slice(0, MAX_PINNED_TASKS).map(toWidgetTask),
   };
   writeToNativeBridge(JSON.stringify(snapshot));
 }

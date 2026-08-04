@@ -3,6 +3,7 @@ import {
   resolveOffsetDate,
   buildDraftsFromTemplate,
   formatOffsetLabel,
+  anchorLabel,
 } from '../utils/templateUtils';
 import type { TemplateItem } from '../types';
 
@@ -11,6 +12,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   title: 'Pack bags',
   notes: '',
   optional: false,
+  anchor: 'start',
   dueOffsetDays: null,
   deferOffsetDays: null,
   timeSegments: [],
@@ -28,6 +30,7 @@ describe('normalizeTemplateItem', () => {
     expect(item.title).toBe('');
     expect(item.notes).toBe('');
     expect(item.optional).toBe(false);
+    expect(item.anchor).toBe('start');
     expect(item.dueOffsetDays).toBeNull();
     expect(item.deferOffsetDays).toBeNull();
     expect(item.timeSegments).toEqual([]);
@@ -42,6 +45,7 @@ describe('normalizeTemplateItem', () => {
       id: 'abc',
       title: 'Trash',
       optional: true,
+      anchor: 'end',
       dueOffsetDays: 0,
       deferOffsetDays: -1,
       timeSegments: ['morning'],
@@ -54,6 +58,7 @@ describe('normalizeTemplateItem', () => {
       id: 'abc',
       title: 'Trash',
       optional: true,
+      anchor: 'end',
       dueOffsetDays: 0,
       deferOffsetDays: -1,
       timeSegments: ['morning'],
@@ -62,6 +67,11 @@ describe('normalizeTemplateItem', () => {
       priority: 3,
       effort: 2,
     });
+  });
+
+  it('coerces an unknown anchor value to "start"', () => {
+    const raw = { anchor: 'middle' } as unknown as Partial<TemplateItem>;
+    expect(normalizeTemplateItem(raw).anchor).toBe('start');
   });
 
   it('does not crash on unknown future fields', () => {
@@ -114,12 +124,15 @@ describe('resolveOffsetDate', () => {
 });
 
 describe('buildDraftsFromTemplate', () => {
-  const anchor = new Date('2026-06-20T09:00:00');
+  const start = new Date('2026-06-20T09:00:00');
+  const end = new Date('2026-06-27T09:00:00');
+  const noAnchors = { start: null, end: null };
 
-  it('maps all item fields onto the draft', () => {
+  it('maps all item fields onto the draft, resolved against the start anchor', () => {
     const item = makeItem({
       title: 'Pick up rental car',
       notes: 'Take photos of existing damage',
+      anchor: 'start',
       dueOffsetDays: -1,
       deferOffsetDays: -2,
       timeSegments: ['afternoon'],
@@ -128,7 +141,7 @@ describe('buildDraftsFromTemplate', () => {
       priority: 2,
       effort: 1,
     });
-    const [draft] = buildDraftsFromTemplate([item], anchor);
+    const [draft] = buildDraftsFromTemplate([item], { start, end: null });
     expect(draft.title).toBe('Pick up rental car');
     expect(draft.notes).toBe('Take photos of existing damage');
     expect(new Date(draft.dueDate!).getDate()).toBe(19);
@@ -140,16 +153,28 @@ describe('buildDraftsFromTemplate', () => {
     expect(draft.effort).toBe(1);
   });
 
+  it('resolves items anchored to "end" against the end anchor', () => {
+    const item = makeItem({ anchor: 'end', dueOffsetDays: -2 });
+    const [draft] = buildDraftsFromTemplate([item], { start, end });
+    expect(new Date(draft.dueDate!).getDate()).toBe(25);
+  });
+
+  it('ignores the start anchor for an item anchored to "end"', () => {
+    const item = makeItem({ anchor: 'end', dueOffsetDays: 0 });
+    const [draft] = buildDraftsFromTemplate([item], { start, end: null });
+    expect(draft.dueDate).toBeNull();
+  });
+
   it('copies tags and timeSegments rather than aliasing the item arrays', () => {
     const item = makeItem({ tags: ['travel'], timeSegments: ['morning'] });
-    const [draft] = buildDraftsFromTemplate([item], anchor);
+    const [draft] = buildDraftsFromTemplate([item], { start, end: null });
     expect(draft.tags).not.toBe(item.tags);
     expect(draft.timeSegments).not.toBe(item.timeSegments);
   });
 
   it('leaves dates null when no anchor is picked, even with offsets', () => {
     const item = makeItem({ dueOffsetDays: 0, deferOffsetDays: -1 });
-    const [draft] = buildDraftsFromTemplate([item], null);
+    const [draft] = buildDraftsFromTemplate([item], noAnchors);
     expect(draft.dueDate).toBeNull();
     expect(draft.deferUntil).toBeNull();
   });
@@ -157,7 +182,7 @@ describe('buildDraftsFromTemplate', () => {
   it('builds one draft per item, in order', () => {
     const drafts = buildDraftsFromTemplate(
       [makeItem({ id: 'a', title: 'A' }), makeItem({ id: 'b', title: 'B' })],
-      null
+      noAnchors
     );
     expect(drafts.map(d => d.title)).toEqual(['A', 'B']);
   });
@@ -173,5 +198,12 @@ describe('formatOffsetLabel', () => {
     [2, '2 days after'],
   ] as Array<[number | null, string]>)('formats %p as %p', (offset, label) => {
     expect(formatOffsetLabel(offset)).toBe(label);
+  });
+});
+
+describe('anchorLabel', () => {
+  it('labels "start" and "end"', () => {
+    expect(anchorLabel('start')).toBe('Start date');
+    expect(anchorLabel('end')).toBe('End date');
   });
 });

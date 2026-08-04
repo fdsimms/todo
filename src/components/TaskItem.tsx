@@ -123,7 +123,7 @@ export function TaskItem({
   const updateTask = useTaskStore(s => s.updateTask);
   const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
-  const toggleFocus = useTaskStore(s => s.toggleFocus);
+  const togglePin = useTaskStore(s => s.togglePin);
   const startTimer = useTaskStore(s => s.startTimer);
   const stopTimer = useTaskStore(s => s.stopTimer);
   const discardTimer = useTaskStore(s => s.discardTimer);
@@ -599,20 +599,20 @@ export function TaskItem({
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
-            toggleFocus(task.id);
+            togglePin(task.id);
           }}
           hitSlop={8}
           style={styles.starBtn}
           accessibilityRole="button"
-          accessibilityState={{ selected: task.focused }}
+          accessibilityState={{ selected: task.pinned }}
           accessibilityLabel={
-            task.focused ? `Remove ${task.title} from focus` : `Add ${task.title} to focus`
+            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
           }
         >
           <Ionicons
-            name={task.focused ? 'star' : 'star-outline'}
+            name={task.pinned ? 'pin' : 'pin-outline'}
             size={iconSize.sm}
-            color={task.focused ? colors.orange : colors.textTertiary}
+            color={task.pinned ? colors.orange : colors.textTertiary}
           />
         </TouchableOpacity>
       )}
