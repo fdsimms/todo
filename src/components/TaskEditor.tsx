@@ -53,6 +53,7 @@ export interface TaskDraft {
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
   recurrenceDays: number[];
+  recurrenceMonthDay: number | null;
   recurrenceFromCompletion: boolean;
 }
 
@@ -84,6 +85,17 @@ export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   monthly: 'Monthly',
   yearly: 'Yearly',
 };
+
+export function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, onCategoryCreated }: Props) {
   const addTask = useTaskStore(s => s.addTask);
@@ -133,6 +145,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
+  const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
@@ -191,6 +204,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
+      setRecurrenceMonthDay(task.recurrenceMonthDay ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
@@ -204,6 +218,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
+      setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
@@ -238,6 +253,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
+      recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : null,
       recurrenceCount: task ? (task.recurrenceCount ?? null) : null,
@@ -300,6 +316,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
+      recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
@@ -1368,6 +1385,44 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                 {recurrenceType === 'weekly' && (
                   <View style={styles.weekdayRow}>
                     <WeekdaySelector value={recurrenceDays} onChange={setRecurrenceDays} />
+                  </View>
+                )}
+                {recurrenceType === 'monthly' && (
+                  <View style={styles.scheduleRow}>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay === null && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(null)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay === null && styles.schedulePillTextActive]}>
+                        Same day as due date
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceMonthDay !== null && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceMonthDay(recurrenceMonthDay ?? (dueDate ?? new Date()).getDate())}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && styles.schedulePillTextActive]}>
+                        On a day
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {recurrenceType === 'monthly' && recurrenceMonthDay !== null && (
+                  <View style={styles.intervalRow}>
+                    <Text style={styles.intervalLabel}>On the</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{ordinal(recurrenceMonthDay)}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1))}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
                   </View>
                 )}
                 <View style={styles.scheduleRow}>

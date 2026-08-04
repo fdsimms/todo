@@ -9,6 +9,8 @@ import {
   isSameWeek,
   startOfDay,
   differenceInCalendarDays,
+  setDate,
+  lastDayOfMonth,
 } from 'date-fns';
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -156,7 +158,9 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
         : addWeeks(base, task.recurrenceInterval);
       break;
     case 'monthly':
-      next = addMonths(base, task.recurrenceInterval);
+      next = task.recurrenceMonthDay
+        ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
+        : addMonths(base, task.recurrenceInterval);
       break;
     case 'yearly':
       next = addYears(base, task.recurrenceInterval);
@@ -180,6 +184,14 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
     if (day > dow) return addDays(from, day - dow);
   }
   return addDays(from, 7 - dow + sorted[0]);
+}
+
+/** Next occurrence of a fixed day-of-month (e.g. "the 5th"), clamped to the last day of short months. */
+function getNextMonthDayOccurrence(day: number, from: Date): Date {
+  const clampToMonth = (d: Date) => setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
+  const thisMonth = clampToMonth(from);
+  if (thisMonth > from) return thisMonth;
+  return clampToMonth(addMonths(from, 1));
 }
 
 /** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */

@@ -85,6 +85,7 @@ export interface Task {
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
   recurrenceDays: number[];
+  recurrenceMonthDay: number | null; // day of month (1-31) for monthly recurrence on a fixed schedule; null = same day as dueDate
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
