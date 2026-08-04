@@ -81,6 +81,13 @@ export interface DropResolution {
   taskIds: string[];
   /** Tasks whose category changed because of where they were dropped. */
   categoryUpdates: Array<{ id: string; category: string | null }>;
+  /**
+   * Task groups dragged as a whole block (see TodayScreen's group `onDrag`):
+   * their new category (nearest header above, same rule as tasks) and their
+   * new sortOrder relative to the other groups that ended up in that same
+   * category, renumbered from 1 in drop order.
+   */
+  groupUpdates: Array<{ id: string; category: string | null; sortOrder: number }>;
   /** The final, regrouped layout to show immediately after the drop. */
   settled: CategoryListItem[];
 }
@@ -113,8 +120,13 @@ export function resolveDrop(
 ): DropResolution {
   const taskIds: string[] = [];
   const categoryUpdates: Array<{ id: string; category: string | null }> = [];
+  const groupUpdates: Array<{ id: string; category: string | null; sortOrder: number }> = [];
   const orderedTasks: Task[] = [];
   const upcomingOrdered: Task[] = [];
+  // Groups dropped, in order, paired with their (possibly updated) new
+  // category — used both to build groupUpdates (sortOrder renumbered per
+  // category below) and to rebuild `settled` with the same groups.
+  const orderedGroups: { group: TaskGroup; children: Task[]; category: string | null }[] = [];
   let currentSection: string | null = null;
   let inLaterToday = false;
 
@@ -127,12 +139,14 @@ export function resolveDrop(
       }
       continue;
     }
-    // Groups never actually reach this function (TodayScreen filters them
-    // out of `reordered` before calling resolveDrop — see its onReorder
-    // handler), but the shared CategoryListItem type includes them, so this
-    // keeps resolveDrop type-safe without needing to know anything about
-    // groups.
-    if (item.type === 'group') continue;
+    if (item.type === 'group') {
+      // Groups never appear inside "Later Today" (that section is rendered
+      // by a separate, non-draggable path — see TodayScreen), so they always
+      // adopt the nearest real header above, same rule as a task.
+      const target = currentSection;
+      orderedGroups.push({ group: item.group, children: item.children, category: target });
+      continue;
+    }
     taskIds.push(item.task.id);
     const isUpcoming = opts.isUpcoming(item.task.id);
     // Upcoming/"Later Today" tasks keep their own category; everything else
@@ -146,13 +160,26 @@ export function resolveDrop(
     (isUpcoming ? upcomingOrdered : orderedTasks).push(task);
   }
 
-  const settled: CategoryListItem[] = makeCategoryGroups(orderedTasks, opts.categoryOrder);
+  // Renumber sortOrder per resulting category, in drop order, so relative
+  // group order persists without colliding with another category's numbers
+  // (each category's groups are only ever compared against each other).
+  const perCategoryCount = new Map<string | null, number>();
+  const updatedGroups: { group: TaskGroup; children: Task[] }[] = orderedGroups.map(({ group, children, category }) => {
+    const nextOrder = (perCategoryCount.get(category) ?? 0) + 1;
+    perCategoryCount.set(category, nextOrder);
+    if (category !== group.category || nextOrder !== group.sortOrder) {
+      groupUpdates.push({ id: group.id, category, sortOrder: nextOrder });
+    }
+    return { group: { ...group, category, sortOrder: nextOrder }, children };
+  });
+
+  const settled: CategoryListItem[] = makeCategoryGroups(orderedTasks, opts.categoryOrder, updatedGroups);
   if (opts.showUpcoming && upcomingOrdered.length > 0) {
     settled.push({ type: 'header', label: LATER_TODAY_LABEL });
     upcomingOrdered.forEach(task => settled.push({ type: 'task', task }));
   }
 
-  return { taskIds, categoryUpdates, settled };
+  return { taskIds, categoryUpdates, groupUpdates, settled };
 }
 
 /**

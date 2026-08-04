@@ -262,6 +262,47 @@ describe('resolveDrop', () => {
     const fromStore = makeCategoryGroups([workout, test]);
     expect(layoutSeq(settled)).toEqual(layoutSeq(fromStore));
   });
+
+  // Group headers drag as a single block (see TodayScreen's group onDrag):
+  // dropping one under a different header recategorizes it, same rule as a
+  // task, and it keeps its children.
+  it('recategorizes a dragged group under a different section header', () => {
+    const group = makeGroup({ id: 'g1', category: 'health', sortOrder: 1 });
+    const child = makeTask({ id: 'c1' });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'work' },
+      { type: 'group', group, children: [child] },
+    ];
+    const { groupUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(groupUpdates).toEqual([{ id: 'g1', category: 'work', sortOrder: 1 }]);
+    expect(layoutSeq(settled)).toEqual(['#work', 'g-g1']);
+  });
+
+  it('renumbers group sortOrder within a category to match drop order', () => {
+    const first = makeGroup({ id: 'first', category: 'health', sortOrder: 2 });
+    const second = makeGroup({ id: 'second', category: 'health', sortOrder: 1 });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'group', group: first, children: [] },
+      { type: 'group', group: second, children: [] },
+    ];
+    const { groupUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(groupUpdates).toEqual([
+      { id: 'first', category: 'health', sortOrder: 1 },
+      { id: 'second', category: 'health', sortOrder: 2 },
+    ]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'g-first', 'g-second']);
+  });
+
+  it('reports no group updates when nothing about a group changed', () => {
+    const group = makeGroup({ id: 'g1', category: 'health', sortOrder: 1 });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'health' },
+      { type: 'group', group, children: [] },
+    ];
+    const { groupUpdates } = resolveDrop(reordered, noUpcoming);
+    expect(groupUpdates).toEqual([]);
+  });
 });
 
 describe('categoryHeaderRange', () => {
