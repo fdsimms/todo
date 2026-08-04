@@ -33,7 +33,7 @@ import { useProjectCategoryStore } from './useProjectCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
-import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
+import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
@@ -248,6 +248,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: draft.dueDate ?? null,
       deadline: draft.deadline ?? null,
       deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
+      deadlineMonthDay: draft.deadlineMonthDay ?? null,
       deferUntil: draft.deferUntil ?? null,
       timeSegments: draft.timeSegments ?? [],
       windowStart: draft.windowStart ?? null,
@@ -515,12 +516,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ? (atChainEnd ? 0 : task.chainIndex + 1)
           : task.chainIndex;
         // A fixed deadline is a one-off target date and doesn't carry to the next
-        // occurrence. A relative deadline (deadlineOffsetDays set) recomputes
-        // against the new dueDate instead, so e.g. "the day before it's due"
+        // occurrence. A relative deadline (deadlineOffsetDays or deadlineMonthDay
+        // set — mutually exclusive) recomputes against the new dueDate instead,
+        // so e.g. "the day before it's due" or "the last day of the month"
         // keeps meaning that on every future occurrence too.
         const nextDeadline =
-          nextDue && effective.deadlineOffsetDays !== null
+          !nextDue ? null
+          : effective.deadlineOffsetDays !== null
             ? getDeadlineFromOffset(nextDue, effective.deadlineOffsetDays).toISOString()
+          : effective.deadlineMonthDay !== null
+            ? getDeadlineFromMonthDay(nextDue, effective.deadlineMonthDay).toISOString()
             : null;
         nextTask = {
           ...effective,
@@ -830,6 +835,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: null,
       deadline: null,
       deadlineOffsetDays: null,
+      deadlineMonthDay: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,
@@ -933,6 +939,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: null,
       deadline: null,
       deadlineOffsetDays: null,
+      deadlineMonthDay: null,
       deferUntil: null,
       timeSegments: [],
       windowStart: null,

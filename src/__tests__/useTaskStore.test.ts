@@ -114,6 +114,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   dueDate: null,
   deadline: null,
   deadlineOffsetDays: null,
+  deadlineMonthDay: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -610,6 +611,7 @@ describe('completeTask', () => {
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       deadline: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
       deadlineOffsetDays: null,
+      deadlineMonthDay: null,
     });
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('recurring');
@@ -637,6 +639,29 @@ describe('completeTask', () => {
     expect(next?.deadlineOffsetDays).toBe(1);
     expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString()); // next Thursday
     expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2025, 5, 18, 0, 0, 0).toISOString()); // next Wednesday
+  });
+
+  it('recomputes a "last day of the month" deadline against the next occurrence\'s dueDate', () => {
+    // Due the 20th of every month, deadline the last day of that same month —
+    // a fixed day offset can't express this since month lengths vary.
+    jest.setSystemTime(new Date(2026, 0, 20, 10, 0, 0)); // Jan 20, 2026 — due today
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      recurrenceMonthDay: 20,
+      dueDate: new Date(2026, 0, 20, 0, 0, 0).toISOString(),
+      deadline: new Date(2026, 0, 31, 0, 0, 0).toISOString(),
+      deadlineOffsetDays: null,
+      deadlineMonthDay: -1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.deadlineMonthDay).toBe(-1);
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 20, 0, 0, 0).toISOString()); // Feb 20
+    expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 28, 0, 0, 0).toISOString()); // last day of Feb (2026 not leap)
   });
 
   it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {

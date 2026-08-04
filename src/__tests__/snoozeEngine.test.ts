@@ -18,6 +18,7 @@ const BASE: Task = {
   dueDate: null,
   deadline: null,
   deadlineOffsetDays: null,
+  deadlineMonthDay: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,

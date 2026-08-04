@@ -90,6 +90,13 @@ export interface Task {
   // recurring task spawns its next occurrence (see completeTask). Null means
   // `deadline` is a one-off fixed date that doesn't carry forward.
   deadlineOffsetDays: number | null;
+  // Alternative to deadlineOffsetDays for monthly recurrence: pins `deadline`
+  // to a fixed day-of-month within the due date's own month instead of N days
+  // before due, e.g. due the 20th, deadline the last day of the same month —
+  // a case a fixed day offset can't express since month lengths vary. -1
+  // means the last day of the month. Mutually exclusive with
+  // deadlineOffsetDays; recomputed the same way on every new occurrence.
+  deadlineMonthDay: number | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day

@@ -6,6 +6,7 @@ import {
   getNextDueDate,
   getStreakDisplay,
   getDeadlineCountdown,
+  getDeadlineFromMonthDay,
   getLogicalToday,
   getLogicalTomorrow,
   getLogicalNow,
@@ -32,6 +33,7 @@ const baseTask: Task = {
   dueDate: null,
   deadline: null,
   deadlineOffsetDays: null,
+  deadlineMonthDay: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -716,5 +718,33 @@ describe('getDeadlineCountdown', () => {
     // 1:30 AM on June 11 is still logical-day June 10 with a 2 AM reset.
     jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
     expect(getDeadlineCountdown(new Date(2025, 5, 11, 1, 0, 0).toISOString(), '02:00')).toBe(0);
+  });
+});
+
+// ─── getDeadlineFromMonthDay ─────────────────────────────────────────────────
+
+describe('getDeadlineFromMonthDay', () => {
+  it('returns the last day of the due date\'s month when day is -1', () => {
+    const result = getDeadlineFromMonthDay(new Date(2026, 0, 20), -1); // Jan 20, 2026
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(31);
+  });
+
+  it('resolves the last day correctly for a shorter month', () => {
+    const result = getDeadlineFromMonthDay(new Date(2026, 1, 20), -1); // Feb 20, 2026 (not a leap year)
+    expect(result.getMonth()).toBe(1);
+    expect(result.getDate()).toBe(28);
+  });
+
+  it('returns a fixed day-of-month within the due date\'s own month', () => {
+    const result = getDeadlineFromMonthDay(new Date(2026, 0, 5), 15);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(15);
+  });
+
+  it('clamps a day beyond the month length to the last day', () => {
+    const result = getDeadlineFromMonthDay(new Date(2026, 1, 1), 31); // February
+    expect(result.getMonth()).toBe(1);
+    expect(result.getDate()).toBe(28);
   });
 });
