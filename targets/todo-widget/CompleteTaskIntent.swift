@@ -8,7 +8,9 @@ import WidgetKit
 // queues the task id; TodoWidgetBridgeModule.drainPendingCompletions()
 // picks the queue up and calls the real completeTask() next time the app
 // opens. The widget shows an optimistic checked state in the meantime (see
-// loadPendingCompletionIds in TodoWidgetData.swift).
+// loadPendingCompletionIds in TodoWidgetData.swift). Applying the queue for
+// real is a separate, explicit step — see PendingSyncBar/
+// SyncPendingCompletionsIntent in TodoTodayWidget.swift.
 struct CompleteTaskIntent: AppIntent {
     static var title: LocalizedStringResource = "Complete Task"
     static var isDiscoverable: Bool = false

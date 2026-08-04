@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import type { RecurrenceType, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 
@@ -115,6 +115,21 @@ export function useWidgetSync(): void {
       // native module registry) is still mid-launch.
       scheduleSnapshotWrite();
     });
-    return unsubscribe;
+
+    // The widget's "sync" bar (SyncPendingCompletionsIntent, in
+    // TodoTodayWidget.swift) opens the app to apply queued completions, but
+    // if the app was already running in the background this effect doesn't
+    // remount — only a fresh 'active' AppState transition tells us to drain
+    // again. drainPendingCompletions() is safe to call with nothing queued.
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        processPendingWidgetCompletions().finally(scheduleSnapshotWrite);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      subscription.remove();
+    };
   }, []);
 }
