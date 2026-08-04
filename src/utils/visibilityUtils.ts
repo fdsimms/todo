@@ -158,6 +158,10 @@ export function isTaskVisible(task: Task): boolean {
 
   if (isTaskExpired(task)) return false;
 
+  // Project tasks default to living in their project, not the daily lists —
+  // they only surface on Today once given an explicit due date.
+  if (task.projectId && !task.dueDate) return false;
+
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     const todayStart = getCurrentDayStart();
@@ -195,6 +199,10 @@ export function isTaskDeferred(task: Task): boolean {
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (isTaskExpired(task)) return false;
+  // Undated project tasks aren't visible, but they don't belong in Later
+  // either — they have no date to be deferred to, so they just live in their
+  // project until one is assigned.
+  if (task.projectId && !task.dueDate) return false;
   return !isTaskVisible(task);
 }
 
@@ -211,6 +219,7 @@ export function isInboxTask(task: Task): boolean {
     !task.parentId &&
     !task.completed &&
     !task.archived &&
+    task.projectId == null &&
     task.category == null &&
     task.tags.length === 0 &&
     task.dueDate == null &&

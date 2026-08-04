@@ -218,6 +218,20 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
   });
 
+  it('hides a project task with no due date, unlike an equivalent non-project task', () => {
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1' })).toBe(false);
+  });
+
+  it('shows a project task due today', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1', dueDate })).toBe(true);
+  });
+
+  it('hides a project task with a future due date', () => {
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1', dueDate })).toBe(false);
+  });
+
 });
 
 // ─── isUpcomingToday ───────────────────────────────────────────────────────────
@@ -392,6 +406,15 @@ describe('isTaskDeferred', () => {
 
   it('returns true for a task whose window has not started yet today', () => {
     expect(isTaskDeferred({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
+  });
+
+  it('returns false for an undated project task (it belongs in its project, not Later)', () => {
+    expect(isTaskDeferred({ ...baseTask, projectId: 'proj1' })).toBe(false);
+  });
+
+  it('returns true for a project task with a future due date', () => {
+    const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
+    expect(isTaskDeferred({ ...baseTask, projectId: 'proj1', dueDate })).toBe(true);
   });
 
 });
@@ -835,6 +858,10 @@ describe('isInboxTask', () => {
   it('is false for completed tasks and subtasks', () => {
     expect(isInboxTask({ ...baseTask, completed: true })).toBe(false);
     expect(isInboxTask({ ...baseTask, parentId: 'p1' })).toBe(false);
+  });
+
+  it('is false for a task assigned to a project, even with no other metadata', () => {
+    expect(isInboxTask({ ...baseTask, projectId: 'proj1' })).toBe(false);
   });
 
   it('stays true for notes/effort/focus (they do not file a task)', () => {
