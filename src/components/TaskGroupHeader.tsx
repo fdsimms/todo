@@ -9,7 +9,7 @@ import { spacing, radius, font, fontWeight, border, iconSize, interaction, type 
 import { isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
-import { DeferModal } from './DeferModal';
+import { WhenPicker } from './WhenPicker';
 
 interface Props {
   group: TaskGroup;
@@ -63,12 +63,12 @@ export function TaskGroupHeader({
 
   const confirmDelete = () => {
     Alert.alert(
-      'Delete Group',
+      'Delete Stack',
       `Delete "${group.title}"?`,
       [
         { text: 'Cancel', style: 'cancel', onPress: () => swipeableRef.current?.close() },
-        { text: 'Delete This Group', onPress: onDeleteGroupOnly },
-        { text: 'Delete Group and All Its Tasks', style: 'destructive', onPress: onDeleteWithTasks },
+        { text: 'Delete This Stack', onPress: onDeleteGroupOnly },
+        { text: 'Delete Stack and All Its Tasks', style: 'destructive', onPress: onDeleteWithTasks },
       ],
     );
   };
@@ -175,7 +175,7 @@ export function TaskGroupHeader({
                   hitSlop={8}
                   style={styles.iconBtn}
                   accessibilityRole="button"
-                  accessibilityLabel={`Edit ${group.title} group`}
+                  accessibilityLabel={`Edit ${group.title} stack`}
                 >
                   <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
                 </TouchableOpacity>
@@ -188,9 +188,13 @@ export function TaskGroupHeader({
         </View>
       </View>
 
-      <DeferModal
+      <WhenPicker
         visible={showDefer}
-        onConfirm={date => { setShowDefer(false); onDefer(date); }}
+        value={null}
+        title="Reschedule"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => { setShowDefer(false); if (date) onDefer(date); }}
         onCancel={() => setShowDefer(false)}
       />
     </>

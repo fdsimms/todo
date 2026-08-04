@@ -55,6 +55,8 @@ export interface TaskDraft {
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
   recurrenceFromCompletion: boolean;
+  /** Preselects the Chain toggle when opening a brand-new task. */
+  chainEnabled?: boolean;
 }
 
 interface Props {
@@ -242,7 +244,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceCount(null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
-      setChainEnabled(false); setChainItems([]); setChainIndex(0);
+      setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
     }
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
@@ -280,7 +282,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       actualMinutes: task?.actualMinutes ?? null,
       pinned: task?.pinned ?? false,
-      chainEnabled: task?.chainEnabled ?? false,
+      chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task?.chainItems ?? [],
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
