@@ -21,7 +21,7 @@ interface Props {
   onComplete: () => void;
   onUncomplete: () => void;
   onDefer: (date: Date) => void;
-  onFocus: () => void;
+  onPin: () => void;
   onDeleteGroupOnly: () => void;
   onDeleteWithTasks: () => void;
   onPressEdit: () => void;
@@ -35,7 +35,7 @@ export function TaskGroupHeader({
   onComplete,
   onUncomplete,
   onDefer,
-  onFocus,
+  onPin,
   onDeleteGroupOnly,
   onDeleteWithTasks,
   onPressEdit,
@@ -151,13 +151,13 @@ export function TaskGroupHeader({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  onPress={() => { haptics.tap(); onFocus(); }}
+                  onPress={() => { haptics.tap(); onPin(); }}
                   hitSlop={8}
                   style={styles.iconBtn}
                   accessibilityRole="button"
-                  accessibilityLabel={`Focus all of ${group.title}`}
+                  accessibilityLabel={`Pin all of ${group.title}`}
                 >
-                  <Ionicons name="star-outline" size={iconSize.sm} color={colors.textTertiary} />
+                  <Ionicons name="pin-outline" size={iconSize.sm} color={colors.textTertiary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
