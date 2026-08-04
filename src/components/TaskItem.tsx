@@ -61,6 +61,8 @@ interface Props {
   indented?: boolean;
   /** Briefly tints the row on mount to draw the eye to a task that was just created. */
   justCreated?: boolean;
+  /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
+  autoComplete?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -116,6 +118,7 @@ export function TaskItem({
   showActions = true,
   indented = false,
   justCreated = false,
+  autoComplete = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -368,6 +371,15 @@ export function TaskItem({
       });
     });
   };
+
+  // Widget checkbox taps queue a completion and open the app (see
+  // useWidgetCompletionStore) rather than completing the task directly, so
+  // that when Today mounts with this task still incomplete, the user sees
+  // the same pop-checkmark-and-fade animation a real tap gets instead of the
+  // row just silently vanishing.
+  useEffect(() => {
+    if (autoComplete) handleComplete();
+  }, [autoComplete]);
 
   const handleUndoComplete = async () => {
     completeAnimRef.current?.stop();

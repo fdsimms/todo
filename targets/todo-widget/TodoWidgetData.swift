@@ -72,8 +72,10 @@ private func pendingCompletionsFileURL() -> URL? {
 // but that the app hasn't actually processed yet (recurrence/streaks/chains
 // only apply once the app itself calls completeTask() — see
 // TodoWidgetBridgeModule's drainPendingCompletions). Used purely to render a
-// checked state immediately; the underlying snapshot still lists these tasks
-// until the app catches up and writes a fresh one.
+// checked state immediately, in the brief window between the tap and the app
+// opening (CompleteTaskIntent.openAppWhenRun) to finish the job; the
+// underlying snapshot still lists these tasks until the app catches up and
+// writes a fresh one.
 func loadPendingCompletionIds() -> Set<String> {
     guard let fileURL = pendingCompletionsFileURL(),
           let data = try? Data(contentsOf: fileURL),

@@ -35,6 +35,7 @@ import {
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
+import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -342,6 +343,7 @@ export function TodayScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const justCreatedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
@@ -412,6 +414,25 @@ export function TodayScreen() {
     if (route.params?.targetViewMode) setViewMode(route.params.targetViewMode);
     if (route.params?.highlightTaskId) showJustCreated(route.params.highlightTaskId);
   }, [route.params?.jump]);
+
+  // Claims completions queued by the Today widget's checkbox (see
+  // useWidgetCompletionStore / widgetSync.ts). Handing a pending id off to a
+  // TaskItem via autoComplete triggers the real tap-to-complete animation
+  // there — completeTask() itself is only called once that animation
+  // finishes, not here — so dequeue right away to avoid re-triggering it on
+  // a later render. A task that's already gone (completed/deleted elsewhere
+  // in the meantime) is just dropped.
+  const widgetCompletionIds = useWidgetCompletionStore(useShallow(s => s.pendingIds));
+  const dequeueWidgetCompletion = useWidgetCompletionStore(s => s.dequeue);
+  useEffect(() => {
+    if (widgetCompletionIds.length === 0) return;
+    widgetCompletionIds.forEach(id => {
+      dequeueWidgetCompletion(id);
+      const task = allTasks.find(t => t.id === id);
+      if (!task || task.completed) return;
+      setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
+    });
+  }, [widgetCompletionIds]);
 
   // Briefly flags a task so its row renders the "just created" highlight, then
   // clears the flag once the animation has had time to finish.
@@ -965,6 +986,7 @@ export function TodayScreen() {
         onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
         hideTodayLabel
         justCreated={task.id === justCreatedId}
+        autoComplete={autoCompletingIds.has(task.id)}
       />
     );
   };
