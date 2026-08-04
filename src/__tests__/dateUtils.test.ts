@@ -8,6 +8,7 @@ import {
   getDeadlineCountdown,
   getLogicalToday,
   getLogicalTomorrow,
+  getLogicalNow,
   isBeforeDayReset,
   hhmmToDate,
   formatHHMM,
@@ -271,6 +272,34 @@ describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
 
     expect(isBeforeDayReset('00:00')).toBe(false);
+  });
+});
+
+// ─── getLogicalNow ─────────────────────────────────────────────────────────
+
+describe('getLogicalNow', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches the wall clock when well after the reset hour', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+
+    expect(getLogicalNow('02:00').getTime()).toBe(NOW.getTime());
+  });
+
+  it('rolls back to the previous calendar day, preserving the clock time, during the early-morning grace window', () => {
+    // 1:30 AM on June 11 — before the 2:00 AM reset, so "tomorrow" typed here
+    // should resolve relative to June 10 (the logical day), not June 11.
+    jest.useFakeTimers();
+    const wallClock = new Date(2025, 5, 11, 1, 30, 0);
+    jest.setSystemTime(wallClock);
+
+    const logicalNow = getLogicalNow('02:00');
+    expect(logicalNow.getDate()).toBe(10);
+    expect(logicalNow.getHours()).toBe(1);
+    expect(logicalNow.getMinutes()).toBe(30);
   });
 });
 

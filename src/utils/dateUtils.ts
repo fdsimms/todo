@@ -95,6 +95,18 @@ export function getLogicalTomorrow(dayResetTime?: string): Date {
  * yesterday's logical day, so "Today"/"Tomorrow" need clarifying with
  * actual dates.
  */
+/**
+ * The current instant, pinned to the logical day's calendar date — for
+ * feeding into parseNaturalDate/parseTaskInput so "tomorrow" typed in the
+ * early-morning window before dayResetTime resolves relative to the logical
+ * day (still "yesterday") rather than the wall-clock calendar day. Preserves
+ * the actual clock time so relative durations ("in 30 min") stay accurate.
+ */
+export function getLogicalNow(dayResetTime?: string): Date {
+  const now = new Date();
+  return isBeforeDayReset(dayResetTime) ? subDays(now, 1) : now;
+}
+
 export function isBeforeDayReset(dayResetTime?: string): boolean {
   return getLogicalToday(dayResetTime).getTime() !== startOfDay(new Date()).getTime();
 }
