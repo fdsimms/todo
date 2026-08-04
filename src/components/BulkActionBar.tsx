@@ -39,6 +39,8 @@ interface Props {
   onCancel: () => void;
   /** Clearance to leave below the bar — the floating tab bar's rendered height, not just the safe-area inset. */
   bottomInset: number;
+  /** Reports the bar's rendered height so the caller can reserve matching space at the bottom of its list, keeping the bar from covering the last rows. */
+  onHeightChange?: (height: number) => void;
 }
 
 type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category' | 'group';
@@ -60,6 +62,7 @@ export function BulkActionBar({
   onDeselectAll,
   onCancel,
   bottomInset,
+  onHeightChange,
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -134,7 +137,10 @@ export function BulkActionBar({
 
   return (
     <>
-      <View style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}>
+      <View
+        style={[styles.container, shadows.sheet, { bottom: bottomInset + spacing.sm }]}
+        onLayout={onHeightChange ? e => onHeightChange(e.nativeEvent.layout.height) : undefined}
+      >
         {panel === 'actions' && (
           <>
             <View style={styles.topRow}>
