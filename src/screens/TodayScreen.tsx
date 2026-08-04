@@ -18,7 +18,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
-import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
+import type { Task, TaskGroup, SortOption, Priority, Effort, RecurrenceType } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
 import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
@@ -51,12 +51,14 @@ import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
+import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
+import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -322,6 +324,8 @@ export function TodayScreen() {
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
+  const createTaskGroup = useTaskGroupStore(s => s.createGroup);
+  const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const completeGroup = useTaskStore(s => s.completeGroup);
   const uncompleteGroup = useTaskStore(s => s.uncompleteGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
@@ -343,6 +347,7 @@ export function TodayScreen() {
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [pullingToAdd, setPullingToAdd] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -369,6 +374,9 @@ export function TodayScreen() {
   const [isSuggestingPin, setIsSuggestingPin] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
+  // Set while editingGroup is a stack freshly created from the add menu —
+  // discarded on close if it was never given a title.
+  const newStackIdRef = useRef<string | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -570,7 +578,7 @@ export function TodayScreen() {
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down no longer refreshes anything — it opens quick add instead, which
@@ -593,6 +601,33 @@ export function TodayScreen() {
     setEditingTask(null);
     setEditorInitialDraft(draft);
     setEditorVisible(true);
+  };
+
+  const [quickAddInitialRecurrence, setQuickAddInitialRecurrence] = useState<RecurrenceType | undefined>(undefined);
+
+  const handleAddMenuSelect = (type: AddTaskType) => {
+    switch (type) {
+      case 'task':
+        setQuickAddInitialRecurrence(undefined);
+        setQuickAddVisible(true);
+        break;
+      case 'recurring':
+        setQuickAddInitialRecurrence('daily');
+        setQuickAddVisible(true);
+        break;
+      case 'chain':
+        setEditingTask(null);
+        setEditorInitialDraft({ chainEnabled: true });
+        setEditorVisible(true);
+        break;
+      case 'stack': {
+        const group = createTaskGroup('', null);
+        newStackIdRef.current = group.id;
+        setEditingGroup(group);
+        setGroupEditorVisible(true);
+        break;
+      }
+    }
   };
 
   const filtered = useMemo(() => {
@@ -1282,6 +1317,14 @@ export function TodayScreen() {
           accessibilityLabel: 'Sort and filter',
         }]
       : []),
+    ...(viewMode === 'today'
+      ? [{
+          icon: 'ellipsis-horizontal' as const,
+          onPress: () => setOptionsMenuVisible(true),
+          active: hideCategories,
+          accessibilityLabel: 'More options',
+        }]
+      : []),
     ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
@@ -1453,6 +1496,7 @@ export function TodayScreen() {
           keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => renderItem({ item })}
           contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
@@ -1630,6 +1674,7 @@ export function TodayScreen() {
         <FlatList
           data={unscheduledTasks}
           keyExtractor={t => t.id}
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => {
             const subs = subtasksByParent.get(item.id) ?? [];
             return (
@@ -1679,22 +1724,12 @@ export function TodayScreen() {
       </View>
 
       {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
-        <Animated.View
-          style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
-          pointerEvents={spotlightActive ? 'none' : 'box-none'}
-        >
-          <PressableScale
-            style={styles.fab}
-            pressScale={0.9}
-            onPress={() => {
-              haptics.impactLight();
-              setQuickAddVisible(true);
-            }}
-            accessibilityLabel="Add task"
-          >
-            <Ionicons name="add" size={28} color={colors.onAccent} />
-          </PressableScale>
-        </Animated.View>
+        <AddTaskFab
+          bottom={insets.bottom + 64}
+          disabled={spotlightActive}
+          opacity={fabOpacity}
+          onSelect={handleAddMenuSelect}
+        />
       )}
 
       <QuickAddModal
@@ -1703,6 +1738,7 @@ export function TodayScreen() {
         onOpenFull={handleQuickAddOpenFull}
         context={viewMode}
         onCreated={handleTaskCreated}
+        initialRecurrenceType={quickAddInitialRecurrence}
       />
 
       <TaskEditor
@@ -1724,6 +1760,11 @@ export function TodayScreen() {
         onPrioritiesChange={setFilterPriorities}
         efforts={filterEfforts}
         onEffortsChange={setFilterEfforts}
+      />
+
+      <TodayOptionsMenu
+        visible={optionsMenuVisible}
+        onClose={() => setOptionsMenuVisible(false)}
         hideCategories={hideCategories}
         onHideCategoriesChange={setHideCategories}
       />
@@ -1731,7 +1772,17 @@ export function TodayScreen() {
       <TaskGroupEditor
         visible={groupEditorVisible}
         group={editingGroup}
-        onClose={() => { setGroupEditorVisible(false); setEditingGroup(null); }}
+        isNew={newStackIdRef.current !== null}
+        onClose={() => {
+          setGroupEditorVisible(false);
+          if (newStackIdRef.current) {
+            const id = newStackIdRef.current;
+            newStackIdRef.current = null;
+            const current = useTaskGroupStore.getState().getGroupById(id);
+            if (current && current.title.trim() === '') removeGroupRow(id);
+          }
+          setEditingGroup(null);
+        }}
       />
 
       {selectionMode && (
@@ -1884,19 +1935,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listFooterFixed: { flexGrow: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
-  // Sits above the spotlight-elevated list (zIndex 10) so the FAB is never
-  // covered by rows; while a task is spotlighted it's faded out and
-  // pointerEvents-disabled by the screen.
-  fabContainer: {
-    position: 'absolute', right: spacing.lg,
-    zIndex: 20,
-  },
-  fab: {
-    width: 56, height: 56, borderRadius: 28,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.accent, shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.45, shadowRadius: 10, elevation: 8,
-  },
   filterBar: {
     flexDirection: 'row', alignItems: 'center',
     paddingHorizontal: spacing.md, paddingVertical: 2, gap: spacing.sm,

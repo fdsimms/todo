@@ -185,7 +185,7 @@ export function BulkActionBar({
                   onPress={() => { haptics.tap(); setPanel('group'); }}
                 >
                   <Ionicons name="layers" size={24} color={colors.accent} />
-                  <Text style={[styles.actionLabel, { color: colors.accent }]}>Group</Text>
+                  <Text style={[styles.actionLabel, { color: colors.accent }]}>Stack</Text>
                 </PressableScale>
               )}
               <PressableScale
@@ -376,7 +376,7 @@ export function BulkActionBar({
               <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.subTitle}>Group Tasks</Text>
+              <Text style={styles.subTitle}>Stack Tasks</Text>
               <TouchableOpacity
                 style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
                 onPress={handleApplyGroup}
@@ -389,7 +389,7 @@ export function BulkActionBar({
             <View style={styles.tagInputRow}>
               <TextInput
                 style={styles.tagInput}
-                placeholder="Group name, e.g. 'Take supplements'…"
+                placeholder="Stack name, e.g. 'Take supplements'…"
                 placeholderTextColor={colors.textTertiary}
                 value={groupTitle}
                 onChangeText={setGroupTitle}

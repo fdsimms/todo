@@ -27,10 +27,12 @@ import { SortableList } from './SortableList';
 interface Props {
   visible: boolean;
   group: TaskGroup | null;
+  /** True when this stack was just created and hasn't been titled yet — changes the header title. */
+  isNew?: boolean;
   onClose: () => void;
 }
 
-export function TaskGroupEditor({ visible, group, onClose }: Props) {
+export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -104,13 +106,13 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
   const handleDelete = () => {
     if (!group) return;
     Alert.alert(
-      'Delete Group',
+      'Delete Stack',
       `Delete "${group.title}"?`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete This Group', onPress: () => { deleteGroup(group.id, { cascade: false }); onClose(); } },
+        { text: 'Delete This Stack', onPress: () => { deleteGroup(group.id, { cascade: false }); onClose(); } },
         {
-          text: 'Delete Group and All Its Tasks',
+          text: 'Delete Stack and All Its Tasks',
           style: 'destructive',
           onPress: () => { deleteGroup(group.id, { cascade: true }); onClose(); },
         },
@@ -127,7 +129,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
           <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Group</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
@@ -138,7 +140,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
             style={styles.titleInput}
             value={title}
             onChangeText={setTitle}
-            placeholder="Group title"
+            placeholder="Stack title"
             placeholderTextColor={colors.textTertiary}
             maxLength={TITLE_MAX_LENGTH}
             multiline
@@ -220,7 +222,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
           <View style={styles.sectionCard}>
             <View style={styles.cardSection}>
               <View style={styles.subtaskHeader}>
-                <Text style={styles.sectionLabel}>Tasks in this group</Text>
+                <Text style={styles.sectionLabel}>Tasks in this stack</Text>
                 <Text style={styles.subtaskProgress}>{completedChildren.length}/{children.length}</Text>
               </View>
               <SortableList
@@ -326,7 +328,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
                     </TouchableOpacity>
                   ))}
                   {eligibleForAdd.length === 0 && (
-                    <Text style={styles.existingEmpty}>No matching ungrouped tasks</Text>
+                    <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
                   )}
                 </View>
               )}
