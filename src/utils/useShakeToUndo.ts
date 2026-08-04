@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Alert } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { useTaskStore } from '../store/useTaskStore';
 import { haptics } from './haptics';
@@ -16,6 +16,10 @@ const SHAKE_COOLDOWN_MS = 1500;
  * unrelated reasons never surprises the user with a reverted action.
  * Confirming (rather than undoing outright) also protects against
  * incidental shakes, e.g. the phone getting tossed onto a bed.
+ *
+ * Only armed while the app is foregrounded: motion picked up while the app
+ * is backgrounded (e.g. jostling in a pocket) must not queue up a confirm
+ * dialog that then appears out of nowhere the next time the app is opened.
  */
 export function useShakeToUndo(): void {
   const lastShakeAt = useRef(0);
@@ -25,6 +29,8 @@ export function useShakeToUndo(): void {
     Accelerometer.setUpdateInterval(UPDATE_INTERVAL_MS);
 
     const subscription = Accelerometer.addListener(({ x, y, z }) => {
+      if (AppState.currentState !== 'active') return;
+
       const magnitude = Math.sqrt(x * x + y * y + z * z);
       if (magnitude < SHAKE_THRESHOLD_G) return;
 
