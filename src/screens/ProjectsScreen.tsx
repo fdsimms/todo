@@ -68,7 +68,10 @@ export function ProjectsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      return () => setExpandedTaskId(null);
+      return () => {
+        setExpandedTaskId(null);
+        setShowCompleted(false);
+      };
     }, [])
   );
 
@@ -77,10 +80,16 @@ export function ProjectsScreen() {
     [projects, showArchived]
   );
 
+  const [showCompleted, setShowCompleted] = useState(false);
+
   const selectedProject = selectedProjectId ? projects.find(p => p.id === selectedProjectId) ?? null : null;
   const projectTasks = selectedProject
     ? allTasks.filter(t => t.projectId === selectedProject.id && t.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
+  const incompleteProjectTasks = projectTasks.filter(t => !t.completed);
+  const completedProjectTasks = projectTasks
+    .filter(t => t.completed)
+    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
 
   const handleStartAdding = () => {
     animateLayout();
@@ -259,7 +268,7 @@ export function ProjectsScreen() {
             onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
           >
             <FlatList
-              data={projectTasks}
+              data={incompleteProjectTasks}
               keyExtractor={t => t.id}
               contentContainerStyle={{ flexGrow: 1 }}
               renderItem={({ item }) => {
@@ -284,10 +293,51 @@ export function ProjectsScreen() {
                 );
               }}
               ListEmptyComponent={
-                <EmptyState icon="flag-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
+                completedProjectTasks.length === 0 ? (
+                  <EmptyState icon="flag-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
+                ) : null
               }
               ListFooterComponent={
                 <View style={styles.detailFooter}>
+                  {completedProjectTasks.length > 0 && (
+                    <View style={styles.completedSection}>
+                      <TouchableOpacity
+                        style={styles.completedToggle}
+                        onPress={() => { animateLayout(); setShowCompleted(v => !v); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} completed tasks`}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={13} color={colors.textTertiary} />
+                        <Text style={styles.completedToggleText}>
+                          {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} completed
+                        </Text>
+                        <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      {showCompleted && completedProjectTasks.map(task => {
+                        const subs = allTasks.filter(t => t.parentId === task.id);
+                        return (
+                          <TaskItem
+                            key={task.id}
+                            task={task}
+                            onPress={() => {
+                              if (expandedTaskId !== null && expandedTaskId !== task.id) {
+                                setExpandedTaskId(null);
+                                return;
+                              }
+                              setExpandedTaskId(prev => prev === task.id ? null : task.id);
+                            }}
+                            expanded={expandedTaskId === task.id}
+                            onEdit={() => openEditor(task)}
+                            subtaskCount={subs.length}
+                            subtaskDoneCount={subs.filter(t => t.completed).length}
+                            subtasks={subs}
+                            spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id}
+                          />
+                        );
+                      })}
+                    </View>
+                  )}
                   {addingTask ? (
                     <View style={styles.addRow}>
                       <TextInput
@@ -506,6 +556,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   detailFooter: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
+  },
+  completedSection: {
+    paddingBottom: spacing.sm,
+  },
+  completedToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+  },
+  completedToggleText: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   footerBtn: {
     flexDirection: 'row',
