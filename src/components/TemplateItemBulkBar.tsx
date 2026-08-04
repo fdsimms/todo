@@ -50,7 +50,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
           <View style={styles.actionRow}>
             <PressableScale style={styles.actionBtn} onPress={() => { haptics.tap(); setPanel('group'); }}>
               <Ionicons name="layers" size={24} color={colors.accent} />
-              <Text style={[styles.actionLabel, { color: colors.accent }]}>Group</Text>
+              <Text style={[styles.actionLabel, { color: colors.accent }]}>Stack</Text>
             </PressableScale>
             <PressableScale style={styles.actionBtn} onPress={() => { haptics.impactMedium(); onDelete(); }}>
               <Ionicons name="trash" size={24} color={colors.red} />
@@ -66,7 +66,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
             <TouchableOpacity onPress={() => setPanel('actions')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={styles.subTitle}>Group Items</Text>
+            <Text style={styles.subTitle}>Stack Items</Text>
             <TouchableOpacity
               style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
               onPress={handleApplyGroup}
@@ -78,7 +78,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
             style={styles.groupInput}
             value={groupTitle}
             onChangeText={setGroupTitle}
-            placeholder="Group name"
+            placeholder="Stack name"
             placeholderTextColor={colors.textTertiary}
             autoFocus
             returnKeyType="done"
