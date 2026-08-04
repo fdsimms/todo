@@ -13,6 +13,7 @@ interface SettingsStore {
   anthropicApiKey: string;
   vacationMode: boolean;
   vacationStart: string | null;
+  vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
@@ -25,7 +26,8 @@ interface SettingsStore {
   setEveningStart: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAnthropicApiKey: (key: string) => void;
-  setVacationMode: (on: boolean) => void;
+  setVacationMode: (on: boolean, endDate?: string | null) => void;
+  setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
@@ -41,6 +43,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   anthropicApiKey: '',
   vacationMode: false,
   vacationStart: null,
+  vacationEnd: null,
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
@@ -56,6 +59,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
+    const vacationEnd = dbGetSetting('vacationEnd') || null;
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const hideCategories = dbGetSetting('hideCategories') === 'true';
@@ -68,7 +72,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -102,16 +106,24 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ anthropicApiKey: key });
   },
 
-  setVacationMode(on: boolean) {
+  setVacationMode(on: boolean, endDate?: string | null) {
     if (on) {
       const start = new Date().toISOString();
+      const end = endDate ?? null;
       dbSetSetting('vacationMode', 'true');
       dbSetSetting('vacationStart', start);
-      set({ vacationMode: true, vacationStart: start });
+      dbSetSetting('vacationEnd', end ?? '');
+      set({ vacationMode: true, vacationStart: start, vacationEnd: end });
     } else {
       dbSetSetting('vacationMode', 'false');
-      set({ vacationMode: false, vacationStart: null });
+      dbSetSetting('vacationEnd', '');
+      set({ vacationMode: false, vacationStart: null, vacationEnd: null });
     }
+  },
+
+  setVacationEnd(endDate: string | null) {
+    dbSetSetting('vacationEnd', endDate ?? '');
+    set({ vacationEnd: endDate });
   },
 
   setAutoRemoveExpiredTasks(on: boolean) {
