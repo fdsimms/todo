@@ -30,6 +30,7 @@ import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown 
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -58,6 +59,8 @@ interface Props {
   showActions?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
+  /** Briefly tints the row on mount to draw the eye to a task that was just created. */
+  justCreated?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -112,6 +115,7 @@ export function TaskItem({
   showProject = false,
   showActions = true,
   indented = false,
+  justCreated = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -130,6 +134,7 @@ export function TaskItem({
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const reduceMotion = useReduceMotion();
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -165,6 +170,9 @@ export function TaskItem({
   // the same light background in light mode. A flat scrim darkens every
   // pixel underneath by the same fixed amount regardless of its original color.
   const spotlightScrimOpacity = useRef(new Animated.Value(spotlightDisabled ? 1 : 0)).current;
+  // Tints the row briefly right after it mounts as the result of task
+  // creation, so the user can tell which row is the one that just appeared.
+  const highlightOpacity = useRef(new Animated.Value(justCreated && !reduceMotion ? 0.35 : 0)).current;
   // Reanimated (UI-thread) shared value drives the expand/collapse. The panel
   // animates `height`, which forces a re-layout of every row below it on each
   // frame — doing that from a JS-thread Animated.Value stutters once the list
@@ -224,6 +232,16 @@ export function TaskItem({
       haptics.impactMedium();
     }
   }, [isActive]);
+
+  useEffect(() => {
+    if (!justCreated || reduceMotion) return;
+    Animated.timing(highlightOpacity, {
+      toValue: 0,
+      duration: animation.duration.slow,
+      delay: 350,
+      useNativeDriver: true,
+    }).start();
+  }, [justCreated]);
 
   // Tick once a second only while this task's timer runs, so the elapsed clock
   // updates live without keeping an interval alive on every idle row.
@@ -555,7 +573,7 @@ export function TaskItem({
         )}
         {showProject && projectTitle && (
           <View style={styles.projectRow}>
-            <Ionicons name="flag-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
             <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
           </View>
         )}
@@ -949,6 +967,12 @@ export function TaskItem({
             style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
             pointerEvents="none"
           />
+          {justCreated && !reduceMotion && (
+            <Animated.View
+              style={[styles.highlightScrim, { opacity: highlightOpacity }]}
+              pointerEvents="none"
+            />
+          )}
           </View>
         </Animated.View>
       </Reanimated.View>
@@ -1011,6 +1035,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   spotlightScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.backdrop,
+  },
+  highlightScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.accent,
   },
   swipeContainer: {
     borderRadius: radius.md,

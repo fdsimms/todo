@@ -1,0 +1,4 @@
+{
+  "message": "Deleting tasks from the bulk edit bar now asks you to confirm first, so a stray tap can't wipe out a selection",
+  "date": "2026-08-04"
+}

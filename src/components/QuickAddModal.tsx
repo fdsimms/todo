@@ -25,7 +25,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay, RecurrenceType } from '../types';
+import type { Priority, Effort, TimeOfDay, RecurrenceType, Task } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -46,6 +46,10 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onOpenFull: (draft: TaskDraft) => void;
+  /** Which list this was opened from — determines the default due date. Defaults to 'today'. */
+  context?: 'today' | 'later' | 'inbox';
+  /** Called right after a new task is created (not on the "resume archived" path). */
+  onCreated?: (task: Task) => void;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | null;
@@ -65,7 +69,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 };
 
 
-export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
+export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -163,7 +167,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       setCustomEffortText('');
       setEffortNote(null);
       setEffortAiLoading(false);
-      setDueDate(getLogicalToday(dayResetTime));
+      setDueDate(
+        context === 'later' ? getLogicalTomorrow(dayResetTime)
+        : context === 'inbox' ? null
+        : getLogicalToday(dayResetTime)
+      );
       setTimeSegments([]);
       setTags([]);
       setCategory(null);
@@ -196,7 +204,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
         inputRef.current?.focus();
       });
     }
-  }, [visible]);
+  }, [visible, context]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -261,7 +269,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
-    addTask({
+    const task = addTask({
       title: finalTitle,
       priority,
       effort,
@@ -276,6 +284,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull }: Props) {
       recurrenceMonthDay,
       recurrenceFromCompletion,
     });
+    onCreated?.(task);
     dismiss();
   };
 

@@ -926,6 +926,60 @@ describe('completeTask', () => {
   });
 });
 
+// ─── checkVacationExpiry ────────────────────────────────────────────────────
+
+describe('checkVacationExpiry', () => {
+  const getSettingsMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  it('does nothing when vacation mode is off', () => {
+    const setVacationMode = jest.fn();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: false, vacationEnd: '2025-06-01T23:59:59.999Z', setVacationMode,
+    });
+    useTaskStore.getState().checkVacationExpiry();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when no end date is set', () => {
+    const setVacationMode = jest.fn();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: true, vacationEnd: null, setVacationMode,
+    });
+    useTaskStore.getState().checkVacationExpiry();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the end date has not passed yet', () => {
+    const setVacationMode = jest.fn();
+    const future = new Date(Date.now() + 60_000).toISOString();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: true, vacationEnd: future, setVacationMode,
+    });
+    useTaskStore.getState().checkVacationExpiry();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('turns vacation mode off and forgives streaks once the end date has passed', () => {
+    const setVacationMode = jest.fn();
+    const past = new Date(Date.now() - 60_000).toISOString();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00', vacationMode: true, vacationEnd: past, setVacationMode,
+    });
+    const streakDate = new Date(2025, 0, 1).toISOString();
+    const task = makeTask({ id: 't1', vacationPause: true, recurrenceType: 'daily', streakCount: 3, streakDate });
+    useTaskStore.setState({ tasks: [task] });
+
+    useTaskStore.getState().checkVacationExpiry();
+
+    expect(setVacationMode).toHaveBeenCalledWith(false);
+    const updated = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(updated?.streakDate).not.toBe(streakDate);
+  });
+});
+
 // ─── uncompleteTask ───────────────────────────────────────────────────────────
 
 describe('uncompleteTask', () => {

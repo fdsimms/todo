@@ -165,6 +165,7 @@ interface TaskStore {
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
 
   forgivVacationStreaks: () => void;
+  checkVacationExpiry: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
@@ -1115,6 +1116,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           : t
       ),
     }));
+  },
+
+  // Auto-turns-off vacation mode once its optional end date has passed —
+  // call on app start and whenever the app returns to the foreground, since
+  // there's no timer running while the app is backgrounded/closed.
+  checkVacationExpiry() {
+    const { vacationMode, vacationEnd, setVacationMode } = useSettingsStore.getState();
+    if (!vacationMode || !vacationEnd) return;
+    if (new Date() < new Date(vacationEnd)) return;
+    get().forgivVacationStreaks();
+    setVacationMode(false);
   },
 
   resetAllStreaks() {

@@ -89,7 +89,7 @@ const MainTabs = React.memo(function MainTabs({
           listeners={tabPressHaptic}
           options={{
             tabBarAccessibilityLabel: 'Projects',
-            tabBarIcon: ({ color, size }) => <Ionicons name="flag" size={size} color={color} />,
+            tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
           }}
         />
         <Tab.Screen

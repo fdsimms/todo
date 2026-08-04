@@ -97,6 +97,24 @@ export function ordinal(n: number): string {
   }
 }
 
+const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
+  daily: 'day',
+  weekly: 'week',
+  monthly: 'month',
+  yearly: 'year',
+};
+
+function recurrenceUnitLabel(type: RecurrenceType, interval: number): string {
+  if (type === 'none') return '';
+  const unit = RECURRENCE_UNIT_SINGULAR[type];
+  return interval === 1 ? unit : `${unit}s`;
+}
+
+function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
+  if (type === 'none') return '';
+  return `Every ${interval} ${recurrenceUnitLabel(type, interval)}`;
+}
+
 export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, onCategoryCreated }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -451,9 +469,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setNewTag(''); setAddingTag(false);
   };
 
-  const cycleRecurrence = () => {
-    const types: RecurrenceType[] = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
-    setRecurrenceType(types[(types.indexOf(recurrenceType) + 1) % types.length]);
+  const enableRecurrence = () => {
+    if (recurrenceType === 'none') setRecurrenceType('daily');
   };
 
   const recurrenceEndMode: 'never' | 'date' | 'count' =
@@ -1357,14 +1374,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             <OptionRow
               icon="repeat"
               label="Repeat"
-              value={recurrenceType !== 'none' ? RECURRENCE_LABELS[recurrenceType] : undefined}
-              onPress={cycleRecurrence}
+              value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
+              onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
               colors={colors}
               styles={styles}
             />
             {recurrenceType !== 'none' && (
               <>
+                <View style={styles.scheduleRow}>
+                  {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.schedulePill, recurrenceType === type && styles.schedulePillActive]}
+                      onPress={() => setRecurrenceType(type)}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceType === type && styles.schedulePillTextActive]}>
+                        {RECURRENCE_LABELS[type]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>Every</Text>
                   <TouchableOpacity
@@ -1380,7 +1410,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
                   </TouchableOpacity>
-                  <Text style={styles.intervalLabel}>{RECURRENCE_LABELS[recurrenceType].toLowerCase()}</Text>
+                  <Text style={styles.intervalLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
                 </View>
                 {recurrenceType === 'weekly' && (
                   <View style={styles.weekdayRow}>
@@ -1739,6 +1769,7 @@ function OptionRow({
               <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
           )}
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
         </View>
       ) : (
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
