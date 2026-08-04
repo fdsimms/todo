@@ -48,19 +48,34 @@ export function useTaskSelection(allTasks: Task[]) {
   // selection.
   const handleBulkDelete = () => {
     const ids = Array.from(selectedIds);
+    const count = ids.length;
+    const plural = count === 1 ? 'task' : 'tasks';
     const liveRecurringIds = ids.filter(id => {
       const t = allTasks.find(x => x.id === id);
       return t ? isLiveRecurring(t) : false;
     });
     if (liveRecurringIds.length === 0) {
-      bulkDeleteTasks(ids);
-      exitSelection();
+      Alert.alert(
+        `Delete ${count} ${plural}?`,
+        `You're about to delete ${count} ${plural}. You can undo this by shaking your phone right after.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              bulkDeleteTasks(ids);
+              exitSelection();
+            },
+          },
+        ],
+      );
       return;
     }
     const restIds = ids.filter(id => !liveRecurringIds.includes(id));
     Alert.alert(
-      'Delete recurring tasks',
-      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series?',
+      `Delete ${count} ${plural}?`,
+      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series? You can undo this by shaking your phone right after.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
