@@ -2,6 +2,8 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import type { RecurrenceType, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
+import { resetToToday } from '../navigation/navigationRef';
 
 const DEBOUNCE_MS = 300;
 const MAX_VISIBLE_TASKS = 50;
@@ -54,12 +56,16 @@ function writeToNativeBridge(jsonString: string): void {
   }
 }
 
-// Applies task completions queued by the widget's checkbox
+// Hands off task completions queued by the widget's checkbox
 // (CompleteTaskIntent, running in the separate widget extension process —
-// see modules/todo-widget-bridge). The widget can only optimistically mark
-// a task checked; it has no access to the JS logic for recurrence, streaks,
-// or chains, so the actual completeTask() call — the same one the app's own
-// UI uses — only happens here, once per app launch.
+// see modules/todo-widget-bridge) to TodayScreen via useWidgetCompletionStore,
+// which plays the same complete animation a normal in-app tap gets before
+// actually calling completeTask() (see TaskItem's autoComplete prop) — the
+// widget can only optimistically mark a task checked; it has no access to the
+// JS logic for recurrence, streaks, or chains, so the real completion only
+// happens once the app is foregrounded. Tapping the checkbox now opens the
+// app (CompleteTaskIntent.openAppWhenRun), so this also jumps to Today so the
+// animation is actually visible.
 async function processPendingWidgetCompletions(): Promise<void> {
   if (Platform.OS !== 'ios') return;
   try {
@@ -67,10 +73,9 @@ async function processPendingWidgetCompletions(): Promise<void> {
       drainPendingWidgetCompletions: () => Promise<string[]>;
     };
     const ids = await drainPendingWidgetCompletions();
-    const { completeTask } = useTaskStore.getState();
-    for (const id of ids) {
-      completeTask(id);
-    }
+    if (ids.length === 0) return;
+    useWidgetCompletionStore.getState().enqueue(ids);
+    resetToToday();
   } catch {
     // No dev client build with the native module present (e.g. Expo Go) — no-op.
   }
@@ -116,7 +121,7 @@ export function useWidgetSync(): void {
       scheduleSnapshotWrite();
     });
 
-    // The widget's "sync" bar (SyncPendingCompletionsIntent, in
+    // Tapping a checkbox in the widget (CompleteTaskIntent, in
     // TodoTodayWidget.swift) opens the app to apply queued completions, but
     // if the app was already running in the background this effect doesn't
     // remount — only a fresh 'active' AppState transition tells us to drain
