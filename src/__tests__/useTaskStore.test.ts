@@ -536,11 +536,22 @@ describe('completeTask', () => {
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
   });
 
-  it('clears pinned when completing a pinned task', () => {
+  it('keeps pinned true through the completion hold, then clears it', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
     useTaskStore.getState().completeTask('t1');
-    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
-    expect(task?.pinned).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
+
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(false);
+  });
+
+  it('does not clear pinned if the completion is undone before the hold expires', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
+    useTaskStore.getState().completeTask('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+
+    jest.advanceTimersByTime(1200);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 't1')?.pinned).toBe(true);
   });
 
   it('cancels the reminder when completed', () => {
@@ -921,13 +932,12 @@ describe('completeTask', () => {
       expect(useTaskStore.getState().visibleTasks()).toHaveLength(0);
     });
 
-    it('removes a just-completed task from pinnedTasks immediately, unlike the visibleTasks hold', () => {
-      // completeTask explicitly clears pinned (see the "clears pinned when
-      // completing a pinned task" test above), so unlike visibleTasks — which
-      // holds a completed task via completionHoldIds for the fade-out
-      // animation — pinnedTasks has nothing left to hold onto.
+    it('also holds a just-completed task in pinnedTasks', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
       useTaskStore.getState().completeTask('t1');
+      expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['t1']);
+
+      jest.advanceTimersByTime(1200);
       expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
     });
   });

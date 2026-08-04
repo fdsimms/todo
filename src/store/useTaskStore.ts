@@ -65,6 +65,10 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 // vanishing out from under them mid-burst.
 const COMPLETION_HOLD_MS = 1000;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
+// Ids of tasks completed while pinned, whose pin should be cleared once the
+// completion hold above expires — keeps a pinned row from vanishing out of
+// the Pinned section instantly on tap, same grace period as everywhere else.
+let pendingUnpinIds: string[] = [];
 
 // Caches the masked (completed: false) copy of each held task, keyed by the
 // underlying task's own reference. Selectors like visibleTasks() call this on
@@ -462,12 +466,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...task,
       completed: true,
       completedAt: now.toISOString(),
-      pinned: false, // completing a task explicitly clears its pin
+      // Pin is cleared once the completion hold below expires, not
+      // immediately — otherwise a pinned row would vanish from the Pinned
+      // section instantly instead of getting the same fade-out grace period
+      // every other list gives a completed task.
       streakCount: task.recurrenceType !== 'none' ? newStreakCount : task.streakCount,
       streakDate: task.recurrenceType !== 'none' ? getCurrentDayStart().toISOString() : task.streakDate,
       previousStreakCount: task.streakCount,
       previousStreakDate: task.streakDate,
     };
+    if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
 
     cancelTaskReminder(id);
@@ -557,6 +565,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
+      const unpinIds = pendingUnpinIds;
+      pendingUnpinIds = [];
+      // Re-check completed && pinned against current state rather than
+      // trusting the ids blindly — if the completion was undone in the
+      // meantime (uncompleteTask), the task is no longer completed and its
+      // pin was never actually touched, so it must stay untouched here too.
+      const stillPinnedIds = get().tasks
+        .filter(t => unpinIds.includes(t.id) && t.completed && t.pinned)
+        .map(t => t.id);
+      if (stillPinnedIds.length > 0) dbBulkSetPinned(stillPinnedIds, false);
       // No animateLayout() here: this commit unmounts the completed row's
       // Swipeable (react-native-gesture-handler). Firing a LayoutAnimation in
       // the same tick a Swipeable unmounts crashes on iOS — RNGH's native
@@ -564,7 +582,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // transition and can segfault mid-GC. The row already faded to
       // opacity 0 during the completion animation, so the list just loses its
       // slot cleanly without needing an extra transition here.
-      set({ completionHoldIds: [] });
+      set(s => ({
+        completionHoldIds: [],
+        tasks: stillPinnedIds.length > 0
+          ? s.tasks.map(t => (stillPinnedIds.includes(t.id) ? { ...t, pinned: false } : t))
+          : s.tasks,
+      }));
     }, COMPLETION_HOLD_MS);
     // Node (tests) returns a Timeout with unref(); React Native's timer is a
     // plain number without it — don't keep a test process alive over this.
