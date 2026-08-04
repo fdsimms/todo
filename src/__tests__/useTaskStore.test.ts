@@ -1800,6 +1800,43 @@ describe('bulkDeleteTasks', () => {
   });
 });
 
+describe('clearLogbook', () => {
+  it('deletes every completed task but leaves incomplete ones', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'b', completed: true, completedAt: '2026-01-02T00:00:00.000Z' }),
+        makeTask({ id: 'c', completed: false }),
+      ],
+    });
+    useTaskStore.getState().clearLogbook();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['c']);
+  });
+
+  it('does nothing when the logbook is empty', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', completed: false })] });
+    useTaskStore.getState().clearLogbook();
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('queues an undo, labeled for the logbook, that restores the completed tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2026-01-01T00:00:00.000Z' }),
+        makeTask({ id: 'b', completed: true, completedAt: '2026-01-02T00:00:00.000Z' }),
+      ],
+    });
+    useTaskStore.getState().clearLogbook();
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('Logbook cleared');
+    lastAction?.undo();
+
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b']);
+  });
+});
+
 describe('bulkCompleteTasks', () => {
   it('completes every specified task', () => {
     useTaskStore.setState({
