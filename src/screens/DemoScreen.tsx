@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
+import React, { useMemo, useState, useCallback, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { addDays, subDays } from 'date-fns';
 import { useTaskStore } from '../store/useTaskStore';
@@ -14,18 +15,15 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import type { Task } from '../types';
 
-interface Props {
-  visible: boolean;
-  onClose: () => void;
-}
-
 // Tag/category used to mark every task this screen creates, so it can find
 // them again later (to render or to wipe) without touching anything real
 // the user has in their own list.
 const DEMO_TAG = 'demo';
 const DEMO_CATEGORY = 'Demo Showcase';
 
-export function DemoScreen({ visible, onClose }: Props) {
+export function DemoScreen() {
+  const navigation = useNavigation();
+  const onClose = () => navigation.goBack();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -181,15 +179,15 @@ export function DemoScreen({ visible, onClose }: Props) {
     });
   }, [addTask, addSubtask, addCategory, updateTask]);
 
-  useEffect(() => {
-    if (visible && demoTasks.length === 0) {
-      seedDemoTasks();
-    }
-    if (visible) {
+  useFocusEffect(
+    useCallback(() => {
+      if (demoTasks.length === 0) {
+        seedDemoTasks();
+      }
       setExpandedTaskId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   const confirmRemove = () => {
     Alert.alert(
@@ -228,16 +226,12 @@ export function DemoScreen({ visible, onClose }: Props) {
   );
 
   return (
-    // fullScreen, not pageSheet (see SettingsScreen): pageSheet is
-    // swipe-to-dismiss on iOS and leaves the real app dimly visible behind
-    // it on iPad — either would expose real tasks to whoever's holding the
-    // phone during a demo. fullScreen has no dismiss gesture but our own.
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onClose}
-    >
+    // Registered with presentation: 'fullScreenModal' in AppNavigator, not
+    // 'modal' (see SettingsScreen): 'modal' is swipe-to-dismiss on iOS and
+    // leaves the real app dimly visible behind it on iPad — either would
+    // expose real tasks to whoever's holding the phone during a demo.
+    // fullScreenModal has no dismiss gesture but our own.
+    <>
       <View style={styles.root}>
         <View style={styles.header}>
           <TouchableOpacity onPress={confirmRemove} hitSlop={8} style={styles.sideBtn} accessibilityRole="button" accessibilityLabel="Remove demo tasks">
@@ -289,7 +283,7 @@ export function DemoScreen({ visible, onClose }: Props) {
         tagOptions={demoTagOptions}
         onCategoryCreated={handleCategoryCreated}
       />
-    </Modal>
+    </>
   );
 }
 

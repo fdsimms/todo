@@ -1,8 +1,9 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { PanResponder, StyleSheet, View } from 'react-native';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
@@ -24,6 +25,7 @@ import { border } from '../theme';
 import { haptics } from '../utils/haptics';
 
 const Tab = createBottomTabNavigator();
+const RootStack = createNativeStackNavigator();
 const EDGE_WIDTH = 20;
 
 // Screens only reachable via the drawer — hidden from the tab bar.
@@ -46,8 +48,6 @@ const styles = StyleSheet.create({
 });
 
 interface MainTabsProps {
-  navRef: React.RefObject<NavigationContainerRef<any> | null>;
-  onStateChange: () => void;
   screenOptions: any;
   tabPressHaptic: { tabPress: () => void };
   menuOpen: boolean;
@@ -60,66 +60,64 @@ interface MainTabsProps {
 // re-render and recompute its derived task lists — that recompute was
 // blocking the settings modal's open animation.
 const MainTabs = React.memo(function MainTabs({
-  navRef, onStateChange, screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
+  screenOptions, tabPressHaptic, menuOpen, accentColor, onOpenMenu,
 }: MainTabsProps) {
   return (
-    <NavigationContainer ref={navRef} onStateChange={onStateChange}>
-      <Tab.Navigator screenOptions={screenOptions}>
-        <Tab.Screen
-          name="Today"
-          component={TodayScreen}
-          listeners={tabPressHaptic}
-          options={{
-            tabBarAccessibilityLabel: 'Today',
-            tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
-          }}
-        />
-        <Tab.Screen
-          name="Search"
-          component={SearchScreen}
-          listeners={tabPressHaptic}
-          options={{
-            tabBarAccessibilityLabel: 'Search',
-            tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
-          }}
-        />
-        <Tab.Screen
-          name="Projects"
-          component={ProjectsScreen}
-          listeners={tabPressHaptic}
-          options={{
-            tabBarAccessibilityLabel: 'Projects',
-            tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
-          }}
-        />
-        <Tab.Screen
-          name="More"
-          component={MorePlaceholder}
-          listeners={{
-            tabPress: (e) => {
-              e.preventDefault();
-              haptics.tap();
-              onOpenMenu();
-            },
-          }}
-          options={{
-            tabBarAccessibilityLabel: 'More, opens menu',
-            tabBarIcon: ({ color }) => (
-              <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
-            ),
-          }}
-        />
+    <Tab.Navigator screenOptions={screenOptions}>
+      <Tab.Screen
+        name="Today"
+        component={TodayScreen}
+        listeners={tabPressHaptic}
+        options={{
+          tabBarAccessibilityLabel: 'Today',
+          tabBarIcon: ({ color, size }) => <Ionicons name="checkbox" size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Search"
+        component={SearchScreen}
+        listeners={tabPressHaptic}
+        options={{
+          tabBarAccessibilityLabel: 'Search',
+          tabBarIcon: ({ color, size }) => <Ionicons name="search" size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="Projects"
+        component={ProjectsScreen}
+        listeners={tabPressHaptic}
+        options={{
+          tabBarAccessibilityLabel: 'Projects',
+          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" size={size} color={color} />,
+        }}
+      />
+      <Tab.Screen
+        name="More"
+        component={MorePlaceholder}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            haptics.tap();
+            onOpenMenu();
+          },
+        }}
+        options={{
+          tabBarAccessibilityLabel: 'More, opens menu',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="menu" size={24} color={menuOpen ? accentColor : color} />
+          ),
+        }}
+      />
 
-        {/* Drawer-only screens — not visible in the tab bar */}
-        <Tab.Screen name="Inbox" component={InboxScreen} options={HIDDEN} />
-        <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
-        <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
-        <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
-        <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
-        <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
-        <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
-      </Tab.Navigator>
-    </NavigationContainer>
+      {/* Drawer-only screens — not visible in the tab bar */}
+      <Tab.Screen name="Inbox" component={InboxScreen} options={HIDDEN} />
+      <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
+      <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
+      <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
+      <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
+      <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
+      <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
+    </Tab.Navigator>
   );
 });
 
@@ -127,17 +125,14 @@ export default function AppNavigator() {
   const colors = useColors();
   const { isDark } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [settingsVisible, setSettingsVisible] = useState(false);
-  const [demoVisible, setDemoVisible] = useState(false);
   const [activeTab, setActiveTab] = useState('Today');
   const navRef = navigationRef;
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
   const closeMenu = useCallback(() => setMenuOpen(false), []);
-  const openSettings = useCallback(() => setSettingsVisible(true), []);
-  const closeSettings = useCallback(() => setSettingsVisible(false), []);
-  const openDemo = useCallback(() => setDemoVisible(true), []);
-  const closeDemo = useCallback(() => setDemoVisible(false), []);
+  const openSettings = useCallback(() => {
+    navRef.current?.navigate('Settings' as never);
+  }, []);
 
   // Light selection tick on every tab switch, matching native tab bars.
   const tabPressHaptic = useMemo(() => ({
@@ -166,7 +161,8 @@ export default function AppNavigator() {
 
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
-    if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More') {
+    if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More'
+      && currentName !== 'Settings' && currentName !== 'Demo') {
       setActiveTab(currentName);
     }
   }, []);
@@ -197,15 +193,31 @@ export default function AppNavigator() {
 
   return (
     <>
-      <MainTabs
-        navRef={navRef}
-        onStateChange={handleStateChange}
-        screenOptions={screenOptions}
-        tabPressHaptic={tabPressHaptic}
-        menuOpen={menuOpen}
-        accentColor={colors.accent}
-        onOpenMenu={openMenu}
-      />
+      <NavigationContainer ref={navRef} onStateChange={handleStateChange}>
+        <RootStack.Navigator screenOptions={{ headerShown: false }}>
+          <RootStack.Screen name="MainTabs">
+            {() => (
+              <MainTabs
+                screenOptions={screenOptions}
+                tabPressHaptic={tabPressHaptic}
+                menuOpen={menuOpen}
+                accentColor={colors.accent}
+                onOpenMenu={openMenu}
+              />
+            )}
+          </RootStack.Screen>
+          <RootStack.Screen
+            name="Settings"
+            component={SettingsScreen}
+            options={{ presentation: 'modal' }}
+          />
+          <RootStack.Screen
+            name="Demo"
+            component={DemoScreen}
+            options={{ presentation: 'fullScreenModal' }}
+          />
+        </RootStack.Navigator>
+      </NavigationContainer>
 
       <SideMenuDrawer
         visible={menuOpen}
@@ -214,8 +226,6 @@ export default function AppNavigator() {
         onOpenSettings={openSettings}
         activeTab={activeTab}
       />
-      <SettingsScreen visible={settingsVisible} onClose={closeSettings} onOpenDemo={openDemo} />
-      <DemoScreen visible={demoVisible} onClose={closeDemo} />
       {!menuOpen && (
         <View
           style={styles.edgeZone}
