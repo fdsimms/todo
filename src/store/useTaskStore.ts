@@ -33,7 +33,7 @@ import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface UndoableAction {
@@ -189,6 +189,7 @@ interface TaskStore {
   visibleTasks: () => Task[];
   upcomingTodayTasks: () => Task[];
   inboxTasks: () => Task[];
+  unscheduledTasks: () => Task[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
@@ -1279,6 +1280,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   inboxTasks() {
     return get().tasks
       .filter(isInboxTask)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  unscheduledTasks() {
+    return get().tasks
+      .filter(isUnscheduledTask)
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

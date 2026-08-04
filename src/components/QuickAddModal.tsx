@@ -47,7 +47,7 @@ interface Props {
   onClose: () => void;
   onOpenFull: (draft: TaskDraft) => void;
   /** Which list this was opened from — determines the default due date. Defaults to 'today'. */
-  context?: 'today' | 'later' | 'inbox';
+  context?: 'today' | 'later' | 'inbox' | 'unscheduled';
   /** Called right after a new task is created (not on the "resume archived" path). */
   onCreated?: (task: Task) => void;
 }
@@ -169,7 +169,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setEffortAiLoading(false);
       setDueDate(
         context === 'later' ? getLogicalTomorrow(dayResetTime)
-        : context === 'inbox' ? null
+        : context === 'inbox' || context === 'unscheduled' ? null
         : getLogicalToday(dayResetTime)
       );
       setTimeSegments([]);
