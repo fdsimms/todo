@@ -776,6 +776,7 @@ describe('Templates', () => {
     title: 'Pack bags',
     notes: '',
     optional: false,
+    anchor: 'start',
     dueOffsetDays: null,
     deferOffsetDays: null,
     timeSegments: [],

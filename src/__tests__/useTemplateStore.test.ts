@@ -26,6 +26,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   title: 'Pack bags',
   notes: '',
   optional: false,
+  anchor: 'start',
   dueOffsetDays: null,
   deferOffsetDays: null,
   timeSegments: [],
@@ -137,35 +138,48 @@ describe('applyTemplate', () => {
         ],
       })],
     });
-    const created = useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), null);
+    const created = useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), { start: null, end: null });
     expect(mockAddTask).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(2);
     expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Pack', 'Trash']);
   });
 
-  it('computes dueDate/deferUntil from the anchor date', () => {
+  it('computes dueDate/deferUntil from the start anchor', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({
-        items: [makeItem({ id: 'a', title: 'Trash', dueOffsetDays: 0, deferOffsetDays: -1 })],
+        items: [makeItem({ id: 'a', title: 'Trash', anchor: 'start', dueOffsetDays: 0, deferOffsetDays: -1 })],
       })],
     });
-    const anchor = new Date('2026-06-20T09:00:00');
-    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), anchor);
+    const start = new Date('2026-06-20T09:00:00');
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end: null });
     const [draft] = mockAddTask.mock.calls[0];
     expect(new Date(draft.dueDate).getDate()).toBe(20);
     expect(new Date(draft.deferUntil).getDate()).toBe(19);
+  });
+
+  it('computes dueDate from the end anchor for items pinned to "end"', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Pack', anchor: 'end', dueOffsetDays: -2 })],
+      })],
+    });
+    const start = new Date('2026-06-20T09:00:00');
+    const end = new Date('2026-06-27T09:00:00');
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end });
+    const [draft] = mockAddTask.mock.calls[0];
+    expect(new Date(draft.dueDate).getDate()).toBe(25);
   });
 
   it('creates undated tasks when no anchor is given', () => {
     useTemplateStore.setState({
       templates: [makeTemplate({ items: [makeItem({ id: 'a', dueOffsetDays: -2 })] })],
     });
-    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), null);
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
     expect(mockAddTask.mock.calls[0][0].dueDate).toBeNull();
   });
 
   it('returns [] for an unknown template', () => {
-    expect(useTemplateStore.getState().applyTemplate('missing', new Set(['a']), null)).toEqual([]);
+    expect(useTemplateStore.getState().applyTemplate('missing', new Set(['a']), { start: null, end: null })).toEqual([]);
     expect(mockAddTask).not.toHaveBeenCalled();
   });
 });

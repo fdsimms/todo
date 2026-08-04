@@ -151,15 +151,21 @@ export interface Task {
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt'>;
 
+// Which of the template's two anchor dates an item's offsets are relative
+// to — e.g. "pack" anchored to the trip's end date, "request time off"
+// anchored to its start date.
+export type TemplateAnchor = 'start' | 'end';
+
 // One task definition inside a TaskTemplate. Item ids are stable so future
 // wizard rules can reference items; `optional` items start unchecked in the
-// apply sheet. Offsets are days relative to the anchor date picked at apply
-// time (negative = before, 0 = day of); null = no date.
+// apply sheet. Offsets are days relative to whichever anchor date (`anchor`)
+// is picked at apply time (negative = before, 0 = day of); null = no date.
 export interface TemplateItem {
   id: string;
   title: string;
   notes: string;
   optional: boolean;
+  anchor: TemplateAnchor;
   dueOffsetDays: number | null;
   deferOffsetDays: number | null;
   timeSegments: TimeOfDay[];

@@ -1,0 +1,4 @@
+{
+  "message": "Templates now support two anchor dates, start and end, so items like \"pack two days before the trip\" and \"request time off a week after you start planning\" can each reference the date that makes sense for them.",
+  "date": "2026-08-04"
+}
