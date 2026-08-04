@@ -219,7 +219,7 @@ export function TemplatesScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Apply template ${tpl.name}`}
             >
-              <Ionicons name="arrow-down-circle-outline" size={18} color={colors.accent} />
+              <Ionicons name="play-circle-outline" size={18} color={colors.accent} />
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleDeleteTemplate(tpl.id, tpl.name)}
@@ -278,7 +278,7 @@ export function TemplatesScreen() {
                 accessibilityState={{ disabled: !selectedTemplate || selectedTemplate.items.length === 0 }}
               >
                 <Ionicons
-                  name="arrow-down-circle-outline"
+                  name="play-circle-outline"
                   size={24}
                   color={selectedTemplate && selectedTemplate.items.length > 0 ? colors.accent : colors.textTertiary}
                 />
