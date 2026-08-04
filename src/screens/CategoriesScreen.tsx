@@ -452,7 +452,7 @@ export function CategoriesScreen() {
         <ReorderableList
           data={allCategories}
           keyExtractor={c => c}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight }]}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
           onReorder={reordered => reorderCategories(reordered)}
