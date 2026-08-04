@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Today/Later/Unscheduled/Inbox switcher rendering as oversized, full-height pills instead of a compact row.",
+  "date": "2026-08-04"
+}

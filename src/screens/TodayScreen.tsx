@@ -1653,7 +1653,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
   viewModePills: {
-    flexDirection: 'row', gap: spacing.xs,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: 4,
   },
   viewModePill: {
