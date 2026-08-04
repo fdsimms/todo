@@ -29,6 +29,7 @@ export function InboxScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const tabBarHeight = useBottomTabBarHeight();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -59,6 +60,8 @@ export function InboxScreen() {
     deselectAll,
     handleBulkDelete,
   } = useTaskSelection(allTasks);
+  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
 
   // Collapse any expanded task when leaving the tab so it isn't still expanded
   // on return.
@@ -124,7 +127,11 @@ export function InboxScreen() {
         <FlatList
           data={inboxTasks}
           keyExtractor={t => t.id}
-          contentContainerStyle={inboxTasks.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={
+            inboxTasks.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
           renderItem={({ item }) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
             return (
@@ -221,6 +228,7 @@ export function InboxScreen() {
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
         />
       )}
     </View>

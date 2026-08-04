@@ -33,6 +33,7 @@ import type { Task } from '../types';
 export function TagsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByTag = useTaskStore(s => s.tasksByTag);
@@ -65,6 +66,8 @@ export function TagsScreen() {
     deselectAll,
     handleBulkDelete,
   } = useTaskSelection(allTasks);
+  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -268,7 +271,7 @@ export function TagsScreen() {
             <FlatList
               data={tagTasks}
               keyExtractor={t => t.id}
-              contentContainerStyle={{ flexGrow: 1 }}
+              contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
               renderItem={({ item }) => {
                 const subs = allTasks.filter(t => t.parentId === item.id);
                 return (
@@ -319,6 +322,7 @@ export function TagsScreen() {
               onDeselectAll={deselectAll}
               onCancel={exitSelection}
               bottomInset={tabBarHeight}
+              onHeightChange={setBulkBarHeight}
             />
           )}
         </View>

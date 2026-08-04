@@ -269,6 +269,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const tabBarHeight = useBottomTabBarHeight();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -324,6 +325,8 @@ export function TodayScreen() {
     deselectAll,
     handleBulkDelete,
   } = useTaskSelection(allTasks);
+  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
@@ -1271,7 +1274,11 @@ export function TodayScreen() {
           }}
           onEndReached={handleLaterEndReached}
           onEndReachedThreshold={400}
-          contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={
+            laterSections.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
           ListEmptyComponent={
             <EmptyState
               icon="moon"
@@ -1300,7 +1307,7 @@ export function TodayScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={({ item }) => renderItem({ item })}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
             <RefreshControl
               refreshing={pullingToAdd}
@@ -1400,7 +1407,11 @@ export function TodayScreen() {
 
             commitDrop();
           }}
-          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={
+            filtered.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
           refreshControl={
             <RefreshControl
               refreshing={pullingToAdd}
@@ -1503,6 +1514,7 @@ export function TodayScreen() {
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
         />
       )}
     </View>
