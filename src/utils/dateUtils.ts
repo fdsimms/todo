@@ -107,7 +107,7 @@ export function formatDueDate(iso: string, dayResetTime?: string): string {
   const diff = differenceInCalendarDays(d, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
   if (isSameWeek(d, today)) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
 export function formatDeferUntil(iso: string, dayResetTime?: string): string {
@@ -117,7 +117,7 @@ export function formatDeferUntil(iso: string, dayResetTime?: string): string {
   if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
   const diff = differenceInCalendarDays(d, today);
   if (diff < 7) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
 /**

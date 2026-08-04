@@ -145,7 +145,11 @@ describe('formatDueDate', () => {
 
   it('returns "MMM d" for dates beyond this week', () => {
     expect(formatDueDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
-    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
+    expect(formatDueDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
   });
 
   it('is not "overdue" for a task due on the logical day, checked after midnight but before dayResetTime', () => {
@@ -186,6 +190,11 @@ describe('formatDeferUntil', () => {
   it('returns "MMM d" for dates beyond this week', () => {
     const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
     expect(result).toBe('Jul 20');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    const result = formatDeferUntil(new Date(2029, 7, 19, 14, 45, 0).toISOString());
+    expect(result).toBe('Aug 19, 2029');
   });
 });
 
