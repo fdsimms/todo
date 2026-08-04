@@ -1631,11 +1631,12 @@ describe('completeGroup', () => {
 });
 
 describe('uncompleteGroup', () => {
-  it('uncompletes every currently-completed child', () => {
+  it('uncompletes every child completed today', () => {
+    const today = new Date().toISOString();
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: 'now' }),
-        makeTask({ id: 'b', groupId: 'g1', completed: true, completedAt: 'now' }),
+        makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: today }),
+        makeTask({ id: 'b', groupId: 'g1', completed: true, completedAt: today }),
       ],
     });
     useTaskStore.getState().uncompleteGroup('g1');
@@ -1648,6 +1649,23 @@ describe('uncompleteGroup', () => {
     });
     useTaskStore.getState().uncompleteGroup('g1');
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('leaves children completed on a previous day untouched (recurring history piling up under the same groupId)', () => {
+    const today = new Date().toISOString();
+    const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'today', groupId: 'g1', completed: true, completedAt: today }),
+        makeTask({ id: 'old-1', groupId: 'g1', completed: true, completedAt: lastWeek }),
+        makeTask({ id: 'old-2', groupId: 'g1', completed: true, completedAt: lastWeek }),
+      ],
+    });
+    useTaskStore.getState().uncompleteGroup('g1');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'today')?.completed).toBe(false);
+    expect(tasks.find(t => t.id === 'old-1')?.completed).toBe(true);
+    expect(tasks.find(t => t.id === 'old-2')?.completed).toBe(true);
   });
 });
 

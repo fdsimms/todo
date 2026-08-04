@@ -34,7 +34,7 @@ import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface UndoableAction {
@@ -1039,7 +1039,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // occurrence — see uncompleteTask) as get().lastAction; capture each one
     // immediately so this can compose them into a single combined undo
     // instead of just the last child's.
-    const children = get().groupChildrenOf(groupId).filter(c => c.completed);
+    // Only children completed as part of *today's* tally (isRelevantToGroupToday) —
+    // a recurring task's groupId is shared by every past completed occurrence
+    // forever (see Recurrence in CLAUDE.md), so without this filter unchecking
+    // the stack would resurrect every historical completion as incomplete,
+    // not just what the checkbox currently represents.
+    const children = get().groupChildrenOf(groupId).filter(c => c.completed && isRelevantToGroupToday(c));
     if (children.length === 0) return;
     const undos: Array<() => void> = [];
     children.forEach(child => {
