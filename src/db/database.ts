@@ -138,6 +138,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN archived_at TEXT',
     'ALTER TABLE categories ADD COLUMN emoji TEXT',
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
+    'ALTER TABLE projects ADD COLUMN category TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -601,6 +602,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     notes: row.notes as string,
     targetStartDate: (row.target_start_date as string) ?? null,
     targetEndDate: (row.target_end_date as string) ?? null,
+    category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -615,20 +617,20 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, sort_order, archived, archived_at, created_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
-      project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
+      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, sort_order=?, archived=?, archived_at=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
-      project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.id,
+      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.id,
     ]
   );
 }

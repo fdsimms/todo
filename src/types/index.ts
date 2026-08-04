@@ -54,6 +54,7 @@ export interface Project {
   notes: string;
   targetStartDate: string | null;
   targetEndDate: string | null;
+  category: string | null;
   sortOrder: number;
   archived: boolean;
   archivedAt: string | null;

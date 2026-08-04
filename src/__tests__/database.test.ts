@@ -855,6 +855,7 @@ describe('Projects', () => {
     notes: '',
     targetStartDate: null,
     targetEndDate: null,
+    category: null,
     sortOrder: 1,
     archived: false,
     archivedAt: null,

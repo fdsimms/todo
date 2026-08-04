@@ -33,7 +33,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category'>>) => void;
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
   archiveProject: (id: string) => void;
@@ -61,6 +61,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       notes: '',
       targetStartDate,
       targetEndDate,
+      category: null,
       sortOrder: maxOrder + 1,
       archived: false,
       archivedAt: null,
