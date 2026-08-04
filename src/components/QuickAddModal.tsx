@@ -661,7 +661,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
               accessibilityLabel={effort > 0 ? `Effort: ${estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}` : 'Set effort'}
             >
               <Ionicons
-                name="flash-outline"
+                name="barbell"
                 size={13}
                 color={effort > 0 ? colors.accent : colors.textTertiary}
               />
