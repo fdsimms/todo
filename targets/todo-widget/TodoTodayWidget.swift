@@ -80,6 +80,31 @@ struct TaskRowView: View {
     }
 }
 
+// Shown only while at least one checkbox tap is queued but not yet applied
+// (see CompleteTaskIntent.swift). Tapping it opens the app via
+// SyncPendingCompletionsIntent, which is what actually runs completeTask()
+// for real — recurrence, streaks, and chains all need the JS app running.
+struct PendingSyncBar: View {
+    let count: Int
+    let palette: WidgetPalette
+
+    var body: some View {
+        Button(intent: SyncPendingCompletionsIntent()) {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 10, weight: .semibold))
+                Text(count == 1 ? "Tap to sync 1 completed task" : "Tap to sync \(count) completed tasks")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundColor(palette.accent)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 6)
+            .padding(.bottom, 10)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct TodoTodayWidgetEntryView: View {
     var entry: TodoTodayProvider.Entry
     @Environment(\.colorScheme) var colorScheme
@@ -162,7 +187,11 @@ struct TodoTodayWidgetEntryView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
-                Spacer(minLength: 0)
+                if !entry.pendingCompletionIds.isEmpty {
+                    PendingSyncBar(count: entry.pendingCompletionIds.count, palette: palette)
+                } else {
+                    Spacer(minLength: 0)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

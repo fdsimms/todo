@@ -29,6 +29,7 @@ const SWIFT_FILES = [
   'TodoWidgetData.swift',
   'TodoTodayWidget.swift',
   'CompleteTaskIntent.swift',
+  'SyncPendingCompletionsIntent.swift',
 ];
 const INFO_PLIST_NAME = `${TARGET_NAME}-Info.plist`;
 const ENTITLEMENTS_NAME = `${TARGET_NAME}.entitlements`;
