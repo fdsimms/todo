@@ -17,6 +17,12 @@ interface Props {
   // today" tally (isRelevantToGroupToday), which needs to see completed and
   // not-yet-due children too, not just what's currently rendered below.
   allChildren: Task[];
+  // Overrides the "N/M" tally with an explicit child list instead of
+  // deriving it from allChildren via isRelevantToGroupToday. Needed inside
+  // Later Today, where a group's children are deferred and so never
+  // currently visible — isRelevantToGroupToday would always read them as not
+  // due, and the badge would never appear.
+  dueTodayOverride?: Task[];
   onToggleCollapse: () => void;
   onComplete: () => void;
   onUncomplete: () => void;
@@ -31,6 +37,7 @@ interface Props {
 export function TaskGroupHeader({
   group,
   allChildren,
+  dueTodayOverride,
   onToggleCollapse,
   onComplete,
   onUncomplete,
@@ -46,7 +53,10 @@ export function TaskGroupHeader({
   const [showDefer, setShowDefer] = useState(false);
   const swipeableRef = useRef<Swipeable>(null);
 
-  const dueToday = useMemo(() => allChildren.filter(isRelevantToGroupToday), [allChildren]);
+  const dueToday = useMemo(
+    () => dueTodayOverride ?? allChildren.filter(isRelevantToGroupToday),
+    [dueTodayOverride, allChildren],
+  );
   const doneToday = dueToday.filter(c => c.completed).length;
   const totalToday = dueToday.length;
   const allDone = totalToday > 0 && doneToday === totalToday;
