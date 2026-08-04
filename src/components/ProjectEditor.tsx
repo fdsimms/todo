@@ -16,10 +16,13 @@ import type { Project } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { formatDueDate } from '../utils/dateUtils';
+import { categoryLabel } from '../utils/categoryLabel';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -36,18 +39,25 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
   const archiveProject = useProjectStore(s => s.archiveProject);
   const unarchiveProject = useProjectStore(s => s.unarchiveProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const categories = useCategoryStore(useShallow(s => s.categories));
+  const addCategory = useTaskStore(s => s.addCategory);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [category, setCategory] = useState<string | null>(null);
   const [targetStartDate, setTargetStartDate] = useState<Date | null>(null);
   const [targetEndDate, setTargetEndDate] = useState<Date | null>(null);
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
     if (!project) return;
     setTitle(project.title);
     setNotes(project.notes);
+    setCategory(project.category);
     setTargetStartDate(project.targetStartDate ? new Date(project.targetStartDate) : null);
     setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
   }, [project]);
@@ -59,6 +69,7 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
       updateProject(project.id, {
         title: trimmed,
         notes,
+        category,
         targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
         targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
       });
@@ -117,7 +128,57 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
             multiline
           />
 
-          <View style={styles.card}>
+          <View style={styles.sectionCard}>
+            <View style={styles.cardSection}>
+              <Text style={styles.sectionLabel}>Category</Text>
+              <View style={styles.pillRow}>
+                <TouchableOpacity
+                  style={[styles.pill, !category && styles.pillActiveNeutral]}
+                  onPress={() => setCategory(null)}
+                >
+                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+                </TouchableOpacity>
+                {allCategories.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                    onPress={() => setCategory(cat)}
+                  >
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+                  </TouchableOpacity>
+                ))}
+                {addingCategory ? (
+                  <TextInput
+                    autoFocus
+                    style={styles.tagInput}
+                    value={newCategory}
+                    onChangeText={setNewCategory}
+                    onSubmitEditing={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); }
+                      setNewCategory(''); setAddingCategory(false);
+                    }}
+                    onBlur={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); }
+                      setNewCategory(''); setAddingCategory(false);
+                    }}
+                    placeholder="category name"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    autoCapitalize="words"
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addTagText}>New</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.card, { marginTop: spacing.lg }]}>
             <OptionRow
               icon="play-outline"
               label="Start date"
@@ -246,6 +307,37 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
+  sectionCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  sectionLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
+  },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  pill: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+  },
+  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillTextActive: { color: colors.text, fontWeight: '600' },
+  tagInput: {
+    color: colors.text, fontSize: font.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
+  },
+  addTagBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: radius.full, borderWidth: 1,
+    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
+  },
+  addTagText: { color: colors.accent, fontSize: font.sm },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,

@@ -16,6 +16,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
+import { useCategoryStore } from '../store/useCategoryStore';
+import { categoryLabel } from '../utils/categoryLabel';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
@@ -50,6 +52,7 @@ export function ProjectsScreen() {
   const createProject = useProjectStore(s => s.createProject);
   const reorderProjects = useProjectStore(s => s.reorderProjects);
   const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const addTask = useTaskStore(s => s.addTask);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
 
@@ -212,6 +215,14 @@ export function ProjectsScreen() {
                       <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
+                  {project.category && (
+                    <View style={styles.categoryRow}>
+                      <Ionicons name="folder-outline" size={12} color={colors.textTertiary} />
+                      <Text style={styles.categoryLabel} numberOfLines={1}>
+                        {categoryLabel(project.category, categories)}
+                      </Text>
+                    </View>
+                  )}
                   {progress.total > 0 && (
                     <View style={styles.progressRow}>
                       <ProgressBar progress={progress.done / progress.total} />
@@ -465,6 +476,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  categoryLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   progressRow: {
     flexDirection: 'row',

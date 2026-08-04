@@ -167,6 +167,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   notes: '',
   targetStartDate: null,
   targetEndDate: null,
+  category: null,
   sortOrder: 1,
   archived: false,
   archivedAt: null,
