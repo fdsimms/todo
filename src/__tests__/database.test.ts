@@ -779,11 +779,28 @@ describe('Templates', () => {
     anchor: 'start',
     dueOffsetDays: null,
     deferOffsetDays: null,
+    deadlineOffsetDays: null,
+    windowStart: null,
+    windowEnd: null,
+    reminderOffsetMinutes: null,
     timeSegments: [],
     tags: [],
     category: null,
     priority: 0,
     effort: 0,
+    recurrenceType: 'none',
+    recurrenceInterval: 1,
+    recurrenceDays: [],
+    recurrenceMonthDay: null,
+    recurrenceFromCompletion: false,
+    recurrenceCount: null,
+    vacationPause: false,
+    estimatedMinutes: null,
+    focused: false,
+    chainEnabled: false,
+    chainItems: [],
+    subtasks: [],
+    groupId: null,
     ...overrides,
   });
 
@@ -791,6 +808,7 @@ describe('Templates', () => {
     id: 'tpl-1',
     name: 'Pre-vacation',
     items: [],
+    itemGroups: [],
     createdAt: '2025-01-01T00:00:00.000Z',
     sortOrder: 1,
     ...overrides,
@@ -805,6 +823,13 @@ describe('Templates', () => {
     const [tpl] = dbGetAllTemplates();
     expect(tpl.name).toBe('Pre-vacation');
     expect(tpl.items).toEqual(items);
+  });
+
+  it('insert → getAll round-trips itemGroups JSON', () => {
+    const itemGroups = [{ id: 'g1', title: 'Supplements', sortOrder: 1 }];
+    dbInsertTemplate(makeTemplate({ itemGroups }));
+    const [tpl] = dbGetAllTemplates();
+    expect(tpl.itemGroups).toEqual(itemGroups);
   });
 
   it('orders by sort_order then created_at', () => {

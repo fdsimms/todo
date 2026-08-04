@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskTemplate, TemplateItem } from '../types';
+import type { Task, TaskTemplate, TemplateItem, TemplateItemGroup } from '../types';
 import {
   dbGetAllTemplates,
   dbInsertTemplate,
@@ -17,11 +17,16 @@ interface TemplateStore {
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   deleteTemplate: (id: string) => void;
+  reorderTemplates: (orderedIds: string[]) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
   addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem;
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
   deleteItem: (templateId: string, itemId: string) => void;
   reorderItems: (templateId: string, orderedIds: string[]) => void;
+  addItemGroup: (templateId: string, title: string) => TemplateItemGroup;
+  renameItemGroup: (templateId: string, groupId: string, title: string) => void;
+  deleteItemGroup: (templateId: string, groupId: string) => void;
+  groupItems: (templateId: string, itemIds: string[], title: string) => TemplateItemGroup;
   applyTemplate: (templateId: string, selectedItemIds: Set<string>, anchors: TemplateAnchors) => Task[];
 }
 
@@ -40,6 +45,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       id: generateId(),
       name,
       items: [],
+      itemGroups: [],
       createdAt: new Date().toISOString(),
       sortOrder: maxOrder + 1,
     };
@@ -59,6 +65,15 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   deleteTemplate(id) {
     dbDeleteTemplate(id);
     set(s => ({ templates: s.templates.filter(t => t.id !== id) }));
+  },
+
+  reorderTemplates(orderedIds) {
+    const byId = new Map(get().templates.map(t => [t.id, t]));
+    const ordered = orderedIds.map(id => byId.get(id)).filter((t): t is TaskTemplate => !!t);
+    if (ordered.length !== get().templates.length) return;
+    const updated = ordered.map((t, index) => ({ ...t, sortOrder: index + 1 }));
+    updated.forEach(t => dbUpdateTemplate(t));
+    set(() => ({ templates: updated }));
   },
 
   setTemplateItems(id, items) {
@@ -102,12 +117,91 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     get().setTemplateItems(templateId, ordered);
   },
 
+  addItemGroup(templateId, title) {
+    const template = get().templates.find(t => t.id === templateId);
+    const group: TemplateItemGroup = {
+      id: generateId(),
+      title,
+      sortOrder: (template?.itemGroups.reduce((m, g) => Math.max(m, g.sortOrder), 0) ?? 0) + 1,
+    };
+    if (template) {
+      const updated = { ...template, itemGroups: [...template.itemGroups, group] };
+      dbUpdateTemplate(updated);
+      set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+    }
+    return group;
+  },
+
+  renameItemGroup(templateId, groupId, title) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    const updated = {
+      ...template,
+      itemGroups: template.itemGroups.map(g => (g.id === groupId ? { ...g, title } : g)),
+    };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+  },
+
+  deleteItemGroup(templateId, groupId) {
+    const template = get().templates.find(t => t.id === templateId);
+    if (!template) return;
+    const updated = {
+      ...template,
+      itemGroups: template.itemGroups.filter(g => g.id !== groupId),
+      items: template.items.map(i => (i.groupId === groupId ? { ...i, groupId: null } : i)),
+    };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === templateId ? updated : t)) }));
+  },
+
+  groupItems(templateId, itemIds, title) {
+    const group = get().addItemGroup(templateId, title);
+    const template = get().templates.find(t => t.id === templateId);
+    if (template) {
+      const idSet = new Set(itemIds);
+      get().setTemplateItems(
+        templateId,
+        template.items.map(i => (idSet.has(i.id) ? { ...i, groupId: group.id } : i))
+      );
+    }
+    return group;
+  },
+
   applyTemplate(templateId, selectedItemIds, anchors) {
     const template = get().templates.find(t => t.id === templateId);
     if (!template) return [];
     const items = template.items.filter(i => selectedItemIds.has(i.id));
     const drafts = buildDraftsFromTemplate(items, anchors);
     const addTask = useTaskStore.getState().addTask;
-    return drafts.map(d => addTask(d));
+    const addSubtask = useTaskStore.getState().addSubtask;
+    const groupTasks = useTaskStore.getState().groupTasks;
+
+    const createdTasks = drafts.map(d => addTask(d));
+
+    // Second pass: subtasks and groups need ids that don't exist until
+    // addTask returns, so they can't be part of the draft itself.
+    const createdTaskIdsByGroup = new Map<string, string[]>();
+    items.forEach((item, index) => {
+      const createdTask = createdTasks[index];
+      if (!createdTask) return;
+
+      item.subtasks.forEach(stub => addSubtask(createdTask.id, stub.title));
+
+      if (item.groupId) {
+        const list = createdTaskIdsByGroup.get(item.groupId) ?? [];
+        list.push(createdTask.id);
+        createdTaskIdsByGroup.set(item.groupId, list);
+      }
+    });
+
+    createdTaskIdsByGroup.forEach((taskIds, groupId) => {
+      const group = template.itemGroups.find(g => g.id === groupId);
+      if (!group || taskIds.length === 0) return;
+      const category = items.find(i => i.groupId === groupId)?.category ?? null;
+      groupTasks(taskIds, group.title, category);
+    });
+
+    return createdTasks;
   },
 }));
