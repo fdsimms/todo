@@ -37,6 +37,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
@@ -474,9 +475,11 @@ export function TodayScreen() {
   const [sort, setSort] = useState<SortOption>('default');
   const [filterPriorities, setFilterPriorities] = useState<Priority[]>([]);
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
+  const hideCategories = useSettingsStore(s => s.hideCategories);
+  const setHideCategories = useSettingsStore(s => s.setHideCategories);
 
   const activeFilterCount =
-    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+    (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down no longer refreshes anything — it opens quick add instead, which
@@ -592,6 +595,14 @@ export function TodayScreen() {
     });
   };
 
+  // When the "Hide categories" display option is on, drop every category
+  // header (but keep the "Later Today" time-section header) so the list
+  // reads as one flat run of tasks/groups instead of category sections.
+  const stripCategoryHeaders = (items: ListItem[]): ListItem[] =>
+    hideCategories
+      ? items.filter(item => item.type !== 'header' || item.label === LATER_TODAY_LABEL)
+      : items;
+
   const data: ListItem[] = useMemo(() => {
     if (focusedTasks.length > 0 && !focusViewGraceActive) {
       const items: ListItem[] = [{ type: 'focus-header' }];
@@ -601,14 +612,14 @@ export function TodayScreen() {
         items.push({ type: 'rest-header' });
         if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
-      return applyCategoryCollapse(items);
+      return stripCategoryHeaders(applyCategoryCollapse(items));
     }
 
     const ungrouped = filtered.filter(t => !t.groupId);
     const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
-    return applyCategoryCollapse(items);
+    return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems]);
+  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'focus-header' ? '__focus-header__'
@@ -1352,6 +1363,8 @@ export function TodayScreen() {
         onPrioritiesChange={setFilterPriorities}
         efforts={filterEfforts}
         onEffortsChange={setFilterEfforts}
+        hideCategories={hideCategories}
+        onHideCategoriesChange={setHideCategories}
       />
 
       <TaskGroupEditor
