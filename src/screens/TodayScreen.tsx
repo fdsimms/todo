@@ -66,8 +66,8 @@ type ViewMode = 'today' | 'later' | 'unscheduled';
 
 // Shared with the Later screen's own day/segment grouping (see laterGroupKeys
 // below) so "later today" sub-headers read the same way in both places.
-const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening' };
-const SEGMENT_ORDER = ['morning', 'afternoon', 'evening'] as const;
+const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
+const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects

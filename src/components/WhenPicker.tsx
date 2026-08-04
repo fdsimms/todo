@@ -57,6 +57,7 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
   { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline' },
   { key: 'evening', label: 'Evening', icon: 'moon-outline' },
+  { key: 'night', label: 'Night', icon: 'moon' },
 ];
 
 const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -229,6 +230,7 @@ export function WhenPicker({
                       morning: colors.timeMorning,
                       afternoon: colors.timeAfternoon,
                       evening: colors.timeEvening,
+                      night: colors.timeNight,
                     }[seg.key];
                     return (
                       <TouchableOpacity

@@ -9,6 +9,7 @@ interface SettingsStore {
   morningStart: string;   // "HH:MM" — when morning begins (default "06:00")
   afternoonStart: string; // "HH:MM" — when afternoon begins (default "12:00")
   eveningStart: string;   // "HH:MM" — when evening begins (default "18:00")
+  nightStart: string;     // "HH:MM" — when night begins (default "21:00")
   themeMode: ThemeMode;
   anthropicApiKey: string;
   vacationMode: boolean;
@@ -24,6 +25,7 @@ interface SettingsStore {
   setMorningStart: (time: string) => void;
   setAfternoonStart: (time: string) => void;
   setEveningStart: (time: string) => void;
+  setNightStart: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAnthropicApiKey: (key: string) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
@@ -39,6 +41,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   morningStart: '06:00',
   afternoonStart: '12:00',
   eveningStart: '18:00',
+  nightStart: '21:00',
   themeMode: 'dark',
   anthropicApiKey: '',
   vacationMode: false,
@@ -55,6 +58,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const morningStart = dbGetSetting('morningStart') ?? '06:00';
     const afternoonStart = dbGetSetting('afternoonStart') ?? '12:00';
     const eveningStart = dbGetSetting('eveningStart') ?? '18:00';
+    const nightStart = dbGetSetting('nightStart') ?? '21:00';
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
     const vacationMode = dbGetSetting('vacationMode') === 'true';
@@ -72,7 +76,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -94,6 +98,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setEveningStart(time: string) {
     dbSetSetting('eveningStart', time);
     set({ eveningStart: time });
+  },
+
+  setNightStart(time: string) {
+    dbSetSetting('nightStart', time);
+    set({ nightStart: time });
   },
 
   setThemeMode(mode: ThemeMode) {
