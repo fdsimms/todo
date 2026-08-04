@@ -423,7 +423,7 @@ export function TaskItem({
       accessibilityRole="button"
       accessibilityLabel={`Select ${task.title}`}
     >
-      <Ionicons name="checkmark-circle" size={iconSize.md} color={colors.onAccent} />
+      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
     </TouchableOpacity>
   );
 
