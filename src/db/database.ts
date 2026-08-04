@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateItem, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -146,6 +146,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN project_id TEXT',
     'ALTER TABLE projects ADD COLUMN category TEXT',
     'ALTER TABLE tasks ADD COLUMN recurrence_month_day INTEGER',
+    "ALTER TABLE templates ADD COLUMN item_groups TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
@@ -722,11 +723,26 @@ function parseTemplateItems(raw: unknown): TemplateItem[] {
   }
 }
 
+function parseItemGroups(raw: unknown): TemplateItemGroup[] {
+  try {
+    const parsed = JSON.parse((raw as string) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((g: Partial<TemplateItemGroup>) => ({
+      id: g.id ?? '',
+      title: g.title ?? '',
+      sortOrder: g.sortOrder ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
   return {
     id: row.id as string,
     name: row.name as string,
     items: parseTemplateItems(row.items),
+    itemGroups: parseItemGroups(row.item_groups),
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
   };
@@ -741,15 +757,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, created_at, sort_order) VALUES (?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), template.createdAt, template.sortOrder]
+    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order) VALUES (?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, sort_order = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), template.sortOrder, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.id]
   );
 }
 

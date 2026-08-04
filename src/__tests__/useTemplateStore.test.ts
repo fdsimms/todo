@@ -15,9 +15,11 @@ jest.mock('../db/database', () => ({
 }));
 
 const mockAddTask = jest.fn();
+const mockAddSubtask = jest.fn();
+const mockGroupTasks = jest.fn();
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: {
-    getState: () => ({ addTask: mockAddTask }),
+    getState: () => ({ addTask: mockAddTask, addSubtask: mockAddSubtask, groupTasks: mockGroupTasks }),
   },
 }));
 
@@ -29,11 +31,28 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   anchor: 'start',
   dueOffsetDays: null,
   deferOffsetDays: null,
+  deadlineOffsetDays: null,
+  windowStart: null,
+  windowEnd: null,
+  reminderOffsetMinutes: null,
   timeSegments: [],
   tags: [],
   category: null,
   priority: 0,
   effort: 0,
+  recurrenceType: 'none',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceMonthDay: null,
+  recurrenceFromCompletion: false,
+  recurrenceCount: null,
+  vacationPause: false,
+  estimatedMinutes: null,
+  focused: false,
+  chainEnabled: false,
+  chainItems: [],
+  subtasks: [],
+  groupId: null,
   ...overrides,
 });
 
@@ -41,6 +60,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   id: 'tpl-1',
   name: 'Pre-vacation',
   items: [],
+  itemGroups: [],
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   ...overrides,
@@ -50,6 +70,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTemplates as jest.Mock).mockReturnValue([]);
   mockAddTask.mockImplementation((draft: Partial<TaskDraft>) => ({ id: `task-${draft.title}`, ...draft }));
+  mockAddSubtask.mockImplementation((parentId: string, title: string) => ({ id: `sub-${title}`, parentId, title }));
+  mockGroupTasks.mockImplementation((taskIds: string[], title: string, category: string | null) => ({
+    id: `group-${title}`, title, category, taskIds,
+  }));
   useTemplateStore.setState({ templates: [], initialized: false });
 });
 
@@ -181,5 +205,90 @@ describe('applyTemplate', () => {
   it('returns [] for an unknown template', () => {
     expect(useTemplateStore.getState().applyTemplate('missing', new Set(['a']), { start: null, end: null })).toEqual([]);
     expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('creates subtask rows for each item stub via addSubtask', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Pack', subtasks: [{ id: 's1', title: 'Passport' }, { id: 's2', title: 'Charger' }] })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
+    expect(mockAddSubtask).toHaveBeenCalledTimes(2);
+    expect(mockAddSubtask).toHaveBeenCalledWith('task-Pack', 'Passport');
+    expect(mockAddSubtask).toHaveBeenCalledWith('task-Pack', 'Charger');
+  });
+
+  it('carries an itemGroup into a real TaskGroup via groupTasks', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        itemGroups: [{ id: 'g1', title: 'Supplements', sortOrder: 1 }],
+        items: [
+          makeItem({ id: 'a', title: 'Coq10', groupId: 'g1', category: 'Health' }),
+          makeItem({ id: 'b', title: 'Vitamin D', groupId: 'g1', category: 'Health' }),
+          makeItem({ id: 'c', title: 'Solo task' }),
+        ],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b', 'c']), { start: null, end: null });
+    expect(mockGroupTasks).toHaveBeenCalledTimes(1);
+    expect(mockGroupTasks).toHaveBeenCalledWith(['task-Coq10', 'task-Vitamin D'], 'Supplements', 'Health');
+  });
+});
+
+describe('reorderTemplates', () => {
+  it('rewrites sortOrder to match the given order', () => {
+    const a = useTemplateStore.getState().addTemplate('A');
+    const b = useTemplateStore.getState().addTemplate('B');
+    useTemplateStore.getState().reorderTemplates([b.id, a.id]);
+    expect(useTemplateStore.getState().templates.map(t => t.name)).toEqual(['B', 'A']);
+    expect(useTemplateStore.getState().templates.map(t => t.sortOrder)).toEqual([1, 2]);
+  });
+
+  it('ignores incomplete id lists', () => {
+    const a = useTemplateStore.getState().addTemplate('A');
+    useTemplateStore.getState().addTemplate('B');
+    useTemplateStore.getState().reorderTemplates([a.id]);
+    expect(useTemplateStore.getState().templates).toHaveLength(2);
+  });
+});
+
+describe('item groups', () => {
+  it('addItemGroup creates a group scoped to the template', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const group = useTemplateStore.getState().addItemGroup(tpl.id, 'Supplements');
+    expect(group.title).toBe('Supplements');
+    expect(useTemplateStore.getState().templates[0].itemGroups).toHaveLength(1);
+  });
+
+  it('renameItemGroup updates the title', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const group = useTemplateStore.getState().addItemGroup(tpl.id, 'Supplements');
+    useTemplateStore.getState().renameItemGroup(tpl.id, group.id, 'Vitamins');
+    expect(useTemplateStore.getState().templates[0].itemGroups[0].title).toBe('Vitamins');
+  });
+
+  it('deleteItemGroup ungroups member items instead of deleting them', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
+    const group = useTemplateStore.getState().addItemGroup(tpl.id, 'Supplements');
+    useTemplateStore.getState().updateItem(tpl.id, a.id, { groupId: group.id });
+    useTemplateStore.getState().deleteItemGroup(tpl.id, group.id);
+    const state = useTemplateStore.getState().templates[0];
+    expect(state.itemGroups).toHaveLength(0);
+    expect(state.items[0].groupId).toBeNull();
+  });
+
+  it('groupItems creates a group and stamps groupId on the given items in one call', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
+    const b = useTemplateStore.getState().addItem(tpl.id, { title: 'B' });
+    useTemplateStore.getState().addItem(tpl.id, { title: 'C' });
+    const group = useTemplateStore.getState().groupItems(tpl.id, [a.id, b.id], 'Errands');
+    const state = useTemplateStore.getState().templates[0];
+    expect(state.itemGroups.map(g => g.title)).toEqual(['Errands']);
+    expect(state.items.find(i => i.id === a.id)?.groupId).toBe(group.id);
+    expect(state.items.find(i => i.id === b.id)?.groupId).toBe(group.id);
+    expect(state.items.find(i => i.title === 'C')?.groupId).toBeNull();
   });
 });

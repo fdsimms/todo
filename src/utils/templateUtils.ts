@@ -27,11 +27,28 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     anchor: raw.anchor === 'end' ? 'end' : 'start',
     dueOffsetDays: raw.dueOffsetDays ?? null,
     deferOffsetDays: raw.deferOffsetDays ?? null,
+    deadlineOffsetDays: raw.deadlineOffsetDays ?? null,
+    windowStart: raw.windowStart ?? null,
+    windowEnd: raw.windowEnd ?? null,
+    reminderOffsetMinutes: raw.reminderOffsetMinutes ?? null,
     timeSegments: raw.timeSegments ?? [],
     tags: raw.tags ?? [],
     category: raw.category ?? null,
     priority: raw.priority ?? 0,
     effort: raw.effort ?? 0,
+    recurrenceType: raw.recurrenceType ?? 'none',
+    recurrenceInterval: raw.recurrenceInterval ?? 1,
+    recurrenceDays: raw.recurrenceDays ?? [],
+    recurrenceMonthDay: raw.recurrenceMonthDay ?? null,
+    recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
+    recurrenceCount: raw.recurrenceCount ?? null,
+    vacationPause: raw.vacationPause ?? false,
+    estimatedMinutes: raw.estimatedMinutes ?? null,
+    focused: raw.focused ?? false,
+    chainEnabled: raw.chainEnabled ?? false,
+    chainItems: raw.chainItems ?? [],
+    subtasks: raw.subtasks ?? [],
+    groupId: raw.groupId ?? null,
   };
 }
 
@@ -59,16 +76,37 @@ export function buildDraftsFromTemplate(
 ): Partial<TaskDraft>[] {
   return items.map(item => {
     const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
+    const dueDate = resolveOffsetDate(anchor, item.dueOffsetDays);
+    const reminderTime =
+      dueDate !== null && item.reminderOffsetMinutes !== null
+        ? new Date(new Date(dueDate).getTime() - item.reminderOffsetMinutes * 60 * 1000).toISOString()
+        : null;
     return {
       title: item.title,
       notes: item.notes,
-      dueDate: resolveOffsetDate(anchor, item.dueOffsetDays),
+      dueDate,
       deferUntil: resolveOffsetDate(anchor, item.deferOffsetDays),
+      deadline: resolveOffsetDate(anchor, item.deadlineOffsetDays),
+      deadlineOffsetDays: null,
+      windowStart: item.windowStart,
+      windowEnd: item.windowEnd,
+      reminderTime,
       timeSegments: [...item.timeSegments],
       tags: [...item.tags],
       category: item.category,
       priority: item.priority,
       effort: item.effort,
+      recurrenceType: item.recurrenceType,
+      recurrenceInterval: item.recurrenceInterval,
+      recurrenceDays: [...item.recurrenceDays],
+      recurrenceMonthDay: item.recurrenceMonthDay,
+      recurrenceFromCompletion: item.recurrenceFromCompletion,
+      recurrenceCount: item.recurrenceCount,
+      vacationPause: item.vacationPause,
+      estimatedMinutes: item.estimatedMinutes,
+      focused: item.focused,
+      chainEnabled: item.chainEnabled,
+      chainItems: item.chainItems.map(c => ({ ...c })),
     };
   });
 }
