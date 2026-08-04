@@ -19,7 +19,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew, isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -293,6 +293,8 @@ export function TodayScreen() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
+  const justCreatedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
@@ -348,6 +350,35 @@ export function TodayScreen() {
   useEffect(() => {
     if (route.params?.resetToToday !== undefined) setViewMode('today');
   }, [route.params?.resetToToday]);
+
+  // Highlights a task created elsewhere (e.g. Inbox's own quick-add) and jumps
+  // to whichever sub-view it actually landed in. `jump` is stamped fresh on
+  // every navigate so this fires even if the same task id is highlighted twice.
+  useEffect(() => {
+    if (route.params?.jump === undefined) return;
+    if (route.params?.targetViewMode) setViewMode(route.params.targetViewMode);
+    if (route.params?.highlightTaskId) showJustCreated(route.params.highlightTaskId);
+  }, [route.params?.jump]);
+
+  // Briefly flags a task so its row renders the "just created" highlight, then
+  // clears the flag once the animation has had time to finish.
+  const showJustCreated = (taskId: string) => {
+    if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+    setJustCreatedId(taskId);
+    justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
+  };
+
+  const handleTaskCreated = (task: Task) => {
+    const destination: ViewMode = isTaskVisible(task) ? 'today' : 'later';
+    if (destination !== viewMode) setViewMode(destination);
+    showJustCreated(task.id);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+    };
+  }, []);
 
   // visibleTasks()/expiredTasks()/upcomingTodayTasks() etc. are only
   // re-derived when a render happens; a task's visibility can flip purely
@@ -745,6 +776,7 @@ export function TodayScreen() {
         onSelect={() => toggleSelection(task.id)}
         onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
         hideTodayLabel
+        justCreated={task.id === justCreatedId}
       />
     );
   };
@@ -1158,6 +1190,7 @@ export function TodayScreen() {
                 showCategory
                 showProject
                 showActions={false}
+                justCreated={item.task.id === justCreatedId}
               />
             );
           }}
@@ -1319,7 +1352,7 @@ export function TodayScreen() {
       )}
       </View>
 
-      {viewMode === 'today' && !selectionMode && (
+      {(viewMode === 'today' || viewMode === 'later') && !selectionMode && (
         <Animated.View
           style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
           pointerEvents={spotlightActive ? 'none' : 'box-none'}
@@ -1342,6 +1375,8 @@ export function TodayScreen() {
         visible={quickAddVisible}
         onClose={() => setQuickAddVisible(false)}
         onOpenFull={handleQuickAddOpenFull}
+        context={viewMode}
+        onCreated={handleTaskCreated}
       />
 
       <TaskEditor
