@@ -9,7 +9,7 @@ import { spacing, radius, font, fontWeight, border, iconSize, interaction, type 
 import { isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
-import { DeferModal } from './DeferModal';
+import { WhenPicker } from './WhenPicker';
 
 interface Props {
   group: TaskGroup;
@@ -188,9 +188,13 @@ export function TaskGroupHeader({
         </View>
       </View>
 
-      <DeferModal
+      <WhenPicker
         visible={showDefer}
-        onConfirm={date => { setShowDefer(false); onDefer(date); }}
+        value={null}
+        title="Reschedule"
+        showTimeOfDay={false}
+        showSuggest={false}
+        onConfirm={date => { setShowDefer(false); if (date) onDefer(date); }}
         onCancel={() => setShowDefer(false)}
       />
     </>

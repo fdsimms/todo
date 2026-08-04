@@ -36,6 +36,11 @@ interface Props {
   onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
+  title?: string;
+  // Hides the "Time of day" section and the AI "Suggest" button — used when
+  // there's no single task to anchor them to, e.g. rescheduling a whole group.
+  showTimeOfDay?: boolean;
+  showSuggest?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -82,6 +87,7 @@ export function WhenPicker({
   visible, value, timeSegments: initialSegments,
   taskTitle, taskNotes, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
+  title = 'When?', showTimeOfDay = true, showSuggest = true,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -205,48 +211,52 @@ export function WhenPicker({
             <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.headerTextBtn}>
               <Text style={styles.headerBtnText}>Cancel</Text>
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>When?</Text>
+            <Text style={styles.headerTitle}>{title}</Text>
             <TouchableOpacity onPress={handleSave} hitSlop={10} style={styles.headerTextBtn}>
               <Text style={[styles.headerBtnText, styles.headerSaveText]}>Save</Text>
             </TouchableOpacity>
           </View>
 
           {/* Time of day — its own section, distinct from the date shortcuts */}
-          <View style={styles.timeSection}>
-            <Text style={styles.sectionLabel}>Time of day</Text>
-            <View style={styles.segmentRow}>
-              {SEGMENTS.map(seg => {
-                const active = segments.includes(seg.key);
-                const segColor = {
-                  morning: colors.timeMorning,
-                  afternoon: colors.timeAfternoon,
-                  evening: colors.timeEvening,
-                }[seg.key];
-                return (
-                  <TouchableOpacity
-                    key={seg.key}
-                    style={[styles.segmentPill, active && { backgroundColor: segColor + '33' }]}
-                    onPress={() => {
-                      haptics.tap();
-                      toggleSegment(seg.key);
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Ionicons
-                      name={seg.icon}
-                      size={14}
-                      color={active ? segColor : colors.textSecondary}
-                    />
-                    <Text style={[styles.segmentLabel, active && { color: segColor, fontWeight: fontWeight.semibold }]}>
-                      {seg.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          {showTimeOfDay && (
+            <>
+              <View style={styles.timeSection}>
+                <Text style={styles.sectionLabel}>Time of day</Text>
+                <View style={styles.segmentRow}>
+                  {SEGMENTS.map(seg => {
+                    const active = segments.includes(seg.key);
+                    const segColor = {
+                      morning: colors.timeMorning,
+                      afternoon: colors.timeAfternoon,
+                      evening: colors.timeEvening,
+                    }[seg.key];
+                    return (
+                      <TouchableOpacity
+                        key={seg.key}
+                        style={[styles.segmentPill, active && { backgroundColor: segColor + '33' }]}
+                        onPress={() => {
+                          haptics.tap();
+                          toggleSegment(seg.key);
+                        }}
+                        activeOpacity={interaction.activeOpacity}
+                      >
+                        <Ionicons
+                          name={seg.icon}
+                          size={14}
+                          color={active ? segColor : colors.textSecondary}
+                        />
+                        <Text style={[styles.segmentLabel, active && { color: segColor, fontWeight: fontWeight.semibold }]}>
+                          {seg.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
 
-          <View style={styles.sectionGap} />
+              <View style={styles.sectionGap} />
+            </>
+          )}
 
           {/* Date shortcuts — separate section: choosing a day is its own thing */}
           <View style={styles.quickSection}>
@@ -272,7 +282,7 @@ export function WhenPicker({
                 popAnim={popAnim}
                 onPress={handleTomorrow}
               />
-              {!!anthropicApiKey && (
+              {showSuggest && !!anthropicApiKey && (
                 <TouchableOpacity
                   style={[styles.quickButton, styles.suggestButton]}
                   onPress={handleSuggest}
