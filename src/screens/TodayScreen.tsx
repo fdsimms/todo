@@ -178,20 +178,25 @@ function VacationHiddenSection({
 // deemphasized by default, expands in place to show the tasks.
 function LaterTodaySection({
   tasks,
+  groups,
   expanded,
   onToggle,
   renderTask,
+  renderGroup,
   styles,
   colors,
 }: {
   tasks: Task[];
+  groups: { group: TaskGroup; children: Task[] }[];
   expanded: boolean;
   onToggle: () => void;
   renderTask: (task: Task) => React.ReactNode;
+  renderGroup: (group: TaskGroup, children: Task[]) => React.ReactNode;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  if (tasks.length === 0) return null;
+  const totalCount = tasks.length + groups.reduce((sum, g) => sum + g.children.length, 0);
+  if (totalCount === 0) return null;
   return (
     <View style={styles.hiddenSection}>
       <TouchableOpacity
@@ -201,13 +206,20 @@ function LaterTodaySection({
       >
         <Ionicons name="time-outline" size={13} color={colors.textTertiary} />
         <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} later today
+          {expanded ? 'Hide' : 'Show'} {totalCount} later today
         </Text>
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
       </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
-      ))}
+      {expanded && (
+        <>
+          {groups.map(g => (
+            <React.Fragment key={g.group.id}>{renderGroup(g.group, g.children)}</React.Fragment>
+          ))}
+          {tasks.map(task => (
+            <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
+          ))}
+        </>
+      )}
     </View>
   );
 }
@@ -257,6 +269,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const tabBarHeight = useBottomTabBarHeight();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
@@ -312,6 +325,8 @@ export function TodayScreen() {
     deselectAll,
     handleBulkDelete,
   } = useTaskSelection(allTasks);
+  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
@@ -608,6 +623,24 @@ export function TodayScreen() {
         (childrenByGroupId.get(g.group.id) ?? []).some(isRelevantToGroupToday),
       );
   }, [taskGroups, childrenByGroupId, filtered]);
+
+  // Same pairing as visibleGroupItems, but for tasks deferred to later today
+  // rather than currently visible — so a stack whose children are all still
+  // waiting on a time segment/defer still renders as a collapsible group
+  // header inside "Later Today" instead of each child appearing loose.
+  const laterGroupItems = useMemo(() => {
+    return taskGroups
+      .map(group => ({
+        group,
+        children: (childrenByGroupId.get(group.id) ?? []).filter(t => upcomingTaskIds.has(t.id)),
+      }))
+      .filter(g => g.children.length > 0);
+  }, [taskGroups, childrenByGroupId, upcomingTaskIds]);
+
+  const upcomingUngroupedTasks = useMemo(
+    () => upcomingTodayTasks.filter(t => !t.groupId),
+    [upcomingTodayTasks],
+  );
 
   // Hide task/group rows under a collapsed category header, leaving the
   // header itself in place so it stays tappable to re-expand. The "Later
@@ -944,6 +977,38 @@ export function TodayScreen() {
     );
   };
 
+  // Group header + children for a stack rendered inside the "Later Today"
+  // reveal — mirrors renderItem's 'group' branch, but children use
+  // renderHiddenTask (no drag, since Later Today rows are peek-only).
+  const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
+    const allChildren = childrenByGroupId.get(group.id) ?? [];
+    return (
+      <View>
+        <TaskGroupHeader
+          group={group}
+          allChildren={allChildren}
+          onToggleCollapse={() => {
+            haptics.tap();
+            animateLayout();
+            setGroupCollapsed(group.id, !group.collapsed);
+          }}
+          onComplete={() => completeGroup(group.id)}
+          onUncomplete={() => uncompleteGroup(group.id)}
+          onDefer={date => deferGroup(group.id, date)}
+          onPin={() => pinGroup(group.id)}
+          onDeleteGroupOnly={() => deleteGroup(group.id, { cascade: false })}
+          onDeleteWithTasks={() => deleteGroup(group.id, { cascade: true })}
+          onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
+        />
+        <AnimatedCollapsible expanded={!group.collapsed}>
+          {children.map(child => (
+            <React.Fragment key={child.id}>{renderHiddenTask(child)}</React.Fragment>
+          ))}
+        </AnimatedCollapsible>
+      </View>
+    );
+  };
+
   // Footer shared by every list variant: the vacation-hidden reveal (when any)
   // followed by the tap-to-dismiss spacer. `fixedWhenEmpty` keeps the empty
   // state centered by stopping the spacer from growing.
@@ -951,7 +1016,8 @@ export function TodayScreen() {
     <>
       {viewMode === 'today' && pinnedTasks.length === 0 && (
         <LaterTodaySection
-          tasks={upcomingTodayTasks}
+          tasks={upcomingUngroupedTasks}
+          groups={laterGroupItems}
           expanded={showUpcoming}
           onToggle={() => {
             haptics.tap();
@@ -960,6 +1026,7 @@ export function TodayScreen() {
             setShowUpcoming(v => !v);
           }}
           renderTask={renderHiddenTask}
+          renderGroup={renderLaterGroup}
           styles={styles}
           colors={colors}
         />
@@ -1241,7 +1308,11 @@ export function TodayScreen() {
           }}
           onEndReached={handleLaterEndReached}
           onEndReachedThreshold={400}
-          contentContainerStyle={laterSections.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={
+            laterSections.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
           ListEmptyComponent={
             <EmptyState
               icon="moon"
@@ -1279,7 +1350,7 @@ export function TodayScreen() {
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           renderItem={({ item }) => renderItem({ item })}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
             <RefreshControl
               refreshing={pullingToAdd}
@@ -1379,7 +1450,11 @@ export function TodayScreen() {
 
             commitDrop();
           }}
-          contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : styles.listContent}
+          contentContainerStyle={
+            filtered.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
           refreshControl={
             <RefreshControl
               refreshing={pullingToAdd}
@@ -1482,6 +1557,7 @@ export function TodayScreen() {
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
           bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
         />
       )}
     </View>

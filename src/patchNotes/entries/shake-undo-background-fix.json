@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the undo confirmation sometimes appearing on its own after reopening the app",
+  "date": "2026-08-04"
+}

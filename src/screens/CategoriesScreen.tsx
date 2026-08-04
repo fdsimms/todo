@@ -252,6 +252,7 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
 export function CategoriesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const addCategory = useTaskStore(s => s.addCategory);
@@ -295,6 +296,8 @@ export function CategoriesScreen() {
     deselectAll,
     handleBulkDelete,
   } = useTaskSelection(allTasks);
+  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -478,7 +481,8 @@ export function CategoriesScreen() {
         <ReorderableList
           data={allCategories}
           keyExtractor={c => c}
-          contentContainerStyle={[styles.list, { paddingBottom: tabBarHeight }]}
+          contentContainerStyle={styles.list}
+          ListFooterComponent={<View style={{ height: tabBarHeight + spacing.md }} />}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
           onReorder={reordered => reorderCategories(reordered)}
@@ -641,7 +645,7 @@ export function CategoriesScreen() {
           <FlatList
             data={categoryTasks}
             keyExtractor={t => t.id}
-            contentContainerStyle={{ flexGrow: 1 }}
+            contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
               return (
@@ -692,6 +696,7 @@ export function CategoriesScreen() {
               onDeselectAll={deselectAll}
               onCancel={exitSelection}
               bottomInset={tabBarHeight}
+              onHeightChange={setBulkBarHeight}
             />
           )}
         </View>

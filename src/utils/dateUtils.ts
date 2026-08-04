@@ -9,6 +9,8 @@ import {
   isSameWeek,
   startOfDay,
   differenceInCalendarDays,
+  setDate,
+  lastDayOfMonth,
 } from 'date-fns';
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -93,6 +95,18 @@ export function getLogicalTomorrow(dayResetTime?: string): Date {
  * yesterday's logical day, so "Today"/"Tomorrow" need clarifying with
  * actual dates.
  */
+/**
+ * The current instant, pinned to the logical day's calendar date — for
+ * feeding into parseNaturalDate/parseTaskInput so "tomorrow" typed in the
+ * early-morning window before dayResetTime resolves relative to the logical
+ * day (still "yesterday") rather than the wall-clock calendar day. Preserves
+ * the actual clock time so relative durations ("in 30 min") stay accurate.
+ */
+export function getLogicalNow(dayResetTime?: string): Date {
+  const now = new Date();
+  return isBeforeDayReset(dayResetTime) ? subDays(now, 1) : now;
+}
+
 export function isBeforeDayReset(dayResetTime?: string): boolean {
   return getLogicalToday(dayResetTime).getTime() !== startOfDay(new Date()).getTime();
 }
@@ -105,7 +119,7 @@ export function formatDueDate(iso: string, dayResetTime?: string): string {
   const diff = differenceInCalendarDays(d, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
   if (isSameWeek(d, today)) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
 export function formatDeferUntil(iso: string, dayResetTime?: string): string {
@@ -115,7 +129,7 @@ export function formatDeferUntil(iso: string, dayResetTime?: string): string {
   if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
   const diff = differenceInCalendarDays(d, today);
   if (diff < 7) return format(d, 'EEEE');
-  return format(d, 'MMM d');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
 /**
@@ -156,7 +170,9 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
         : addWeeks(base, task.recurrenceInterval);
       break;
     case 'monthly':
-      next = addMonths(base, task.recurrenceInterval);
+      next = task.recurrenceMonthDay
+        ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
+        : addMonths(base, task.recurrenceInterval);
       break;
     case 'yearly':
       next = addYears(base, task.recurrenceInterval);
@@ -180,6 +196,19 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
     if (day > dow) return addDays(from, day - dow);
   }
   return addDays(from, 7 - dow + sorted[0]);
+}
+
+/**
+ * Next occurrence of a fixed day-of-month (e.g. "the 5th"), clamped to the
+ * last day of short months. `day === -1` means "the last day of the month",
+ * whatever that is for each occurrence (28-31).
+ */
+function getNextMonthDayOccurrence(day: number, from: Date): Date {
+  const clampToMonth = (d: Date) =>
+    day === -1 ? lastDayOfMonth(d) : setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
+  const thisMonth = clampToMonth(from);
+  if (thisMonth > from) return thisMonth;
+  return clampToMonth(addMonths(from, 1));
 }
 
 /** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */

@@ -80,6 +80,16 @@ describe('parseTaskInput — one-off dates', () => {
     expect(rec.schedule.dueDate.getHours()).toBe(12);
   });
 
+  it('"tomorrow" resolves to the next logical day, not two calendar days out', () => {
+    // Regression: with dayResetTime "02:00", typing "tomorrow" at 1:30 AM on
+    // June 11 (still logical June 10, per getLogicalNow) previously resolved
+    // against the raw wall clock (June 11) and landed on June 12 — two days
+    // out instead of one.
+    const logicalNow = new Date(2025, 5, 10, 1, 30, 0); // wall clock June 11 1:30 AM, rolled back
+    const r = parseTaskInput('call mom tomorrow', logicalNow)!;
+    expectDay(r.schedule.dueDate, 2025, 5, 11);
+  });
+
   it('always lands a bare weekday on that weekday', () => {
     // Regression: "Run Sunday" must never resolve to a Saturday.
     const thursday = new Date(2026, 5, 11, 10, 0, 0); // Thu, Jun 11 2026

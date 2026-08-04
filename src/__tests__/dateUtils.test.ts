@@ -8,6 +8,7 @@ import {
   getDeadlineCountdown,
   getLogicalToday,
   getLogicalTomorrow,
+  getLogicalNow,
   isBeforeDayReset,
   hhmmToDate,
   formatHHMM,
@@ -38,6 +39,7 @@ const baseTask: Task = {
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
+  recurrenceMonthDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],
@@ -144,7 +146,11 @@ describe('formatDueDate', () => {
 
   it('returns "MMM d" for dates beyond this week', () => {
     expect(formatDueDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
-    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
+    expect(formatDueDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
   });
 
   it('is not "overdue" for a task due on the logical day, checked after midnight but before dayResetTime', () => {
@@ -185,6 +191,11 @@ describe('formatDeferUntil', () => {
   it('returns "MMM d" for dates beyond this week', () => {
     const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
     expect(result).toBe('Jul 20');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    const result = formatDeferUntil(new Date(2029, 7, 19, 14, 45, 0).toISOString());
+    expect(result).toBe('Aug 19, 2029');
   });
 });
 
@@ -270,6 +281,34 @@ describe('getLogicalToday / getLogicalTomorrow / isBeforeDayReset', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 12:30 AM
 
     expect(isBeforeDayReset('00:00')).toBe(false);
+  });
+});
+
+// ─── getLogicalNow ─────────────────────────────────────────────────────────
+
+describe('getLogicalNow', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('matches the wall clock when well after the reset hour', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // June 10, 2025, 10:00 AM
+
+    expect(getLogicalNow('02:00').getTime()).toBe(NOW.getTime());
+  });
+
+  it('rolls back to the previous calendar day, preserving the clock time, during the early-morning grace window', () => {
+    // 1:30 AM on June 11 — before the 2:00 AM reset, so "tomorrow" typed here
+    // should resolve relative to June 10 (the logical day), not June 11.
+    jest.useFakeTimers();
+    const wallClock = new Date(2025, 5, 11, 1, 30, 0);
+    jest.setSystemTime(wallClock);
+
+    const logicalNow = getLogicalNow('02:00');
+    expect(logicalNow.getDate()).toBe(10);
+    expect(logicalNow.getHours()).toBe(1);
+    expect(logicalNow.getMinutes()).toBe(30);
   });
 });
 
@@ -361,6 +400,68 @@ describe('getNextDueDate', () => {
     const result = getNextDueDate(task, '00:00')!;
     expect(result.getMonth()).toBe(6); // July
     expect(result.getDate()).toBe(10);
+  });
+
+  it('monthly with recurrenceMonthDay picks that day next month when already past it this month', () => {
+    // NOW is June 10. recurrenceMonthDay=5 has already passed this month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: 5 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(6); // July
+    expect(result.getDate()).toBe(5);
+  });
+
+  it('monthly with recurrenceMonthDay picks that day this month when still upcoming', () => {
+    // NOW is June 10. recurrenceMonthDay=20 hasn't happened yet this month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: 20 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(20);
+  });
+
+  it('monthly with recurrenceMonthDay clamps to the last day of short months', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: 31,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28); // clamped, 2025 not a leap year
+  });
+
+  it('monthly with recurrenceMonthDay=-1 (last day) picks the last day of next month when already past it', () => {
+    // NOW is June 10, 30-day month, so June 30 already lies ahead — but this
+    // asserts the "already past" branch using a due date deep in June instead.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: -1,
+      dueDate: new Date(2025, 5, 30, 0, 0, 0).toISOString(), // June 30, already the last day
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(6); // July
+    expect(result.getDate()).toBe(31); // last day of July
+  });
+
+  it('monthly with recurrenceMonthDay=-1 (last day) picks this month\'s last day when still upcoming', () => {
+    // NOW is June 10; June's last day (30) hasn't happened yet.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: -1 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(30);
+  });
+
+  it('monthly with recurrenceMonthDay=-1 lands on Feb 28 (non-leap year)', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: -1,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31, already the last day
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28);
   });
 
   it('yearly interval=1 adds 1 year', () => {
