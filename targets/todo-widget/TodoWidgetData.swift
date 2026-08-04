@@ -107,17 +107,6 @@ extension Color {
     }
 }
 
-// Mirrors PRIORITY_COLORS in src/types/index.ts — keep in sync if that changes.
-func priorityColor(_ priority: Int) -> Color {
-    switch priority {
-    case 1: return Color(hex: "30D158") // Low
-    case 2: return Color(hex: "FFD60A") // Medium
-    case 3: return Color(hex: "FF9F0A") // High
-    case 4: return Color(hex: "FF453A") // Urgent
-    default: return Color.clear        // None
-    }
-}
-
 // Mirrors darkColors/lightColors in src/theme/index.ts — keep in sync if
 // those change. Only the tokens this widget actually uses.
 struct WidgetPalette {

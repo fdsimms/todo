@@ -34,13 +34,6 @@ struct TaskRowView: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if task.priority > 0 {
-                Rectangle()
-                    .fill(priorityColor(task.priority))
-                    .frame(width: 3)
-                    .padding(.vertical, 3)
-            }
-
             Button(intent: CompleteTaskIntent(taskId: task.id)) {
                 ZStack {
                     Circle()
@@ -131,8 +124,61 @@ struct TodoTodayWidgetEntryView: View {
         let leftColumn = Array(shown.prefix(4))
         let rightColumn = Array(shown.dropFirst(4))
         let remaining = max(0, allTasks.count - entry.pendingCompletionIds.count)
+        // Header height is fixed and reserved as top padding on the content
+        // below, rather than the header being a sibling in the same VStack —
+        // that way its position never shifts with row/column count.
+        let headerHeight: CGFloat = 44
 
-        VStack(alignment: .leading, spacing: 0) {
+        ZStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 0) {
+                if allTasks.isEmpty {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(emptyStateMessage)
+                            .font(.system(size: 14))
+                            .foregroundColor(palette.textTertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
+                        Spacer()
+                    }
+                    Spacer()
+                } else {
+                    HStack(alignment: .top, spacing: 0) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(leftColumn) { task in
+                                TaskRowView(
+                                    task: task,
+                                    palette: palette,
+                                    isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
+                                )
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if !rightColumn.isEmpty {
+                            VStack(alignment: .leading, spacing: 0) {
+                                ForEach(rightColumn) { task in
+                                    TaskRowView(
+                                        task: task,
+                                        palette: palette,
+                                        isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
+                                    )
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    if !entry.pendingCompletionIds.isEmpty {
+                        PendingSyncBar(count: entry.pendingCompletionIds.count, palette: palette)
+                    } else {
+                        Spacer(minLength: 0)
+                    }
+                }
+            }
+            .padding(.top, headerHeight)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
             HStack {
                 Image(systemName: "sun.max.fill")
                     .foregroundColor(Color(hex: "FF9F0A"))
@@ -148,51 +194,7 @@ struct TodoTodayWidgetEntryView: View {
             .padding(.horizontal, 14)
             .padding(.top, 20)
             .padding(.bottom, 8)
-
-            if allTasks.isEmpty {
-                Spacer()
-                HStack {
-                    Spacer()
-                    Text(emptyStateMessage)
-                        .font(.system(size: 14))
-                        .foregroundColor(palette.textTertiary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                    Spacer()
-                }
-                Spacer()
-            } else {
-                HStack(alignment: .top, spacing: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(leftColumn) { task in
-                            TaskRowView(
-                                task: task,
-                                palette: palette,
-                                isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
-                            )
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    if !rightColumn.isEmpty {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(rightColumn) { task in
-                                TaskRowView(
-                                    task: task,
-                                    palette: palette,
-                                    isPendingCompletion: entry.pendingCompletionIds.contains(task.id)
-                                )
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                if !entry.pendingCompletionIds.isEmpty {
-                    PendingSyncBar(count: entry.pendingCompletionIds.count, palette: palette)
-                } else {
-                    Spacer(minLength: 0)
-                }
-            }
+            .frame(height: headerHeight, alignment: .center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .widgetURL(URL(string: "dundundun://"))
