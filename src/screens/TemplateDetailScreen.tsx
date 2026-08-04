@@ -206,7 +206,7 @@ export function TemplateDetailScreen() {
             accessibilityState={{ disabled: !template || template.items.length === 0 }}
           >
             <Ionicons
-              name="play-circle-outline"
+              name="chevron-down-circle-outline"
               size={24}
               color={template && template.items.length > 0 ? colors.accent : colors.textTertiary}
             />

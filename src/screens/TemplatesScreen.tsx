@@ -233,7 +233,7 @@ function TemplateRow({
           accessibilityRole="button"
           accessibilityLabel={`Apply template ${template.name}`}
         >
-          <Ionicons name="play-circle-outline" size={18} color={colors.accent} />
+          <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
         </TouchableOpacity>
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
       </TouchableOpacity>
