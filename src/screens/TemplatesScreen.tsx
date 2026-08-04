@@ -6,62 +6,39 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Modal,
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
-import { TemplateItemEditor } from '../components/TemplateItemEditor';
-import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatOffsetLabel } from '../utils/templateUtils';
-import { TITLE_MAX_LENGTH } from '../types';
-import type { TemplateItem } from '../types';
-
-/** "Due 3 days before · Shows 1 day before · morning" hint under an item row. */
-function itemHint(item: TemplateItem): string | null {
-  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
-  const parts: string[] = [];
-  if (item.dueOffsetDays !== null) parts.push(`Due ${lower(formatOffsetLabel(item.dueOffsetDays))}`);
-  if (item.deferOffsetDays !== null) parts.push(`Shows ${lower(formatOffsetLabel(item.deferOffsetDays))}`);
-  if (item.timeSegments.length > 0) parts.push(item.timeSegments.join(', '));
-  return parts.length > 0 ? parts.join(' · ') : null;
-}
 
 export function TemplatesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   const templates = useTemplateStore(useShallow(s => s.templates));
   const addTemplate = useTemplateStore(s => s.addTemplate);
   const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
-  const addItem = useTemplateStore(s => s.addItem);
-  const deleteItem = useTemplateStore(s => s.deleteItem);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [newTemplateText, setNewTemplateText] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<TemplateItem | null>(null);
-  const [itemEditorVisible, setItemEditorVisible] = useState(false);
-  const [suggestVisible, setSuggestVisible] = useState(false);
-  const [newItemText, setNewItemText] = useState('');
   const inputRef = useRef<TextInput>(null);
 
-  const selectedTemplate = templates.find(t => t.id === selectedTemplateId) ?? null;
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
 
   const handleStartAdding = () => {
@@ -78,6 +55,7 @@ export function TemplatesScreen() {
       const tpl = addTemplate(trimmed);
       // Drop straight into the editor so the new template doesn't sit empty.
       setSelectedTemplateId(tpl.id);
+      (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
     }
     setNewTemplateText('');
     setAddingTemplate(false);
@@ -101,29 +79,6 @@ export function TemplatesScreen() {
         },
       ]
     );
-  };
-
-  const handleAddItem = () => {
-    if (!selectedTemplateId) return;
-    const trimmed = newItemText.trim();
-    if (trimmed) {
-      haptics.success();
-      animateLayout();
-      addItem(selectedTemplateId, { title: trimmed });
-    }
-    setNewItemText('');
-  };
-
-  const handleDeleteItem = (itemId: string) => {
-    if (!selectedTemplateId) return;
-    haptics.tap();
-    animateLayout();
-    deleteItem(selectedTemplateId, itemId);
-  };
-
-  const openItemEditor = (item: TemplateItem | null) => {
-    setEditingItem(item);
-    setItemEditorVisible(true);
   };
 
   return (
@@ -187,7 +142,10 @@ export function TemplatesScreen() {
         renderItem={({ item: tpl }) => (
           <TouchableOpacity
             style={styles.tplRow}
-            onPress={() => setSelectedTemplateId(tpl.id)}
+            onPress={() => {
+              setSelectedTemplateId(tpl.id);
+              (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
+            }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel={`${tpl.name}, ${tpl.items.length === 0 ? 'no items' : `${tpl.items.length} item${tpl.items.length === 1 ? '' : 's'}`}`}
@@ -208,6 +166,7 @@ export function TemplatesScreen() {
               onPress={() => {
                 if (tpl.items.length === 0) {
                   setSelectedTemplateId(tpl.id);
+                  (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
                   return;
                 }
                 haptics.tap();
@@ -236,156 +195,9 @@ export function TemplatesScreen() {
         )}
       />
 
-      {/* Template editor modal */}
-      <Modal
-        visible={selectedTemplate !== null}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setSelectedTemplateId(null)}
-      >
-        <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-          <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setSelectedTemplateId(null)} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <View style={styles.detailTitle}>
-              <View style={[styles.tplIconSm, { backgroundColor: colors.accent + '22' }]}>
-                <Ionicons name="copy" size={14} color={colors.accent} />
-              </View>
-              <Text style={styles.detailTitleText}>{selectedTemplate?.name}</Text>
-            </View>
-            <View style={styles.detailHeaderActions}>
-              {!!anthropicApiKey && (
-                <TouchableOpacity
-                  onPress={() => { haptics.tap(); setSuggestVisible(true); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Suggest tasks with AI"
-                >
-                  <Ionicons name="sparkles-outline" size={22} color={colors.purple} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={() => {
-                  if (!selectedTemplate || selectedTemplate.items.length === 0) return;
-                  haptics.tap();
-                  setApplyTemplateId(selectedTemplate.id);
-                }}
-                disabled={!selectedTemplate || selectedTemplate.items.length === 0}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel="Apply template"
-                accessibilityState={{ disabled: !selectedTemplate || selectedTemplate.items.length === 0 }}
-              >
-                <Ionicons
-                  name="play-circle-outline"
-                  size={24}
-                  color={selectedTemplate && selectedTemplate.items.length > 0 ? colors.accent : colors.textTertiary}
-                />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Quick title-only item entry */}
-          <View style={styles.itemAddRow}>
-            <Ionicons name="add-circle-outline" size={20} color={colors.textTertiary} />
-            <TextInput
-              style={styles.itemAddInput}
-              value={newItemText}
-              onChangeText={setNewItemText}
-              placeholder="Add a task…"
-              placeholderTextColor={colors.textTertiary}
-              maxLength={TITLE_MAX_LENGTH}
-              returnKeyType="done"
-              blurOnSubmit={false}
-              onSubmitEditing={handleAddItem}
-            />
-          </View>
-
-          <FlatList
-            data={selectedTemplate?.items ?? []}
-            keyExtractor={i => i.id}
-            contentContainerStyle={styles.list}
-            renderItem={({ item }) => {
-              const hint = itemHint(item);
-              return (
-                <TouchableOpacity
-                  style={styles.itemRow}
-                  onPress={() => openItemEditor(item)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${item.title}${item.optional ? ', optional' : ''}`}
-                  accessibilityHint="Double tap to edit item"
-                >
-                  <View style={styles.itemInfo}>
-                    <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-                    {hint && <Text style={styles.itemHintText} numberOfLines={1}>{hint}</Text>}
-                  </View>
-                  {item.optional && (
-                    <View style={styles.optionalBadge}>
-                      <Text style={styles.optionalBadgeText}>Optional</Text>
-                    </View>
-                  )}
-                  <TouchableOpacity
-                    onPress={() => handleDeleteItem(item.id)}
-                    style={styles.rowButton}
-                    activeOpacity={interaction.activeOpacity}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete item ${item.title}`}
-                  >
-                    <Ionicons name="trash-outline" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                  <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              <EmptyState
-                icon="list-outline"
-                title="No items yet"
-                subtitle="Add tasks above — tap one after adding to set dates, tags and more"
-                actionLabel={anthropicApiKey ? 'Suggest tasks with AI' : undefined}
-                onAction={anthropicApiKey ? () => { haptics.tap(); setSuggestVisible(true); } : undefined}
-              />
-            }
-          />
-
-          {selectedTemplate && (
-            <TemplateItemEditor
-              visible={itemEditorVisible}
-              templateId={selectedTemplate.id}
-              item={editingItem}
-              onClose={() => setItemEditorVisible(false)}
-            />
-          )}
-
-          {selectedTemplate && (
-            <TemplateSuggestionsSheet
-              visible={suggestVisible}
-              templateId={selectedTemplate.id}
-              templateName={selectedTemplate.name}
-              existingTitles={selectedTemplate.items.map(i => i.title)}
-              onClose={() => setSuggestVisible(false)}
-            />
-          )}
-
-          {/* Nested inside the editor's own Modal — a sibling top-level Modal
-              can't present over it on iOS while the editor is open (it silently
-              waits until the editor dismisses). */}
-          {selectedTemplate && (
-            <ApplyTemplateSheet
-              visible={applyTemplateObj !== null}
-              template={applyTemplateObj}
-              onClose={() => setApplyTemplateId(null)}
-            />
-          )}
-        </View>
-      </Modal>
-
-      {/* Used only when applying from the template list, i.e. the editor is closed. */}
+      {/* Used when applying from the template list. */}
       <ApplyTemplateSheet
-        visible={applyTemplateObj !== null && selectedTemplate === null}
+        visible={applyTemplateObj !== null}
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
       />

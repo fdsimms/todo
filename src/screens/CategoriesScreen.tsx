@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   TextInput,
   StyleSheet,
@@ -10,28 +9,23 @@ import {
   Alert,
   ScrollView,
   Platform,
-  type GestureResponderEvent,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
-import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { TaskItem } from '../components/TaskItem';
-import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
-import { BulkActionBar } from '../components/BulkActionBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { Task, Category } from '../types';
+import type { Category } from '../types';
 
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 const FULL_DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -252,31 +246,19 @@ function CategoryScheduleEditor({ category, onClose }: ScheduleEditorProps) {
 export function CategoriesScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const navigation = useNavigation();
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const addCategory = useTaskStore(s => s.addCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
   const renameCategory = useTaskStore(s => s.renameCategory);
-  const pinCategory = useTaskStore(s => s.pinCategory);
-  const allTasks = useTaskStore(s => s.tasks);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
-  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
-  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
-  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
-  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
-  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [scheduleCategory, setScheduleCategory] = useState<string | null>(null);
-  const [editorVisible, setEditorVisible] = useState(false);
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryText, setNewCategoryText] = useState('');
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('');
@@ -286,57 +268,6 @@ export function CategoriesScreen() {
   const [renameText, setRenameText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
-  const {
-    selectionMode,
-    selectedIds,
-    enterSelectionMode,
-    toggleSelection,
-    exitSelection,
-    selectAll,
-    deselectAll,
-    handleBulkDelete,
-  } = useTaskSelection(allTasks);
-  // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
-  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
-
-  // Collapse any expanded task when navigating away from this tab so it
-  // isn't still expanded when the user comes back.
-  useFocusEffect(
-    useCallback(() => {
-      return () => setExpandedTaskId(null);
-    }, [])
-  );
-
-  const openEditor = (task: Task) => {
-    setEditingTask(task);
-    setEditorVisible(true);
-  };
-
-  // Raw touch events fire on release regardless of whether the list itself
-  // claimed the gesture as a scroll, so without this distance check,
-  // scrolling the list would dismiss the expanded-task spotlight just like
-  // an intentional tap outside it.
-  const listTouchStart = useRef<{ x: number; y: number } | null>(null);
-  const handleListTouchStart = (e: GestureResponderEvent) => {
-    const touch = e.nativeEvent.touches[0];
-    listTouchStart.current = touch ? { x: touch.pageX, y: touch.pageY } : null;
-  };
-  const handleListTouchEnd = (e: GestureResponderEvent) => {
-    const start = listTouchStart.current;
-    const touch = e.nativeEvent.changedTouches[0];
-    const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
-    if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
-  };
-
-  const categoryTasks = selectedCategory ? tasksByCategory(selectedCategory) : [];
-  const categoryAllPinned = categoryTasks.length > 0 && categoryTasks.every(t => t.pinned);
-
-  const handlePinCategory = () => {
-    if (!selectedCategory || categoryTasks.length === 0) return;
-    haptics.tap();
-    animateLayout();
-    pinCategory(selectedCategory);
-  };
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
 
@@ -391,7 +322,6 @@ export function CategoriesScreen() {
       return;
     }
     haptics.success();
-    if (selectedCategory === renameCategoryTarget) setSelectedCategory(trimmed);
     setRenameCategoryTarget(null);
   };
 
@@ -406,7 +336,6 @@ export function CategoriesScreen() {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            if (selectedCategory === name) setSelectedCategory(null);
             animateLayout();
             deleteCategory(name);
           },
@@ -502,10 +431,7 @@ export function CategoriesScreen() {
             return (
               <TouchableOpacity
                 style={[styles.catRow, isActive && styles.catRowActive]}
-                onPress={() => {
-                  setExpandedTaskId(null);
-                  setSelectedCategory(cat);
-                }}
+                onPress={() => (navigation as any).navigate('CategoryDetail', { category: cat })}
                 onLongPress={drag}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
@@ -591,116 +517,6 @@ export function CategoriesScreen() {
           }}
         />
       )}
-
-      {/* Category detail modal */}
-      <Modal
-        visible={selectedCategory !== null}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => { setSelectedCategory(null); if (selectionMode) exitSelection(); }}
-      >
-        <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-          <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => { setSelectedCategory(null); if (selectionMode) exitSelection(); }} accessibilityRole="button" accessibilityLabel="Close">
-              <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <View style={styles.detailTitle}>
-              <View style={[styles.catIconSm, { backgroundColor: colors.accent + '22' }]}>
-                {selectedCategory && getCategoryObj(selectedCategory)?.emoji ? (
-                  <Text style={styles.catIconEmojiSm}>{getCategoryObj(selectedCategory)?.emoji}</Text>
-                ) : (
-                  <Ionicons name="folder" size={14} color={colors.accent} />
-                )}
-              </View>
-              <Text style={styles.detailTitleText}>
-                {selectedCategory && getCategoryObj(selectedCategory)?.emoji
-                  ? `${getCategoryObj(selectedCategory)?.emoji} ${selectedCategory}`
-                  : selectedCategory}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={handlePinCategory}
-              disabled={categoryTasks.length === 0}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllPinned }}
-              accessibilityLabel={categoryAllPinned ? `Unpin all tasks in ${selectedCategory}` : `Pin all tasks in ${selectedCategory}`}
-            >
-              <Ionicons
-                name={categoryAllPinned ? 'pin' : 'pin-outline'}
-                size={22}
-                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
-              />
-            </TouchableOpacity>
-          </View>
-
-          <View
-            style={{ flex: 1 }}
-            // Catch any touch in the list area to dismiss the expanded-task
-            // spotlight; the expanded card stops propagation so its own
-            // controls keep working.
-            onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
-            onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
-          >
-          <FlatList
-            data={categoryTasks}
-            keyExtractor={t => t.id}
-            contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
-            renderItem={({ item }) => {
-              const subs = allTasks.filter(t => t.parentId === item.id);
-              return (
-                <TaskItem
-                  task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
-                  expanded={expandedTaskId === item.id}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
-                />
-              );
-            }}
-            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-            ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
-            ListEmptyComponent={
-              <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
-            }
-          />
-          </View>
-
-          {selectionMode && (
-            <BulkActionBar
-              selectedCount={selectedIds.size}
-              totalCount={categoryTasks.length}
-              existingTags={allTags}
-              existingCategories={allCategories}
-              onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
-              onDelete={handleBulkDelete}
-              onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
-              onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
-              onAddCategory={addCategory}
-              onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
-              onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-              onSelectAll={() => selectAll(categoryTasks.map(t => t.id))}
-              onDeselectAll={deselectAll}
-              onCancel={exitSelection}
-              bottomInset={tabBarHeight}
-              onHeightChange={setBulkBarHeight}
-            />
-          )}
-        </View>
-      </Modal>
 
       {/* Schedule editor modal */}
       <Modal
@@ -819,14 +635,6 @@ export function CategoriesScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        onClose={() => {
-          setEditorVisible(false);
-          setExpandedTaskId(null);
-        }}
-      />
     </View>
   );
 }
