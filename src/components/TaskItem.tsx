@@ -67,8 +67,13 @@ const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 // Steps shown on each side of the active chain step before truncating with '…'.
 const CHAIN_PREVIEW_RADIUS = 2;
 
+const MONTH_DAY_SUFFIXES: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd', 21: 'st', 22: 'nd', 23: 'rd', 31: 'st' };
+function ordinalMonthDay(n: number): string {
+  return `${n}${MONTH_DAY_SUFFIXES[n] ?? 'th'}`;
+}
+
 function describeRecurrence(task: Task): string {
-  const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion } = task;
+  const { recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceFromCompletion } = task;
   let text = '';
   if (recurrenceType === 'daily') {
     text = recurrenceInterval === 1 ? 'Daily' : `Every ${recurrenceInterval} days`;
@@ -77,7 +82,12 @@ function describeRecurrence(task: Task): string {
     const base = recurrenceInterval === 1 ? 'Weekly' : `Every ${recurrenceInterval} weeks`;
     text = dayStr ? `${base} on ${dayStr}` : base;
   } else if (recurrenceType === 'monthly') {
-    text = recurrenceInterval === 1 ? 'Monthly' : `Every ${recurrenceInterval} months`;
+    const base = recurrenceInterval === 1 ? 'Monthly' : `Every ${recurrenceInterval} months`;
+    text = recurrenceMonthDay === -1
+      ? 'Monthly on the last day'
+      : recurrenceMonthDay
+        ? `Monthly on the ${ordinalMonthDay(recurrenceMonthDay)}`
+        : base;
   } else if (recurrenceType === 'yearly') {
     text = recurrenceInterval === 1 ? 'Yearly' : `Every ${recurrenceInterval} years`;
   }

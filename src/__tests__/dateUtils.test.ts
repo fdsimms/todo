@@ -38,6 +38,7 @@ const baseTask: Task = {
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],
+  recurrenceMonthDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],
@@ -361,6 +362,68 @@ describe('getNextDueDate', () => {
     const result = getNextDueDate(task, '00:00')!;
     expect(result.getMonth()).toBe(6); // July
     expect(result.getDate()).toBe(10);
+  });
+
+  it('monthly with recurrenceMonthDay picks that day next month when already past it this month', () => {
+    // NOW is June 10. recurrenceMonthDay=5 has already passed this month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: 5 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(6); // July
+    expect(result.getDate()).toBe(5);
+  });
+
+  it('monthly with recurrenceMonthDay picks that day this month when still upcoming', () => {
+    // NOW is June 10. recurrenceMonthDay=20 hasn't happened yet this month.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: 20 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(20);
+  });
+
+  it('monthly with recurrenceMonthDay clamps to the last day of short months', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: 31,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28); // clamped, 2025 not a leap year
+  });
+
+  it('monthly with recurrenceMonthDay=-1 (last day) picks the last day of next month when already past it', () => {
+    // NOW is June 10, 30-day month, so June 30 already lies ahead — but this
+    // asserts the "already past" branch using a due date deep in June instead.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: -1,
+      dueDate: new Date(2025, 5, 30, 0, 0, 0).toISOString(), // June 30, already the last day
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(6); // July
+    expect(result.getDate()).toBe(31); // last day of July
+  });
+
+  it('monthly with recurrenceMonthDay=-1 (last day) picks this month\'s last day when still upcoming', () => {
+    // NOW is June 10; June's last day (30) hasn't happened yet.
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceMonthDay: -1 };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(30);
+  });
+
+  it('monthly with recurrenceMonthDay=-1 lands on Feb 28 (non-leap year)', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: -1,
+      dueDate: new Date(2025, 0, 31, 0, 0, 0).toISOString(), // Jan 31, already the last day
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(1); // February
+    expect(result.getDate()).toBe(28);
   });
 
   it('yearly interval=1 adds 1 year', () => {
