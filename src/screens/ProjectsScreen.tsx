@@ -16,8 +16,9 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
-import { useCategoryStore } from '../store/useCategoryStore';
-import { categoryLabel } from '../utils/categoryLabel';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { groupProjectsByCategory, isProjectHeader, projectOrderFromItems } from '../utils/projectGrouping';
+import { dragRange } from '../utils/reorder';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
@@ -52,7 +53,7 @@ export function ProjectsScreen() {
   const createProject = useProjectStore(s => s.createProject);
   const reorderProjects = useProjectStore(s => s.reorderProjects);
   const allTasks = useTaskStore(useShallow(s => s.tasks));
-  const categories = useCategoryStore(useShallow(s => s.categories));
+  const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
   const addTask = useTaskStore(s => s.addTask);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
 
@@ -81,6 +82,15 @@ export function ProjectsScreen() {
   const visibleProjects = useMemo(
     () => projects.filter(p => p.archived === showArchived),
     [projects, showArchived]
+  );
+
+  const projectCategoryOrder = useMemo(
+    () => [...projectCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
+    [projectCategories]
+  );
+  const projectListItems = useMemo(
+    () => groupProjectsByCategory(visibleProjects, projectCategoryOrder),
+    [visibleProjects, projectCategoryOrder]
   );
 
   const [showCompleted, setShowCompleted] = useState(false);
@@ -190,13 +200,22 @@ export function ProjectsScreen() {
         />
       ) : (
         <ReorderableList
-          data={visibleProjects}
-          keyExtractor={p => p.id}
+          data={projectListItems}
+          keyExtractor={item => item.key}
           contentContainerStyle={styles.list}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
-          onReorder={reordered => reorderProjects(reordered.map(p => p.id))}
-          renderItem={({ item: project, drag, isActive }) => {
+          dragRange={(data, idx) => dragRange(data, idx, isProjectHeader)}
+          onReorder={reordered => reorderProjects(projectOrderFromItems(reordered))}
+          renderItem={({ item, drag, isActive }) => {
+            if (item.type === 'header') {
+              return (
+                <View style={styles.categorySectionHeader}>
+                  <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
+                </View>
+              );
+            }
+            const project = item.project;
             const progress = projectProgress(project.id, allTasks);
             const pastWindow = isProjectPastWindow(project, progress);
             const rangeLabel = dateRangeLabel(project);
@@ -224,14 +243,6 @@ export function ProjectsScreen() {
                       <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
-                  {project.category && (
-                    <View style={styles.categoryRow}>
-                      <Ionicons name="folder-outline" size={12} color={colors.textTertiary} />
-                      <Text style={styles.categoryLabel} numberOfLines={1}>
-                        {categoryLabel(project.category, categories)}
-                      </Text>
-                    </View>
-                  )}
                   {progress.total > 0 && (
                     <View style={styles.progressRow}>
                       <ProgressBar progress={progress.done / progress.total} />
@@ -490,6 +501,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
   },
+  categorySectionHeader: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
+  },
+  categorySectionHeaderText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
   projectRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -526,15 +550,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  categoryLabel: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
   },
   progressRow: {
     flexDirection: 'row',

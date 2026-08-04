@@ -15,6 +15,16 @@ export interface Category {
   emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
 }
 
+// A category for grouping PROJECTS on the Projects page (e.g. "Travel",
+// "Bucket List", "Shopping"). Deliberately a separate pool from Category
+// (which groups tasks) — the two never share names or a registry, so
+// creating "Travel" here has no effect on task categories and vice versa.
+export interface ProjectCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+}
+
 export interface ChainItem {
   id: string;
   title: string;
@@ -54,6 +64,9 @@ export interface Project {
   notes: string;
   targetStartDate: string | null;
   targetEndDate: string | null;
+  // Name of a ProjectCategory, purely for grouping projects on the Projects
+  // page. Independent of task Category — never affects the tasks inside the
+  // project (their own categories, visibility, etc. are untouched).
   category: string | null;
   sortOrder: number;
   archived: boolean;
