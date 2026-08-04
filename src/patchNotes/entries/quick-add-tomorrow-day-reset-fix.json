@@ -1,0 +1,4 @@
+{
+  "message": "Fixed \"tomorrow\" (and other quick-add date phrases) in a task title sometimes scheduling two days out instead of one, when typed after midnight but before your day reset time",
+  "date": "2026-08-04"
+}
