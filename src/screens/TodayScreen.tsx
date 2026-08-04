@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   Pressable,
   StyleSheet,
@@ -19,7 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -59,7 +60,7 @@ import { spacing, font, fontWeight, radius, interaction, animation, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
-type ViewMode = 'today' | 'later';
+type ViewMode = 'today' | 'later' | 'unscheduled';
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -274,6 +275,7 @@ export function TodayScreen() {
   const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
+  const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
   const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
@@ -384,7 +386,19 @@ export function TodayScreen() {
   };
 
   const handleTaskCreated = (task: Task) => {
-    const destination: ViewMode = isTaskVisible(task) ? 'today' : 'later';
+    // A quick-add with no organizing metadata at all is an Inbox task,
+    // regardless of which tab it was created from — jump there and hand off
+    // the highlight instead of showing it (invisibly) on this screen.
+    if (isInboxTask(task)) {
+      navigation.navigate({
+        name: 'Inbox',
+        params: { highlightTaskId: task.id, jump: Date.now() },
+      } as never);
+      return;
+    }
+    const destination: ViewMode = isTaskVisible(task)
+      ? 'today'
+      : isUnscheduledTask(task) ? 'unscheduled' : 'later';
     if (destination !== viewMode) setViewMode(destination);
     showJustCreated(task.id);
   };
@@ -1155,14 +1169,18 @@ export function TodayScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
-        title={viewMode === 'today' ? 'Today' : 'Later'}
+        title={viewMode === 'today' ? 'Today' : viewMode === 'later' ? 'Later' : 'Unscheduled'}
         overline={viewMode === 'today' ? today : undefined}
         actions={headerActions}
       />
 
       {/* View mode switcher */}
-      <View style={styles.viewModePills}>
-        {(['today', 'later'] as ViewMode[]).map(mode => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.viewModePills}
+      >
+        {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
           <TouchableOpacity
             key={mode}
             style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
@@ -1199,7 +1217,7 @@ export function TodayScreen() {
             </View>
           )}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {viewMode === 'today' && newTaskIds.length > 0 && (
         <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
@@ -1428,9 +1446,60 @@ export function TodayScreen() {
           }
         />
       )}
+
+      {viewMode === 'unscheduled' && (
+        <FlatList
+          data={unscheduledTasks}
+          keyExtractor={t => t.id}
+          renderItem={({ item }) => {
+            const subs = subtasksByParent.get(item.id) ?? [];
+            return (
+              <TaskItem
+                task={item}
+                onPress={() => {
+                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                    setExpandedTaskId(null);
+                    return;
+                  }
+                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                }}
+                expanded={expandedTaskId === item.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onSelect={() => toggleSelection(item.id)}
+                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                hideTodayLabel
+                showCategory
+                showProject
+                justCreated={item.id === justCreatedId}
+              />
+            );
+          }}
+          contentContainerStyle={
+            unscheduledTasks.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="layers-outline"
+              title="Nothing unscheduled"
+              subtitle="Tasks with no due date land here once they're organized"
+              bottomOffset={tabBarHeight}
+            />
+          }
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+        />
+      )}
       </View>
 
-      {(viewMode === 'today' || viewMode === 'later') && !selectionMode && (
+      {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
         <Animated.View
           style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
           pointerEvents={spotlightActive ? 'none' : 'box-none'}
@@ -1489,7 +1558,11 @@ export function TodayScreen() {
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
-          totalCount={viewMode === 'later' ? deferredTasks.length : filtered.length}
+          totalCount={
+            viewMode === 'later' ? deferredTasks.length
+            : viewMode === 'unscheduled' ? unscheduledTasks.length
+            : filtered.length
+          }
           existingTags={allTags}
           existingCategories={allCategories}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
@@ -1509,7 +1582,9 @@ export function TodayScreen() {
             exitSelection();
           }}
           onSelectAll={() => selectAll(
-            viewMode === 'later' ? deferredTasks.map(t => t.id) : filtered.map(t => t.id)
+            viewMode === 'later' ? deferredTasks.map(t => t.id)
+            : viewMode === 'unscheduled' ? unscheduledTasks.map(t => t.id)
+            : filtered.map(t => t.id)
           )}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}

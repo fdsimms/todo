@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,7 +18,7 @@ import { SpotlightOverlay, useSpotlightElevation } from '../components/Spotlight
 import { useColors } from '../theme/ThemeContext';
 import { spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { isInboxTask, isTaskVisible } from '../utils/visibilityUtils';
+import { isInboxTask, isTaskVisible, isUnscheduledTask } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
 // The Inbox is a triage view of "loose" tasks — title only, no category, tag,
@@ -28,6 +28,7 @@ import type { Task } from '../types';
 export function InboxScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
@@ -98,12 +99,23 @@ export function InboxScreen() {
     navigation.navigate({
       name: 'Today',
       params: {
-        targetViewMode: isTaskVisible(task) ? 'today' : 'later',
+        targetViewMode: isTaskVisible(task) ? 'today' : isUnscheduledTask(task) ? 'unscheduled' : 'later',
         highlightTaskId: task.id,
         jump: Date.now(),
       },
     } as never);
   };
+
+  // Mirrors Today's own highlight-on-navigate: a task created elsewhere (e.g.
+  // Today's Unscheduled quick-add, when the result turns out to be a bare
+  // Inbox task) jumps here and hands off the highlight.
+  useEffect(() => {
+    if (route.params?.jump === undefined) return;
+    if (!route.params?.highlightTaskId) return;
+    if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+    setJustCreatedId(route.params.highlightTaskId);
+    justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
+  }, [route.params?.jump]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>

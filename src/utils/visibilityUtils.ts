@@ -162,6 +162,11 @@ export function isTaskVisible(task: Task): boolean {
   // they only surface on Today once given an explicit due date.
   if (task.projectId && !task.dueDate) return false;
 
+  // A non-project task with no date/time signal at all has nowhere to be
+  // "due" today — it lives in the Inbox (untriaged) or Unscheduled (triaged
+  // but undated) view instead, not on Today.
+  if (!task.projectId && hasNoDateSignal(task)) return false;
+
   if (task.dueDate) {
     const taskDayStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
     const todayStart = getCurrentDayStart();
@@ -203,6 +208,9 @@ export function isTaskDeferred(task: Task): boolean {
   // either — they have no date to be deferred to, so they just live in their
   // project until one is assigned.
   if (task.projectId && !task.dueDate) return false;
+  // Same reasoning for Inbox/Unscheduled tasks: no date signal means nothing
+  // to defer to, so they stay out of Later too.
+  if (!task.projectId && hasNoDateSignal(task)) return false;
   return !isTaskVisible(task);
 }
 
@@ -212,8 +220,9 @@ export function isTaskDeferred(task: Task): boolean {
 // time window, recurrence, reminder or priority it leaves the Inbox on its own,
 // so there's no stored flag to keep in sync. Deliberately NOT disqualifying:
 // notes, effort, estimatedMinutes, focused, vacationPause — those don't file a
-// task anywhere. Inbox tasks still appear on Today; the Inbox is a triage lens,
-// not a hidden holding pen.
+// task anywhere. Inbox tasks don't appear on Today (see isTaskVisible) — the
+// Inbox is where they wait until triaged (dated, filed under a project, or
+// otherwise organized).
 export function isInboxTask(task: Task): boolean {
   return (
     !task.parentId &&
@@ -231,6 +240,35 @@ export function isInboxTask(task: Task): boolean {
     task.recurrenceType === 'none' &&
     task.reminderTime == null &&
     task.priority === 0
+  );
+}
+
+// True when a task carries none of the signals that gate its day-to-day
+// visibility (dueDate, deferUntil, timeSegments, windowStart) — the same
+// three fields isTaskVisible/isTaskDeferred check to decide whether a task is
+// "scheduled" at all. isInboxTask is a subset of this: a bare inbox task has
+// no date signal AND no other organizing metadata either.
+function hasNoDateSignal(task: Task): boolean {
+  return (
+    task.dueDate == null &&
+    task.deferUntil == null &&
+    task.timeSegments.length === 0 &&
+    task.windowStart == null
+  );
+}
+
+// True when a task is a "someday" item: organized (category, tags, priority,
+// etc. — otherwise it'd be an Inbox task) but with no date/time signal to
+// place it on a particular day, and not filed under a project (a project's
+// own screen is that task's home instead). Drives the Unscheduled view.
+export function isUnscheduledTask(task: Task): boolean {
+  return (
+    !task.parentId &&
+    !task.completed &&
+    !task.archived &&
+    task.projectId == null &&
+    hasNoDateSignal(task) &&
+    !isInboxTask(task)
   );
 }
 

@@ -890,8 +890,14 @@ describe('completeTask', () => {
   });
 
   describe('completion hold (deferred list removal)', () => {
+    // June 10, 2025 10:00 AM (this describe's beforeEach system time) — every
+    // task here needs a due date of today, otherwise it'd never have counted
+    // as visible in the first place (see isTaskVisible's Inbox/Unscheduled
+    // date-signal gate), independent of the completion hold under test.
+    const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
     it('keeps a just-completed task in visibleTasks until the hold window passes', () => {
-      useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
       useTaskStore.getState().completeTask('t1');
       expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['t1']);
 
@@ -901,7 +907,10 @@ describe('completeTask', () => {
 
     it('resets the hold window on each new completion, so a burst clears together', () => {
       useTaskStore.setState({
-        tasks: [makeTask({ id: 't1', sortOrder: 1 }), makeTask({ id: 't2', sortOrder: 2 })],
+        tasks: [
+          makeTask({ id: 't1', sortOrder: 1, dueDate: dueToday }),
+          makeTask({ id: 't2', sortOrder: 2, dueDate: dueToday }),
+        ],
       });
       useTaskStore.getState().completeTask('t1');
       jest.advanceTimersByTime(400);
@@ -1874,10 +1883,11 @@ describe('markTasksSeen', () => {
 
 describe('visibleTasks', () => {
   it('returns non-completed, non-subtask tasks sorted by sortOrder', () => {
+    const dueToday = new Date().toISOString();
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'b', sortOrder: 2 }),
-        makeTask({ id: 'a', sortOrder: 1 }),
+        makeTask({ id: 'b', sortOrder: 2, dueDate: dueToday }),
+        makeTask({ id: 'a', sortOrder: 1, dueDate: dueToday }),
       ],
     });
     const visible = useTaskStore.getState().visibleTasks();
