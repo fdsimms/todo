@@ -31,6 +31,7 @@ import {
   laterTaskOrder,
   LATER_TODAY_LABEL,
   type LaterListItem,
+  type CategoryListItem,
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
@@ -46,6 +47,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
+import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
@@ -58,7 +60,7 @@ import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -321,6 +323,7 @@ export function TodayScreen() {
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
+  const updateGroup = useTaskGroupStore(s => s.updateGroup);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const completeGroup = useTaskStore(s => s.completeGroup);
@@ -329,6 +332,9 @@ export function TodayScreen() {
   const pinGroup = useTaskStore(s => s.pinGroup);
   const deleteGroup = useTaskStore(s => s.deleteGroup);
   const groupTasks = useTaskStore(s => s.groupTasks);
+  const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
+  const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
+  const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -874,6 +880,32 @@ export function TodayScreen() {
     drag();
   };
 
+  // Set while a group header's drag() is in flight, mirroring
+  // draggingCategoryRef — lets the group's own children collapse for the
+  // duration of the drag (rendered check further down) without touching the
+  // rest of the category. Cleared in the outer ReorderableList's onDragEnd.
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
+  const startGroupDrag = (groupId: string, drag: () => void) => {
+    draggingCategoryRef.current = null;
+    haptics.tap();
+    setDraggingGroupId(groupId);
+    drag();
+  };
+
+  // Tracks a "drag right to join a group" gesture while a plain loose task is
+  // being dragged: set from onDragMove below whenever the finger is offset
+  // rightward (like a subtask indent) while hovering just below a group's
+  // header/last child, cleared once the offset drops back under the
+  // threshold. Read once at drop time in onReorder, then cleared.
+  const joinGroupIntentRef = useRef<string | null>(null);
+  const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  const JOIN_GROUP_INDENT_THRESHOLD = spacing.md + spacing.lg; // matches TaskItem's subtask indent
+  // Index (within draggableData) of the row currently being dragged in the
+  // main list — kept up to date from dragRange (called every hover update)
+  // so onDragMove can tell which row is in flight without ReorderableList
+  // needing to expose that itself.
+  const activeDragIndexRef = useRef<number | null>(null);
+
   // A fast drag can cross several rows between frames; spacing the selection
   // ticks out keeps them from piling up into one long buzz.
   const lastDragHapticRef = useRef(0);
@@ -897,10 +929,11 @@ export function TodayScreen() {
 
   // Shared by the plain 'task' row case and a group's expanded children —
   // group children are full TaskItem rows with every normal capability
-  // (checkbox, swipe actions, timer, expand-for-notes, individual skip), just
-  // never draggable (no `drag` passed when rendered inside a group), so
-  // ReorderableList itself needs no changes to support them.
-  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean; indented?: boolean; showCategory?: boolean }) => {
+  // (checkbox, swipe actions, timer, expand-for-notes, individual skip). A
+  // group child's drag is driven by the nested SortableList in the 'group'
+  // render branch below (reorder within the group / drag out to remove),
+  // entirely separate from the outer ReorderableList's own drag machinery.
+  const renderTaskRow = (task: Task, opts?: { drag?: (e?: GestureResponderEvent) => void; isActive?: boolean; indented?: boolean; showCategory?: boolean }) => {
     const subs = subtasksByParent.get(task.id) ?? [];
     return (
       <TaskItem
@@ -923,7 +956,7 @@ export function TodayScreen() {
         drag={
           selectionMode || !opts?.drag || upcomingTaskIds.has(task.id)
             ? undefined
-            : () => { draggingCategoryRef.current = null; opts.drag!(); }
+            : (e?: GestureResponderEvent) => { draggingCategoryRef.current = null; opts.drag!(e); }
         }
         isActive={opts?.isActive}
         selectionMode={selectionMode}
@@ -1015,7 +1048,7 @@ export function TodayScreen() {
     if (item.type === 'group') {
       const allChildren = childrenByGroupId.get(item.group.id) ?? [];
       return (
-        <View>
+        <View style={joinGroupIntentId === item.group.id && styles.groupJoinTarget}>
           <TaskGroupHeader
             group={item.group}
             allChildren={allChildren}
@@ -1033,11 +1066,28 @@ export function TodayScreen() {
             onDeleteWithTasks={() => deleteGroup(item.group.id, { cascade: true })}
             onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
             dimmed={headerDimmed}
+            onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
           />
-          <AnimatedCollapsible expanded={!item.group.collapsed}>
-            {item.children.map(child => (
-              <React.Fragment key={child.id}>{renderTaskRow(child, { indented: true })}</React.Fragment>
-            ))}
+          <AnimatedCollapsible expanded={!item.group.collapsed && draggingGroupId !== item.group.id}>
+            <SortableList
+              data={item.children}
+              onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
+              onDragOut={task => removeFromGroup(task.id)}
+              renderItem={(child, _displayIndex, childDrag, childIsActive) => (
+                <React.Fragment key={child.id}>
+                  {renderTaskRow(child, {
+                    indented: true,
+                    isActive: childIsActive,
+                    // Reads the long-press's pageY to seed SortableList's own
+                    // delta-based drag tracking (it has no row-layout map to
+                    // fall back on the way the outer ReorderableList does).
+                    drag: selectionMode
+                      ? undefined
+                      : (e?: GestureResponderEvent) => childDrag(e?.nativeEvent.pageY ?? 0),
+                  })}
+                </React.Fragment>
+              )}
+            />
           </AnimatedCollapsible>
         </View>
       );
@@ -1470,6 +1520,9 @@ export function TodayScreen() {
             setExpandedTaskId(null);
           }}
           onDragEnd={() => {
+            joinGroupIntentRef.current = null;
+            setJoinGroupIntentId(null);
+            if (draggingGroupId !== null) setDraggingGroupId(null);
             if (!autoCollapseForDrag) return;
             // Deferred a tick so this LayoutAnimation lands in its own
             // commit, after ReorderableList's own drop-settle render (rows
@@ -1482,7 +1535,28 @@ export function TodayScreen() {
             }, 0);
           }}
           onHoverChange={dragHaptic}
+          onDragMove={({ dx, hoverIndex }) => {
+            // Only a plain loose task can be dragged right to join a group —
+            // headers and groups themselves use the same horizontal offset
+            // purely as drag-overlay cosmetics (see ReorderableList).
+            if (hoverIndex === null) return;
+            const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
+            if (draggedItem?.type !== 'task') return;
+            const rowAtHover = draggableData[hoverIndex];
+            const rowBeforeHover = draggableData[hoverIndex - 1];
+            const target =
+              rowAtHover?.type === 'group' ? rowAtHover.group
+                : rowBeforeHover?.type === 'group' ? rowBeforeHover.group
+                : null;
+            const nextId = dx > JOIN_GROUP_INDENT_THRESHOLD && target ? target.id : null;
+            if (nextId !== joinGroupIntentRef.current) {
+              joinGroupIntentRef.current = nextId;
+              setJoinGroupIntentId(nextId);
+              if (nextId) haptics.tap();
+            }
+          }}
           dragRange={(rangeData, activeIndex) => {
+            activeDragIndexRef.current = activeIndex;
             const activeItem = rangeData[activeIndex];
             if (activeItem?.type === 'header' && activeItem.label !== LATER_TODAY_LABEL) {
               const range = categoryHeaderRange(rangeData);
@@ -1492,11 +1566,15 @@ export function TodayScreen() {
           }}
           placeholderStyle={styles.dropSlot}
           onReorder={reordered => {
-            // The draggable list only ever contains header + task items.
+            // The draggable list only ever contains header/task/group items.
             const dropped = reordered.filter(
-              (item): item is { type: 'header'; label: string } | { type: 'task'; task: Task } =>
-                item.type === 'header' || item.type === 'task',
+              (item): item is CategoryListItem =>
+                item.type === 'header' || item.type === 'task' || item.type === 'group',
             );
+
+            const joinGroupId = joinGroupIntentRef.current;
+            joinGroupIntentRef.current = null;
+            setJoinGroupIntentId(null);
 
             if (draggingCategoryRef.current !== null) {
               draggingCategoryRef.current = null;
@@ -1510,7 +1588,28 @@ export function TodayScreen() {
               return;
             }
 
-            const { taskIds, categoryUpdates, settled } = resolveDrop(dropped, {
+            // A plain task dragged right onto a group (see onDragMove) joins
+            // that group instead of landing at its dropped position — drop it
+            // from the normal placement pass so resolveDrop never assigns it
+            // a category/order of its own.
+            const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
+            if (joinGroupId !== null && draggedItem?.type === 'task') {
+              const withoutDragged = dropped.filter(
+                item => !(item.type === 'task' && item.task.id === draggedItem.task.id),
+              );
+              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutDragged, {
+                isUpcoming: id => upcomingTaskIds.has(id),
+                showUpcoming,
+                categoryOrder: allCategories,
+              });
+              groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+              addExistingToGroup(draggedItem.task.id, joinGroupId);
+              setDraggableData(settled);
+              reorderWithCategoryUpdates(taskIds, categoryUpdates);
+              return;
+            }
+
+            const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
               isUpcoming: id => upcomingTaskIds.has(id),
               showUpcoming,
               categoryOrder: allCategories,
@@ -1521,6 +1620,7 @@ export function TodayScreen() {
               // effect then reconciles to the store-derived `data` (structurally
               // identical) once the store write lands.
               setDraggableData(settled);
+              groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
               reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
             };
 
@@ -1819,6 +1919,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
+  },
+  // Highlights a group while a dragged task is offset right over it (see
+  // JOIN_GROUP_INDENT_THRESHOLD), signalling "release to add to this group".
+  groupJoinTarget: {
+    marginHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: border.sm * 2,
+    borderColor: colors.accent,
   },
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.

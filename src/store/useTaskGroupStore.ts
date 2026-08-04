@@ -13,7 +13,7 @@ interface TaskGroupStore {
   initialized: boolean;
   initialize: () => void;
   createGroup: (title: string, category: string | null) => TaskGroup;
-  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'priority' | 'category'>>) => void;
+  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'priority' | 'category' | 'sortOrder'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   getGroupById: (id: string) => TaskGroup | null;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these

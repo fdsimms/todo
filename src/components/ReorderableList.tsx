@@ -37,6 +37,15 @@ interface Props<T> {
   onDragEnd?: () => void;
   /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
   onHoverChange?: () => void;
+  /**
+   * Fired on every raw pointer move during a drag with the current
+   * horizontal offset from the drag's start (dx) and the row index currently
+   * hovered (or null before the first move). Purely additive to the existing
+   * vertical reorder machinery — e.g. lets a caller detect "dragged right,
+   * like an indent" to offer joining the row above into a group, without
+   * this component needing to know anything about that meaning.
+   */
+  onDragMove?: (info: { dx: number; hoverIndex: number | null }) => void;
   /** Restricts how far the active row may move, e.g. to keep it within its own section. */
   dragRange?: (data: T[], activeIndex: number) => [number, number];
   /** Style for the slot shown where the dragged item will land. */
@@ -80,6 +89,7 @@ export function ReorderableList<T>({
   onDragBegin,
   onDragEnd,
   onHoverChange,
+  onDragMove,
   dragRange,
   placeholderStyle,
   contentContainerStyle,
@@ -118,6 +128,7 @@ export function ReorderableList<T>({
   const lastPageYRef = useRef(0);
   const startPageXRef = useRef(0);
   const onHoverChangeRef = useRef(onHoverChange);
+  const onDragMoveRef = useRef(onDragMove);
   const dragRangeRef = useRef(dragRange);
   const onEndReachedRef = useRef(onEndReached);
   const onEndReachedThresholdRef = useRef(onEndReachedThreshold);
@@ -149,6 +160,7 @@ export function ReorderableList<T>({
   useEffect(() => { onReorderRef.current = onReorder; }, [onReorder]);
   useEffect(() => { onDragEndRef.current = onDragEnd; }, [onDragEnd]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
+  useEffect(() => { onDragMoveRef.current = onDragMove; }, [onDragMove]);
   useEffect(() => { dragRangeRef.current = dragRange; }, [dragRange]);
   useEffect(() => { onEndReachedRef.current = onEndReached; }, [onEndReached]);
   useEffect(() => { onEndReachedThresholdRef.current = onEndReachedThreshold; }, [onEndReachedThreshold]);
@@ -375,9 +387,11 @@ export function ReorderableList<T>({
         if (activeIndexRef.current === null || committingRef.current) return;
         lastPageYRef.current = e.nativeEvent.pageY;
         overlayY.setValue(lastPageYRef.current - startPageYRef.current);
-        overlayX.setValue(e.nativeEvent.pageX - startPageXRef.current);
+        const dx = e.nativeEvent.pageX - startPageXRef.current;
+        overlayX.setValue(dx);
         updateHover();
         maybeAutoscroll();
+        onDragMoveRef.current?.({ dx, hoverIndex: hoverIndexRef.current });
       },
       onPanResponderRelease: () => commitDrag(),
       onPanResponderTerminate: () => {

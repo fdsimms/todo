@@ -32,6 +32,8 @@ interface Props {
   onDeleteWithTasks: () => void;
   onPressEdit: () => void;
   dimmed?: boolean;
+  /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
+  onDrag?: () => void;
 }
 
 export function TaskGroupHeader({
@@ -47,6 +49,7 @@ export function TaskGroupHeader({
   onDeleteWithTasks,
   onPressEdit,
   dimmed = false,
+  onDrag,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -133,13 +136,20 @@ export function TaskGroupHeader({
                 <TouchableOpacity
                   style={styles.content}
                   onPress={onToggleCollapse}
+                  onLongPress={onDrag}
+                  delayLongPress={interaction.delayLongPress}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ expanded: !group.collapsed }}
                   accessibilityLabel={group.title}
-                  accessibilityHint={group.collapsed ? 'Double tap to expand' : 'Double tap to collapse'}
+                  accessibilityHint={
+                    onDrag
+                      ? `${group.collapsed ? 'Double tap to expand.' : 'Double tap to collapse.'} Long press to reorder.`
+                      : group.collapsed ? 'Double tap to expand' : 'Double tap to collapse'
+                  }
                 >
                   <View style={styles.titleRow}>
+                    {onDrag && <Ionicons name="reorder-three" size={14} color={colors.textTertiary} />}
                     <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                     <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
                     {totalToday > 0 && (
