@@ -178,6 +178,7 @@ interface TaskStore {
   allCategories: () => string[];
   addCategory: (name: string) => void;
   deleteCategory: (name: string) => void;
+  renameCategory: (name: string, newName: string) => boolean;
   tasksByCategory: (category: string) => Task[];
 
   visibleTasks: () => Task[];
@@ -1336,6 +1337,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: s.tasks.map(t => t.category === name ? { ...t, category: null } : t),
     }));
+  },
+
+  renameCategory(name, newName) {
+    const renamed = useCategoryStore.getState().renameCategory(name, newName);
+    if (!renamed) return false;
+    const trimmed = newName.trim();
+    set(s => ({
+      tasks: s.tasks.map(t => t.category === name ? { ...t, category: trimmed } : t),
+    }));
+    useTaskGroupStore.setState(s => ({
+      groups: s.groups.map(g => g.category === name ? { ...g, category: trimmed } : g),
+    }));
+    return true;
   },
 
   tasksByTag(tag) {

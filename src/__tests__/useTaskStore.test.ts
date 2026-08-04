@@ -71,6 +71,7 @@ jest.mock('../store/useCategoryStore', () => ({
       initialize: jest.fn(),
       addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
       deleteCategory: jest.fn(),
+      renameCategory: jest.fn().mockReturnValue(true),
       setCategorySchedule: jest.fn(),
       removeCategorySchedule: jest.fn(),
       getCategoryByName: jest.fn().mockReturnValue(null),
@@ -191,6 +192,7 @@ beforeEach(() => {
     initialize: jest.fn(),
     addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
     deleteCategory: jest.fn(),
+    renameCategory: jest.fn().mockReturnValue(true),
     setCategorySchedule: jest.fn(),
     removeCategorySchedule: jest.fn(),
     getCategoryByName: jest.fn().mockReturnValue(null),
@@ -1262,6 +1264,42 @@ describe('focusCategory', () => {
     useTaskStore.getState().focusCategory('Work');
     expect(dbBulkSetFocus).not.toHaveBeenCalled();
     expect(useTaskStore.getState().tasks[0].focused).toBe(false);
+  });
+});
+
+// ─── renameCategory ──────────────────────────────────────────────────────────
+
+describe('renameCategory', () => {
+  it('updates the category on every task that had the old name', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Work' }),
+        makeTask({ id: 't2', category: 'Home' }),
+      ],
+    });
+    const ok = useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(ok).toBe(true);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 't1')?.category).toBe('Job');
+    expect(tasks.find(t => t.id === 't2')?.category).toBe('Home');
+  });
+
+  it('updates the category on task groups that had the old name', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Work' })] });
+    useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'g1')?.category).toBe('Job');
+  });
+
+  it('leaves tasks untouched and returns false when the underlying rename fails', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [],
+      renameCategory: jest.fn().mockReturnValue(false),
+    });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Work' })] });
+    const ok = useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(ok).toBe(false);
+    expect(useTaskStore.getState().tasks[0].category).toBe('Work');
   });
 });
 

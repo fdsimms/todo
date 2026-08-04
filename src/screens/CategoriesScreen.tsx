@@ -256,6 +256,7 @@ export function CategoriesScreen() {
   const tasksByCategory = useTaskStore(s => s.tasksByCategory);
   const addCategory = useTaskStore(s => s.addCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
+  const renameCategory = useTaskStore(s => s.renameCategory);
   const focusCategory = useTaskStore(s => s.focusCategory);
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -280,6 +281,8 @@ export function CategoriesScreen() {
   const [newCategoryEmoji, setNewCategoryEmoji] = useState('');
   const [emojiEditCategory, setEmojiEditCategory] = useState<string | null>(null);
   const [emojiEditText, setEmojiEditText] = useState('');
+  const [renameCategoryTarget, setRenameCategoryTarget] = useState<string | null>(null);
+  const [renameText, setRenameText] = useState('');
   const inputRef = useRef<TextInput>(null);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const {
@@ -364,6 +367,29 @@ export function CategoriesScreen() {
     if (!emojiEditCategory) return;
     setCategoryEmoji(emojiEditCategory, emojiEditText);
     setEmojiEditCategory(null);
+  };
+
+  const openRenameEditor = (name: string) => {
+    haptics.tap();
+    setRenameText(name);
+    setRenameCategoryTarget(name);
+  };
+
+  const handleSaveRename = () => {
+    if (!renameCategoryTarget) return;
+    const trimmed = renameText.trim();
+    if (!trimmed || trimmed === renameCategoryTarget) {
+      setRenameCategoryTarget(null);
+      return;
+    }
+    const ok = renameCategory(renameCategoryTarget, trimmed);
+    if (!ok) {
+      Alert.alert('Rename Failed', `A category named "${trimmed}" already exists.`);
+      return;
+    }
+    haptics.success();
+    if (selectedCategory === renameCategoryTarget) setSelectedCategory(trimmed);
+    setRenameCategoryTarget(null);
   };
 
   const handleDeleteCategory = (name: string) => {
@@ -504,6 +530,16 @@ export function CategoriesScreen() {
                     <Text style={styles.scheduleHint} numberOfLines={1}>{hint}</Text>
                   )}
                 </View>
+                <TouchableOpacity
+                  onPress={() => openRenameEditor(cat)}
+                  style={styles.scheduleButton}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rename ${cat}`}
+                >
+                  <Ionicons name="pencil-outline" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
                 <Text style={styles.catCount}>{count}</Text>
                 <TouchableOpacity
                   onPress={toggleVacation}
@@ -676,6 +712,53 @@ export function CategoriesScreen() {
             />
           )}
         </View>
+      </Modal>
+
+      {/* Rename editor modal */}
+      <Modal
+        visible={renameCategoryTarget !== null}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setRenameCategoryTarget(null)}
+      >
+        <TouchableOpacity
+          style={styles.emojiBackdrop}
+          activeOpacity={1}
+          onPress={() => setRenameCategoryTarget(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.emojiCard}>
+            <Text style={styles.emojiCardTitle}>Rename Category</Text>
+            <TextInput
+              style={styles.renameCardInput}
+              value={renameText}
+              onChangeText={setRenameText}
+              placeholder="Category name"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="words"
+              autoCorrect={false}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleSaveRename}
+              accessibilityLabel="Category name"
+            />
+            <View style={styles.emojiCardButtons}>
+              <TouchableOpacity
+                onPress={() => setRenameCategoryTarget(null)}
+                style={styles.emojiCardBtn}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Text style={[styles.emojiCardBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveRename}
+                style={styles.emojiCardBtn}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Text style={[styles.emojiCardBtnText, { color: colors.accent, fontWeight: '600' }]}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Emoji editor modal */}
@@ -1028,6 +1111,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xl,
     textAlign: 'center',
     paddingVertical: spacing.sm,
+  },
+  renameCardInput: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    color: colors.text,
+    fontSize: font.md,
+    textAlign: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
   },
   emojiCardButtons: {
     flexDirection: 'row',
