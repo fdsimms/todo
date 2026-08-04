@@ -37,6 +37,7 @@ import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { suggestFocusTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
@@ -474,7 +475,8 @@ export function TodayScreen() {
   const [sort, setSort] = useState<SortOption>('default');
   const [filterPriorities, setFilterPriorities] = useState<Priority[]>([]);
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
-  const [hideCategories, setHideCategories] = useState(false);
+  const hideCategories = useSettingsStore(s => s.hideCategories);
+  const setHideCategories = useSettingsStore(s => s.setHideCategories);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
