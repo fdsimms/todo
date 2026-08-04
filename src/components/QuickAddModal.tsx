@@ -50,6 +50,8 @@ interface Props {
   context?: 'today' | 'later' | 'inbox' | 'unscheduled';
   /** Called right after a new task is created (not on the "resume archived" path). */
   onCreated?: (task: Task) => void;
+  /** Preselects a recurrence and opens the Repeat panel — used by the Recurring quick-add shortcut. */
+  initialRecurrenceType?: RecurrenceType;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | null;
@@ -69,7 +71,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 };
 
 
-export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated }: Props) {
+export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated, initialRecurrenceType }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -176,8 +178,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setTags([]);
       setCategory(null);
       setTagInput('');
-      setActivePanel(null);
-      setRecurrenceType('none');
+      setActivePanel(initialRecurrenceType ? 'repeat' : null);
+      setRecurrenceType(initialRecurrenceType ?? 'none');
       setRecurrenceInterval(1);
       setRecurrenceDays([]);
       setRecurrenceFromCompletion(false);
@@ -204,7 +206,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
         inputRef.current?.focus();
       });
     }
-  }, [visible, context]);
+  }, [visible, context, initialRecurrenceType]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The

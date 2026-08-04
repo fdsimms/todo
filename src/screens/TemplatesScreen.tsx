@@ -179,10 +179,10 @@ export function TemplatesScreen() {
 
   const handleUngroup = (groupId: string, title: string) => {
     haptics.warning();
-    Alert.alert('Ungroup', `Remove the "${title}" group? Its items stay in the template.`, [
+    Alert.alert('Unstack', `Remove the "${title}" stack? Its items stay in the template.`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Ungroup',
+        text: 'Unstack',
         style: 'destructive',
         onPress: () => {
           if (!selectedTemplateId) return;
@@ -260,7 +260,7 @@ export function TemplatesScreen() {
             <EmptyState
               icon="copy-outline"
               title="No templates yet"
-              subtitle="Create a reusable group of tasks — like a pre-vacation checklist — and add them all in one tap"
+              subtitle="Create a reusable stack of tasks — like a pre-vacation checklist — and add them all in one tap"
               actionLabel="Create template"
               onAction={handleStartAdding}
               bottomOffset={tabBarHeight}
@@ -656,7 +656,7 @@ function TemplateGroupHeader({
       <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
       <Text style={styles.groupHeaderText}>{title}</Text>
       <Text style={styles.groupHeaderCount}>{count}</Text>
-      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Ungroup ${title}`}>
+      <TouchableOpacity onPress={onUngroup} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Unstack ${title}`}>
         <Ionicons name="close-circle-outline" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
     </TouchableOpacity>
