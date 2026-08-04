@@ -421,6 +421,7 @@ export function ReorderableList<T>({
         onScrollBeginDrag={onScrollBeginDrag}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+        automaticallyAdjustKeyboardInsets
       >
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
