@@ -11,7 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Priority, Effort, TimeOfDay, TemplateItem } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
@@ -46,6 +46,7 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
+  const [anchor, setAnchor] = useState<TemplateAnchor>('start');
   const [dueOffsetDays, setDueOffsetDays] = useState<number | null>(null);
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
@@ -61,6 +62,7 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
     setTitle(item?.title ?? '');
     setNotes(item?.notes ?? '');
     setOptional(item?.optional ?? false);
+    setAnchor(item?.anchor ?? 'start');
     setDueOffsetDays(item?.dueOffsetDays ?? null);
     setDeferOffsetDays(item?.deferOffsetDays ?? null);
     setTimeSegments(item?.timeSegments ?? []);
@@ -79,6 +81,7 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
       title: title.trim(),
       notes,
       optional,
+      anchor,
       dueOffsetDays,
       deferOffsetDays,
       timeSegments,
@@ -144,8 +147,32 @@ export function TemplateItemEditor({ visible, templateId, item, onClose }: Props
             multiline
           />
 
-          {/* Scheduling relative to the anchor date */}
+          {/* Scheduling relative to one of the template's two anchor dates */}
           <View style={styles.optionsCard}>
+            <View style={styles.optionRow}>
+              <Ionicons name="git-branch-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Anchor</Text>
+                <Text style={styles.optionHint}>Which template date the offsets below count from</Text>
+              </View>
+            </View>
+            <View style={styles.timePillRow}>
+              {(['start', 'end'] as TemplateAnchor[]).map(a => {
+                const active = anchor === a;
+                return (
+                  <TouchableOpacity
+                    key={a}
+                    style={[styles.timePill, active && styles.timePillActive]}
+                    onPress={() => { haptics.tap(); setAnchor(a); }}
+                  >
+                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                      {a === 'start' ? 'Start date' : 'End date'}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.sep} />
             <OffsetRow
               icon="calendar"
               label="Due date"

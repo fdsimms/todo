@@ -4,8 +4,14 @@
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
 import { addDays, startOfDay } from 'date-fns';
-import type { TaskDraft, TemplateItem } from '../types';
+import type { TaskDraft, TemplateAnchor, TemplateItem } from '../types';
 import { generateId } from './id';
+
+/** The two anchor dates a template can be applied with. */
+export interface TemplateAnchors {
+  start: Date | null;
+  end: Date | null;
+}
 
 /**
  * Fill defaults for a template item parsed from stored JSON. Tolerates missing
@@ -18,6 +24,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     title: raw.title ?? '',
     notes: raw.notes ?? '',
     optional: raw.optional ?? false,
+    anchor: raw.anchor === 'end' ? 'end' : 'start',
     dueOffsetDays: raw.dueOffsetDays ?? null,
     deferOffsetDays: raw.deferOffsetDays ?? null,
     timeSegments: raw.timeSegments ?? [],
@@ -41,24 +48,29 @@ export function resolveOffsetDate(anchor: Date | null, offsetDays: number | null
 }
 
 /**
- * Build task drafts from the (already user-selected) template items. With no
- * anchor date, offsets are ignored and tasks are created undated.
+ * Build task drafts from the (already user-selected) template items. Each
+ * item resolves its offsets against whichever of the two anchor dates it's
+ * pinned to (`item.anchor`). With that anchor unset, offsets are ignored and
+ * the task is created undated.
  */
 export function buildDraftsFromTemplate(
   items: TemplateItem[],
-  anchor: Date | null,
+  anchors: TemplateAnchors,
 ): Partial<TaskDraft>[] {
-  return items.map(item => ({
-    title: item.title,
-    notes: item.notes,
-    dueDate: resolveOffsetDate(anchor, item.dueOffsetDays),
-    deferUntil: resolveOffsetDate(anchor, item.deferOffsetDays),
-    timeSegments: [...item.timeSegments],
-    tags: [...item.tags],
-    category: item.category,
-    priority: item.priority,
-    effort: item.effort,
-  }));
+  return items.map(item => {
+    const anchor = item.anchor === 'end' ? anchors.end : anchors.start;
+    return {
+      title: item.title,
+      notes: item.notes,
+      dueDate: resolveOffsetDate(anchor, item.dueOffsetDays),
+      deferUntil: resolveOffsetDate(anchor, item.deferOffsetDays),
+      timeSegments: [...item.timeSegments],
+      tags: [...item.tags],
+      category: item.category,
+      priority: item.priority,
+      effort: item.effort,
+    };
+  });
 }
 
 /** Human label for an offset: "No date", "On anchor day", "3 days before", "2 days after". */
@@ -68,4 +80,9 @@ export function formatOffsetLabel(offsetDays: number | null): string {
   const n = Math.abs(offsetDays);
   const unit = n === 1 ? 'day' : 'days';
   return offsetDays < 0 ? `${n} ${unit} before` : `${n} ${unit} after`;
+}
+
+/** Human label for which anchor an item's offsets are relative to. */
+export function anchorLabel(anchor: TemplateAnchor): string {
+  return anchor === 'end' ? 'End date' : 'Start date';
 }

@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { useTaskStore } from './useTaskStore';
 import { generateId } from '../utils/id';
-import { normalizeTemplateItem, buildDraftsFromTemplate } from '../utils/templateUtils';
+import { normalizeTemplateItem, buildDraftsFromTemplate, type TemplateAnchors } from '../utils/templateUtils';
 
 interface TemplateStore {
   templates: TaskTemplate[];
@@ -22,7 +22,7 @@ interface TemplateStore {
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
   deleteItem: (templateId: string, itemId: string) => void;
   reorderItems: (templateId: string, orderedIds: string[]) => void;
-  applyTemplate: (templateId: string, selectedItemIds: Set<string>, anchor: Date | null) => Task[];
+  applyTemplate: (templateId: string, selectedItemIds: Set<string>, anchors: TemplateAnchors) => Task[];
 }
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
@@ -102,11 +102,11 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     get().setTemplateItems(templateId, ordered);
   },
 
-  applyTemplate(templateId, selectedItemIds, anchor) {
+  applyTemplate(templateId, selectedItemIds, anchors) {
     const template = get().templates.find(t => t.id === templateId);
     if (!template) return [];
     const items = template.items.filter(i => selectedItemIds.has(i.id));
-    const drafts = buildDraftsFromTemplate(items, anchor);
+    const drafts = buildDraftsFromTemplate(items, anchors);
     const addTask = useTaskStore.getState().addTask;
     return drafts.map(d => addTask(d));
   },
