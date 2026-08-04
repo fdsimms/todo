@@ -46,6 +46,10 @@ interface Props<T> {
   ListEmptyComponent?: React.ReactNode;
   ListFooterComponent?: React.ReactNode;
   onScrollBeginDrag?: () => void;
+  /** Called when the scroll position nears the bottom of the content, e.g. to page in more data. */
+  onEndReached?: () => void;
+  /** Distance in px from the bottom at which onEndReached fires. Defaults to 300. */
+  onEndReachedThreshold?: number;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -83,6 +87,8 @@ export function ReorderableList<T>({
   ListEmptyComponent,
   ListFooterComponent,
   onScrollBeginDrag,
+  onEndReached,
+  onEndReachedThreshold = 300,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -113,6 +119,9 @@ export function ReorderableList<T>({
   const startPageXRef = useRef(0);
   const onHoverChangeRef = useRef(onHoverChange);
   const dragRangeRef = useRef(dragRange);
+  const onEndReachedRef = useRef(onEndReached);
+  const onEndReachedThresholdRef = useRef(onEndReachedThreshold);
+  const endReachedFiredRef = useRef(false);
   const scrollOffsetRef = useRef(0);
   const scrollOffsetAtStartRef = useRef(0);
   const viewportHeightRef = useRef(0);
@@ -141,6 +150,12 @@ export function ReorderableList<T>({
   useEffect(() => { onDragEndRef.current = onDragEnd; }, [onDragEnd]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
   useEffect(() => { dragRangeRef.current = dragRange; }, [dragRange]);
+  useEffect(() => { onEndReachedRef.current = onEndReached; }, [onEndReached]);
+  useEffect(() => { onEndReachedThresholdRef.current = onEndReachedThreshold; }, [onEndReachedThreshold]);
+  // A newly-grown data set may still be within the threshold (e.g. the page
+  // just added wasn't enough to clear it) — let the next scroll re-fire
+  // rather than staying latched from before the content grew.
+  useEffect(() => { endReachedFiredRef.current = false; }, [data.length]);
 
   // Whenever the parent re-renders with data (the source of truth once it has
   // caught up after a drop), drop the local committed copy. Keyed on the data
@@ -375,6 +390,16 @@ export function ReorderableList<T>({
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     scrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+    if (!onEndReachedRef.current) return;
+    const distanceFromEnd = contentHeightRef.current - viewportHeightRef.current - scrollOffsetRef.current;
+    if (distanceFromEnd < onEndReachedThresholdRef.current) {
+      if (!endReachedFiredRef.current) {
+        endReachedFiredRef.current = true;
+        onEndReachedRef.current();
+      }
+    } else {
+      endReachedFiredRef.current = false;
+    }
   };
 
   const isDragging = activeIndex !== null;
