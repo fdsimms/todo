@@ -540,8 +540,6 @@ export function TodayScreen() {
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
-  const pinnedOnlyMode = useSettingsStore(s => s.pinnedOnlyMode);
-  const setPinnedOnlyMode = useSettingsStore(s => s.setPinnedOnlyMode);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
@@ -691,12 +689,10 @@ export function TodayScreen() {
     if (pinnedTasks.length > 0 && !pinViewGraceActive) {
       const items: ListItem[] = [{ type: 'pinned-header' }];
       pinnedTasks.forEach(task => items.push({ type: 'pinned-task', task }));
-      if (!pinnedOnlyMode) {
-        const restTasks = filtered.filter(t => !t.pinned);
-        if (restTasks.length > 0) {
-          items.push({ type: 'rest-header' });
-          if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
-        }
+      const restTasks = filtered.filter(t => !t.pinned);
+      if (restTasks.length > 0) {
+        items.push({ type: 'rest-header' });
+        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
       }
       return stripCategoryHeaders(applyCategoryCollapse(items));
     }
@@ -705,7 +701,7 @@ export function TodayScreen() {
     const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
     return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pinnedTasks, pinViewGraceActive, pinnedOnlyMode, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
+  }, [filtered, pinnedTasks, pinViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -862,19 +858,6 @@ export function TodayScreen() {
             <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
           </View>
           <View style={styles.pinnedSectionActions}>
-            <TouchableOpacity
-              onPress={() => { haptics.tap(); setPinnedOnlyMode(!pinnedOnlyMode); }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityState={{ selected: pinnedOnlyMode }}
-              accessibilityLabel={pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks'}
-            >
-              <Ionicons
-                name={pinnedOnlyMode ? 'eye-off' : 'eye-off-outline'}
-                size={16}
-                color={pinnedOnlyMode ? colors.orange : colors.textSecondary}
-              />
-            </TouchableOpacity>
             <TouchableOpacity onPress={clearAllPins} hitSlop={8}>
               <Text style={styles.clearText}>Clear</Text>
             </TouchableOpacity>
@@ -1178,15 +1161,6 @@ export function TodayScreen() {
           accessibilityLabel: 'Sort and filter',
         }]
       : []),
-    ...(viewMode === 'today' && pinnedTasks.length > 0
-      ? [{
-          icon: (pinnedOnlyMode ? 'eye-off' : 'eye-off-outline') as ScreenHeaderAction['icon'],
-          onPress: () => setPinnedOnlyMode(!pinnedOnlyMode),
-          active: pinnedOnlyMode,
-          tint: 'orange' as const,
-          accessibilityLabel: pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks',
-        }]
-      : []),
     ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
@@ -1352,16 +1326,7 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && pinnedOnlyMode && pinnedTasks.length === 0 && (
-        <EmptyState
-          icon="pin-outline"
-          title="No pinned tasks"
-          subtitle="Pin a task to see it here"
-          bottomOffset={tabBarHeight}
-        />
-      )}
-
-      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length > 0 && (
+      {viewMode === 'today' && pinnedTasks.length > 0 && (
         <FlatList
           data={data}
           keyExtractor={listItemKey}
@@ -1381,7 +1346,7 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length === 0 && (
+      {viewMode === 'today' && pinnedTasks.length === 0 && (
         <ReorderableList
           data={draggableData}
           keyExtractor={listItemKey}
