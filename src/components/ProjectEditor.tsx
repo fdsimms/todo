@@ -16,13 +16,12 @@ import type { Project } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { formatDueDate } from '../utils/dateUtils';
-import { categoryLabel } from '../utils/categoryLabel';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -39,9 +38,8 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
   const archiveProject = useProjectStore(s => s.archiveProject);
   const unarchiveProject = useProjectStore(s => s.unarchiveProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
-  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
-  const categories = useCategoryStore(useShallow(s => s.categories));
-  const addCategory = useTaskStore(s => s.addCategory);
+  const categories = useProjectCategoryStore(useShallow(s => s.categories));
+  const addCategory = useProjectCategoryStore(s => s.addCategory);
 
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
@@ -138,13 +136,13 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
                 >
                   <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
-                {allCategories.map(cat => (
+                {categories.map(cat => (
                   <TouchableOpacity
-                    key={cat}
-                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                    onPress={() => setCategory(cat)}
+                    key={cat.id}
+                    style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
+                    onPress={() => setCategory(cat.name)}
                   >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+                    <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
                   </TouchableOpacity>
                 ))}
                 {addingCategory ? (

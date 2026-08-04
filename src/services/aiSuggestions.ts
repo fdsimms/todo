@@ -334,18 +334,18 @@ function buildCoCompletionHints(completedTasks: Task[], candidates: Task[]): str
     relevant.map(([pair, count]) => `${pair} (${count}x)`).join(', ');
 }
 
-export async function suggestFocusTasks(
+export async function suggestPinTasks(
   tasks: Task[],
-  alreadyFocusedCount: number,
+  alreadyPinnedCount: number,
   completedTasks: Task[] = [],
 ): Promise<string[]> {
   const apiKey = useSettingsStore.getState().anthropicApiKey;
   if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
 
-  const needed = 3 - alreadyFocusedCount;
+  const needed = 5 - alreadyPinnedCount;
   if (needed <= 0) return [];
 
-  const candidates = tasks.filter(t => !t.focused);
+  const candidates = tasks.filter(t => !t.pinned);
   if (candidates.length === 0) return [];
   if (candidates.length <= needed) return candidates.map(t => t.id);
 
@@ -375,25 +375,25 @@ export async function suggestFocusTasks(
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 150,
       tools: [{
-        name: 'focus',
-        description: 'Return task IDs to focus on',
+        name: 'pin',
+        description: 'Return task IDs to pin',
         input_schema: {
           type: 'object',
           properties: {
             task_ids: {
               type: 'array',
               items: { type: 'string' },
-              description: `Exactly ${needed} task ID${needed > 1 ? 's' : ''} to focus on`,
+              description: `Exactly ${needed} task ID${needed > 1 ? 's' : ''} to pin`,
             },
           },
           required: ['task_ids'],
         },
       }],
-      tool_choice: { type: 'tool', name: 'focus' },
+      tool_choice: { type: 'tool', name: 'pin' },
       messages: (() => {
         const coHints = buildCoCompletionHints(completedTasks, candidates);
         const content = [
-          `Pick exactly ${needed} task${needed > 1 ? 's' : ''} to focus on right now.`,
+          `Pick exactly ${needed} task${needed > 1 ? 's' : ''} to pin right now.`,
           `Prefer: high priority or overdue tasks; tasks that work well together (spatially or thematically — e.g. errands, computer tasks, cleaning); reasonable combined effort; tasks the user has historically done in the same session.`,
           `Today: ${today}.`,
           '',

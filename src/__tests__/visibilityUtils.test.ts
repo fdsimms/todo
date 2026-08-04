@@ -8,6 +8,7 @@ import {
   isRecurrenceNotYetDue,
   isTaskNew,
   isInboxTask,
+  isUnscheduledTask,
   isLiveRecurring,
   isUpcomingToday,
 } from '../utils/visibilityUtils';
@@ -79,7 +80,7 @@ const baseTask: Task = {
   recurrenceCount: null,
   tags: [],
   sortOrder: 0,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -124,8 +125,13 @@ describe('isTaskVisible', () => {
     expect(isTaskVisible({ ...baseTask, completed: true })).toBe(false);
   });
 
-  it('shows uncompleted tasks with no constraints', () => {
-    expect(isTaskVisible(baseTask)).toBe(true);
+  it('hides an uncompleted task with no date signal (it belongs in Inbox/Unscheduled, not Today)', () => {
+    expect(isTaskVisible(baseTask)).toBe(false);
+  });
+
+  it('shows an uncompleted task once it has a due date', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, dueDate })).toBe(true);
   });
 
   it('hides archived tasks unconditionally, regardless of vacation mode', () => {
@@ -216,6 +222,20 @@ describe('isTaskVisible', () => {
 
   it('hides tasks whose time window has already closed', () => {
     expect(isTaskVisible({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('hides a project task with no due date, unlike an equivalent non-project task', () => {
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1' })).toBe(false);
+  });
+
+  it('shows a project task due today', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1', dueDate })).toBe(true);
+  });
+
+  it('hides a project task with a future due date', () => {
+    const dueDate = new Date(2025, 5, 11, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, projectId: 'proj1', dueDate })).toBe(false);
   });
 
 });
@@ -359,7 +379,7 @@ describe('isTaskDeferred', () => {
     expect(isTaskDeferred({ ...baseTask, archived: true, deferUntil })).toBe(false);
   });
 
-  it('returns false for visible tasks with no constraints', () => {
+  it('returns false for a task with no constraints (no date to defer to, belongs in Inbox/Unscheduled)', () => {
     expect(isTaskDeferred(baseTask)).toBe(false);
   });
 
@@ -392,6 +412,15 @@ describe('isTaskDeferred', () => {
 
   it('returns true for a task whose window has not started yet today', () => {
     expect(isTaskDeferred({ ...baseTask, windowStart: '12:00', windowEnd: '18:00' })).toBe(true);
+  });
+
+  it('returns false for an undated project task (it belongs in its project, not Later)', () => {
+    expect(isTaskDeferred({ ...baseTask, projectId: 'proj1' })).toBe(false);
+  });
+
+  it('returns true for a project task with a future due date', () => {
+    const dueDate = new Date(2025, 5, 15, 0, 0, 0).toISOString();
+    expect(isTaskDeferred({ ...baseTask, projectId: 'proj1', dueDate })).toBe(true);
   });
 
 });
@@ -582,35 +611,41 @@ describe('category schedule — isTaskVisible', () => {
     mockCategorySchedule(null);
   });
 
+  // These cases test category-schedule gating specifically, so every task
+  // carries a due date of today — otherwise the lack of a date signal alone
+  // (see isTaskVisible's Inbox/Unscheduled gate) would hide it regardless of
+  // category, muddying what's actually under test here.
+  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
   it('shows work task on a weekday within work hours', () => {
     // Tuesday 10:00 AM — inside Mon–Fri 09:00–18:00
-    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: 'Work', dueDate: dueToday })).toBe(true);
   });
 
   it('hides work task on a weekend', () => {
     // June 14, 2025 = Saturday
     jest.setSystemTime(new Date(2025, 5, 14, 10, 0, 0));
-    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, category: 'Work', dueDate: dueToday })).toBe(false);
   });
 
   it('hides work task before start time on a weekday', () => {
     // Tuesday 8:00 AM — before 09:00
     jest.setSystemTime(new Date(2025, 5, 10, 8, 0, 0));
-    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, category: 'Work', dueDate: dueToday })).toBe(false);
   });
 
   it('hides work task after end time on a weekday', () => {
     // Tuesday 19:00 — after 18:00
     jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0));
-    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, category: 'Work', dueDate: dueToday })).toBe(false);
   });
 
   it('shows task with no category regardless of work schedule', () => {
-    expect(isTaskVisible(baseTask)).toBe(true);
+    expect(isTaskVisible({ ...baseTask, dueDate: dueToday })).toBe(true);
   });
 
   it('shows task in a different category not in work schedule', () => {
-    expect(isTaskVisible({ ...baseTask, category: 'Personal' })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: 'Personal', dueDate: dueToday })).toBe(true);
   });
 });
 
@@ -679,25 +714,30 @@ describe('category hide-on-vacation', () => {
     mockSettingsState.vacationMode = false;
   });
 
+  // Same reasoning as the category-schedule block above: give every task a
+  // due date of today so vacation-category gating is isolated from the
+  // separate Inbox/Unscheduled date-signal gate.
+  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
   it('hides tasks in a hidden category while vacation mode is on', () => {
     mockSettingsState.vacationMode = true;
-    expect(isTaskVisible({ ...baseTask, category: 'Errands' })).toBe(false);
+    expect(isTaskVisible({ ...baseTask, category: 'Errands', dueDate: dueToday })).toBe(false);
   });
 
   it('shows tasks in a hidden category when vacation mode is off', () => {
     mockSettingsState.vacationMode = false;
-    expect(isTaskVisible({ ...baseTask, category: 'Errands' })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: 'Errands', dueDate: dueToday })).toBe(true);
   });
 
   it('does not treat the task as deferred (hidden everywhere, not surfaced on Later)', () => {
     mockSettingsState.vacationMode = true;
-    expect(isTaskDeferred({ ...baseTask, category: 'Errands' })).toBe(false);
+    expect(isTaskDeferred({ ...baseTask, category: 'Errands', dueDate: dueToday })).toBe(false);
   });
 
   it('leaves tasks in other categories visible during vacation mode', () => {
     mockSettingsState.vacationMode = true;
-    expect(isTaskVisible({ ...baseTask, category: 'Work' })).toBe(true);
-    expect(isTaskVisible({ ...baseTask, category: null })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: 'Work', dueDate: dueToday })).toBe(true);
+    expect(isTaskVisible({ ...baseTask, category: null, dueDate: dueToday })).toBe(true);
   });
 });
 
@@ -837,7 +877,42 @@ describe('isInboxTask', () => {
     expect(isInboxTask({ ...baseTask, parentId: 'p1' })).toBe(false);
   });
 
-  it('stays true for notes/effort/focus (they do not file a task)', () => {
-    expect(isInboxTask({ ...baseTask, notes: 'a note', effort: 3, focused: true })).toBe(true);
+  it('is false for a task assigned to a project, even with no other metadata', () => {
+    expect(isInboxTask({ ...baseTask, projectId: 'proj1' })).toBe(false);
+  });
+
+  it('stays true for notes/effort/pin (they do not file a task)', () => {
+    expect(isInboxTask({ ...baseTask, notes: 'a note', effort: 3, pinned: true })).toBe(true);
+  });
+});
+
+// ─── isUnscheduledTask ───────────────────────────────────────────────────────
+
+describe('isUnscheduledTask', () => {
+  it('is false for a bare title-only task (that is an Inbox task instead)', () => {
+    expect(isUnscheduledTask(baseTask)).toBe(false);
+  });
+
+  it('is true once an otherwise-undated task has organizing metadata', () => {
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work' })).toBe(true);
+    expect(isUnscheduledTask({ ...baseTask, tags: ['home'] })).toBe(true);
+    expect(isUnscheduledTask({ ...baseTask, priority: 2 })).toBe(true);
+  });
+
+  it('is false once the task has a due date, defer date, time segment or window', () => {
+    const d = new Date(2025, 5, 12).toISOString();
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', dueDate: d })).toBe(false);
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', deferUntil: d })).toBe(false);
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', timeSegments: ['morning'] })).toBe(false);
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', windowStart: '09:00' })).toBe(false);
+  });
+
+  it('is false for a task assigned to a project (it lives in the project instead)', () => {
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', projectId: 'proj1' })).toBe(false);
+  });
+
+  it('is false for completed tasks and subtasks', () => {
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', completed: true })).toBe(false);
+    expect(isUnscheduledTask({ ...baseTask, category: 'Work', parentId: 'p1' })).toBe(false);
   });
 });

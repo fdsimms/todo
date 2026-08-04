@@ -8,14 +8,14 @@ import {
   dbUpdateTask,
   dbDeleteTask,
   dbDeleteSubtasks,
-  dbClearAllFocus,
+  dbClearAllPins,
   dbBatchUpdateSortOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkSetWhen,
   dbBulkSetCategory,
-  dbBulkSetFocus,
+  dbBulkSetPinned,
   dbBulkAddTags,
   dbGetTagRegistry,
   dbAddToTagRegistry,
@@ -29,11 +29,12 @@ import { useCategoryStore } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
+import { useProjectCategoryStore } from './useProjectCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface UndoableAction {
@@ -65,6 +66,10 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 // vanishing out from under them mid-burst.
 const COMPLETION_HOLD_MS = 1000;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
+// Ids of tasks completed while pinned, whose pin should be cleared once the
+// completion hold above expires — keeps a pinned row from vanishing out of
+// the Pinned section instantly on tap, same grace period as everywhere else.
+let pendingUnpinIds: string[] = [];
 
 // Caches the masked (completed: false) copy of each held task, keyed by the
 // underlying task's own reference. Selectors like visibleTasks() call this on
@@ -121,7 +126,7 @@ interface TaskStore {
   uncompleteTask: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
   skipNextRecurrence: (id: string) => void;
-  toggleFocus: (id: string) => void;
+  togglePin: (id: string) => void;
   // Hides a recurring task indefinitely (unlike vacationPause, not tied to
   // vacation mode) without touching its completion history. Streak fields
   // are left as-is on archive; unarchiveTask is what breaks the streak.
@@ -130,8 +135,8 @@ interface TaskStore {
   // streakCount/streakDate to 0/null) since the gap is real, but leaves past
   // completions untouched so Stats/Logbook history "picks up where it left off."
   unarchiveTask: (id: string) => void;
-  clearAllFocus: () => void;
-  focusCategory: (category: string) => void;
+  clearAllPins: () => void;
+  pinCategory: (category: string) => void;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
@@ -157,7 +162,7 @@ interface TaskStore {
   completeGroup: (groupId: string) => void;
   uncompleteGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
-  focusGroup: (groupId: string) => void;
+  pinGroup: (groupId: string) => void;
   deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
 
   addExistingToProject: (taskId: string, projectId: string) => void;
@@ -185,10 +190,11 @@ interface TaskStore {
   visibleTasks: () => Task[];
   upcomingTodayTasks: () => Task[];
   inboxTasks: () => Task[];
+  unscheduledTasks: () => Task[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
-  focusedTasks: () => Task[];
+  pinnedTasks: () => Task[];
   completedTasks: () => Task[];
   archivedTasks: () => Task[];
   subtasksOf: (parentId: string) => Task[];
@@ -209,6 +215,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTemplateStore.getState().initialize();
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
+    useProjectCategoryStore.getState().initialize();
     let tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 
@@ -255,7 +262,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tags: draft.tags ?? [],
       category: draft.category ?? null,
       sortOrder: maxOrder + 1,
-      focused: draft.focused ?? false,
+      pinned: draft.pinned ?? false,
       priority: draft.priority ?? 0,
       effort: draft.effort ?? 0,
       estimatedMinutes: draft.estimatedMinutes ?? null,
@@ -295,7 +302,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completedAt: null,
       createdAt: now,
       seenAt: now,
-      focused: false,
+      pinned: false,
       streakCount: 0,
       streakDate: null,
       previousStreakCount: 0,
@@ -463,11 +470,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...task,
       completed: true,
       completedAt: now.toISOString(),
+      // Pin is cleared once the completion hold below expires, not
+      // immediately — otherwise a pinned row would vanish from the Pinned
+      // section instantly instead of getting the same fade-out grace period
+      // every other list gives a completed task.
       streakCount: task.recurrenceType !== 'none' ? newStreakCount : task.streakCount,
       streakDate: task.recurrenceType !== 'none' ? getCurrentDayStart().toISOString() : task.streakDate,
       previousStreakCount: task.streakCount,
       previousStreakDate: task.streakDate,
     };
+    if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
 
     cancelTaskReminder(id);
@@ -520,7 +532,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: nextDue ? nextDue.toISOString() : null,
           deadline: nextDeadline,
           deferUntil: null,
-          focused: false, // focus resets on new occurrence
+          pinned: false, // pin resets on new occurrence
           streakCount: recurs ? newStreakCount : task.streakCount,
           streakDate: recurs ? getCurrentDayStart().toISOString() : task.streakDate,
           reminderTime: nextReminderTime,
@@ -557,6 +569,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
+      const unpinIds = pendingUnpinIds;
+      pendingUnpinIds = [];
+      // Re-check completed && pinned against current state rather than
+      // trusting the ids blindly — if the completion was undone in the
+      // meantime (uncompleteTask), the task is no longer completed and its
+      // pin was never actually touched, so it must stay untouched here too.
+      const stillPinnedIds = get().tasks
+        .filter(t => unpinIds.includes(t.id) && t.completed && t.pinned)
+        .map(t => t.id);
+      if (stillPinnedIds.length > 0) dbBulkSetPinned(stillPinnedIds, false);
       // No animateLayout() here: this commit unmounts the completed row's
       // Swipeable (react-native-gesture-handler). Firing a LayoutAnimation in
       // the same tick a Swipeable unmounts crashes on iOS — RNGH's native
@@ -564,7 +586,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // transition and can segfault mid-GC. The row already faded to
       // opacity 0 during the completion animation, so the list just loses its
       // slot cleanly without needing an extra transition here.
-      set({ completionHoldIds: [] });
+      set(s => ({
+        completionHoldIds: [],
+        tasks: stillPinnedIds.length > 0
+          ? s.tasks.map(t => (stillPinnedIds.includes(t.id) ? { ...t, pinned: false } : t))
+          : s.tasks,
+      }));
     }, COMPLETION_HOLD_MS);
     // Node (tests) returns a Timeout with unref(); React Native's timer is a
     // plain number without it — don't keep a test process alive over this.
@@ -667,16 +694,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  toggleFocus(id) {
+  togglePin(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
-    get().updateTask(id, { focused: !task.focused });
+    get().updateTask(id, { pinned: !task.pinned });
   },
 
   archiveTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.archived) return;
-    get().updateTask(id, { archived: true, archivedAt: new Date().toISOString() });
+    get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
       label: 'Task archived',
       undo: () => get().updateTask(id, { archived: false, archivedAt: null }),
@@ -694,21 +721,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  clearAllFocus() {
-    dbClearAllFocus();
+  clearAllPins() {
+    dbClearAllPins();
     set(s => ({
-      tasks: s.tasks.map(t => (t.focused ? { ...t, focused: false } : t)),
+      tasks: s.tasks.map(t => (t.pinned ? { ...t, pinned: false } : t)),
     }));
   },
 
-  focusCategory(category) {
+  pinCategory(category) {
     const ids = get().tasksByCategory(category).map(t => t.id);
     if (ids.length === 0) return;
-    const allFocused = ids.every(id => get().tasks.find(t => t.id === id)?.focused);
-    const nextFocused = !allFocused;
-    dbBulkSetFocus(ids, nextFocused);
+    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const nextPinned = !allPinned;
+    dbBulkSetPinned(ids, nextPinned);
     set(s => ({
-      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, focused: nextFocused } : t)),
+      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, pinned: nextPinned } : t)),
     }));
   },
 
@@ -810,7 +837,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tags: [],
       category: null,
       sortOrder: maxOrder + 1,
-      focused: false,
+      pinned: false,
       priority: 0,
       effort: 0,
       estimatedMinutes: null,
@@ -913,7 +940,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tags: [],
       category: group?.category ?? null,
       sortOrder: maxOrder + 1,
-      focused: false,
+      pinned: false,
       priority: 0,
       effort: 0,
       estimatedMinutes: null,
@@ -972,7 +999,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return group;
   },
 
-  // Cascades complete/uncomplete/defer/focus to every child, reusing each
+  // Cascades complete/uncomplete/defer/pin to every child, reusing each
   // child's own completeTask/uncompleteTask/updateTask so per-child guards
   // (already-completed, isRecurrenceNotYetDue), streak math, recurrence
   // spawns, and chain advances all keep working exactly as if tapped
@@ -1024,14 +1051,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().bulkDefer(ids, until);
   },
 
-  focusGroup(groupId) {
+  pinGroup(groupId) {
     const ids = get().groupChildrenOf(groupId).map(c => c.id);
     if (ids.length === 0) return;
-    const allFocused = ids.every(id => get().tasks.find(t => t.id === id)?.focused);
-    const nextFocused = !allFocused;
-    dbBulkSetFocus(ids, nextFocused);
+    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const nextPinned = !allPinned;
+    dbBulkSetPinned(ids, nextPinned);
     set(s => ({
-      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, focused: nextFocused } : t)),
+      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, pinned: nextPinned } : t)),
     }));
   },
 
@@ -1258,6 +1285,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
+  unscheduledTasks() {
+    return get().tasks
+      .filter(isUnscheduledTask)
+      .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
   deferredTasks() {
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
@@ -1279,11 +1312,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
-  focusedTasks() {
+  pinnedTasks() {
     const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && t.focused && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
+      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 

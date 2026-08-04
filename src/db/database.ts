@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, TaskTemplate, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -93,6 +93,12 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS project_categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      sort_order REAL NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS templates (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
@@ -141,6 +147,7 @@ export function initDatabase(): void {
     'ALTER TABLE projects ADD COLUMN category TEXT',
     'ALTER TABLE tasks ADD COLUMN recurrence_month_day INTEGER',
     "ALTER TABLE templates ADD COLUMN item_groups TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -161,6 +168,21 @@ export function initDatabase(): void {
         db.runSync('INSERT OR IGNORE INTO categories (id, name) VALUES (?, ?)', [generateId(), name]);
       } catch (_) {}
     }
+  }
+
+  // One-time migration: projects previously stored a category name drawn from
+  // the shared task-category pool (see `categories` table). Now that projects
+  // have their own separate category pool, seed project_categories with
+  // whatever names existing projects were already using so they don't lose
+  // their assignment.
+  const projCatCount = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM project_categories')?.n ?? 0;
+  if (projCatCount === 0) {
+    const rows = db.getAllSync<{ category: string }>(
+      "SELECT DISTINCT category FROM projects WHERE category IS NOT NULL AND category != ''"
+    );
+    rows.forEach((row, i) => {
+      try { db.runSync('INSERT OR IGNORE INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [generateId(), row.category, i + 1]); } catch (_) {}
+    });
   }
 
   // One-time migration: give existing categories a stable sort_order (their
@@ -193,6 +215,14 @@ export function initDatabase(): void {
       } catch (_) {}
     }
     dbSetSetting('effort_xxs_migration_done', '1');
+  }
+
+  // One-time migration: the "focus" feature was renamed to "pin" — carry
+  // over any tasks that were focused into the new pinned column. The old
+  // focused column is left in place, unused, rather than dropped.
+  if (dbGetSetting('pinned_backfill_from_focused_done') !== '1') {
+    try { db.runSync('UPDATE tasks SET pinned = focused WHERE focused = 1'); } catch (_) {}
+    dbSetSetting('pinned_backfill_from_focused_done', '1');
   }
 }
 
@@ -234,7 +264,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
-    focused: Boolean(row.focused),
+    pinned: Boolean(row.pinned),
     priority: ((row.priority as number) ?? 0) as Task['priority'],
     effort: ((row.effort as number) ?? 0) as Task['effort'],
     estimatedMinutes: (row.estimated_minutes as number | null) ?? null,
@@ -275,7 +305,7 @@ export function dbInsertTask(task: Task): void {
       id, title, notes, completed, completed_at, created_at, seen_at,
       due_date, deadline, deadline_offset_days, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_month_day, recurrence_end_date, recurrence_count, recurrence_from_completion,
-      tags, category, sort_order, focused, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
+      tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id
     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -287,7 +317,7 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceMonthDay ?? null, task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
+      task.pinned ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
@@ -307,7 +337,7 @@ export function dbUpdateTask(task: Task): void {
       title=?, notes=?, completed=?, completed_at=?, seen_at=?,
       due_date=?, deadline=?, deadline_offset_days=?, defer_until=?, time_of_day=?, window_start=?, window_end=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_month_day=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
-      tags=?, category=?, sort_order=?, focused=?, priority=?, effort=?, estimated_minutes=?,
+      tags=?, category=?, sort_order=?, pinned=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
@@ -321,7 +351,7 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.recurrenceDays), task.recurrenceMonthDay ?? null, task.recurrenceEndDate, task.recurrenceCount,
       task.recurrenceFromCompletion ? 1 : 0,
       JSON.stringify(task.tags), task.category ?? null, task.sortOrder,
-      task.focused ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
+      task.pinned ? 1 : 0, task.priority, task.effort, task.estimatedMinutes ?? null,
       task.streakCount, task.streakDate, task.parentId ?? null, task.reminderTime,
       task.chainEnabled ? 1 : 0, task.chainIndex, JSON.stringify(task.chainItems),
       task.vacationPause ? 1 : 0, task.timerStartedAt ?? null, task.actualMinutes ?? null,
@@ -356,8 +386,8 @@ export function dbDeleteSubtasks(parentId: string): void {
   db.runSync('DELETE FROM tasks WHERE parent_id = ?', [parentId]);
 }
 
-export function dbClearAllFocus(): void {
-  db.runSync('UPDATE tasks SET focused = 0 WHERE focused = 1');
+export function dbClearAllPins(): void {
+  db.runSync('UPDATE tasks SET pinned = 0 WHERE pinned = 1');
 }
 
 export function dbBulkDeleteTasks(ids: string[]): void {
@@ -407,11 +437,11 @@ export function dbBulkSetCategory(ids: string[], category: string | null): void 
   });
 }
 
-export function dbBulkSetFocus(ids: string[], focused: boolean): void {
+export function dbBulkSetPinned(ids: string[], pinned: boolean): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
     for (const id of ids) {
-      db.runSync('UPDATE tasks SET focused = ? WHERE id = ?', [focused ? 1 : 0, id]);
+      db.runSync('UPDATE tasks SET pinned = ? WHERE id = ?', [pinned ? 1 : 0, id]);
     }
   });
 }
@@ -550,6 +580,29 @@ export function dbRenameCategory(id: string, oldName: string, newName: string): 
     db.runSync('UPDATE tasks SET category = ? WHERE category = ?', [newName, oldName]);
     db.runSync('UPDATE task_groups SET category = ? WHERE category = ?', [newName, oldName]);
   });
+}
+
+// ─── Project Categories ─────────────────────────────────────────────────────
+
+function rowToProjectCategory(row: Record<string, unknown>): ProjectCategory {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+  };
+}
+
+export function dbGetAllProjectCategories(): ProjectCategory[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM project_categories ORDER BY sort_order ASC, name ASC');
+  return rows.map(rowToProjectCategory);
+}
+
+export function dbInsertProjectCategory(name: string): ProjectCategory {
+  const id = generateId();
+  const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM project_categories')?.m ?? 0;
+  const sortOrder = maxOrder + 1;
+  db.runSync('INSERT INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
+  return { id, name, sortOrder };
 }
 
 // ─── Task Groups ────────────────────────────────────────────────────────────

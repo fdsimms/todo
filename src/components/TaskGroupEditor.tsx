@@ -57,6 +57,7 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
 
   useEffect(() => {
     if (!group) return;
@@ -70,6 +71,8 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
   }, [group]);
 
   const children = group ? groupChildrenOf(group.id) : [];
+  const activeChildren = children.filter(c => !c.completed);
+  const completedChildren = children.filter(c => c.completed);
 
   const eligibleForAdd = useMemo(() => {
     if (!group) return [];
@@ -218,14 +221,14 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
             <View style={styles.cardSection}>
               <View style={styles.subtaskHeader}>
                 <Text style={styles.sectionLabel}>Tasks in this group</Text>
-                <Text style={styles.subtaskProgress}>{children.filter(c => c.completed).length}/{children.length}</Text>
+                <Text style={styles.subtaskProgress}>{completedChildren.length}/{children.length}</Text>
               </View>
               <SortableList
-                data={children}
-                onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
+                data={activeChildren}
+                onReorder={newData => reorderGroupChildren(group.id, [...newData.map(c => c.id), ...completedChildren.map(c => c.id)])}
                 renderItem={(child, _i, drag) => (
                   <View style={styles.childRow}>
-                    <Text style={[styles.childTitle, child.completed && styles.childTitleDone]} numberOfLines={1}>
+                    <Text style={styles.childTitle} numberOfLines={1}>
                       {child.title}
                     </Text>
                     <TouchableOpacity
@@ -242,6 +245,29 @@ export function TaskGroupEditor({ visible, group, onClose }: Props) {
                   </View>
                 )}
               />
+
+              {completedChildren.length > 0 && (
+                <View style={styles.completedSection}>
+                  <TouchableOpacity
+                    style={styles.completedHeader}
+                    onPress={() => setShowCompleted(v => !v)}
+                    hitSlop={8}
+                  >
+                    <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textTertiary} />
+                    <Text style={styles.completedHeaderText}>Completed ({completedChildren.length})</Text>
+                  </TouchableOpacity>
+                  {showCompleted && completedChildren.map(child => (
+                    <View key={child.id} style={styles.childRow}>
+                      <Text style={[styles.childTitle, styles.childTitleDone]} numberOfLines={1}>
+                        {child.title}
+                      </Text>
+                      <TouchableOpacity onPress={() => removeFromGroup(child.id)} hitSlop={8} style={styles.childRemove}>
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
 
               {addingChild ? (
                 <View style={styles.subtaskInputRow}>
@@ -368,6 +394,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: spacing.sm,
   },
+  completedSection: {
+    marginTop: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+  },
+  completedHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingTop: spacing.sm,
+  },
+  completedHeaderText: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
   childTitle: { flex: 1, color: colors.text, fontSize: font.md },
   childTitleDone: { color: colors.textTertiary, textDecorationLine: 'line-through' },
   dragHandle: { padding: 4 },

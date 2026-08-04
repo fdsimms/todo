@@ -460,11 +460,23 @@ export function TemplatesScreen() {
               onClose={() => setSuggestVisible(false)}
             />
           )}
+
+          {/* Nested inside the editor's own Modal — a sibling top-level Modal
+              can't present over it on iOS while the editor is open (it silently
+              waits until the editor dismisses). */}
+          {selectedTemplate && (
+            <ApplyTemplateSheet
+              visible={applyTemplateObj !== null}
+              template={applyTemplateObj}
+              onClose={() => setApplyTemplateId(null)}
+            />
+          )}
         </View>
       </Modal>
 
+      {/* Used only when applying from the template list, i.e. the editor is closed. */}
       <ApplyTemplateSheet
-        visible={applyTemplateObj !== null}
+        visible={applyTemplateObj !== null && selectedTemplate === null}
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
       />

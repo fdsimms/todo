@@ -1,0 +1,4 @@
+{
+  "message": "Tasks without a due date no longer show up on Today by default. Bare, unorganized tasks stay in the Inbox until triaged; tasks with a category, tags, or priority but no date now land in a new Unscheduled view, next to Today and Later",
+  "date": "2026-08-04"
+}

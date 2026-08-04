@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TouchableOpacity,
   Pressable,
   StyleSheet,
@@ -19,7 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -39,7 +40,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { suggestFocusTasks } from '../services/aiSuggestions';
+import { suggestPinTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
@@ -59,7 +60,7 @@ import { spacing, font, fontWeight, radius, interaction, animation, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
-type ViewMode = 'today' | 'later';
+type ViewMode = 'today' | 'later' | 'unscheduled';
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -271,9 +272,10 @@ export function TodayScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
-  const focusedTasks = useTaskStore(useShallow(s => s.focusedTasks()));
+  const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
+  const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
   const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
@@ -281,7 +283,7 @@ export function TodayScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const updateTask = useTaskStore(s => s.updateTask);
-  const clearAllFocus = useTaskStore(s => s.clearAllFocus);
+  const clearAllPins = useTaskStore(s => s.clearAllPins);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
@@ -298,7 +300,7 @@ export function TodayScreen() {
   const completeGroup = useTaskStore(s => s.completeGroup);
   const uncompleteGroup = useTaskStore(s => s.uncompleteGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
-  const focusGroup = useTaskStore(s => s.focusGroup);
+  const pinGroup = useTaskStore(s => s.pinGroup);
   const deleteGroup = useTaskStore(s => s.deleteGroup);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const colors = useColors();
@@ -336,7 +338,7 @@ export function TodayScreen() {
   // underlying list) so the full run of headers is visible without
   // scrolling, without changing what onReorder hands back on drop.
   const [autoCollapseForDrag, setAutoCollapseForDrag] = useState(false);
-  const [isSuggestingFocus, setIsSuggestingFocus] = useState(false);
+  const [isSuggestingPin, setIsSuggestingPin] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
 
@@ -384,7 +386,19 @@ export function TodayScreen() {
   };
 
   const handleTaskCreated = (task: Task) => {
-    const destination: ViewMode = isTaskVisible(task) ? 'today' : 'later';
+    // A quick-add with no organizing metadata at all is an Inbox task,
+    // regardless of which tab it was created from — jump there and hand off
+    // the highlight instead of showing it (invisibly) on this screen.
+    if (isInboxTask(task)) {
+      navigation.navigate({
+        name: 'Inbox',
+        params: { highlightTaskId: task.id, jump: Date.now() },
+      } as never);
+      return;
+    }
+    const destination: ViewMode = isTaskVisible(task)
+      ? 'today'
+      : isUnscheduledTask(task) ? 'unscheduled' : 'later';
     if (destination !== viewMode) setViewMode(destination);
     showJustCreated(task.id);
   };
@@ -452,57 +466,57 @@ export function TodayScreen() {
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
   };
 
-  // Focusing a task immediately reshuffles the list into Focus/Rest sections,
+  // Pinning a task immediately reshuffles the list into Pinned/Rest sections,
   // which moves everything under the finger and makes it hard to tap the
-  // star on more than one task in a row. Give the user a brief grace period
-  // after each focus toggle to keep tapping stars in the normal layout
-  // before the view snaps into focus mode.
-  const FOCUS_VIEW_GRACE_MS = 1500;
-  const [focusViewGraceActive, setFocusViewGraceActive] = useState(false);
-  const focusViewGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevFocusedCount = useRef(focusedTasks.length);
+  // pin on more than one task in a row. Give the user a brief grace period
+  // after each pin toggle to keep tapping pins in the normal layout
+  // before the view snaps into pinned mode.
+  const PIN_VIEW_GRACE_MS = 1500;
+  const [pinViewGraceActive, setPinViewGraceActive] = useState(false);
+  const pinViewGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevPinnedCount = useRef(pinnedTasks.length);
 
   useEffect(() => {
-    const grew = focusedTasks.length > prevFocusedCount.current;
-    prevFocusedCount.current = focusedTasks.length;
+    const grew = pinnedTasks.length > prevPinnedCount.current;
+    prevPinnedCount.current = pinnedTasks.length;
 
-    if (focusedTasks.length === 0) {
-      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
-      focusViewGraceTimer.current = null;
-      setFocusViewGraceActive(false);
+    if (pinnedTasks.length === 0) {
+      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
+      pinViewGraceTimer.current = null;
+      setPinViewGraceActive(false);
       return;
     }
 
     if (grew) {
-      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
-      setFocusViewGraceActive(true);
-      focusViewGraceTimer.current = setTimeout(() => {
-        focusViewGraceTimer.current = null;
-        setFocusViewGraceActive(false);
-      }, FOCUS_VIEW_GRACE_MS);
+      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
+      setPinViewGraceActive(true);
+      pinViewGraceTimer.current = setTimeout(() => {
+        pinViewGraceTimer.current = null;
+        setPinViewGraceActive(false);
+      }, PIN_VIEW_GRACE_MS);
     }
-  }, [focusedTasks.length]);
+  }, [pinnedTasks.length]);
 
   useEffect(() => {
     return () => {
-      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
+      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
     };
   }, []);
 
-  const handleSuggestFocus = async () => {
-    setIsSuggestingFocus(true);
+  const handleSuggestPin = async () => {
+    setIsSuggestingPin(true);
     try {
-      const ids = await suggestFocusTasks(visibleTasks, focusedTasks.length, completedTasks);
-      for (const id of ids) updateTask(id, { focused: true });
-      // AI focus picks tasks in one shot rather than one tap at a time, so the
-      // grace period that protects manual multi-star tapping doesn't apply here.
-      if (focusViewGraceTimer.current) clearTimeout(focusViewGraceTimer.current);
-      focusViewGraceTimer.current = null;
-      setFocusViewGraceActive(false);
+      const ids = await suggestPinTasks(visibleTasks, pinnedTasks.length, completedTasks);
+      for (const id of ids) updateTask(id, { pinned: true });
+      // AI pin picks tasks in one shot rather than one tap at a time, so the
+      // grace period that protects manual multi-pin tapping doesn't apply here.
+      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
+      pinViewGraceTimer.current = null;
+      setPinViewGraceActive(false);
     } catch (e) {
-      Alert.alert('Could not suggest focus', e instanceof Error ? e.message : 'Unknown error');
+      Alert.alert('Could not suggest pins', e instanceof Error ? e.message : 'Unknown error');
     } finally {
-      setIsSuggestingFocus(false);
+      setIsSuggestingPin(false);
     }
   };
 
@@ -526,6 +540,8 @@ export function TodayScreen() {
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const pinnedOnlyMode = useSettingsStore(s => s.pinnedOnlyMode);
+  const setPinnedOnlyMode = useSettingsStore(s => s.setPinnedOnlyMode);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length + (hideCategories ? 1 : 0);
@@ -573,7 +589,8 @@ export function TodayScreen() {
   }, [visibleTasks, sort, filterPriorities, filterEfforts]);
 
   type ListItem =
-    | { type: 'focus-header' }
+    | { type: 'pinned-header' }
+    | { type: 'pinned-task'; task: Task }
     | { type: 'rest-header' }
     | { type: 'header'; label: string }
     | { type: 'task'; task: Task }
@@ -605,9 +622,9 @@ export function TodayScreen() {
   // list, since completed tasks aren't shown individually) so finishing the
   // last child doesn't make the whole stack vanish out from under the
   // user — it stays put, checked off, until they collapse/act on it
-  // themselves. Only the default (non-focus) Today view groups/collapses;
-  // Focus mode and the "Everything else" reveal intentionally stay flat so
-  // focusing a task always pulls it out for individual attention.
+  // themselves. Only the default (non-pinned) Today view groups/collapses;
+  // pinned mode and the "Everything else" reveal intentionally stay flat so
+  // pinning a task always pulls it out for individual attention.
   const visibleGroupItems = useMemo(() => {
     const filteredIds = new Set(filtered.map(t => t.id));
     return taskGroups
@@ -671,13 +688,15 @@ export function TodayScreen() {
       : items;
 
   const data: ListItem[] = useMemo(() => {
-    if (focusedTasks.length > 0 && !focusViewGraceActive) {
-      const items: ListItem[] = [{ type: 'focus-header' }];
-      focusedTasks.forEach(task => items.push({ type: 'task', task }));
-      const restTasks = filtered.filter(t => !t.focused);
-      if (restTasks.length > 0) {
-        items.push({ type: 'rest-header' });
-        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
+    if (pinnedTasks.length > 0 && !pinViewGraceActive) {
+      const items: ListItem[] = [{ type: 'pinned-header' }];
+      pinnedTasks.forEach(task => items.push({ type: 'pinned-task', task }));
+      if (!pinnedOnlyMode) {
+        const restTasks = filtered.filter(t => !t.pinned);
+        if (restTasks.length > 0) {
+          items.push({ type: 'rest-header' });
+          if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
+        }
       }
       return stripCategoryHeaders(applyCategoryCollapse(items));
     }
@@ -686,10 +705,11 @@ export function TodayScreen() {
     const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
     return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, focusedTasks, focusViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
+  }, [filtered, pinnedTasks, pinViewGraceActive, pinnedOnlyMode, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
 
   const listItemKey = (item: ListItem): string =>
-    item.type === 'focus-header' ? '__focus-header__'
+    item.type === 'pinned-header' ? '__pinned-header__'
+    : item.type === 'pinned-task' ? `pin-${item.task.id}`
     : item.type === 'rest-header' ? '__rest-header__'
     : item.type === 'header' ? `h-${item.label}`
     : item.type === 'group' ? `g-${item.group.id}`
@@ -782,12 +802,13 @@ export function TodayScreen() {
   // (checkbox, swipe actions, timer, expand-for-notes, individual skip), just
   // never draggable (no `drag` passed when rendered inside a group), so
   // ReorderableList itself needs no changes to support them.
-  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean; indented?: boolean }) => {
+  const renderTaskRow = (task: Task, opts?: { drag?: () => void; isActive?: boolean; indented?: boolean; showCategory?: boolean }) => {
     const subs = subtasksByParent.get(task.id) ?? [];
     return (
       <TaskItem
         task={task}
         indented={opts?.indented}
+        showCategory={opts?.showCategory}
         onPress={() => {
           if (expandedTaskId !== null && expandedTaskId !== task.id) {
             setExpandedTaskId(null);
@@ -833,21 +854,39 @@ export function TodayScreen() {
     // Headers sit in the same elevated list as task rows, above the spotlight
     // overlay, so each one draws its own scrim to dim in step with the rows.
     const headerDimmed = expandedTaskId !== null && !selectionMode;
-    if (item.type === 'focus-header') {
+    if (item.type === 'pinned-header') {
       return (
         <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
           <View style={styles.focusSectionTitleRow}>
-            <Ionicons name="star" size={13} color={colors.orange} />
-            <Text style={styles.focusSectionTitle}>Focus</Text>
+            <Ionicons name="pin" size={13} color={colors.orange} />
+            <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
           </View>
-          <TouchableOpacity onPress={clearAllFocus} hitSlop={8}>
-            <Text style={styles.clearText}>Clear</Text>
-          </TouchableOpacity>
+          <View style={styles.pinnedSectionActions}>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); setPinnedOnlyMode(!pinnedOnlyMode); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: pinnedOnlyMode }}
+              accessibilityLabel={pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks'}
+            >
+              <Ionicons
+                name={pinnedOnlyMode ? 'eye-off' : 'eye-off-outline'}
+                size={16}
+                color={pinnedOnlyMode ? colors.orange : colors.textSecondary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={clearAllPins} hitSlop={8}>
+              <Text style={styles.clearText}>Clear</Text>
+            </TouchableOpacity>
+          </View>
           {headerDimmed && (
             <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
           )}
         </Pressable>
       );
+    }
+    if (item.type === 'pinned-task') {
+      return renderTaskRow(item.task, { drag, isActive, showCategory: true });
     }
     if (item.type === 'rest-header') {
       return (
@@ -904,7 +943,7 @@ export function TodayScreen() {
             onComplete={() => completeGroup(item.group.id)}
             onUncomplete={() => uncompleteGroup(item.group.id)}
             onDefer={date => deferGroup(item.group.id, date)}
-            onFocus={() => focusGroup(item.group.id)}
+            onPin={() => pinGroup(item.group.id)}
             onDeleteGroupOnly={() => deleteGroup(item.group.id, { cascade: false })}
             onDeleteWithTasks={() => deleteGroup(item.group.id, { cascade: true })}
             onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
@@ -970,7 +1009,7 @@ export function TodayScreen() {
           onComplete={() => completeGroup(group.id)}
           onUncomplete={() => uncompleteGroup(group.id)}
           onDefer={date => deferGroup(group.id, date)}
-          onFocus={() => focusGroup(group.id)}
+          onPin={() => pinGroup(group.id)}
           onDeleteGroupOnly={() => deleteGroup(group.id, { cascade: false })}
           onDeleteWithTasks={() => deleteGroup(group.id, { cascade: true })}
           onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
@@ -989,7 +1028,7 @@ export function TodayScreen() {
   // state centered by stopping the spacer from growing.
   const listFooter = (fixedWhenEmpty = false) => (
     <>
-      {viewMode === 'today' && focusedTasks.length === 0 && (
+      {viewMode === 'today' && pinnedTasks.length === 0 && (
         <LaterTodaySection
           tasks={upcomingUngroupedTasks}
           groups={laterGroupItems}
@@ -1139,15 +1178,24 @@ export function TodayScreen() {
           accessibilityLabel: 'Sort and filter',
         }]
       : []),
-    ...(viewMode === 'today' && focusedTasks.length < 3 && visibleTasks.length > 0
+    ...(viewMode === 'today' && pinnedTasks.length > 0
+      ? [{
+          icon: (pinnedOnlyMode ? 'eye-off' : 'eye-off-outline') as ScreenHeaderAction['icon'],
+          onPress: () => setPinnedOnlyMode(!pinnedOnlyMode),
+          active: pinnedOnlyMode,
+          tint: 'orange' as const,
+          accessibilityLabel: pinnedOnlyMode ? 'Show all tasks' : 'Show only pinned tasks',
+        }]
+      : []),
+    ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
-          onPress: handleSuggestFocus,
-          active: focusedTasks.length === 0,
+          onPress: handleSuggestPin,
+          active: pinnedTasks.length === 0,
           tint: 'orange' as const,
-          disabled: isSuggestingFocus,
-          loading: isSuggestingFocus,
-          accessibilityLabel: 'Suggest focus tasks',
+          disabled: isSuggestingPin,
+          loading: isSuggestingPin,
+          accessibilityLabel: 'Suggest pin tasks',
         }]
       : []),
   ];
@@ -1155,14 +1203,18 @@ export function TodayScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
-        title={viewMode === 'today' ? 'Today' : 'Later'}
+        title={viewMode === 'today' ? 'Today' : viewMode === 'later' ? 'Later' : 'Unscheduled'}
         overline={viewMode === 'today' ? today : undefined}
         actions={headerActions}
       />
 
       {/* View mode switcher */}
-      <View style={styles.viewModePills}>
-        {(['today', 'later'] as ViewMode[]).map(mode => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.viewModePills}
+      >
+        {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
           <TouchableOpacity
             key={mode}
             style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
@@ -1199,7 +1251,7 @@ export function TodayScreen() {
             </View>
           )}
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       {viewMode === 'today' && newTaskIds.length > 0 && (
         <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
@@ -1300,7 +1352,16 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && focusedTasks.length > 0 && (
+      {viewMode === 'today' && pinnedOnlyMode && pinnedTasks.length === 0 && (
+        <EmptyState
+          icon="pin-outline"
+          title="No pinned tasks"
+          subtitle="Pin a task to see it here"
+          bottomOffset={tabBarHeight}
+        />
+      )}
+
+      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length > 0 && (
         <FlatList
           data={data}
           keyExtractor={listItemKey}
@@ -1320,7 +1381,7 @@ export function TodayScreen() {
         />
       )}
 
-      {viewMode === 'today' && focusedTasks.length === 0 && (
+      {viewMode === 'today' && !(pinnedOnlyMode && pinnedTasks.length === 0) && pinnedTasks.length === 0 && (
         <ReorderableList
           data={draggableData}
           keyExtractor={listItemKey}
@@ -1428,9 +1489,60 @@ export function TodayScreen() {
           }
         />
       )}
+
+      {viewMode === 'unscheduled' && (
+        <FlatList
+          data={unscheduledTasks}
+          keyExtractor={t => t.id}
+          renderItem={({ item }) => {
+            const subs = subtasksByParent.get(item.id) ?? [];
+            return (
+              <TaskItem
+                task={item}
+                onPress={() => {
+                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                    setExpandedTaskId(null);
+                    return;
+                  }
+                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                }}
+                expanded={expandedTaskId === item.id}
+                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                onEdit={() => openEditor(item)}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(item.id)}
+                onSelect={() => toggleSelection(item.id)}
+                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                hideTodayLabel
+                showCategory
+                showProject
+                justCreated={item.id === justCreatedId}
+              />
+            );
+          }}
+          contentContainerStyle={
+            unscheduledTasks.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+          }
+          ListEmptyComponent={
+            <EmptyState
+              icon="layers-outline"
+              title="Nothing unscheduled"
+              subtitle="Tasks with no due date land here once they're organized"
+              bottomOffset={tabBarHeight}
+            />
+          }
+          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+          ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+        />
+      )}
       </View>
 
-      {(viewMode === 'today' || viewMode === 'later') && !selectionMode && (
+      {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
         <Animated.View
           style={[styles.fabContainer, { bottom: insets.bottom + 64, opacity: fabOpacity }]}
           pointerEvents={spotlightActive ? 'none' : 'box-none'}
@@ -1489,7 +1601,11 @@ export function TodayScreen() {
       {selectionMode && (
         <BulkActionBar
           selectedCount={selectedIds.size}
-          totalCount={viewMode === 'later' ? deferredTasks.length : filtered.length}
+          totalCount={
+            viewMode === 'later' ? deferredTasks.length
+            : viewMode === 'unscheduled' ? unscheduledTasks.length
+            : filtered.length
+          }
           existingTags={allTags}
           existingCategories={allCategories}
           onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
@@ -1509,7 +1625,9 @@ export function TodayScreen() {
             exitSelection();
           }}
           onSelectAll={() => selectAll(
-            viewMode === 'later' ? deferredTasks.map(t => t.id) : filtered.map(t => t.id)
+            viewMode === 'later' ? deferredTasks.map(t => t.id)
+            : viewMode === 'unscheduled' ? unscheduledTasks.map(t => t.id)
+            : filtered.map(t => t.id)
           )}
           onDeselectAll={deselectAll}
           onCancel={exitSelection}
@@ -1581,6 +1699,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   focusSectionTitle: {
     color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8,
+  },
+  pinnedSectionActions: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
   },
   restSectionHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,

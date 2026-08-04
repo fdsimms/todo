@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { format } from 'date-fns';
@@ -23,12 +23,6 @@ import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
-
-interface Props {
-  visible: boolean;
-  onClose: () => void;
-  onOpenDemo: () => void;
-}
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'light', label: 'Light', icon: 'sunny' },
@@ -50,7 +44,11 @@ function dateToHhmm(d: Date): string {
   return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
 }
 
-export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
+export function SettingsScreen() {
+  const navigation = useNavigation();
+  const onClose = () => navigation.goBack();
+  const onOpenDemo = () => (navigation as any).navigate('Demo');
+
   const {
     dayResetTime, setDayResetTime,
     afternoonStart, setAfternoonStart,
@@ -78,12 +76,13 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  useEffect(() => {
-    if (visible) {
+  useFocusEffect(
+    React.useCallback(() => {
       setActivePicker(null);
       setApiKeyDraft(anthropicApiKey);
-    }
-  }, [visible]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+  );
 
   const openPicker = (which: ActivePicker) => {
     if (activePicker === which) { setActivePicker(null); return; }
@@ -121,12 +120,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
   ];
 
   return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
-      onRequestClose={onClose}
-    >
+    <>
       <View style={styles.root}>
         <View style={styles.header}>
           <View style={{ width: 44 }} />
@@ -536,7 +530,7 @@ export function SettingsScreen({ visible, onClose, onOpenDemo }: Props) {
         }}
         onCancel={() => setShowVacationEndPicker(false)}
       />
-    </Modal>
+    </>
   );
 }
 

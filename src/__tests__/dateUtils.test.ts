@@ -44,7 +44,7 @@ const baseTask: Task = {
   recurrenceCount: null,
   tags: [],
   sortOrder: 0,
-  focused: false,
+  pinned: false,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
