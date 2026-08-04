@@ -25,8 +25,6 @@ interface Props {
   onPrioritiesChange: (p: Priority[]) => void;
   efforts: Effort[];
   onEffortsChange: (e: Effort[]) => void;
-  hideCategories: boolean;
-  onHideCategoriesChange: (v: boolean) => void;
 }
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
@@ -44,7 +42,6 @@ function toggle<T>(arr: T[], item: T): T[] {
 
 export function SortFilterSheet({
   visible, onClose, sort, onSortChange, priorities, onPrioritiesChange, efforts, onEffortsChange,
-  hideCategories, onHideCategoriesChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -113,13 +110,12 @@ export function SortFilterSheet({
   ).current;
 
   const activeCount =
-    (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length + (hideCategories ? 1 : 0);
+    (sort !== 'default' ? 1 : 0) + priorities.length + efforts.length;
 
   const reset = () => {
     onSortChange('default');
     onPrioritiesChange([]);
     onEffortsChange([]);
-    onHideCategoriesChange(false);
   };
 
   return (
@@ -153,39 +149,8 @@ export function SortFilterSheet({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-            {/* Display */}
-            <Text style={styles.groupLabel}>Display</Text>
-            <TouchableOpacity
-              style={styles.toggleRow}
-              onPress={() => {
-                haptics.tap();
-                onHideCategoriesChange(!hideCategories);
-              }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: hideCategories }}
-              accessibilityLabel="Hide category headers"
-            >
-              <Ionicons
-                name="list-outline"
-                size={18}
-                color={hideCategories ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.toggleRowContent}>
-                <Text style={[styles.sortLabel, hideCategories && styles.sortLabelActive]}>
-                  Hide categories
-                </Text>
-                <Text style={styles.toggleHint}>
-                  {hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
-                </Text>
-              </View>
-              <View style={[styles.toggle, hideCategories && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, hideCategories && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-
             {/* Sort */}
-            <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Sort by</Text>
+            <Text style={styles.groupLabel}>Sort by</Text>
             {SORT_OPTIONS.map(opt => (
               <TouchableOpacity
                 key={opt.value}
@@ -311,24 +276,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sortRowActive: { backgroundColor: colors.bgTertiary },
   sortLabel: { flex: 1, color: colors.textSecondary, fontSize: font.md },
   sortLabelActive: { color: colors.text, fontWeight: fontWeight.medium },
-  toggleRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
-    paddingVertical: 12, paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-  },
-  toggleRowContent: { flex: 1 },
-  toggleHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
-  toggle: {
-    width: 44, height: 26, borderRadius: 13,
-    backgroundColor: colors.bgTertiary,
-    justifyContent: 'center', padding: 2,
-  },
-  toggleOn: { backgroundColor: colors.accent },
-  toggleKnob: {
-    width: 22, height: 22, borderRadius: 11,
-    backgroundColor: colors.textSecondary,
-  },
-  toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     paddingHorizontal: 12, paddingVertical: 7,
