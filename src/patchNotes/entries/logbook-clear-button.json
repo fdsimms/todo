@@ -1,0 +1,4 @@
+{
+  "message": "Added a button to clear the entire Logbook, with a confirmation prompt and shake-to-undo support",
+  "date": "2026-08-04"
+}

@@ -5,6 +5,7 @@ import {
   SectionList,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -44,10 +45,30 @@ export function LogbookScreen() {
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
+  const clearLogbook = useTaskStore(s => s.clearLogbook);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [menuTask, setMenuTask] = useState<Task | null>(null);
+
+  const handleClearLogbook = () => {
+    haptics.warning();
+    Alert.alert(
+      'Clear Logbook',
+      `Delete all ${completedTasks.length} completed task${completedTasks.length === 1 ? '' : 's'} from the logbook? This can be undone with shake-to-undo.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            clearLogbook();
+          },
+        },
+      ]
+    );
+  };
 
   const sections = useMemo((): LogbookSection[] => {
     const sorted = [...completedTasks].sort(
@@ -70,7 +91,17 @@ export function LogbookScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Logbook" subtitle={`${completedTasks.length} completed`} />
+      <ScreenHeader
+        title="Logbook"
+        subtitle={`${completedTasks.length} completed`}
+        actions={completedTasks.length > 0 ? [
+          {
+            icon: 'trash-outline',
+            onPress: handleClearLogbook,
+            accessibilityLabel: 'Clear logbook',
+          },
+        ] : undefined}
+      />
 
       <SectionList
         sections={sections}

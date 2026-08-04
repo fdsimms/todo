@@ -174,6 +174,7 @@ interface TaskStore {
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
+  clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[]) => void;
@@ -1230,6 +1231,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         set(s => ({ tasks: [...s.tasks, ...deleted] }));
       },
     });
+  },
+
+  // Deletes every completed top-level task (and their subtasks) via
+  // bulkDeleteTasks, then relabels the undo it already set up — the same
+  // snapshot-and-reinsert undo bulkDeleteTasks gives any other bulk delete.
+  clearLogbook() {
+    const ids = get().completedTasks().map(t => t.id);
+    if (ids.length === 0) return;
+    get().bulkDeleteTasks(ids);
+    const undo = get().lastAction?.undo;
+    if (undo) {
+      get().setLastAction({ label: 'Logbook cleared', undo });
+    }
   },
 
   bulkSetPriority(ids, priority) {
