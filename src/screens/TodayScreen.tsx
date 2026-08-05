@@ -50,7 +50,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { suggestPinTasks } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
-import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
+import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
@@ -326,7 +326,6 @@ export function TodayScreen() {
   const completeGroup = useTaskStore(s => s.completeGroup);
   const dismissGroup = useTaskStore(s => s.dismissGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
-  const pinGroup = useTaskStore(s => s.pinGroup);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
@@ -1012,7 +1011,6 @@ export function TodayScreen() {
     onComplete: () => completeGroup(group.id),
     onDismiss: () => { animateLayout(); dismissGroup(group.id); },
     onDefer: (date: Date) => deferGroup(group.id, date),
-    onPin: () => pinGroup(group.id),
     onSwipeSelect: () => selectGroupRoster(group.id),
     onPressEdit: () => { setEditingGroup(group); setGroupEditorVisible(true); },
   });
@@ -1158,7 +1156,19 @@ export function TodayScreen() {
             {...groupHeaderProps(item.group)}
             onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
           />
-          <AnimatedCollapsible expanded={!item.group.collapsed && draggingGroupId !== item.group.id}>
+          <TaskGroupBody
+            expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
+            hasChildren={item.children.length > 0}
+            // The only list where a stack can render with no children under
+            // it: everything due today is done, completed rows aren't shown
+            // individually, and the stack stays put until it's dismissed.
+            // Without this the body opened onto nothing.
+            emptyLabel={
+              item.children.length === 0
+                ? `All ${allChildren.filter(isRelevantToGroupToday).length} done for today`
+                : undefined
+            }
+          >
             <SortableList
               data={item.children}
               onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
@@ -1178,7 +1188,7 @@ export function TodayScreen() {
                 </React.Fragment>
               )}
             />
-          </AnimatedCollapsible>
+          </TaskGroupBody>
         </GroupDropTarget>
       );
     }
@@ -1242,11 +1252,11 @@ export function TodayScreen() {
           }}
           {...groupHeaderProps(group)}
         />
-        <AnimatedCollapsible expanded={!group.collapsed}>
+        <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
           {children.map(child => (
             <React.Fragment key={child.id}>{renderHiddenTask(child, { indented: true })}</React.Fragment>
           ))}
-        </AnimatedCollapsible>
+        </TaskGroupBody>
       </View>
     );
   };
@@ -1304,11 +1314,11 @@ export function TodayScreen() {
           }}
           {...groupHeaderProps(group)}
         />
-        <AnimatedCollapsible expanded={!group.collapsed}>
+        <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
           {children.map(child => (
             <React.Fragment key={child.id}>{renderInboxTask(child, { indented: true })}</React.Fragment>
           ))}
-        </AnimatedCollapsible>
+        </TaskGroupBody>
       </View>
     );
   };
