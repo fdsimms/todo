@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { View, FlatList, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, FlatList, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,10 +16,16 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { PressableScale } from '../components/PressableScale';
 import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { isInboxTask, isTaskVisible, isUnscheduledTask } from '../utils/visibilityUtils';
 import type { Task } from '../types';
+
+// Mirrors TodayScreen's ViewMode — Inbox is a fourth, separate destination
+// rather than a TodayScreen sub-view, but shares the same pill switcher so
+// navigating between Today/Later/Unscheduled/Inbox feels like one control
+// regardless of which of the two screens it's rendered on.
+type NavViewMode = 'today' | 'later' | 'unscheduled' | 'inbox';
 
 // The Inbox is a triage view of "loose" tasks — title only, no category, tag,
 // date, time window, recurrence, reminder or priority (see isInboxTask). It's
@@ -123,6 +129,44 @@ export function InboxScreen() {
         title="Inbox"
         subtitle={inboxTasks.length === 0 ? 'All sorted' : `${inboxTasks.length} to sort`}
       />
+
+      {/* View mode switcher, mirroring the one on Today so Later/Unscheduled/Inbox are reachable from any of the four. */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.viewModePillsScroll}
+        contentContainerStyle={styles.viewModePills}
+      >
+        {(['today', 'later', 'unscheduled'] as NavViewMode[]).map(mode => (
+          <TouchableOpacity
+            key={mode}
+            style={styles.viewModePill}
+            onPress={() => {
+              haptics.tap();
+              navigation.navigate({
+                name: 'Today',
+                params: { targetViewMode: mode, jump: Date.now() },
+              } as never);
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="tab"
+            accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+          >
+            <Text style={styles.viewModePillText}>
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={[styles.viewModePill, styles.viewModePillActive]}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: true }}
+          accessibilityLabel="Inbox view"
+        >
+          <Text style={[styles.viewModePillText, styles.viewModePillTextActive]}>Inbox</Text>
+        </TouchableOpacity>
+      </ScrollView>
 
       <SpotlightOverlay
         visible={spotlightActive}
@@ -253,6 +297,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
+  // ScrollView defaults its outer container to flexGrow/flexShrink: 1, which
+  // would let it balloon to fill the screen's remaining flex space instead of
+  // sizing to its own (short, pill-height) content.
+  viewModePillsScroll: { flexGrow: 0, flexShrink: 0 },
+  viewModePills: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: 4,
+  },
+  viewModePill: {
+    paddingHorizontal: spacing.md, paddingVertical: 6,
+    borderRadius: radius.full, backgroundColor: colors.bgSecondary,
+  },
+  viewModePillActive: { backgroundColor: colors.accent },
+  viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   listContent: { paddingTop: spacing.sm, paddingBottom: 20, flexGrow: 1 },
   emptyContainer: { flexGrow: 1 },
   // The footer stretches to fill any space left below the last task so a tap

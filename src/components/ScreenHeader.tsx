@@ -51,7 +51,14 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
   return (
     <View style={styles.header}>
       <View style={styles.titleBlock}>
-        {overline != null && <Text style={styles.overline}>{overline}</Text>}
+        {overline != null ? (
+          <Text style={styles.overline}>{overline}</Text>
+        ) : (
+          // Reserves the overline's line height even when unused, so the
+          // title sits at the same vertical position on every screen as it
+          // does on Today (where the date overline pushes it down).
+          <Text style={styles.overline} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
+        )}
         <Text style={styles.title}>{title}</Text>
         {subtitle != null && <Text style={styles.subtitle}>{subtitle}</Text>}
       </View>
