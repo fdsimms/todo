@@ -39,6 +39,7 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
@@ -184,6 +185,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
+  const [customLinkText, setCustomLinkText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
 
@@ -233,6 +237,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
+      setLinkUrl(task.linkUrl ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
@@ -246,7 +251,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setActualMinutes(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
+      setLinkUrl(null);
     }
+    setShowLinkPicker(false); setCustomLinkText('');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewChainItemTitle(''); setAddingChainItem(false);
@@ -286,6 +293,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       chainItems: task?.chainItems ?? [],
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
+      linkUrl: task?.linkUrl ?? null,
     });
   }, [visible, task]);
 
@@ -346,6 +354,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       chainItems,
       chainIndex,
       vacationPause,
+      linkUrl,
     };
 
     const commitSave = (scope?: 'occurrence' | 'series') => {
@@ -471,6 +480,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setNewTag(''); setAddingTag(false);
   };
 
+  const commitCustomLink = () => {
+    const t = customLinkText.trim();
+    setLinkUrl(t || null);
+    setShowLinkPicker(false);
+  };
+
   const enableRecurrence = () => {
     if (recurrenceType === 'none') setRecurrenceType('daily');
   };
@@ -507,6 +522,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
+      linkUrl,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -1374,6 +1390,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             />
             <View style={styles.sep} />
             <OptionRow
+              icon="link-outline"
+              label="Link"
+              hint="Open an app or link from the task"
+              value={
+                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
+                  ?? (linkUrl ?? undefined)
+              }
+              onPress={() => {
+                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+                  setCustomLinkText(linkUrl);
+                }
+                setShowLinkPicker(v => !v);
+              }}
+              onClear={linkUrl ? () => { setLinkUrl(null); setCustomLinkText(''); setShowLinkPicker(false); } : undefined}
+              colors={colors}
+              styles={styles}
+            />
+            {showLinkPicker && (
+              <>
+                <View style={styles.linkPickerRow}>
+                  {KNOWN_LINK_APPS.map(app => (
+                    <TouchableOpacity
+                      key={app.scheme}
+                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                      onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
+                    >
+                      <Ionicons
+                        name={app.icon as never}
+                        size={13}
+                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                      />
+                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                        {app.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.linkCustomRow}>
+                  <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.linkCustomInput}
+                    value={customLinkText}
+                    onChangeText={setCustomLinkText}
+                    onSubmitEditing={commitCustomLink}
+                    onBlur={commitCustomLink}
+                    placeholder="https://... or app://"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                  />
+                </View>
+              </>
+            )}
+            <View style={styles.sep} />
+            <OptionRow
               icon="repeat"
               label="Repeat"
               value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
@@ -1894,6 +1967,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  linkPickerRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  linkAppChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  linkAppChipActive: { backgroundColor: colors.accent },
+  linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  linkAppChipTextActive: { color: colors.bg, fontWeight: '600' },
+  linkCustomRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  linkCustomInput: {
+    flex: 1, color: colors.text, fontSize: font.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 4,
+  },
   windowPickerWidget: { height: 180 },
   pickerButtons: {
     flexDirection: 'row', gap: spacing.sm,

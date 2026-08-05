@@ -105,6 +105,7 @@ const baseTask: Task = {
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
 };
 
 // June 10, 2025 at 10:00 AM

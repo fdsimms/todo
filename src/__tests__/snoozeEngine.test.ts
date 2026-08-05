@@ -54,6 +54,7 @@ const BASE: Task = {
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

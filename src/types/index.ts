@@ -114,6 +114,8 @@ export interface Task {
 
   reminderTime: string | null; // ISO datetime for scheduled notification
 
+  linkUrl: string | null; // URL/deep-link opened by the link button on the task row
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
