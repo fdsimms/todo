@@ -12,7 +12,13 @@ import {
   type NativeScrollEvent,
   type RefreshControlProps,
 } from 'react-native';
-import { moveItem, dropIndexFromTranslation, rowDragOffset, rowIndexAtContentY } from '../utils/reorder';
+import {
+  moveItem,
+  dropIndexFromTranslation,
+  rowDragOffset,
+  rowIndexAtContentY,
+  contentOriginOffset,
+} from '../utils/reorder';
 import { useTheme } from '../theme/ThemeContext';
 
 const ROW_SHIFT_DURATION = 180;
@@ -186,6 +192,14 @@ export function ReorderableList<T>({
   // Mirrors overlayBaseTop state so the stable PanResponder callbacks read the
   // latest value.
   const overlayBaseTopRef = useRef(0);
+  // Gap between the scroll content's coordinate space (what onLayout reports)
+  // and this container's, where the floating card is positioned. Zero unless
+  // the scroll view carries a top content inset; re-measured at every drag
+  // start (see calibrateOverlayBase) because the card and the drop slot must
+  // agree or the user sees the card in one place and the gap in another.
+  const contentOriginRef = useRef(0);
+  const containerRef = useRef<View | null>(null);
+  const rowViewsRef = useRef<Map<string, View>>(new Map());
 
   // What the rows currently render. Kept in a ref (assigned during render) so
   // the gesture handlers always operate on the same array the user is seeing.
@@ -305,15 +319,16 @@ export function ReorderableList<T>({
   };
 
   // Content-Y of the middle of the floating card, i.e. where it actually sits
-  // over the list right now. overlayBaseTop is viewport-relative, so the
-  // scroll offset converts back to content coordinates.
+  // over the list right now. overlayBaseTop is container-relative, so the
+  // scroll offset (and any content-origin inset) converts back to content
+  // coordinates.
   const cardCenterContentY = (): number | null => {
     const ai = activeIndexRef.current;
     if (ai === null) return null;
     const activeKey = keyExtractor(dataRef.current[ai]!);
     const activeHeight = heightsRef.current.get(activeKey) ?? DEFAULT_ROW_HEIGHT;
     const cardTop = overlayBaseTopRef.current + (lastPageYRef.current - startPageYRef.current);
-    return cardTop + scrollOffsetRef.current + activeHeight / 2;
+    return cardTop - contentOriginRef.current + scrollOffsetRef.current + activeHeight / 2;
   };
 
   // The row the card is on top of, measured against resting layout (see the
@@ -376,7 +391,9 @@ export function ReorderableList<T>({
     const overlayTopNow = overlayBaseTopRef.current + (lastPageYRef.current - startPageYRef.current);
     const viewport = viewportHeightRef.current;
     let step = 0;
-    if (overlayTopNow < AUTOSCROLL_ZONE) step = -AUTOSCROLL_STEP;
+    // The scrollable area starts at the content origin, not necessarily at the
+    // container's top edge (see calibrateOverlayBase).
+    if (overlayTopNow < contentOriginRef.current + AUTOSCROLL_ZONE) step = -AUTOSCROLL_STEP;
     else if (overlayTopNow > viewport - AUTOSCROLL_ZONE) step = AUTOSCROLL_STEP;
 
     if (step === 0) {
@@ -413,9 +430,10 @@ export function ReorderableList<T>({
     // destination masks the overlay→row swap.
     const into = dropIntoIndexRef.current;
     const intoItem = into !== null && into >= 0 && into !== ai ? dataRef.current[into] : undefined;
-    const slotTop = intoItem !== undefined
-      ? (layoutYRef.current.get(keyExtractor(intoItem)) ?? 0) - scrollOffsetRef.current
-      : gapContentY(ai, hi ?? ai) - scrollOffsetRef.current;
+    const slotContentY = intoItem !== undefined
+      ? (layoutYRef.current.get(keyExtractor(intoItem)) ?? 0)
+      : gapContentY(ai, hi ?? ai);
+    const slotTop = slotContentY - scrollOffsetRef.current + contentOriginRef.current;
     Animated.parallel([
       Animated.timing(overlayY, {
         toValue: slotTop - overlayBaseTopRef.current,
@@ -448,6 +466,54 @@ export function ReorderableList<T>({
     });
   }, [resetDrag, keyExtractor, overlayY, overlayX, overlayScale, overlayOpacity]);
 
+  /**
+   * Pin the floating card to where the dragged row REALLY is on screen.
+   *
+   * The card's resting position is derived from the row's content-Y minus the
+   * scroll offset, which silently assumes the scroll content starts at this
+   * container's top edge. When it doesn't — a top content inset from iOS
+   * keyboard-inset adjustment being the usual culprit — every derived position
+   * is off by that inset while the drop targeting (a pure finger delta) is not,
+   * so the card floats far from the gap it would drop into. Measuring the row
+   * against the container recovers the offset and puts both back in the same
+   * space.
+   *
+   * measureLayout resolves a frame later, so startDrag seeds the derived value
+   * first (using the previous drag's calibration) and this only nudges it. At
+   * that point the finger has barely moved, so the correction is invisible.
+   */
+  const calibrateOverlayBase = (key: string, rowTop: number) => {
+    const rowView = rowViewsRef.current.get(key);
+    const container = containerRef.current;
+    if (!rowView || !container || typeof rowView.measureLayout !== 'function') return;
+    try {
+      rowView.measureLayout(
+        container as any,
+        (_x: number, y: number, _w: number, h: number) => {
+          // Bail if the drag ended (or is landing) before the measurement came
+          // back — moving the base then would yank the card mid-flight. Bail
+          // too if the row has already been displaced by a hover change, since
+          // the measured frame would then include that transform rather than
+          // the resting position the base is meant to describe.
+          if (activeIndexRef.current === null || committingRef.current) return;
+          if (hoverIndexRef.current !== activeIndexRef.current) return;
+          // Same reasoning for the scroll position: `y` is only comparable to
+          // the content-Y the base was derived from while the list hasn't moved.
+          if (scrollOffsetRef.current !== scrollOffsetAtStartRef.current) return;
+          if (!Number.isFinite(y)) return;
+          contentOriginRef.current = contentOriginOffset(y, rowTop, scrollOffsetAtStartRef.current);
+          overlayBaseTopRef.current = y;
+          setOverlayBaseTop(y);
+          if (Number.isFinite(h) && h > 0) heightsRef.current.set(key, h);
+        },
+        () => {},
+      );
+    } catch {
+      // Measurement is a refinement, not a requirement — the derived base above
+      // still gets the drag off the ground.
+    }
+  };
+
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
     const rowTop = layoutYRef.current.get(key) ?? 0;
@@ -462,9 +528,10 @@ export function ReorderableList<T>({
     startPageYRef.current = 0;
     lastPageYRef.current = 0;
     startPageXRef.current = 0;
-    const baseTop = rowTop - scrollOffsetRef.current;
+    const baseTop = rowTop - scrollOffsetRef.current + contentOriginRef.current;
     overlayBaseTopRef.current = baseTop;
     setOverlayBaseTop(baseTop);
+    calibrateOverlayBase(key, rowTop);
     overlayY.setValue(0);
     overlayX.setValue(0);
     overlayScale.setValue(1.03);
@@ -522,7 +589,7 @@ export function ReorderableList<T>({
   const activeItem = isDragging ? renderData[activeIndex]! : null;
 
   return (
-    <View style={styles.container} {...panResponder.panHandlers} onTouchEnd={commitDrag}>
+    <View ref={containerRef} style={styles.container} {...panResponder.panHandlers} onTouchEnd={commitDrag}>
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
@@ -548,6 +615,13 @@ export function ReorderableList<T>({
           return (
             <Animated.View
               key={key}
+              // Kept so a drag can measure the row's real on-screen position
+              // rather than inferring it from content-Y (see
+              // calibrateOverlayBase).
+              ref={(r: View | null) => {
+                if (r) rowViewsRef.current.set(key, r);
+                else rowViewsRef.current.delete(key);
+              }}
               pointerEvents={isPlaceholder ? 'none' : 'auto'}
               // Animated transform ONLY while dragging. At rest the style is
               // plain, so the commit render (new order + no transform) is one

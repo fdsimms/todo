@@ -121,6 +121,27 @@ export function dragRange<T>(data: T[], activeIndex: number, isBoundary: (item: 
 }
 
 /**
+ * Distance between a scroll view's content coordinate space and the coordinate
+ * space an absolutely-positioned sibling overlay uses.
+ *
+ * A row's content-Y (what `onLayout` reports inside the scroll content) maps to
+ * an on-screen position of `contentY - scrollOffset` ONLY when the content
+ * starts flush with the top of the overlay's container. A top content inset —
+ * iOS keyboard-inset adjustment, safe-area inset adjustment, a scroll view that
+ * doesn't start at the container's top edge — shifts everything down by a
+ * constant the JS side never sees. Measuring one row's real on-screen position
+ * recovers that constant, so the floating drag card and the drop slot stay in
+ * the same coordinate space instead of drifting apart by the inset.
+ */
+export function contentOriginOffset(
+  measuredOnScreenTop: number,
+  rowContentY: number,
+  scrollOffset: number,
+): number {
+  return measuredOnScreenTop - (rowContentY - scrollOffset);
+}
+
+/**
  * Top offset (in content coordinates) of the gap that opens for the dragged
  * item — i.e. where its placeholder slot should be drawn and where the
  * floating card should glide to on drop.
