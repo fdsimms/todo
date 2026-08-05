@@ -282,7 +282,13 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
       return (
         <View>
           <View style={[styles.itemRow, indent]}>
-            <TouchableOpacity onPress={() => toggleNode(node)} activeOpacity={interaction.activeOpacity}>
+            <TouchableOpacity
+              onPress={() => toggleNode(node)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="checkbox"
+              accessibilityLabel={name}
+              accessibilityState={{ checked: allChecked }}
+            >
               <Ionicons
                 name={allChecked ? 'checkmark-circle' : 'ellipse-outline'}
                 size={22}
@@ -318,6 +324,9 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
         style={[styles.itemRow, indent]}
         onPress={() => toggleItem(node.item.id)}
         activeOpacity={interaction.activeOpacity}
+        accessibilityRole="checkbox"
+        accessibilityLabel={node.item.title}
+        accessibilityState={{ checked }}
       >
         <Ionicons
           name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -457,7 +466,7 @@ function AnchorRow({
           <Text style={styles.anchorValue}>
             {value.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
           </Text>
-          <TouchableOpacity onPress={onClear} hitSlop={8}>
+          <TouchableOpacity onPress={onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear ${label.toLowerCase()}`}>
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         </View>

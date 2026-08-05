@@ -414,6 +414,16 @@ export function dbClearAllPins(): void {
   db.runSync('UPDATE tasks SET pinned = 0 WHERE pinned = 1');
 }
 
+// Lets a store-level cascade (looping a single-task action like completeTask
+// or deleteTask over many ids) commit as one WAL transaction instead of one
+// per iteration. Safe to wrap around any of dbInsertTask/dbUpdateTask/
+// dbDeleteTask/dbDeleteSubtasks — all plain runSync — but never around a
+// dbBulk* function below, which already opens its own transaction and would
+// nest.
+export function dbTransaction(fn: () => void): void {
+  db.withTransactionSync(fn);
+}
+
 const BULK_DELETE_CHUNK_SIZE = 500;
 
 export function dbBulkDeleteTasks(ids: string[]): void {
@@ -582,8 +592,30 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 }
 
 export function dbDeleteCategory(name: string): void {
-  db.runSync('DELETE FROM categories WHERE name = ?', [name]);
-  db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM categories WHERE name = ?', [name]);
+    db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
+    db.runSync('UPDATE task_groups SET category = NULL WHERE category = ?', [name]);
+  });
+}
+
+// Full-row insert used only to restore a category snapshot on undo —
+// dbInsertCategory(name) mints a fresh id/sortOrder and can't bring back
+// the schedule/vacation fields a deleted category carried.
+export function dbInsertCategoryRow(category: Category): void {
+  db.runSync(
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?)',
+    [
+      category.id,
+      category.name,
+      category.scheduleDays ? JSON.stringify(category.scheduleDays) : null,
+      category.scheduleStart,
+      category.scheduleEnd,
+      category.hideOnVacation ? 1 : 0,
+      category.sortOrder,
+      category.emoji,
+    ]
+  );
 }
 
 export function dbRenameCategory(id: string, oldName: string, newName: string): void {

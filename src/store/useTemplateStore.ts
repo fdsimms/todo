@@ -5,6 +5,7 @@ import {
   dbInsertTemplate,
   dbUpdateTemplate,
   dbDeleteTemplate,
+  dbTransaction,
 } from '../db/database';
 import { useTaskStore } from './useTaskStore';
 import { generateId } from '../utils/id';
@@ -22,7 +23,11 @@ interface TemplateStore {
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
-  deleteTemplate: (id: string) => void;
+  // Deletion's undo lives in useTaskStore, mirroring restoreProject/restoreGroup —
+  // these are the low-level row operations it calls, kept here so this store
+  // never has to import useTaskStore.
+  removeTemplateRow: (id: string) => void;
+  restoreTemplate: (template: TaskTemplate) => void;
   reorderTemplates: (orderedIds: string[]) => void;
   reorderTemplatesWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
@@ -78,9 +83,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
   },
 
-  deleteTemplate(id) {
+  removeTemplateRow(id) {
     dbDeleteTemplate(id);
     set(s => ({ templates: s.templates.filter(t => t.id !== id) }));
+  },
+
+  restoreTemplate(template) {
+    dbInsertTemplate(template);
+    set(s => ({ templates: [...s.templates, template] }));
   },
 
   reorderTemplates(orderedIds) {
@@ -199,38 +209,41 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const addSubtask = useTaskStore.getState().addSubtask;
     const groupTasks = useTaskStore.getState().groupTasks;
 
-    const createdTasks = drafts.map(d => addTask(d));
+    let createdTasks: Task[] = [];
+    dbTransaction(() => {
+      createdTasks = drafts.map(d => addTask(d));
 
-    // Second pass: subtasks and groups need ids that don't exist until
-    // addTask returns, so they can't be part of the draft itself. Group keys
-    // are namespaced by sourceTemplateId since one apply can now pull items
-    // from multiple (nested) templates.
-    const createdTaskIdsByGroup = new Map<string, string[]>();
-    expanded.forEach(({ item, sourceTemplateId }, index) => {
-      const createdTask = createdTasks[index];
-      if (!createdTask) return;
+      // Second pass: subtasks and groups need ids that don't exist until
+      // addTask returns, so they can't be part of the draft itself. Group keys
+      // are namespaced by sourceTemplateId since one apply can now pull items
+      // from multiple (nested) templates.
+      const createdTaskIdsByGroup = new Map<string, string[]>();
+      expanded.forEach(({ item, sourceTemplateId }, index) => {
+        const createdTask = createdTasks[index];
+        if (!createdTask) return;
 
-      item.subtasks.forEach(stub => addSubtask(createdTask.id, stub.title));
+        item.subtasks.forEach(stub => addSubtask(createdTask.id, stub.title));
 
-      if (item.groupId) {
-        const key = `${sourceTemplateId}:${item.groupId}`;
-        const list = createdTaskIdsByGroup.get(key) ?? [];
-        list.push(createdTask.id);
-        createdTaskIdsByGroup.set(key, list);
-      }
-    });
+        if (item.groupId) {
+          const key = `${sourceTemplateId}:${item.groupId}`;
+          const list = createdTaskIdsByGroup.get(key) ?? [];
+          list.push(createdTask.id);
+          createdTaskIdsByGroup.set(key, list);
+        }
+      });
 
-    createdTaskIdsByGroup.forEach((taskIds, key) => {
-      const separatorIndex = key.indexOf(':');
-      const sourceTemplateId = key.slice(0, separatorIndex);
-      const groupId = key.slice(separatorIndex + 1);
-      const sourceTemplate = templatesById.get(sourceTemplateId);
-      const group = sourceTemplate?.itemGroups.find(g => g.id === groupId);
-      if (!group || taskIds.length === 0) return;
-      const category = expanded.find(
-        e => e.sourceTemplateId === sourceTemplateId && e.item.groupId === groupId
-      )?.item.category ?? null;
-      groupTasks(taskIds, group.title, category);
+      createdTaskIdsByGroup.forEach((taskIds, key) => {
+        const separatorIndex = key.indexOf(':');
+        const sourceTemplateId = key.slice(0, separatorIndex);
+        const groupId = key.slice(separatorIndex + 1);
+        const sourceTemplate = templatesById.get(sourceTemplateId);
+        const group = sourceTemplate?.itemGroups.find(g => g.id === groupId);
+        if (!group || taskIds.length === 0) return;
+        const category = expanded.find(
+          e => e.sourceTemplateId === sourceTemplateId && e.item.groupId === groupId
+        )?.item.category ?? null;
+        groupTasks(taskIds, group.title, category);
+      });
     });
 
     return createdTasks;

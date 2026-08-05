@@ -169,8 +169,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     Alert.alert(
       'Delete Category',
       taskCount > 0
-        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized.`
-        : `Delete "${category}"?`,
+        ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
+        : `Delete "${category}"? This can be undone with shake-to-undo.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {

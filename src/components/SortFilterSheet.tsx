@@ -142,7 +142,7 @@ export function SortFilterSheet({
                   <Text style={styles.resetText}>Clear all ({activeCount})</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={dismiss} hitSlop={8}>
+              <TouchableOpacity onPress={dismiss} hitSlop={8} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>

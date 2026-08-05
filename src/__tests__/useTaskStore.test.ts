@@ -1,6 +1,7 @@
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTemplateStore } from '../store/useTemplateStore';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -17,6 +18,7 @@ import {
   dbBulkSetPinned,
   dbBulkAddTags,
   dbMarkTaskSeen,
+  dbTransaction,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -58,9 +60,11 @@ jest.mock('../db/database', () => ({
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
+  dbBulkSetCategory: jest.fn(),
   dbBulkSetPinned: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
+  dbTransaction: jest.fn((fn: () => void) => fn()),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
@@ -75,6 +79,7 @@ jest.mock('../store/useCategoryStore', () => ({
       initialize: jest.fn(),
       addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
       deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(),
       renameCategory: jest.fn().mockReturnValue(true),
       setCategorySchedule: jest.fn(),
       removeCategorySchedule: jest.fn(),
@@ -186,12 +191,24 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   ...overrides,
 });
 
+const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}): import('../types').TaskTemplate => ({
+  id: 'tpl-1',
+  name: 'Test Template',
+  items: [],
+  itemGroups: [],
+  createdAt: '2025-01-01T00:00:00.000Z',
+  sortOrder: 1,
+  category: null,
+  ...overrides,
+});
+
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
   useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [] });
   useTaskGroupStore.setState({ groups: [], initialized: false });
   useProjectStore.setState({ projects: [], initialized: false });
+  useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
   useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
   // re-register the category store mock after clearAllMocks
@@ -202,6 +219,7 @@ beforeEach(() => {
     initialize: jest.fn(),
     addCategory: jest.fn(name => ({ id: 'cat-1', name, scheduleDays: null, scheduleStart: null, scheduleEnd: null })),
     deleteCategory: jest.fn(),
+    restoreCategory: jest.fn(),
     renameCategory: jest.fn().mockReturnValue(true),
     setCategorySchedule: jest.fn(),
     removeCategorySchedule: jest.fn(),
@@ -302,6 +320,14 @@ describe('updateTask', () => {
     expect(dbUpdateTask).toHaveBeenCalledTimes(1);
     expect(cancelTaskReminder).toHaveBeenCalledWith('t1');
     expect(scheduleTaskReminder).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not touch reminders when the update does not affect the notification', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().updateTask('t1', { priority: 2, sortOrder: 5 });
+    expect(dbUpdateTask).toHaveBeenCalledTimes(1);
+    expect(cancelTaskReminder).not.toHaveBeenCalled();
+    expect(scheduleTaskReminder).not.toHaveBeenCalled();
   });
 
   describe('scope: "occurrence" ("this task only")', () => {
@@ -1289,6 +1315,13 @@ describe('togglePin', () => {
     useTaskStore.getState().togglePin('t1');
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
+
+  it('does not touch reminders, since pinning does not affect the notification', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: false })] });
+    useTaskStore.getState().togglePin('t1');
+    expect(cancelTaskReminder).not.toHaveBeenCalled();
+    expect(scheduleTaskReminder).not.toHaveBeenCalled();
+  });
 });
 
 // ─── archiveTask / unarchiveTask ────────────────────────────────────────────
@@ -1752,6 +1785,17 @@ describe('completeGroup', () => {
     expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
   });
 
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'b', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('never force-completes a child not yet due (mismatched recurrence cadence)', () => {
     const farFuture = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
     useTaskStore.setState({
@@ -2008,6 +2052,15 @@ describe('deleteGroup', () => {
     expect(useTaskGroupStore.getState().groups).toHaveLength(0);
   });
 
+  it('runs its cascade writes inside a single db transaction', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
+    });
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('queues an undo that restores the group and its orphaned children', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', title: 'Supplements' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1' })] });
@@ -2066,12 +2119,17 @@ describe('bulkDeleteTasks', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(0);
   });
 
-  it('calls dbBulkDeleteTasks and cancels reminders', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })] });
+  it('calls dbBulkDeleteTasks and cancels reminders for tasks that have one', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', reminderTime: '2025-06-01T09:00:00.000Z' }),
+        makeTask({ id: 'b' }),
+      ],
+    });
     useTaskStore.getState().bulkDeleteTasks(['a', 'b']);
     expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['a', 'b']);
     expect(cancelTaskReminder).toHaveBeenCalledWith('a');
-    expect(cancelTaskReminder).toHaveBeenCalledWith('b');
+    expect(cancelTaskReminder).not.toHaveBeenCalledWith('b');
   });
 
   it('does nothing for an empty id list', () => {
@@ -2139,6 +2197,14 @@ describe('bulkCompleteTasks', () => {
     });
     useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
     expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('queues an undo action that uncompletes every specified task', () => {
@@ -2579,6 +2645,15 @@ describe('deleteProject', () => {
     expect(useProjectStore.getState().projects).toHaveLength(0);
   });
 
+  it('runs its cascade writes inside a single db transaction', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().deleteProject('p1', { cascade: true });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('deletes member tasks too (cascade: true)', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({
@@ -2596,6 +2671,74 @@ describe('deleteProject', () => {
     useTaskStore.getState().lastAction?.undo();
     expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['p1']);
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
+  });
+});
+
+// ─── deleteTemplate ─────────────────────────────────────────────────────────
+
+describe('deleteTemplate', () => {
+  it('removes the template from state', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1' })] });
+    useTaskStore.getState().deleteTemplate('tpl-1');
+    expect(useTemplateStore.getState().templates).toHaveLength(0);
+  });
+
+  it('queues an undo that restores the template', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1', name: 'Packing List' })] });
+    useTaskStore.getState().deleteTemplate('tpl-1');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTemplateStore.getState().templates.map(t => t.id)).toEqual(['tpl-1']);
+    expect(useTemplateStore.getState().templates[0].name).toBe('Packing List');
+  });
+
+  it('is a no-op for an unknown id', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1' })] });
+    useTaskStore.getState().deleteTemplate('missing');
+    expect(useTemplateStore.getState().templates).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── deleteCategory ─────────────────────────────────────────────────────────
+
+describe('deleteCategory', () => {
+  it('nulls the category on affected tasks and stacks', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', category: 'Home' })] });
+    useTaskStore.getState().deleteCategory('Home');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBeNull();
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'g1')?.category).toBeNull();
+  });
+
+  it('queues an undo that restores the category on affected tasks and stacks', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    const category = { id: 'cat-1', name: 'Home', scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, sortOrder: 1, emoji: null };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [category],
+      initialized: true,
+      initialize: jest.fn(),
+      addCategory: jest.fn(),
+      deleteCategory: jest.fn(),
+      restoreCategory: jest.fn(),
+      renameCategory: jest.fn().mockReturnValue(true),
+      setCategorySchedule: jest.fn(),
+      removeCategorySchedule: jest.fn(),
+      getCategoryByName: jest.fn().mockReturnValue(category),
+    });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', category: 'Home' })] });
+
+    useTaskStore.getState().deleteCategory('Home');
+    useTaskStore.getState().lastAction?.undo();
+
+    expect(useCategoryStore.getState().restoreCategory).toHaveBeenCalledWith(category);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBe('Home');
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'g1')?.category).toBe('Home');
+  });
+
+  it('does not queue an undo when the category is unknown', () => {
+    useTaskStore.getState().deleteCategory('Ghost');
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
 

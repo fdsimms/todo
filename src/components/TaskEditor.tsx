@@ -976,6 +976,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setDeadlineOffsetDays(d => Math.max(1, (d ?? 1) - 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease deadline offset"
                     >
                       <Ionicons name="remove" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -983,6 +985,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setDeadlineOffsetDays(d => (d ?? 0) + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase deadline offset"
                     >
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1017,6 +1021,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                         <TouchableOpacity
                           style={styles.intervalBtn}
                           onPress={() => setDeadlineMonthDay(Math.max(1, deadlineMonthDay - 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Decrease day of month"
                         >
                           <Ionicons name="remove" size={16} color={colors.text} />
                         </TouchableOpacity>
@@ -1024,6 +1030,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                         <TouchableOpacity
                           style={styles.intervalBtn}
                           onPress={() => setDeadlineMonthDay(Math.min(31, deadlineMonthDay + 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Increase day of month"
                         >
                           <Ionicons name="add" size={16} color={colors.text} />
                         </TouchableOpacity>
@@ -1156,6 +1164,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                   <TouchableOpacity
                     style={styles.intervalBtn}
                     onPress={() => setRecurrenceInterval(Math.max(1, recurrenceInterval - 1))}
+                    accessibilityRole="button"
+                    accessibilityLabel="Decrease recurrence interval"
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1163,6 +1173,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                   <TouchableOpacity
                     style={styles.intervalBtn}
                     onPress={() => setRecurrenceInterval(recurrenceInterval + 1)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Increase recurrence interval"
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1219,6 +1231,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease day of month"
                     >
                       <Ionicons name="remove" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1226,6 +1240,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase day of month"
                     >
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1314,6 +1330,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setRecurrenceCount(c => Math.max(1, (c ?? 1) - 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease occurrence count"
                     >
                       <Ionicons name="remove" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1321,6 +1339,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setRecurrenceCount(c => (c ?? 0) + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase occurrence count"
                     >
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1339,6 +1359,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                 <TouchableOpacity
                   style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
                   onPress={() => setChainEnabled(v => !v)}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Chain"
+                  accessibilityState={{ checked: chainEnabled }}
                 >
                   <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
                 </TouchableOpacity>
@@ -1368,6 +1391,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                             onPress={() => setChainIndex(actualIdx)}
                             hitSlop={6}
                             style={styles.chainItemIndexBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set current step to ${item.title}`}
                           >
                             <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
                               <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
@@ -1383,6 +1408,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                             delayLongPress={150}
                             hitSlop={8}
                             style={styles.dragHandle}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Reorder chain step ${item.title}`}
                           >
                             <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                           </TouchableOpacity>
@@ -1394,6 +1421,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                             }}
                             hitSlop={8}
                             style={styles.chainItemDelete}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove chain step ${item.title}`}
                           >
                             <Ionicons name="close" size={14} color={colors.textTertiary} />
                           </TouchableOpacity>
@@ -1785,6 +1814,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                         onPress={() => toggleSubtask(sub.id)}
                         hitSlop={6}
                         style={styles.subtaskCheck}
+                        accessibilityRole="checkbox"
+                        accessibilityLabel={sub.title}
+                        accessibilityState={{ checked: sub.completed }}
                       >
                         <Ionicons
                           name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
@@ -1800,6 +1832,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                         delayLongPress={150}
                         hitSlop={8}
                         style={styles.dragHandle}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder subtask ${sub.title}`}
                       >
                         <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                       </TouchableOpacity>
@@ -1807,6 +1841,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                         onPress={() => deleteSubtask(sub.id)}
                         hitSlop={8}
                         style={styles.subtaskDelete}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete subtask ${sub.title}`}
                       >
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
                       </TouchableOpacity>
@@ -1917,7 +1953,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               </>
             )}
             <View style={styles.sep} />
-            <TouchableOpacity style={styles.optionRow} onPress={() => { haptics.tap(); setVacationPause(v => !v); }} activeOpacity={interaction.activeOpacity}>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Vacation pause"
+              accessibilityState={{ checked: vacationPause }}
+            >
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Vacation pause</Text>
@@ -1942,6 +1985,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     }
                   }}
                   activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Archive"
+                  accessibilityState={{ checked: task.archived }}
                 >
                   <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
                   <View style={styles.optionContent}>
@@ -1979,6 +2025,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease streak count"
                     >
                       <Ionicons name="remove" size={16} color={colors.text} />
                     </TouchableOpacity>
@@ -1986,6 +2034,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     <TouchableOpacity
                       style={styles.intervalBtn}
                       onPress={() => setStreakDraft(d => d + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase streak count"
                     >
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>

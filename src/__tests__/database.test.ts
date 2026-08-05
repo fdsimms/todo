@@ -35,8 +35,15 @@ import {
   dbUpdateProject,
   dbDeleteProject,
   dbBatchUpdateProjectSortOrders,
+  dbTransaction,
+  dbGetAllCategories,
+  dbInsertCategory,
+  dbInsertCategoryRow,
+  dbDeleteCategory,
+  dbGetAllTaskGroups,
+  dbInsertTaskGroup,
 } from '../db/database';
-import type { Task, TaskTemplate, TemplateItem, Project } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -594,6 +601,27 @@ describe('dbBatchUpdateSortOrders', () => {
 // Bulk task operations
 // ---------------------------------------------------------------------------
 
+describe('dbTransaction', () => {
+  it('commits every write made inside the callback', () => {
+    dbTransaction(() => {
+      dbInsertTask(makeTask({ id: 'a' }));
+      dbInsertTask(makeTask({ id: 'b' }));
+    });
+    expect(dbGetAllTasks().map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('rolls back every write if the callback throws', () => {
+    dbInsertTask(makeTask({ id: 'existing' }));
+    expect(() => {
+      dbTransaction(() => {
+        dbInsertTask(makeTask({ id: 'a' }));
+        throw new Error('boom');
+      });
+    }).toThrow('boom');
+    expect(dbGetAllTasks().map((t) => t.id)).toEqual(['existing']);
+  });
+});
+
 describe('dbBulkDeleteTasks', () => {
   it('deletes the specified task and cascades to its subtasks', () => {
     dbInsertTask(makeTask({ id: 'p' }));
@@ -918,5 +946,47 @@ describe('Projects', () => {
     dbInsertTask(makeTask({ id: 't1', projectId: 'project-1' }));
     const [t] = dbGetAllTasks();
     expect(t.projectId).toBe('project-1');
+  });
+});
+
+describe('Categories', () => {
+  const makeTaskGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+    id: 'group-1',
+    title: 'Test Group',
+    notes: '',
+    tags: [],
+    priority: 0,
+    category: null,
+    sortOrder: 1,
+    collapsed: false,
+    completedAt: null,
+    ...overrides,
+  });
+
+  it('dbDeleteCategory removes the row and nulls category on both tasks and stacks', () => {
+    dbInsertCategory('Home');
+    dbInsertTask(makeTask({ id: 't1', category: 'Home' }));
+    dbInsertTaskGroup(makeTaskGroup({ id: 'g1', category: 'Home' }));
+
+    dbDeleteCategory('Home');
+
+    expect(dbGetAllCategories()).toHaveLength(0);
+    expect(dbGetAllTasks()[0].category).toBeNull();
+    expect(dbGetAllTaskGroups()[0].category).toBeNull();
+  });
+
+  it('dbInsertCategoryRow restores a full category snapshot, including schedule fields', () => {
+    const category: Category = {
+      id: 'cat-1',
+      name: 'Home',
+      scheduleDays: [1, 2, 3],
+      scheduleStart: '09:00',
+      scheduleEnd: '17:00',
+      hideOnVacation: true,
+      sortOrder: 3,
+      emoji: '🏠',
+    };
+    dbInsertCategoryRow(category);
+    expect(dbGetAllCategories()).toEqual([category]);
   });
 });

@@ -4,6 +4,7 @@ import {
   dbUpdateTemplate,
   dbDeleteTemplate,
   dbGetAllTemplates,
+  dbTransaction,
 } from '../db/database';
 import type { TaskTemplate, TemplateItem, TaskDraft } from '../types';
 
@@ -12,6 +13,7 @@ jest.mock('../db/database', () => ({
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
   dbDeleteTemplate: jest.fn(),
+  dbTransaction: jest.fn((fn: () => void) => fn()),
 }));
 
 const mockAddTask = jest.fn();
@@ -105,11 +107,19 @@ describe('template CRUD', () => {
     expect(dbUpdateTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }));
   });
 
-  it('deleteTemplate removes from state and persists', () => {
+  it('removeTemplateRow removes from state and persists', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    useTemplateStore.getState().deleteTemplate(tpl.id);
+    useTemplateStore.getState().removeTemplateRow(tpl.id);
     expect(useTemplateStore.getState().templates).toHaveLength(0);
     expect(dbDeleteTemplate).toHaveBeenCalledWith(tpl.id);
+  });
+
+  it('restoreTemplate re-inserts a template snapshot', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    useTemplateStore.getState().removeTemplateRow(tpl.id);
+    useTemplateStore.getState().restoreTemplate(tpl);
+    expect(useTemplateStore.getState().templates.map(t => t.id)).toEqual([tpl.id]);
+    expect(dbInsertTemplate).toHaveBeenCalledWith(tpl);
   });
 });
 
@@ -168,6 +178,16 @@ describe('applyTemplate', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(2);
     expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Pack', 'Trash']);
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Pack' }), makeItem({ id: 'b', title: 'Trash' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), { start: null, end: null });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('computes dueDate/deferUntil from the start anchor', () => {

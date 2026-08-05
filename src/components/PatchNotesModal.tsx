@@ -156,6 +156,9 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 onPress={toggleHideReviewed}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="switch"
+                accessibilityLabel="Hide reviewed entries"
+                accessibilityState={{ checked: hideReviewed }}
               >
                 <Ionicons
                   name={hideReviewed ? 'eye-off' : 'eye-off-outline'}
@@ -189,6 +192,9 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => toggleQaStatus(note.id, 'pass')}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={`Mark "${note.message}" as passed`}
+                          accessibilityState={{ checked: qaStatus === 'pass' }}
                         >
                           <Ionicons
                             name={qaStatus === 'pass' ? 'checkmark-circle' : 'checkmark-circle-outline'}
@@ -201,6 +207,9 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
                           activeOpacity={interaction.activeOpacity}
                           onPress={() => toggleQaStatus(note.id, 'fail')}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityRole="checkbox"
+                          accessibilityLabel={`Mark "${note.message}" as failed`}
+                          accessibilityState={{ checked: qaStatus === 'fail' }}
                         >
                           <Ionicons
                             name={qaStatus === 'fail' ? 'close-circle' : 'close-circle-outline'}
