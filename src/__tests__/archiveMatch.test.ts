@@ -49,6 +49,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesDefaults: null,
   archived: true,
   archivedAt: '2025-01-01T00:00:00.000Z',
+  linkUrl: null,
   ...overrides,
 });
 

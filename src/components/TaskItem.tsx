@@ -10,6 +10,7 @@ import {
   Alert,
   Keyboard,
   LayoutChangeEvent,
+  Linking,
 } from 'react-native';
 import Reanimated, {
   useSharedValue,
@@ -135,6 +136,16 @@ export function TaskItem({
   const deleteSubtask = useTaskStore(s => s.deleteSubtask);
   const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
   const duplicateTask = useTaskStore(s => s.duplicateTask);
+  const handleOpenLink = async () => {
+    if (!task.linkUrl) return;
+    haptics.tap();
+    try {
+      const supported = await Linking.canOpenURL(task.linkUrl);
+      if (supported) await Linking.openURL(task.linkUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -607,6 +618,18 @@ export function TaskItem({
           </View>
         )}
       </TouchableOpacity>
+
+      {!selectionMode && showActions && task.linkUrl && (
+        <TouchableOpacity
+          onPress={handleOpenLink}
+          hitSlop={8}
+          style={styles.linkBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Open link for ${task.title}`}
+        >
+          <Ionicons name="link" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
 
       {!selectionMode && showActions && (
         <TouchableOpacity
@@ -1184,6 +1207,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   starBtn: {
+    padding: 4,
+  },
+  linkBtn: {
     padding: 4,
   },
   timerRunningGroup: {

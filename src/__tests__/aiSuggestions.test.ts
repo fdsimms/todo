@@ -76,6 +76,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
   ...overrides,
 });
 
