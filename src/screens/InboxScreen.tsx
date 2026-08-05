@@ -139,6 +139,7 @@ export function InboxScreen() {
         <FlatList
           data={inboxTasks}
           keyExtractor={t => t.id}
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={
             inboxTasks.length === 0
               ? styles.emptyContainer

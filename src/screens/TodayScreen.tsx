@@ -1518,6 +1518,7 @@ export function TodayScreen() {
           keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => renderItem({ item })}
           contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
@@ -1695,6 +1696,7 @@ export function TodayScreen() {
         <FlatList
           data={unscheduledTasks}
           keyExtractor={t => t.id}
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => {
             const subs = subtasksByParent.get(item.id) ?? [];
             return (
