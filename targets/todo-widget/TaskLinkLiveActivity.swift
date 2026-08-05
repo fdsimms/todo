@@ -152,13 +152,11 @@ struct TaskLinkLiveActivity: Widget {
                 Image(systemName: context.attributes.symbolName)
                     .foregroundColor(palette.accent)
             } compactTrailing: {
-                // A live counter with no ContentState updates at all: SwiftUI
-                // renders `startedAt` (a static attribute, set once) as a
-                // ticking interval on its own.
-                Text(context.attributes.startedAt, style: .timer)
-                    .font(.system(size: 13).monospacedDigit())
-                    .foregroundColor(palette.textSecondary)
-                    .frame(maxWidth: 44)
+                // Neither the elapsed timer nor the streak count earned their
+                // place here — elapsed time isn't actionable and the streak
+                // is already visible in the expanded view. Leave this region
+                // empty rather than fill it with something not worth a glance.
+                EmptyView()
             } minimal: {
                 Image(systemName: context.attributes.symbolName)
                     .foregroundColor(palette.accent)
