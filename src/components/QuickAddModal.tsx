@@ -42,7 +42,8 @@ import { suggestTaskAttributes } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal, type TaskDraft } from './TaskEditor';
+import { type TaskDraft } from './TaskEditor';
+import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
 
 interface Props {
   visible: boolean;
