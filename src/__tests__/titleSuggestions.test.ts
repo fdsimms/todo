@@ -53,27 +53,31 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   ...overrides,
 });
 
+// All fixtures default to completed, since only completed titles are eligible.
+const done = (overrides: Partial<Task> = {}) =>
+  makeTask({ completed: true, completedAt: '2025-05-01T00:00:00.000Z', ...overrides });
+
 describe('suggestTitles', () => {
   describe('query length guard', () => {
-    it('returns [] for a query shorter than 2 chars', () => {
-      const tasks = [makeTask({ title: 'use BOGO ticket' })];
-      expect(suggestTitles(tasks, 'u')).toEqual([]);
+    it('returns [] for a query shorter than 3 chars', () => {
+      const tasks = [done({ title: 'use BOGO ticket' })];
+      expect(suggestTitles(tasks, 'us')).toEqual([]);
     });
 
     it('returns [] for a whitespace-only query', () => {
-      const tasks = [makeTask({ title: 'use BOGO ticket' })];
+      const tasks = [done({ title: 'use BOGO ticket' })];
       expect(suggestTitles(tasks, '   ')).toEqual([]);
     });
 
-    it('matches once the query reaches 2 chars', () => {
-      const tasks = [makeTask({ title: 'use BOGO ticket' })];
-      expect(suggestTitles(tasks, 'us').map(s => s.title)).toEqual(['use BOGO ticket']);
+    it('matches once the query reaches 3 chars', () => {
+      const tasks = [done({ title: 'use BOGO ticket' })];
+      expect(suggestTitles(tasks, 'use').map(s => s.title)).toEqual(['use BOGO ticket']);
     });
   });
 
   describe('matching', () => {
-    it('matches a prefix and highlights the matched range', () => {
-      const tasks = [makeTask({ id: 'a', title: 'use BOGO ticket before it expires' })];
+    it('matches a title-start prefix and highlights the matched range', () => {
+      const tasks = [done({ id: 'a', title: 'use BOGO ticket before it expires' })];
       const result = suggestTitles(tasks, 'use BOGO');
       expect(result).toHaveLength(1);
       expect(result[0].title).toBe('use BOGO ticket before it expires');
@@ -81,17 +85,29 @@ describe('suggestTitles', () => {
     });
 
     it('is case-insensitive', () => {
-      const tasks = [makeTask({ title: 'Use BOGO ticket' })];
+      const tasks = [done({ title: 'Use BOGO ticket' })];
       expect(suggestTitles(tasks, 'use bogo').map(s => s.title)).toEqual(['Use BOGO ticket']);
     });
 
-    it('matches a substring, not only a prefix', () => {
-      const tasks = [makeTask({ title: 'remember to call the dentist' })];
-      expect(suggestTitles(tasks, 'dentist').map(s => s.title)).toEqual(['remember to call the dentist']);
+    it('matches the start of a word, not only the start of the title', () => {
+      const tasks = [done({ title: 'remember to call the dentist' })];
+      const result = suggestTitles(tasks, 'dentist');
+      expect(result.map(s => s.title)).toEqual(['remember to call the dentist']);
+      expect(result[0].ranges).toEqual([[21, 28]]);
+    });
+
+    it('does not match mid-word (no fuzzy/substring fallback)', () => {
+      // "ea" appears inside "clean", "leaky", "read" — none at a word start.
+      const tasks = [
+        done({ id: 'a', title: 'clean the garage' }),
+        done({ id: 'b', title: 'fix the leaky faucet' }),
+        done({ id: 'c', title: 'read chapter 4' }),
+      ];
+      expect(suggestTitles(tasks, 'ea')).toEqual([]);
     });
 
     it('returns [] when nothing matches', () => {
-      const tasks = [makeTask({ title: 'walk the dog' })];
+      const tasks = [done({ title: 'walk the dog' })];
       expect(suggestTitles(tasks, 'zzz')).toEqual([]);
     });
   });
@@ -99,9 +115,9 @@ describe('suggestTitles', () => {
   describe('dedupe and exclusions', () => {
     it('dedupes case-insensitively into a single suggestion', () => {
       const tasks = [
-        makeTask({ id: 'a', title: 'use BOGO ticket' }),
-        makeTask({ id: 'b', title: 'Use BOGO Ticket' }),
-        makeTask({ id: 'c', title: 'use bogo ticket' }),
+        done({ id: 'a', title: 'use BOGO ticket' }),
+        done({ id: 'b', title: 'Use BOGO Ticket' }),
+        done({ id: 'c', title: 'use bogo ticket' }),
       ];
       const result = suggestTitles(tasks, 'use bogo');
       expect(result).toHaveLength(1);
@@ -109,59 +125,67 @@ describe('suggestTitles', () => {
 
     it('keeps the most recently used casing when deduping', () => {
       const tasks = [
-        makeTask({ id: 'old', title: 'use bogo ticket', createdAt: '2025-01-01T00:00:00.000Z' }),
-        makeTask({ id: 'new', title: 'Use BOGO Ticket', createdAt: '2025-06-01T00:00:00.000Z' }),
+        done({ id: 'old', title: 'use bogo ticket', completedAt: '2025-01-01T00:00:00.000Z' }),
+        done({ id: 'new', title: 'Use BOGO Ticket', completedAt: '2025-06-01T00:00:00.000Z' }),
       ];
       expect(suggestTitles(tasks, 'use bogo')[0].title).toBe('Use BOGO Ticket');
     });
 
     it('excludes a title that exactly equals the query', () => {
-      const tasks = [makeTask({ title: 'use BOGO ticket' })];
+      const tasks = [done({ title: 'use BOGO ticket' })];
       expect(suggestTitles(tasks, 'use BOGO ticket')).toEqual([]);
     });
 
     it('excludes subtasks', () => {
-      const tasks = [makeTask({ title: 'use BOGO ticket', parentId: 'parent-1' })];
+      const tasks = [done({ title: 'use BOGO ticket', parentId: 'parent-1' })];
       expect(suggestTitles(tasks, 'use bogo')).toEqual([]);
     });
 
     it('ignores blank titles', () => {
-      const tasks = [makeTask({ title: '   ' })];
-      expect(suggestTitles(tasks, 'us')).toEqual([]);
+      const tasks = [done({ title: '   ' })];
+      expect(suggestTitles(tasks, 'use')).toEqual([]);
     });
   });
 
   describe('completed tasks', () => {
     it('includes completed tasks (the whole point of surfacing one-offs)', () => {
       const tasks = [
-        makeTask({ title: 'use BOGO ticket', completed: true, completedAt: '2025-05-01T00:00:00.000Z' }),
+        done({ title: 'use BOGO ticket', completedAt: '2025-05-01T00:00:00.000Z' }),
       ];
       expect(suggestTitles(tasks, 'use bogo').map(s => s.title)).toEqual(['use BOGO ticket']);
+    });
+
+    it('excludes tasks that have never been completed', () => {
+      const tasks = [makeTask({ title: 'use BOGO ticket', completed: false, completedAt: null })];
+      expect(suggestTitles(tasks, 'use bogo')).toEqual([]);
     });
   });
 
   describe('ranking and limit', () => {
-    it('ranks a prefix match above a mid-string match', () => {
+    it('ranks a title-start match above a word-start match', () => {
       const tasks = [
-        makeTask({ id: 'mid', title: 'go to the gym session' }),
-        makeTask({ id: 'pre', title: 'gym session tonight' }),
+        done({ id: 'mid', title: 'go to the gym session' }),
+        done({ id: 'pre', title: 'gym session tonight' }),
       ];
       expect(suggestTitles(tasks, 'gym')[0].title).toBe('gym session tonight');
     });
 
     it('breaks score ties by recency (most recent first)', () => {
       const tasks = [
-        makeTask({ id: 'older', title: 'gym at noon', createdAt: '2025-01-01T00:00:00.000Z' }),
-        makeTask({ id: 'newer', title: 'gym at dawn', createdAt: '2025-06-01T00:00:00.000Z' }),
+        done({ id: 'older', title: 'gym at noon', completedAt: '2025-01-01T00:00:00.000Z' }),
+        done({ id: 'newer', title: 'gym at dawn', completedAt: '2025-06-01T00:00:00.000Z' }),
       ];
       expect(suggestTitles(tasks, 'gym at').map(s => s.title)).toEqual(['gym at dawn', 'gym at noon']);
     });
 
-    it('respects the limit', () => {
-      const tasks = Array.from({ length: 10 }, (_, i) =>
-        makeTask({ id: String(i), title: `task number ${i}` })
-      );
-      expect(suggestTitles(tasks, 'task', 3)).toHaveLength(3);
+    it('defaults to a limit of 3', () => {
+      const tasks = Array.from({ length: 10 }, (_, i) => done({ id: String(i), title: `task number ${i}` }));
+      expect(suggestTitles(tasks, 'task')).toHaveLength(3);
+    });
+
+    it('respects an explicit limit', () => {
+      const tasks = Array.from({ length: 10 }, (_, i) => done({ id: String(i), title: `task number ${i}` }));
+      expect(suggestTitles(tasks, 'task', 5)).toHaveLength(5);
     });
   });
 });
