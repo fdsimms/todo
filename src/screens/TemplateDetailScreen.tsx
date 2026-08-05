@@ -7,13 +7,12 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from '../components/EmptyState';
-import { PressableScale } from '../components/PressableScale';
+import { Fab } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
 import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
@@ -21,9 +20,10 @@ import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -52,7 +52,6 @@ export function TemplateDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'TemplateDetail'>>();
   const { templateId } = route.params;
   const colors = useColors();
-  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const templates = useTemplateStore(s => s.templates);
@@ -328,16 +327,12 @@ export function TemplateDetailScreen() {
       />
 
       {!selectionMode && (
-        <View style={styles.detailFabContainer}>
-          <PressableScale
-            style={[styles.fab, shadows.fab, { shadowColor: colors.accent }]}
-            pressScale={0.9}
-            onPress={() => { haptics.impactLight(); setQuickAddVisible(true); }}
-            accessibilityLabel="Add item"
-          >
-            <Ionicons name="add" size={24} color={colors.onAccent} />
-          </PressableScale>
-        </View>
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add item"
+          bottom={spacing.xl}
+          size={48}
+        />
       )}
 
       {selectionMode && (
@@ -433,17 +428,6 @@ function TemplateItemRow({
   onSwipeSelect: () => void;
   onReplace: () => void;
 }) {
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.selectAction}
-      onPress={onSwipeSelect}
-      accessibilityRole="button"
-      accessibilityLabel={`Select ${item.title}`}
-    >
-      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
-    </TouchableOpacity>
-  );
-
   const isRef = resolvedRefTemplate !== null || broken;
   const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
   const refCount = resolvedRefTemplate?.items.length ?? 0;
@@ -552,12 +536,20 @@ function TemplateItemRow({
     </TouchableOpacity>
   );
 
-  if (selectionMode) return rowBody;
+  // The card's margins live on the wrapper, not on itemRow — leaving them on
+  // the row rendered the revealed panel behind that margin, so its color ran
+  // to the screen edge with square corners while the card slid over it.
+  if (selectionMode) return <View style={styles.itemCard}>{rowBody}</View>;
 
+  // No whenAction: a template item has no schedule of its own — it only gets
+  // dates when the template is applied.
   return (
-    <Swipeable renderRightActions={renderRightActions}>
+    <SwipeableRow
+      style={styles.itemCard}
+      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${item.title}` }}
+    >
       {rowBody}
-    </Swipeable>
+    </SwipeableRow>
   );
 }
 
@@ -635,32 +627,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listWithBulkBar: {
     paddingBottom: 200,
   },
-  detailFabContainer: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.xl,
-    zIndex: 20,
-  },
-  fab: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-  },
-  selectAction: {
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
+  // The inset-grouped card: margins and the corner radius that clips the
+  // swipe panel. The row inside is flush to it.
+  itemCard: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.sm,

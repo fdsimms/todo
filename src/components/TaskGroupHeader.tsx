@@ -1,6 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet, Alert } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
+import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { PRIORITY_COLORS } from '../types';
@@ -10,6 +9,8 @@ import { isRelevantToGroupToday, isGroupHiddenToday } from '../utils/visibilityU
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
+import { SpotlightScrim } from './SpotlightOverlay';
+import { SwipeableRow } from './SwipeableRow';
 
 interface Props {
   group: TaskGroup;
@@ -31,10 +32,11 @@ interface Props {
   onDismiss: () => void;
   onDefer: (date: Date) => void;
   onPin: () => void;
-  onDeleteGroupOnly: () => void;
-  onDeleteWithTasks: () => void;
+  // Swipe left enters bulk editing with the stack's live roster selected —
+  // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
+  // which hides the panel rather than revealing a no-op.
+  onSwipeSelect?: () => void;
   onPressEdit: () => void;
-  dimmed?: boolean;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
 }
@@ -48,16 +50,13 @@ export function TaskGroupHeader({
   onDismiss,
   onDefer,
   onPin,
-  onDeleteGroupOnly,
-  onDeleteWithTasks,
+  onSwipeSelect,
   onPressEdit,
-  dimmed = false,
   onDrag,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showDefer, setShowDefer] = useState(false);
-  const swipeableRef = useRef<Swipeable>(null);
   // Mirrors TaskItem's completion animation so dismissing a fully-done stack
   // shows the same pop-checkmark beat as completing an individual task,
   // instead of the row just vanishing the instant it's tapped.
@@ -86,55 +85,23 @@ export function TaskGroupHeader({
   // its own tomorrow.
   const dismissed = isGroupHiddenToday(group.completedAt, dueToday);
 
-  const confirmDelete = () => {
-    Alert.alert(
-      'Delete Stack',
-      `Delete "${group.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel', onPress: () => swipeableRef.current?.close() },
-        { text: 'Delete This Stack', onPress: onDeleteGroupOnly },
-        { text: 'Delete Stack and All Its Tasks', style: 'destructive', onPress: onDeleteWithTasks },
-      ],
-    );
-  };
-
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={() => { haptics.impactHeavy(); confirmDelete(); }}
-      accessibilityRole="button"
-      accessibilityLabel={`Delete ${group.title}`}
-    >
-      <Ionicons name="trash" size={iconSize.md} color={colors.text} />
-    </TouchableOpacity>
-  );
-
-  const renderLeftActions = () => (
-    <TouchableOpacity
-      style={styles.deferAction}
-      onPress={() => { haptics.impactMedium(); swipeableRef.current?.close(); setShowDefer(true); }}
-      accessibilityRole="button"
-      accessibilityLabel={`Reschedule all of ${group.title}`}
-    >
-      <Ionicons name="time" size={iconSize.md} color={colors.text} />
-    </TouchableOpacity>
-  );
-
   return (
     <>
       <View>
         <View style={styles.itemWrapper}>
           <View style={styles.cardClip}>
-            <Swipeable
-              ref={swipeableRef}
-              renderRightActions={renderRightActions}
-              renderLeftActions={renderLeftActions}
-              overshootRight={false}
-              overshootLeft={false}
-              onSwipeableWillOpen={() => haptics.impactMedium()}
-              onSwipeableOpen={direction => {
-                if (direction === 'right') confirmDelete();
-                else { swipeableRef.current?.close(); setShowDefer(true); }
+            {/* Deleting a stack lives in TaskGroupEditor (behind the ⋯), not
+                here. It used to be this row's swipe-left, which both put a
+                destructive action one flick away and meant the gesture said
+                "delete" on stacks and "select" on every task under them. */}
+            <SwipeableRow
+              selectAction={onSwipeSelect ? {
+                onSelect: onSwipeSelect,
+                accessibilityLabel: `Select all of ${group.title}`,
+              } : undefined}
+              whenAction={{
+                onAction: () => setShowDefer(true),
+                accessibilityLabel: `Reschedule all of ${group.title}`,
               }}
             >
               <View style={styles.row}>
@@ -242,10 +209,8 @@ export function TaskGroupHeader({
                   <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
                 </TouchableOpacity>
               </View>
-            </Swipeable>
-            {dimmed && (
-              <View style={styles.scrim} pointerEvents="none" />
-            )}
+            </SwipeableRow>
+            <SpotlightScrim />
           </View>
         </View>
       </View>
@@ -351,21 +316,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtn: {
     padding: spacing.sm,
-  },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.backdrop,
-  },
-  deleteAction: {
-    width: 72,
-    backgroundColor: colors.red,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  deferAction: {
-    width: 72,
-    backgroundColor: colors.orange,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

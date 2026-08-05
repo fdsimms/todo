@@ -20,7 +20,6 @@ import Reanimated, {
   Easing,
   Extrapolation,
 } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
@@ -37,7 +36,10 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
+import { usePaintSelectionRow } from './PaintSelection';
+import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
+import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 
 interface Props {
   task: Task;
@@ -140,8 +142,12 @@ export function TaskItem({
     if (!task.linkUrl) return;
     haptics.tap();
     try {
-      const supported = await Linking.canOpenURL(task.linkUrl);
-      if (supported) await Linking.openURL(task.linkUrl);
+      // Skip Linking.canOpenURL: on iOS it only returns true for schemes
+      // pre-declared in LSApplicationQueriesSchemes, which would break both
+      // the preset chips and arbitrary user-entered custom schemes. openURL
+      // itself isn't restricted — it just fails harmlessly if nothing
+      // handles the scheme.
+      await Linking.openURL(task.linkUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -179,12 +185,6 @@ export function TaskItem({
   const collapseProgress = useSharedValue(1);
   const collapseStartedRef = useRef(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
-  // Opacity of a scrim drawn on top of the row (not the row's own opacity) —
-  // fading the whole card instead washes out low-contrast text (e.g. category
-  // labels) far less than high-contrast text, since both just blend toward
-  // the same light background in light mode. A flat scrim darkens every
-  // pixel underneath by the same fixed amount regardless of its original color.
-  const spotlightScrimOpacity = useRef(new Animated.Value(spotlightDisabled ? 1 : 0)).current;
   // Tints the row briefly right after it mounts as the result of task
   // creation, so the user can tell which row is the one that just appeared.
   const highlightOpacity = useRef(new Animated.Value(justCreated && !reduceMotion ? 0.35 : 0)).current;
@@ -195,7 +195,16 @@ export function TaskItem({
   // two discrete steps. Running it on the UI thread keeps it smooth regardless
   // of how many tasks sit below.
   const expansionProgress = useSharedValue(expanded ? 1 : 0);
-  const swipeableRef = useRef<Swipeable>(null);
+  // The spotlighted row stays bright while the rest of the screen dims, and
+  // has to keep doing so until the mask has faded back out — dropping the
+  // exemption the moment it collapses would flash a scrim over it at full
+  // strength and fade *that* out instead.
+  const isSpotlighted = useSpotlightLinger(expanded);
+  // Lets a paint-select drag find this row by its on-screen position. A no-op
+  // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
+  // the floating copy of a row being dragged, which would otherwise take the
+  // real row's registration with it when the drop ends.
+  const paintRowRef = usePaintSelectionRow(isActive ? null : task.id);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
 
@@ -233,14 +242,6 @@ export function TaskItem({
   const handleItemLayout = (e: LayoutChangeEvent) => {
     if (!collapseStartedRef.current) setRowHeight(e.nativeEvent.layout.height);
   };
-
-  useEffect(() => {
-    Animated.timing(spotlightScrimOpacity, {
-      toValue: spotlightDisabled ? 1 : 0,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [spotlightDisabled]);
 
   useEffect(() => {
     if (isActive) {
@@ -420,12 +421,6 @@ export function TaskItem({
     }
   };
 
-  const handleSwipeSelect = () => {
-    haptics.impactMedium();
-    swipeableRef.current?.close();
-    onSwipeSelect?.();
-  };
-
   const handleSubtaskTitleTap = (sub: Task) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
@@ -439,32 +434,6 @@ export function TaskItem({
       updateTask(sub.id, { title: trimmed });
     }
   };
-
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.selectAction}
-      onPress={handleSwipeSelect}
-      accessibilityRole="button"
-      accessibilityLabel={`Select ${task.title}`}
-    >
-      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
-    </TouchableOpacity>
-  );
-
-  const renderLeftActions = () => (
-    <TouchableOpacity
-      style={styles.deferAction}
-      onPress={() => {
-        haptics.impactMedium();
-        swipeableRef.current?.close();
-        setShowWhenPicker(true);
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Reschedule ${task.title}`}
-    >
-      <Ionicons name="time" size={iconSize.md} color={colors.text} />
-    </TouchableOpacity>
-  );
 
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
@@ -941,6 +910,10 @@ export function TaskItem({
     <>
       <Reanimated.View style={collapseStyle} onLayout={handleItemLayout}>
         <Animated.View
+          // The card itself, not the collapse wrapper above it — its frame is
+          // exactly the band a finger painting down the list should hit, with
+          // the inter-row margins left out.
+          ref={paintRowRef}
           style={[
             styles.itemWrapper,
             shadows.card,
@@ -964,29 +937,25 @@ export function TaskItem({
               {rowBody}
             </View>
           ) : (
-            // Swipeable stays mounted regardless of spotlightDisabled — toggling
-            // between it and a plain View/Pressable here used to remount rowBody
-            // (a different element type at this tree position) every time any
-            // other task got tapped, which read as the whole row flashing.
-            // Disabling the gesture and overlaying a dismiss-tap Pressable keeps
-            // the same tree shape across that toggle.
-            <Swipeable
-              ref={swipeableRef}
-              renderRightActions={renderRightActions}
-              renderLeftActions={renderLeftActions}
-              overshootRight={false}
-              overshootLeft={false}
+            // SwipeableRow stays mounted regardless of spotlightDisabled —
+            // toggling between it and a plain View/Pressable here used to
+            // remount rowBody (a different element type at this tree position)
+            // every time any other task got tapped, which read as the whole row
+            // flashing. Disabling the gesture and overlaying a dismiss-tap
+            // Pressable keeps the same tree shape across that toggle.
+            //
+            // No select panel unless the screen can actually bulk-select: a
+            // list without a bulk bar (Demo, say) would otherwise reveal an
+            // accent panel whose handler is a no-op.
+            <SwipeableRow
               enabled={!spotlightDisabled}
-              onSwipeableWillOpen={() => {
-                haptics.impactMedium();
-              }}
-              onSwipeableOpen={(direction) => {
-                if (direction === 'right') {
-                  handleSwipeSelect();
-                } else {
-                  swipeableRef.current?.close();
-                  setShowWhenPicker(true);
-                }
+              selectAction={onSwipeSelect ? {
+                onSelect: onSwipeSelect,
+                accessibilityLabel: `Select ${task.title}`,
+              } : undefined}
+              whenAction={{
+                onAction: () => setShowWhenPicker(true),
+                accessibilityLabel: `Reschedule ${task.title}`,
               }}
             >
               <View style={styles.swipeContainer}>
@@ -999,13 +968,17 @@ export function TaskItem({
                   <Pressable style={StyleSheet.absoluteFill} onPress={onPress} />
                 )}
               </View>
-            </Swipeable>
+            </SwipeableRow>
           )}
           {expandedPanel}
-          <Animated.View
-            style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
-            pointerEvents="none"
-          />
+          {/* A scrim drawn on top of the row rather than fading the row's own
+              opacity — fading the whole card washes out low-contrast text
+              (e.g. category labels) far less than high-contrast text, since
+              both just blend toward the same light background in light mode.
+              A flat scrim darkens every pixel underneath by the same amount
+              regardless of its original color. The spotlighted card is the one
+              row that skips it. */}
+          {!isSpotlighted && <SpotlightScrim />}
           {justCreated && !reduceMotion && (
             <Animated.View
               style={[styles.highlightScrim, { opacity: highlightOpacity }]}
@@ -1081,10 +1054,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     overflow: 'hidden',
   },
-  spotlightScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.backdrop,
-  },
   highlightScrim: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.accent,
@@ -1138,7 +1107,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.green,
   },
   circleLocked: {
-    borderColor: colors.textTertiary,
+    borderWidth: 0,
   },
   circleSelected: {
     backgroundColor: colors.accent,
@@ -1241,24 +1210,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
-  },
-  selectAction: {
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-  },
-  deferAction: {
-    backgroundColor: colors.orange,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopLeftRadius: radius.md,
-    borderBottomLeftRadius: radius.md,
   },
   expandedPanelClip: {
     overflow: 'hidden',

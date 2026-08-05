@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -113,39 +114,53 @@ export function LogbookScreen() {
           </View>
         )}
         renderItem={({ item }) => (
-          <View style={styles.row}>
-            <TouchableOpacity
-              style={styles.checkCircle}
-              onPress={() => {
-                haptics.tap();
-                animateLayout();
-                uncompleteTask(item.id);
-              }}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: true }}
-              accessibilityLabel={`Mark ${item.title} as not done`}
-            >
-              <Ionicons name="checkmark" size={14} color={colors.green} />
-            </TouchableOpacity>
-            <View
-              style={styles.rowContent}
-              accessible
-              accessibilityLabel={`${item.title}, completed ${formatTime(item.completedAt!)}`}
-            >
-              <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
-              <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
+          // Swipe right to move when it was completed — the same "when" slot
+          // tasks use for rescheduling. No select side: there's no bulk mode
+          // here, and "complete" would mean nothing to a completed row.
+          // Square corners: these rows are deliberately flat and full-bleed
+          // (see styles.row), so the panel shouldn't be rounded like a card.
+          <SwipeableRow
+            style={styles.rowSwipe}
+            whenAction={{
+              icon: 'calendar-outline',
+              onAction: () => setMenuTask(item),
+              accessibilityLabel: `Change when ${item.title} was completed`,
+            }}
+          >
+            <View style={styles.row}>
+              <TouchableOpacity
+                style={styles.checkCircle}
+                onPress={() => {
+                  haptics.tap();
+                  animateLayout();
+                  uncompleteTask(item.id);
+                }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: true }}
+                accessibilityLabel={`Mark ${item.title} as not done`}
+              >
+                <Ionicons name="checkmark" size={14} color={colors.green} />
+              </TouchableOpacity>
+              <View
+                style={styles.rowContent}
+                accessible
+                accessibilityLabel={`${item.title}, completed ${formatTime(item.completedAt!)}`}
+              >
+                <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
+                <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={() => setMenuTask(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`More options for ${item.title}`}
+              >
+                <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={styles.menuButton}
-              onPress={() => setMenuTask(item)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`More options for ${item.title}`}
-            >
-              <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-            </TouchableOpacity>
-          </View>
+          </SwipeableRow>
         )}
         ListEmptyComponent={
           <EmptyState
@@ -197,6 +212,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listContent: { paddingBottom: 40 },
   emptyContainer: { flexGrow: 1 },
+  rowSwipe: { borderRadius: 0 },
   // Deliberately flat, not the inset-grouped card TaskItem rows use — a
   // completed entry isn't draggable or tappable-to-edit like a live task,
   // so it shouldn't be styled to invite that interaction.

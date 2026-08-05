@@ -7,7 +7,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
-import { InboxScreen } from '../screens/InboxScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { SearchScreen } from '../screens/SearchScreen';
@@ -34,7 +33,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Inbox', 'Tags', 'Categories', 'Templates', 'Logbook', 'Stats', 'Archived']);
+const DRAWER_TABS = new Set(['Tags', 'Categories', 'Templates', 'Logbook', 'Stats', 'Archived']);
 
 function MorePlaceholder() {
   return null;
@@ -113,7 +112,6 @@ const MainTabs = React.memo(function MainTabs({
       />
 
       {/* Drawer-only screens — not visible in the tab bar */}
-      <Tab.Screen name="Inbox" component={InboxScreen} options={HIDDEN} />
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
       <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />

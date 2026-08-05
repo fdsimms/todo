@@ -1,8 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
@@ -16,8 +15,10 @@ import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { groupProjectsByCategory, resolveProjectDrop } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
+import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { useColors } from '../theme/ThemeContext';
@@ -45,14 +46,18 @@ export function ProjectsScreen() {
   const navigation = useNavigation();
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
+  const updateProject = useProjectStore(s => s.updateProject);
+  const removeProjectRow = useProjectStore(s => s.removeProjectRow);
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
   const allTasks = useTaskStore(useShallow(s => s.tasks));
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
 
   const [showArchived, setShowArchived] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [addingProject, setAddingProject] = useState(false);
-  const [newProjectTitle, setNewProjectTitle] = useState('');
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  // Set while editingProject is one freshly created from quick add's "More
+  // details" — discarded on close if it was never given a name.
+  const newProjectIdRef = useRef<string | null>(null);
 
   const visibleProjects = useMemo(
     () => projects.filter(p => p.archived === showArchived),
@@ -68,20 +73,29 @@ export function ProjectsScreen() {
     [visibleProjects, projectCategoryOrder]
   );
 
-  const handleStartAdding = () => {
+  // "More details" hands the draft over to the full editor. Projects have no
+  // draft state of their own, so the row is created up front and discarded on
+  // close if it never got a name — same trick TodayScreen uses for new stacks.
+  const handleQuickAddOpenFull = (draft: ProjectDraft) => {
+    setQuickAddVisible(false);
     animateLayout();
-    setAddingProject(true);
+    const project = createProject(draft.title, draft.targetStartDate, draft.targetEndDate);
+    if (draft.category) updateProject(project.id, { category: draft.category });
+    newProjectIdRef.current = project.id;
+    setEditingProject({ ...project, category: draft.category });
   };
 
-  const handleAddProject = () => {
-    const trimmed = newProjectTitle.trim();
-    if (trimmed) {
-      haptics.success();
-      animateLayout();
-      createProject(trimmed, null, null);
+  const handleEditorClose = () => {
+    const id = newProjectIdRef.current;
+    newProjectIdRef.current = null;
+    if (id) {
+      const current = useProjectStore.getState().getProjectById(id);
+      if (current && current.title.trim() === '') {
+        animateLayout();
+        removeProjectRow(id);
+      }
     }
-    setNewProjectTitle('');
-    setAddingProject(false);
+    setEditingProject(null);
   };
 
   return (
@@ -89,7 +103,6 @@ export function ProjectsScreen() {
       <ScreenHeader
         title="Projects"
         actions={[
-          { icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add project' },
           {
             icon: 'archive-outline',
             onPress: () => setShowArchived(v => !v),
@@ -99,39 +112,13 @@ export function ProjectsScreen() {
         ]}
       />
 
-      {addingProject && (
-        <View style={styles.addRow}>
-          <TextInput
-            autoFocus
-            style={styles.addInput}
-            value={newProjectTitle}
-            onChangeText={setNewProjectTitle}
-            placeholder="Project name"
-            placeholderTextColor={colors.textTertiary}
-            returnKeyType="done"
-            onSubmitEditing={handleAddProject}
-            onBlur={() => { if (!newProjectTitle.trim()) setAddingProject(false); }}
-          />
-          <TouchableOpacity onPress={handleAddProject} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new project">
-            <Ionicons name="checkmark" size={20} color={colors.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setNewProjectTitle(''); setAddingProject(false); }}
-            style={styles.addCancel}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-          >
-            <Ionicons name="close" size={20} color={colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {visibleProjects.length === 0 && !addingProject ? (
+      {visibleProjects.length === 0 ? (
         <EmptyState
           icon={showArchived ? 'archive-outline' : 'briefcase-outline'}
           title={showArchived ? 'No archived projects' : 'No projects yet'}
-          subtitle={showArchived ? 'Projects you archive will show up here' : 'Tap + to start a themed collection, like a summer bucket list'}
+          subtitle={showArchived ? 'Projects you archive will show up here' : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'}
+          actionLabel={showArchived ? undefined : 'New project'}
+          onAction={showArchived ? undefined : () => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -139,7 +126,7 @@ export function ProjectsScreen() {
           data={projectListItems}
           keyExtractor={item => item.key}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<View style={{ height: tabBarHeight + spacing.md }} />}
+          ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
           onReorder={reordered => {
@@ -202,10 +189,25 @@ export function ProjectsScreen() {
         />
       )}
 
+      {!showArchived && (
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add project"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
+      )}
+
+      <QuickAddProjectModal
+        visible={quickAddVisible}
+        onClose={() => setQuickAddVisible(false)}
+        onOpenFull={handleQuickAddOpenFull}
+      />
+
       <ProjectEditor
         visible={editingProject !== null}
         project={editingProject}
-        onClose={() => setEditingProject(null)}
+        isNew={newProjectIdRef.current !== null}
+        onClose={handleEditorClose}
       />
     </View>
   );
@@ -216,26 +218,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: spacing.md,
-  },
-  addInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-    paddingVertical: 0,
-  },
-  addConfirm: { padding: 4 },
-  addCancel: { padding: 4 },
   list: {
     paddingTop: spacing.sm,
   },

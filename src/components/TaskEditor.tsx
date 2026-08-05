@@ -61,6 +61,8 @@ export interface TaskDraft {
   recurrenceFromCompletion: boolean;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
+  /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
+  projectId?: string | null;
 }
 
 interface Props {
@@ -276,7 +278,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setVacationPause(task.vacationPause ?? false);
       setLinkUrl(task.linkUrl ?? null);
     } else {
-      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
@@ -307,7 +309,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       title: task ? task.title : (initialDraft?.title ?? ''),
       notes: task ? task.notes : '',
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
-      projectId: task ? (task.projectId ?? null) : null,
+      projectId: task ? (task.projectId ?? null) : (initialDraft?.projectId ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deadline: task?.deadline ?? null,
