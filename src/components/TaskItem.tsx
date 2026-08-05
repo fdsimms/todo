@@ -544,15 +544,6 @@ export function TaskItem({
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
-            {subtaskCount > 0 && (
-              <View
-                style={styles.subtaskBadge}
-                accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
-              >
-                <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
-                <Text style={styles.subtaskBadgeText}>{subtaskDoneCount}/{subtaskCount}</Text>
-              </View>
-            )}
             {deadlineDays !== null && (
               <View
                 style={styles.deadlineBadge}
@@ -563,47 +554,60 @@ export function TaskItem({
                 }
               >
                 <Ionicons name="flag" size={9} color={deadlineColor} />
-                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]}>
+                <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
                   {formatDueDate(task.deadline!)}
                 </Text>
               </View>
             )}
           </View>
         )}
-        {showCategory && task.category && (
-          <View style={styles.categoryRow}>
-            <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.categoryLabel} numberOfLines={1}>
-              {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
-            </Text>
-          </View>
-        )}
-        {showProject && projectTitle && (
-          <View style={styles.projectRow}>
-            <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
-          </View>
-        )}
-        {showGroup && groupTitle && (
-          <View style={styles.groupRow}>
-            <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
-          </View>
-        )}
-        {windowActive && task.windowEnd && (
-          <View style={styles.windowRow}>
-            <Ionicons name="time" size={iconSize.xs} color={colors.red} />
-            <Text style={styles.windowLabel} numberOfLines={1}>
-              {formatWindowRemaining(task.windowEnd)}
-            </Text>
-          </View>
-        )}
-        {!windowActive && windowExpired && (
-          <View style={styles.windowRow}>
-            <Ionicons name="time-outline" size={iconSize.xs} color={colors.textTertiary} />
-            <Text style={styles.windowLabelExpired} numberOfLines={1}>
-              Expired at {formatHHMM(task.windowEnd!)}
-            </Text>
+        {(windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+          <View style={styles.metaRow}>
+            {windowActive && task.windowEnd && (
+              <View style={styles.metaChip}>
+                <Ionicons name="time" size={iconSize.xs} color={colors.red} />
+                <Text style={styles.windowLabel} numberOfLines={1}>
+                  {formatWindowRemaining(task.windowEnd)}
+                </Text>
+              </View>
+            )}
+            {!windowActive && windowExpired && (
+              <View style={styles.metaChip}>
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.windowLabelExpired} numberOfLines={1}>
+                  Expired at {formatHHMM(task.windowEnd!)}
+                </Text>
+              </View>
+            )}
+            {showGroup && groupTitle && (
+              <View style={styles.metaChip}>
+                <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
+              </View>
+            )}
+            {showProject && projectTitle && (
+              <View style={styles.metaChip}>
+                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+              </View>
+            )}
+            {showCategory && task.category && (
+              <View style={styles.metaChip}>
+                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.categoryLabel} numberOfLines={1}>
+                  {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
+                </Text>
+              </View>
+            )}
+            {subtaskCount > 0 && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
+              >
+                <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
+                <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
           </View>
         )}
       </TouchableOpacity>
@@ -1167,37 +1171,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
     flexShrink: 0,
   },
-  categoryRow: {
+  metaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
+    flexShrink: 1,
   },
   categoryLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  projectRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   projectLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },
-  groupRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
   groupLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
-  },
-  windowRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
   },
   windowLabel: {
     color: colors.red,
@@ -1359,15 +1355,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },
-  subtaskBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.sm,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
   subtaskBadgeText: {
     color: colors.textTertiary,
     fontSize: 11,
@@ -1377,6 +1364,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 2,
+    flexShrink: 1,
+    maxWidth: 110,
   },
   deadlineBadgeText: {
     fontSize: 11,
