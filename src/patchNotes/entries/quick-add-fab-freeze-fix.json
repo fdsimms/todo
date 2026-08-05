@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where tapping the add button and choosing a kind (like Task) could appear to freeze the screen, with the editor only showing up after switching tabs",
+  "date": "2026-08-05"
+}
