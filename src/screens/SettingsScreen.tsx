@@ -51,12 +51,14 @@ export function SettingsScreen() {
 
   const {
     dayResetTime, setDayResetTime,
+    morningStart,
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     nightStart, setNightStart,
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
+    vacationStart,
     vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
@@ -123,7 +125,7 @@ export function SettingsScreen() {
       key: 'dayReset',
       label: 'Morning',
       icon: 'sunny',
-      value: formatTime(dayResetTime),
+      value: formatTime(morningStart),
       hint: '"Today" flips and streaks reset at this time',
     },
     { key: 'afternoon', label: 'Afternoon starts', icon: 'partly-sunny', value: formatTime(afternoonStart) },
@@ -302,6 +304,7 @@ export function SettingsScreen() {
               )}
             </View>
             <Text style={styles.sectionFooter}>
+              {vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}
               While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.
             </Text>
           </View>
@@ -441,7 +444,7 @@ export function SettingsScreen() {
                 <Ionicons name="sparkles-outline" size={18} color={colors.purple} style={{ marginTop: 2 }} />
                 <View style={styles.rowContent}>
                   <Text style={styles.rowLabel}>Anthropic API Key</Text>
-                  <Text style={styles.rowHint}>Enables auto-tag and effort suggestions in the task editor</Text>
+                  <Text style={styles.rowHint}>Enables auto-tag, effort, and date suggestions in the task editor, plus pin suggestions and template drafting</Text>
                   <TextInput
                     style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                     value={apiKeyDraft}
