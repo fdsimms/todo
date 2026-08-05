@@ -41,6 +41,13 @@ import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from
 interface UndoableAction {
   label: string;
   undo: () => void;
+  /**
+   * When the action happened, stamped centrally by setLastAction — call
+   * sites never pass it. Shake-to-undo uses it to refuse actions old enough
+   * that offering to undo them would be a surprise rather than a rescue
+   * (see UNDO_ACTION_MAX_AGE_MS in utils/shakeDetect.ts).
+   */
+  at?: number;
 }
 
 // Fields that silently carry forward to the next occurrence today (spread
@@ -401,7 +408,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   setLastAction(action) {
-    set({ lastAction: action });
+    set({ lastAction: action ? { ...action, at: Date.now() } : null });
   },
 
   undoLastAction() {
