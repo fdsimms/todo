@@ -27,20 +27,21 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatOffsetLabel, getDirectBrokenRefItemIds } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
 };
 
-/** "Due 3 days before · Shows 1 day before · Deadline 1 day before · morning" hint under an item row. */
+/** "Due same day · shows 1 day before · from start date · morning" hint under an item row. The anchor is named once at the end rather than repeated per offset. */
 function itemHint(item: TemplateItem): string | null {
-  const lower = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
+  const lower = (s: string) => s.toLowerCase();
   const parts: string[] = [];
   if (item.dueOffsetDays !== null) parts.push(`Due ${lower(formatOffsetLabel(item.dueOffsetDays))}`);
-  if (item.deferOffsetDays !== null) parts.push(`Shows ${lower(formatOffsetLabel(item.deferOffsetDays))}`);
-  if (item.deadlineOffsetDays !== null) parts.push(`Deadline ${lower(formatOffsetLabel(item.deadlineOffsetDays))}`);
+  if (item.deferOffsetDays !== null) parts.push(`shows ${lower(formatOffsetLabel(item.deferOffsetDays))}`);
+  if (item.deadlineOffsetDays !== null) parts.push(`deadline ${lower(formatOffsetLabel(item.deadlineOffsetDays))}`);
+  if (parts.length > 0) parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
   if (item.timeSegments.length > 0) parts.push(item.timeSegments.join(', '));
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -319,7 +320,7 @@ export function TemplateDetailScreen() {
           <EmptyState
             icon="list-outline"
             title="No items yet"
-            subtitle="Add tasks below — tap one after adding to set dates, tags and more"
+            subtitle="Tap + to add a task — then tap it in the list to set dates, tags and more"
             actionLabel={anthropicApiKey ? 'Suggest tasks with AI' : undefined}
             onAction={anthropicApiKey ? () => { haptics.tap(); setSuggestVisible(true); } : undefined}
           />
@@ -353,6 +354,7 @@ export function TemplateDetailScreen() {
         <TemplateItemQuickAdd
           visible={quickAddVisible}
           templateId={template.id}
+          templateName={template.name}
           onClose={() => setQuickAddVisible(false)}
           onOpenFull={(draft) => {
             setQuickAddVisible(false);
@@ -378,6 +380,7 @@ export function TemplateDetailScreen() {
         <TemplateItemEditor
           visible={itemEditorVisible}
           templateId={template.id}
+          templateName={template.name}
           item={editingItem}
           initialDraft={itemEditorDraft}
           onClose={() => setItemEditorVisible(false)}
@@ -539,9 +542,10 @@ function TemplateItemRow({
           hitSlop={8}
           style={styles.rowButton}
           accessibilityRole="button"
-          accessibilityLabel="Replace nested template"
+          accessibilityLabel="Swap which template this points at"
         >
-          <Ionicons name="swap-horizontal-outline" size={16} color={colors.textTertiary} />
+          <Ionicons name="swap-horizontal-outline" size={14} color={colors.textTertiary} />
+          <Text style={styles.rowButtonText}>Swap</Text>
         </TouchableOpacity>
       )}
       {!selectionMode && !broken && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
@@ -704,7 +708,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: '600',
   },
   rowButton: {
-    padding: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  rowButtonText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: '600',
   },
   categoryRow: {
     flexDirection: 'row',

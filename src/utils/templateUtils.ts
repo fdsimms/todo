@@ -113,10 +113,10 @@ export function buildDraftsFromTemplate(
   });
 }
 
-/** Human label for an offset: "No date", "On anchor day", "3 days before", "2 days after". */
+/** Human label for an offset, with the anchor named separately by the caller: "No date", "Same day", "3 days before", "2 days after". */
 export function formatOffsetLabel(offsetDays: number | null): string {
   if (offsetDays === null) return 'No date';
-  if (offsetDays === 0) return 'On anchor day';
+  if (offsetDays === 0) return 'Same day';
   const n = Math.abs(offsetDays);
   const unit = n === 1 ? 'day' : 'days';
   return offsetDays < 0 ? `${n} ${unit} before` : `${n} ${unit} after`;
@@ -125,6 +125,20 @@ export function formatOffsetLabel(offsetDays: number | null): string {
 /** Human label for which anchor an item's offsets are relative to. */
 export function anchorLabel(anchor: TemplateAnchor): string {
   return anchor === 'end' ? 'End date' : 'Start date';
+}
+
+/**
+ * Offset label that names the anchor it counts from — "3 days before start
+ * date" rather than formatOffsetLabel's bare "3 days before". Used wherever
+ * the offset is shown without the anchor picker sitting right next to it.
+ */
+export function formatOffsetWithAnchor(offsetDays: number | null, anchor: TemplateAnchor): string {
+  if (offsetDays === null) return 'No date';
+  const name = anchor === 'end' ? 'end date' : 'start date';
+  if (offsetDays === 0) return `On ${name}`;
+  const n = Math.abs(offsetDays);
+  const unit = n === 1 ? 'day' : 'days';
+  return `${n} ${unit} ${offsetDays < 0 ? 'before' : 'after'} ${name}`;
 }
 
 /**

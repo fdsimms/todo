@@ -1,0 +1,4 @@
+{
+  "message": "Reworked adding and editing template items: the quick-add sheet now uses labelled chips that open one option list at a time instead of dumping every category on screen, the two mystery icon buttons are now spelled out as \"Nest a template\" and \"More details\", and dates read as \"2 days before start date\" everywhere instead of \"anchor day\"",
+  "date": "2026-08-05"
+}

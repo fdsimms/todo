@@ -4,6 +4,7 @@ import {
   buildDraftsFromTemplate,
   formatOffsetLabel,
   anchorLabel,
+  formatOffsetWithAnchor,
   wouldCreateCycle,
   expandTemplateItems,
   buildDraftsFromTemplateTree,
@@ -14,7 +15,7 @@ import {
   flattenApplyTree,
   expandSelectionWithAncestors,
 } from '../utils/templateUtils';
-import type { TaskTemplate, TemplateItem } from '../types';
+import type { TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
 
 const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   id: 'item-1',
@@ -219,7 +220,7 @@ describe('buildDraftsFromTemplate', () => {
 describe('formatOffsetLabel', () => {
   it.each([
     [null, 'No date'],
-    [0, 'On anchor day'],
+    [0, 'Same day'],
     [-1, '1 day before'],
     [-3, '3 days before'],
     [1, '1 day after'],
@@ -233,6 +234,20 @@ describe('anchorLabel', () => {
   it('labels "start" and "end"', () => {
     expect(anchorLabel('start')).toBe('Start date');
     expect(anchorLabel('end')).toBe('End date');
+  });
+});
+
+describe('formatOffsetWithAnchor', () => {
+  it.each([
+    [null, 'start', 'No date'],
+    [0, 'start', 'On start date'],
+    [0, 'end', 'On end date'],
+    [-1, 'start', '1 day before start date'],
+    [-3, 'end', '3 days before end date'],
+    [1, 'start', '1 day after start date'],
+    [2, 'end', '2 days after end date'],
+  ] as Array<[number | null, TemplateAnchor, string]>)('formats %p / %p as %p', (offset, anchor, label) => {
+    expect(formatOffsetWithAnchor(offset, anchor)).toBe(label);
   });
 });
 
