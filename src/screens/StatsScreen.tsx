@@ -20,7 +20,9 @@ import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
-import { getRepeatedInstances } from '../utils/taskInstances';
+import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
+import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
+import { formatDuration } from '../utils/effort';
 
 const BAR_HEIGHT = 96;
 const HABIT_DAYS = 30;
@@ -135,16 +137,19 @@ export function StatsScreen() {
     const recent = done.filter(
       t => t.recurrenceType !== 'none' && new Date(t.completedAt!) >= cutoff,
     );
-    const map = new Map<string, { count: number; recurrenceType: string; interval: number }>();
+    // Keyed on normalizeTitle so renaming a recurring task mid-stream doesn't
+    // fork its history into two habits.
+    const map = new Map<string, { title: string; count: number; recurrenceType: string; interval: number }>();
     recent.forEach(t => {
-      const e = map.get(t.title);
+      const key = normalizeTitle(t.title);
+      const e = map.get(key);
       if (e) e.count++;
-      else map.set(t.title, { count: 1, recurrenceType: t.recurrenceType, interval: t.recurrenceInterval });
+      else map.set(key, { title: t.title, count: 1, recurrenceType: t.recurrenceType, interval: t.recurrenceInterval });
     });
     return Array.from(map.entries())
-      .map(([title, { count, recurrenceType, interval }]) => {
+      .map(([key, { title, count, recurrenceType, interval }]) => {
         const expected = expectedCount(recurrenceType, interval);
-        return { title, count, expected, rate: Math.min(1, count / expected) };
+        return { key, title, count, expected, rate: Math.min(1, count / expected) };
       })
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
@@ -153,6 +158,10 @@ export function StatsScreen() {
   // Non-recurring tasks completed more than once — the "instances" of a task
   // that isn't formally recurring (e.g. re-adding one via title autosuggest).
   const repeated = useMemo(() => getRepeatedInstances(tasks).slice(0, 10), [tasks]);
+
+  const timeTracked = useMemo(() => timeTrackedSummary(tasks), [tasks]);
+  const accuracy = useMemo(() => estimateAccuracy(tasks), [tasks]);
+  const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -222,9 +231,57 @@ export function StatsScreen() {
           </View>
           </StaggerIn>
 
+          {/* Time tracked */}
+          {timeTracked.trackedCount > 0 && (
+            <StaggerIn index={2}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>TIME TRACKED</Text>
+              <View style={styles.card}>
+                <View style={[styles.row, accuracy.count > 0 && styles.rowBorder]}>
+                  <Text style={styles.rowText}>
+                    {formatDuration(timeTracked.totalMinutes)} across {timeTracked.trackedCount} task{timeTracked.trackedCount === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                {accuracy.count > 0 && (() => {
+                  const diffPct = Math.round((accuracy.averageRatio - 1) * 100);
+                  const label = diffPct === 0
+                    ? 'On estimate on average'
+                    : diffPct > 0
+                      ? `${diffPct}% over estimate on average`
+                      : `${Math.abs(diffPct)}% under estimate on average`;
+                  return (
+                    <View style={styles.row}>
+                      <Text style={styles.rowText}>{label}</Text>
+                    </View>
+                  );
+                })()}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/* On-time completion, for tasks that had a deadline */}
+          {onTime.total > 0 && (
+            <StaggerIn index={3}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>ON TIME</Text>
+              <View style={styles.card}>
+                <View style={styles.row}>
+                  <Text style={styles.rowText}>
+                    {onTime.onTime}/{onTime.total} completed by their deadline
+                  </Text>
+                  <Text style={[styles.badgeText, { color: onTime.rate >= 0.8 ? colors.green : onTime.rate >= 0.5 ? colors.orange : colors.red }]}>
+                    {Math.round(onTime.rate * 100)}%
+                  </Text>
+                </View>
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
           {/* Streak leaderboard */}
           {streaks.length > 0 && (
-            <StaggerIn index={2}>
+            <StaggerIn index={4}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>STREAK LEADERBOARD</Text>
               <View style={styles.card}>
@@ -245,12 +302,12 @@ export function StatsScreen() {
 
           {/* Habit completion rates */}
           {habits.length > 0 && (
-            <StaggerIn index={3}>
+            <StaggerIn index={5}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>HABIT COMPLETION (LAST 30 DAYS)</Text>
               <View style={styles.card}>
-                {habits.map(({ title, count, expected, rate }, i) => (
-                  <View key={title} style={[styles.habitRow, i < habits.length - 1 && styles.rowBorder]}>
+                {habits.map(({ key, title, count, expected, rate }, i) => (
+                  <View key={key} style={[styles.habitRow, i < habits.length - 1 && styles.rowBorder]}>
                     <View style={styles.habitTop}>
                       <Text style={styles.rowText} numberOfLines={1}>{title}</Text>
                       <Text style={styles.habitCount}>{count}/{expected}</Text>
@@ -278,7 +335,7 @@ export function StatsScreen() {
 
           {/* Repeated non-recurring tasks — "instances" of the same task */}
           {repeated.length > 0 && (
-            <StaggerIn index={4}>
+            <StaggerIn index={6}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>REPEATED TASKS</Text>
               <View style={styles.card}>

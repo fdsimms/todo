@@ -841,7 +841,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!task || task.timerStartedAt === null) return;
     const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
     const minutes = elapsedMs / 60000;
-    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
+    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes, task.estimatedMinutes) });
   },
 
   discardTimer(id) {
@@ -852,7 +852,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   logManualTime(id, minutes) {
     if (!(minutes > 0)) return;
-    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes) });
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes, task.estimatedMinutes) });
   },
 
   reorderTasks(orderedIds) {
