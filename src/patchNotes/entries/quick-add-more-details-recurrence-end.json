@@ -1,0 +1,4 @@
+{
+  "message": "Fixed quick-add losing a recurring task's end date or occurrence count when you tapped More details before adding it",
+  "date": "2026-08-05"
+}
