@@ -6,6 +6,7 @@ import {
   dropSlotY,
   dragRange,
   rowIndexAtContentY,
+  contentOriginOffset,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -188,5 +189,27 @@ describe('rowIndexAtContentY', () => {
   it('is null past either end of the list', () => {
     expect(rowIndexAtContentY(tops, heights, -20)).toBeNull();
     expect(rowIndexAtContentY(tops, heights, 360)).toBeNull();
+  });
+});
+
+describe('contentOriginOffset', () => {
+  it('is zero when the content starts flush with the container', () => {
+    expect(contentOriginOffset(200, 200, 0)).toBe(0);
+    expect(contentOriginOffset(120, 200, 80)).toBe(0);
+  });
+
+  it('recovers a top content inset from a measured row', () => {
+    // Row sits at content-Y 200 with the list scrolled 80, so without an inset
+    // it would be on screen at 120 — it actually measures at 320.
+    expect(contentOriginOffset(320, 200, 80)).toBe(200);
+  });
+
+  it('round-trips a content-Y back to the measured on-screen position', () => {
+    const origin = contentOriginOffset(320, 200, 80);
+    expect(200 - 80 + origin).toBe(320);
+  });
+
+  it('handles content drawn above the container origin', () => {
+    expect(contentOriginOffset(90, 200, 80)).toBe(-30);
   });
 });
