@@ -235,7 +235,6 @@ export interface TemplateItem {
 
   vacationPause: boolean;
   estimatedMinutes: number | null;
-  focused: boolean;
 
   chainEnabled: boolean;
   chainItems: ChainItem[];

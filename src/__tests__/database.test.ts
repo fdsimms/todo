@@ -799,7 +799,6 @@ describe('Templates', () => {
     recurrenceCount: null,
     vacationPause: false,
     estimatedMinutes: null,
-    focused: false,
     chainEnabled: false,
     chainItems: [],
     subtasks: [],
