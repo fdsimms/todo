@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the time-of-day headers (Morning/Afternoon/Evening) inside Later Today not dimming along with the rest of the list while a task is focused.",
+  "date": "2026-08-05"
+}
