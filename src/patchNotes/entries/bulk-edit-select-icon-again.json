@@ -1,0 +1,4 @@
+{
+  "message": "Swiping a task left to select it for bulk editing now shows a \"...\" icon instead of a checkbox, since the checkbox still read as completing the task",
+  "date": "2026-08-05"
+}
