@@ -2067,12 +2067,26 @@ export function TodayScreen() {
             // a stack isn't one of the things isInboxTask() counts as filed),
             // but they collect under the new stack's header instead of staying
             // loose — see inboxData.
+            // The new stack takes the category its members most often already
+            // have, and they all adopt it (see applyGroupCategory). Mixed
+            // selections used to fall back to no category at all, which was
+            // harmless while the stack's category was its own business — now
+            // that it cascades, that fallback would strip the category off
+            // every task in the selection.
             onGroup={title => {
               const ids = Array.from(selectedIds);
-              const selectedCategories = new Set(
-                ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
-              );
-              const category = selectedCategories.size === 1 ? [...selectedCategories][0] : null;
+              const tally = new Map<string | null, number>();
+              for (const id of ids) {
+                const c = allTasks.find(t => t.id === id)?.category ?? null;
+                tally.set(c, (tally.get(c) ?? 0) + 1);
+              }
+              let category: string | null = null;
+              let best = 0;
+              // Insertion order is selection order, so ties go to whichever
+              // category appeared first rather than to an arbitrary winner.
+              for (const [c, n] of tally) {
+                if (n > best) { best = n; category = c; }
+              }
               groupTasks(ids, title, category);
               exitSelection();
             }}

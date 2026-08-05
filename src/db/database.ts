@@ -307,6 +307,30 @@ export function initDatabase(): void {
     try { db.runSync('UPDATE tasks SET pinned = focused WHERE focused = 1'); } catch (_) {}
     dbSetSetting('pinned_backfill_from_focused_done', '1');
   }
+
+  // One-time migration: a stack now owns its members' category (see
+  // applyGroupCategory in useTaskStore), but until this shipped only tasks
+  // created *inside* a stack inherited it — anything dragged or bulk-grouped
+  // in kept whatever it had. Bring existing members in line so the rule holds
+  // for the stacks that already exist, not just the ones made from here on.
+  //
+  // Live rows only. A completed occurrence is history: it was finished under
+  // the category it had at the time, and the Logbook and the by-category
+  // stats should keep saying so. That matches every other stack cascade,
+  // which is roster-scoped for the same reason.
+  if (dbGetSetting('stack_category_ownership_backfill_done') !== '1') {
+    try {
+      db.runSync(`
+        UPDATE tasks SET category = (
+          SELECT category FROM task_groups WHERE task_groups.id = tasks.group_id
+        )
+        WHERE group_id IS NOT NULL
+          AND completed = 0
+          AND EXISTS (SELECT 1 FROM task_groups WHERE task_groups.id = tasks.group_id)
+      `);
+    } catch (_) {}
+    dbSetSetting('stack_category_ownership_backfill_done', '1');
+  }
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

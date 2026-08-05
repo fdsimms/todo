@@ -1754,6 +1754,97 @@ describe('addExistingToGroup / removeFromGroup', () => {
     useTaskStore.getState().removeFromGroup('t1');
     expect(useTaskStore.getState().tasks[0].groupId).toBeNull();
   });
+
+  it('adopts the stack’s category on join', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null, category: 'Work' })] });
+    useTaskStore.getState().addExistingToGroup('t1', 'g1');
+    expect(useTaskStore.getState().tasks[0].category).toBe('Home');
+  });
+
+  it('leaves the category alone when the stack row is missing', () => {
+    // A stale groupId shouldn't read as "this stack has no category" and
+    // quietly erase the field.
+    useTaskGroupStore.setState({ groups: [] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null, category: 'Work' })] });
+    useTaskStore.getState().addExistingToGroup('t1', 'gone');
+    expect(useTaskStore.getState().tasks[0].category).toBe('Work');
+  });
+
+  it('undoes the join and the category together', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null, category: 'Work' })] });
+    useTaskStore.getState().addExistingToGroup('t1', 'g1');
+    useTaskStore.getState().undoLastAction();
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.groupId).toBeNull();
+    expect(task.category).toBe('Work');
+  });
+
+  it('keeps the inherited category after leaving the stack', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'Home' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: 'g1', category: 'Home' })] });
+    useTaskStore.getState().removeFromGroup('t1');
+    expect(useTaskStore.getState().tasks[0].category).toBe('Home');
+  });
+});
+
+describe('applyGroupCategory', () => {
+  it('re-files every live member under the stack’s category', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', category: 'Work' }),
+        makeTask({ id: 'b', groupId: 'g1', category: null }),
+        makeTask({ id: 'outside', groupId: null, category: 'Work' }),
+      ],
+    });
+    useTaskStore.getState().applyGroupCategory('g1', 'Home');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.category).toBe('Home');
+    expect(byId('b')?.category).toBe('Home');
+    expect(byId('outside')?.category).toBe('Work');
+  });
+
+  it('leaves completed occurrences on the category they were finished under', () => {
+    // Roster-scoped, like every other stack cascade: the Logbook and the
+    // by-category stats are history and mustn't be rewritten underneath.
+    const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', groupId: 'g1', category: 'Work', sortOrder: 1 }),
+        makeTask({ id: 'old-1', groupId: 'g1', category: 'Work', completed: true, completedAt: daysAgo(1), sortOrder: 1 }),
+        makeTask({ id: 'old-2', groupId: 'g1', category: 'Work', completed: true, completedAt: daysAgo(2), sortOrder: 1 }),
+      ],
+    });
+    useTaskStore.getState().applyGroupCategory('g1', 'Home');
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('live')?.category).toBe('Home');
+    expect(byId('old-1')?.category).toBe('Work');
+    expect(byId('old-2')?.category).toBe('Work');
+  });
+
+  it('returns the prior values so the whole cascade undoes as one', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', category: 'Work' }),
+        makeTask({ id: 'b', groupId: 'g1', category: null }),
+      ],
+    });
+    const previous = useTaskStore.getState().applyGroupCategory('g1', 'Home');
+    expect(previous).toEqual([
+      { id: 'a', category: 'Work' },
+      { id: 'b', category: null },
+    ]);
+    previous.forEach(p => useTaskStore.getState().updateTask(p.id, { category: p.category }));
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.category).toBe('Work');
+    expect(byId('b')?.category).toBeNull();
+  });
+
+  it('does nothing when every member already matches', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1', category: 'Home' })] });
+    expect(useTaskStore.getState().applyGroupCategory('g1', 'Home')).toEqual([]);
+  });
 });
 
 describe('groupTasks', () => {
@@ -1769,6 +1860,26 @@ describe('groupTasks', () => {
     expect(tasks.find(t => t.id === 'a')?.groupId).toBe(group.id);
     expect(tasks.find(t => t.id === 'b')?.groupId).toBe(group.id);
     expect(tasks.find(t => t.id === 'c')?.groupId).toBeNull();
+  });
+
+  it('opens no transaction of its own', () => {
+    // applyTemplate calls this from inside a dbTransaction, and expo-sqlite's
+    // withTransactionSync can't nest — a transaction here would throw on
+    // device while this suite, which mocks dbTransaction, stayed green.
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    (dbTransaction as jest.Mock).mockClear();
+    useTaskStore.getState().groupTasks(['a'], 'Take supplements', 'health');
+    expect(dbTransaction).not.toHaveBeenCalled();
+  });
+
+  it('puts every member on the new stack’s category', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', category: 'Work' }), makeTask({ id: 'b', category: null })],
+    });
+    useTaskStore.getState().groupTasks(['a', 'b'], 'Take supplements', 'health');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.category).toBe('health');
+    expect(tasks.find(t => t.id === 'b')?.category).toBe('health');
   });
 });
 
