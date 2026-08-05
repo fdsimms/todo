@@ -7,6 +7,7 @@ jest.mock('expo-notifications', () => ({
   getPermissionsAsync: jest.fn(),
   requestPermissionsAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
+  cancelAllScheduledNotificationsAsync: jest.fn().mockResolvedValue(undefined),
   scheduleNotificationAsync: jest.fn().mockResolvedValue('test-id'),
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
@@ -183,23 +184,28 @@ describe('cancelTaskReminder', () => {
 // ─── rescheduleAllReminders ───────────────────────────────────────────────────
 
 describe('rescheduleAllReminders', () => {
-  it('cancels reminder for a completed task', async () => {
+  it('cancels all scheduled notifications once regardless of task list contents', async () => {
     const task = makeTask({ id: 'task-1', completed: true, reminderTime: FUTURE });
     await rescheduleAllReminders([task]);
-    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-1');
+    expect(Notifications.cancelAllScheduledNotificationsAsync).toHaveBeenCalledTimes(1);
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
-  it('cancels reminder for a task with no reminderTime', async () => {
-    const task = makeTask({ id: 'task-2', reminderTime: null });
+  it('does not schedule a completed task', async () => {
+    const task = makeTask({ id: 'task-1', completed: true, reminderTime: FUTURE });
     await rescheduleAllReminders([task]);
-    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-2');
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
-  it('cancels reminder for a task whose reminderTime is in the past', async () => {
+  it('does not schedule a task with no reminderTime', async () => {
+    const task = makeTask({ id: 'task-2', reminderTime: null });
+    await rescheduleAllReminders([task]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule a task whose reminderTime is in the past', async () => {
     const task = makeTask({ id: 'task-3', reminderTime: PAST });
     await rescheduleAllReminders([task]);
-    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-3');
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
@@ -215,8 +221,25 @@ describe('rescheduleAllReminders', () => {
       makeTask({ id: 'b', reminderTime: FUTURE }),
     ];
     await rescheduleAllReminders(tasks);
-    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('a');
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.identifier).toBe('b');
+  });
+
+  it('schedules only the nearest MAX_PENDING_REMINDERS upcoming reminders, soonest first', async () => {
+    const tasks = Array.from({ length: 70 }, (_, i) =>
+      makeTask({
+        id: `task-${i}`,
+        reminderTime: new Date(Date.now() + (70 - i) * 60 * 1000).toISOString(),
+      })
+    );
+    await rescheduleAllReminders(tasks);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(64);
+    const scheduledIds = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(
+      call => call[0].identifier
+    );
+    expect(scheduledIds).toContain('task-69');
+    expect(scheduledIds).not.toContain('task-0');
   });
 
   it('handles an empty list without error', async () => {

@@ -304,6 +304,14 @@ describe('updateTask', () => {
     expect(scheduleTaskReminder).toHaveBeenCalledTimes(1);
   });
 
+  it('does not touch reminders when the update does not affect the notification', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+    useTaskStore.getState().updateTask('t1', { priority: 2, sortOrder: 5 });
+    expect(dbUpdateTask).toHaveBeenCalledTimes(1);
+    expect(cancelTaskReminder).not.toHaveBeenCalled();
+    expect(scheduleTaskReminder).not.toHaveBeenCalled();
+  });
+
   describe('scope: "occurrence" ("this task only")', () => {
     it('captures the pre-edit value of changed content fields into seriesDefaults', () => {
       useTaskStore.setState({ tasks: [makeTask({ id: 't1', title: 'Original', recurrenceType: 'daily' })] });
@@ -1288,6 +1296,13 @@ describe('togglePin', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })] });
     useTaskStore.getState().togglePin('t1');
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+  });
+
+  it('does not touch reminders, since pinning does not affect the notification', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: false })] });
+    useTaskStore.getState().togglePin('t1');
+    expect(cancelTaskReminder).not.toHaveBeenCalled();
+    expect(scheduleTaskReminder).not.toHaveBeenCalled();
   });
 });
 
