@@ -21,7 +21,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatOffsetLabel } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetWithAnchor } from '../utils/templateUtils';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -45,6 +45,8 @@ function formatMinutesOffset(mins: number): string {
 interface Props {
   visible: boolean;
   templateId: string;
+  /** Shown under the header title so it's clear which template is being edited. */
+  templateName?: string;
   /** Item being edited, or null to create a new one. */
   item: TemplateItem | null;
   /** Pre-fill for a new item handed off from TemplateItemQuickAdd. Ignored when editing an existing item. */
@@ -57,7 +59,7 @@ interface Props {
  * optional flag, due/defer offsets relative to the anchor date, time of day,
  * category, tags, priority and effort.
  */
-export function TemplateItemEditor({ visible, templateId, item, initialDraft, onClose }: Props) {
+export function TemplateItemEditor({ visible, templateId, templateName, item, initialDraft, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -220,7 +222,12 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.headerBtn}>Cancel</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{item ? 'Edit Item' : 'New Item'}</Text>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle}>{item ? 'Edit Item' : 'New Item'}</Text>
+            {!!templateName && (
+              <Text style={styles.headerSubtitle} numberOfLines={1}>{templateName}</Text>
+            )}
+          </View>
           <TouchableOpacity onPress={handleSave} disabled={!title.trim()}>
             <Text style={[styles.headerBtn, styles.headerSave, !title.trim() && styles.disabled]}>
               {item ? 'Save' : 'Add'}
@@ -248,12 +255,15 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
           />
 
           {/* Scheduling relative to one of the template's two anchor dates */}
+          <Text style={styles.groupLabel}>Schedule</Text>
           <View style={styles.optionsCard}>
             <View style={styles.optionRow}>
-              <Ionicons name="git-branch-outline" size={18} color={colors.textSecondary} />
+              <Ionicons name="pin-outline" size={18} color={colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Anchor</Text>
-                <Text style={styles.optionHint}>Which template date the offsets below count from</Text>
+                <Text style={styles.optionLabel}>Count days from</Text>
+                <Text style={styles.optionHint}>
+                  Template items have no fixed date. Every offset below counts from this date, which you pick when applying the template.
+                </Text>
               </View>
             </View>
             <View style={styles.timePillRow}>
@@ -266,7 +276,7 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
                     onPress={() => { haptics.tap(); setAnchor(a); }}
                   >
                     <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                      {a === 'start' ? 'Start date' : 'End date'}
+                      {anchorLabel(a)}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -276,7 +286,9 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
             <OffsetRow
               icon="calendar"
               label="Due date"
+              hint="When the task is due"
               offset={dueOffsetDays}
+              anchor={anchor}
               onChange={setDueOffsetDays}
               colors={colors}
               styles={styles}
@@ -285,7 +297,9 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
             <OffsetRow
               icon="eye-off-outline"
               label="Hide until"
+              hint="Keeps the task off Today until this day"
               offset={deferOffsetDays}
+              anchor={anchor}
               onChange={setDeferOffsetDays}
               colors={colors}
               styles={styles}
@@ -294,7 +308,9 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
             <OffsetRow
               icon="flag-outline"
               label="Deadline"
+              hint="A hard cut-off, shown separately from the due date"
               offset={deadlineOffsetDays}
+              anchor={anchor}
               onChange={setDeadlineOffsetDays}
               colors={colors}
               styles={styles}
@@ -330,21 +346,6 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
                 );
               })}
             </View>
-            <View style={styles.sep} />
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setOptional(!optional); }}
-              activeOpacity={interaction.activeOpacity}
-            >
-              <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Optional</Text>
-                <Text style={styles.optionHint}>Starts unchecked when using the template</Text>
-              </View>
-              <View style={[styles.toggle, optional && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
             <View style={styles.sep} />
             <View style={styles.optionRow}>
               <Ionicons
@@ -422,7 +423,13 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
                     <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                   </TouchableOpacity>
                 ) : (
-                  <TouchableOpacity onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }} hitSlop={8}>
+                  <TouchableOpacity
+                    style={styles.setBtn}
+                    onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Set a reminder"
+                  >
                     <Text style={styles.setOffsetText}>Set</Text>
                   </TouchableOpacity>
                 )
@@ -457,7 +464,13 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
                   <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity onPress={() => { haptics.tap(); setRecurrenceType('daily'); }} hitSlop={8}>
+                <TouchableOpacity
+                  style={styles.setBtn}
+                  onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Set a repeat schedule"
+                >
                   <Text style={styles.setOffsetText}>Set</Text>
                 </TouchableOpacity>
               )}
@@ -601,6 +614,25 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
                 )}
               </>
             )}
+          </View>
+
+          {/* How the task behaves once the template is applied */}
+          <Text style={styles.groupLabel}>Options</Text>
+          <View style={styles.optionsCard}>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setOptional(!optional); }}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Optional</Text>
+                <Text style={styles.optionHint}>Starts unticked in the apply sheet, so it's skipped by default</Text>
+              </View>
+              <View style={[styles.toggle, optional && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
             <View style={styles.sep} />
             <TouchableOpacity
               style={styles.optionRow}
@@ -610,6 +642,7 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
               <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Pause on vacation</Text>
+                <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
               </View>
               <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
@@ -624,6 +657,7 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
               <Ionicons name="star-outline" size={18} color={focused ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Focused</Text>
+                <Text style={styles.optionHint}>Added to the Focus list when applied</Text>
               </View>
               <View style={[styles.toggle, focused && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
@@ -949,11 +983,13 @@ export function TemplateItemEditor({ visible, templateId, item, initialDraft, on
  * human offset label ("3 days before", "On anchor day") with a clear button.
  */
 function OffsetRow({
-  icon, label, offset, onChange, colors, styles,
+  icon, label, hint, offset, anchor, onChange, colors, styles,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
+  hint: string;
   offset: number | null;
+  anchor: TemplateAnchor;
   onChange: (offset: number | null) => void;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
@@ -964,25 +1000,48 @@ function OffsetRow({
         <Ionicons name={icon} size={18} color={offset !== null ? colors.accent : colors.textSecondary} />
         <View style={styles.optionContent}>
           <Text style={styles.optionLabel}>{label}</Text>
-          {offset === null && <Text style={styles.optionHint}>Relative to the anchor date</Text>}
+          <Text style={styles.optionHint}>
+            {offset !== null ? formatOffsetWithAnchor(offset, anchor) : hint}
+          </Text>
         </View>
         {offset !== null ? (
-          <TouchableOpacity onPress={() => onChange(null)} hitSlop={8}>
+          <TouchableOpacity
+            onPress={() => onChange(null)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Clear ${label.toLowerCase()}`}
+          >
             <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={() => { haptics.tap(); onChange(0); }} hitSlop={8}>
+          <TouchableOpacity
+            style={styles.setBtn}
+            onPress={() => { haptics.tap(); onChange(0); }}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Set ${label.toLowerCase()}`}
+          >
             <Text style={styles.setOffsetText}>Set</Text>
           </TouchableOpacity>
         )}
       </View>
       {offset !== null && (
         <View style={styles.intervalRow}>
-          <TouchableOpacity style={styles.intervalBtn} onPress={() => onChange(offset - 1)}>
+          <TouchableOpacity
+            style={styles.intervalBtn}
+            onPress={() => onChange(offset - 1)}
+            accessibilityRole="button"
+            accessibilityLabel="One day earlier"
+          >
             <Ionicons name="remove" size={16} color={colors.text} />
           </TouchableOpacity>
-          <Text style={styles.intervalValue}>{formatOffsetLabel(offset)}</Text>
-          <TouchableOpacity style={styles.intervalBtn} onPress={() => onChange(offset + 1)}>
+          <Text style={styles.intervalValue}>{formatOffsetWithAnchor(offset, anchor)}</Text>
+          <TouchableOpacity
+            style={styles.intervalBtn}
+            onPress={() => onChange(offset + 1)}
+            accessibilityRole="button"
+            accessibilityLabel="One day later"
+          >
             <Ionicons name="add" size={16} color={colors.text} />
           </TouchableOpacity>
         </View>
@@ -998,7 +1057,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
+  headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
+  headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   headerBtn: { color: colors.accent, fontSize: font.md },
   headerSave: { fontWeight: '600' },
   disabled: { opacity: 0.4 },
@@ -1072,6 +1133,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillActive: { backgroundColor: colors.accent },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
+  groupLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
+  },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
@@ -1084,7 +1150,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
-  setOffsetText: { color: colors.accent, fontSize: font.sm },
+  setBtn: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  setOffsetText: { color: colors.accent, fontSize: font.sm, fontWeight: '600' },
   intervalRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
@@ -1094,8 +1164,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
   },
   intervalValue: {
-    color: colors.text, fontSize: font.md, fontWeight: '600',
-    minWidth: 120, textAlign: 'center',
+    flex: 1, color: colors.text, fontSize: font.md, fontWeight: '600',
+    textAlign: 'center',
   },
   toggle: {
     width: 46, height: 27, borderRadius: 14,
