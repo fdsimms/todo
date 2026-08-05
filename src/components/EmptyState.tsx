@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -32,15 +32,26 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
   const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
   const iconScale = useRef(new Animated.Value(0.8)).current;
+  // Once the entrance has played, the settled look has to live in React state
+  // and not only in the Animated values. An animated value doesn't re-render
+  // the component, so React's committed opacity for this view stays at 0 for
+  // as long as the component is mounted — and the tab navigator doesn't
+  // unmount a blurred screen, it parks it offscreen with
+  // `removeClippedSubviews`, which detaches its native views and drops any
+  // frame the animation writes while it's away. Leaving a tab mid-entrance
+  // used to strand the empty state at whatever opacity it had reached, with
+  // nothing left to finish the fade. Rendering plain style values once
+  // settled means the values React re-applies on re-attach are the right ones.
+  const [settled, setSettled] = useState(false);
 
   useEffect(() => {
     // Reduce Motion: appear in place, no fade-up or icon pop.
     if (reduceMotion) {
-      progress.setValue(1);
-      iconScale.setValue(1);
+      setSettled(true);
       return;
     }
-    Animated.parallel([
+    let cancelled = false;
+    const entrance = Animated.parallel([
       Animated.timing(progress, {
         toValue: 1,
         duration: animation.duration.normal,
@@ -51,21 +62,30 @@ export function EmptyState({ icon, title, subtitle, actionLabel, onAction, botto
         ...animation.spring.smooth,
         useNativeDriver: true,
       }),
-    ]).start();
+    ]);
+    // Settles on interruption too — a half-faded empty state is never the
+    // state we want to be left in.
+    entrance.start(() => {
+      if (!cancelled) setSettled(true);
+    });
+    return () => {
+      cancelled = true;
+      entrance.stop();
+    };
   }, [progress, iconScale, reduceMotion]);
 
   return (
     <Animated.View
       style={[
         styles.container,
-        {
+        { paddingBottom: bottomOffset ?? 0 },
+        !settled && {
           opacity: progress,
-          paddingBottom: bottomOffset ?? 0,
           transform: [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }],
         },
       ]}
     >
-      <Animated.View style={[styles.iconCircle, { transform: [{ scale: iconScale }] }]}>
+      <Animated.View style={[styles.iconCircle, !settled && { transform: [{ scale: iconScale }] }]}>
         <Ionicons name={icon} size={34} color={colors.textTertiary} />
       </Animated.View>
       <Text style={styles.title}>{title}</Text>
