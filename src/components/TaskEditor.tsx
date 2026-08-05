@@ -1915,12 +1915,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
           onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
           onCancel={() => setShowEndDatePicker(false)}
         />
-        <CalendarPicker
+        <WhenPicker
           visible={showDeadlinePicker}
           value={deadline}
-          mode="date"
           title="Deadline"
+          showTimeOfDay={false}
+          showSuggest={false}
           onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+          onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
           onCancel={() => setShowDeadlinePicker(false)}
         />
         <SuggestedCategorySheet
