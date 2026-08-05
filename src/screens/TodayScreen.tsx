@@ -1301,7 +1301,6 @@ export function TodayScreen() {
   };
 
   const today = format(new Date(), 'EEEE, MMMM d');
-  const inboxSubtitle = inboxTasks.length === 0 ? 'All sorted' : `${inboxTasks.length} to sort`;
 
   const laterGroupKeys = (task: Task): string[] => {
     const visibleAt = getVisibleAt(task);
@@ -1405,7 +1404,6 @@ export function TodayScreen() {
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
-          subtitle={viewMode === 'inbox' ? inboxSubtitle : undefined}
           actions={headerActions}
         />
 
@@ -1987,7 +1985,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   viewModePillsScroll: { flexGrow: 0, flexShrink: 0 },
   viewModePills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: 4,
+    paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
   },
   viewModePill: {
     paddingHorizontal: spacing.md, paddingVertical: 6,
