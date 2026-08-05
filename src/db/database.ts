@@ -64,7 +64,8 @@ export function initDatabase(): void {
       priority INTEGER NOT NULL DEFAULT 0,
       category TEXT,
       sort_order REAL NOT NULL DEFAULT 0,
-      collapsed INTEGER NOT NULL DEFAULT 1
+      collapsed INTEGER NOT NULL DEFAULT 1,
+      completed_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS projects (
@@ -158,6 +159,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN recurrence_week_ordinal INTEGER',
     'ALTER TABLE tasks ADD COLUMN link_url TEXT',
     'ALTER TABLE templates ADD COLUMN category TEXT',
+    'ALTER TABLE task_groups ADD COLUMN completed_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -638,6 +640,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
+    completedAt: (row.completed_at as string) ?? null,
   };
 }
 
@@ -648,20 +651,20 @@ export function dbGetAllTaskGroups(): TaskGroup[] {
 
 export function dbInsertTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'INSERT INTO task_groups (id, title, notes, tags, priority, category, sort_order, collapsed) VALUES (?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, priority, category, sort_order, collapsed, completed_at) VALUES (?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags), group.priority,
-      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
+      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, priority=?, category=?, sort_order=?, collapsed=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, priority=?, category=?, sort_order=?, collapsed=?, completed_at=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags), group.priority,
-      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.id,
+      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null, group.id,
     ]
   );
 }

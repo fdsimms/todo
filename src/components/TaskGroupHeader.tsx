@@ -25,7 +25,10 @@ interface Props {
   dueTodayOverride?: Task[];
   onToggleCollapse: () => void;
   onComplete: () => void;
-  onUncomplete: () => void;
+  // Fires when the user taps an already-fully-done stack — stamps the group
+  // dismissed so it drops off Today, rather than toggling any child's
+  // completed state (see dismissGroup in useTaskStore).
+  onDismiss: () => void;
   onDefer: (date: Date) => void;
   onPin: () => void;
   onDeleteGroupOnly: () => void;
@@ -42,7 +45,7 @@ export function TaskGroupHeader({
   dueTodayOverride,
   onToggleCollapse,
   onComplete,
-  onUncomplete,
+  onDismiss,
   onDefer,
   onPin,
   onDeleteGroupOnly,
@@ -63,6 +66,12 @@ export function TaskGroupHeader({
   const doneToday = dueToday.filter(c => c.completed).length;
   const totalToday = dueToday.length;
   const allDone = totalToday > 0 && doneToday === totalToday;
+  // The circle only shows checked once the user has explicitly dismissed a
+  // fully-done stack (group.completedAt) — allDone alone used to drive this
+  // and made the checkmark appear the instant the last child finished, with
+  // no way to actually clear the stack out of Today. Now allDone just makes
+  // the circle tappable-to-dismiss; it stays visually empty until then.
+  const dismissed = group.completedAt !== null;
 
   const confirmDelete = () => {
     Alert.alert(
@@ -121,15 +130,23 @@ export function TaskGroupHeader({
                 )}
 
                 <TouchableOpacity
-                  onPress={() => { haptics.tap(); allDone ? onUncomplete() : onComplete(); }}
+                  onPress={() => {
+                    haptics.tap();
+                    if (dismissed) return;
+                    allDone ? onDismiss() : onComplete();
+                  }}
                   hitSlop={10}
                   style={styles.circleWrapper}
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: allDone }}
-                  accessibilityLabel={allDone ? `Uncheck ${group.title}` : `Complete all of ${group.title}`}
+                  accessibilityState={{ checked: dismissed }}
+                  accessibilityLabel={
+                    dismissed ? `${group.title} completed`
+                    : allDone ? `Dismiss completed ${group.title} stack`
+                    : `Complete all of ${group.title}`
+                  }
                 >
-                  <View style={[styles.circle, allDone && styles.circleDone]}>
-                    {allDone && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
+                  <View style={[styles.circle, dismissed && styles.circleDone]}>
+                    {dismissed && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
                   </View>
                 </TouchableOpacity>
 

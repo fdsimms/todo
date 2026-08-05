@@ -328,7 +328,7 @@ export function TodayScreen() {
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const completeGroup = useTaskStore(s => s.completeGroup);
-  const uncompleteGroup = useTaskStore(s => s.uncompleteGroup);
+  const dismissGroup = useTaskStore(s => s.dismissGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
   const pinGroup = useTaskStore(s => s.pinGroup);
   const deleteGroup = useTaskStore(s => s.deleteGroup);
@@ -702,11 +702,13 @@ export function TodayScreen() {
   // doesn't render, same as an empty category would. A group whose children
   // are ALL completed today still renders (with an empty visible-children
   // list, since completed tasks aren't shown individually) so finishing the
-  // last child doesn't make the whole stack vanish out from under the
-  // user — it stays put, checked off, until they collapse/act on it
-  // themselves. Only the default (non-pinned) Today view groups/collapses;
-  // pinned mode and the "Everything else" reveal intentionally stay flat so
-  // pinning a task always pulls it out for individual attention.
+  // last child doesn't make the whole stack silently vanish out from under
+  // the user — it stays put, checked off, until they explicitly tap it to
+  // dismiss (TaskGroupHeader's circle, dismissGroup in useTaskStore), at
+  // which point it drops out here via the group.completedAt check. Only the
+  // default (non-pinned) Today view groups/collapses; pinned mode and the
+  // "Everything else" reveal intentionally stay flat so pinning a task
+  // always pulls it out for individual attention.
   const visibleGroupItems = useMemo(() => {
     const filteredIds = new Set(filtered.map(t => t.id));
     return taskGroups
@@ -715,8 +717,10 @@ export function TodayScreen() {
         children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
       }))
       .filter(g =>
-        g.children.length > 0 ||
-        (childrenByGroupId.get(g.group.id) ?? []).some(isRelevantToGroupToday),
+        !g.group.completedAt && (
+          g.children.length > 0 ||
+          (childrenByGroupId.get(g.group.id) ?? []).some(isRelevantToGroupToday)
+        ),
       );
   }, [taskGroups, childrenByGroupId, filtered]);
 
@@ -1081,7 +1085,7 @@ export function TodayScreen() {
               setGroupCollapsed(item.group.id, !item.group.collapsed);
             }}
             onComplete={() => completeGroup(item.group.id)}
-            onUncomplete={() => uncompleteGroup(item.group.id)}
+            onDismiss={() => { animateLayout(); dismissGroup(item.group.id); }}
             onDefer={date => deferGroup(item.group.id, date)}
             onPin={() => pinGroup(item.group.id)}
             onDeleteGroupOnly={() => deleteGroup(item.group.id, { cascade: false })}
@@ -1171,7 +1175,7 @@ export function TodayScreen() {
             setGroupCollapsed(group.id, !group.collapsed);
           }}
           onComplete={() => completeGroup(group.id)}
-          onUncomplete={() => uncompleteGroup(group.id)}
+          onDismiss={() => { animateLayout(); dismissGroup(group.id); }}
           onDefer={date => deferGroup(group.id, date)}
           onPin={() => pinGroup(group.id)}
           onDeleteGroupOnly={() => deleteGroup(group.id, { cascade: false })}
