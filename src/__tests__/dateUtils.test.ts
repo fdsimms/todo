@@ -1,6 +1,7 @@
 import {
   getDayStart,
   formatDueDate,
+  formatStartDate,
   formatDeferUntil,
   formatGroupHeader,
   getNextDueDate,
@@ -160,6 +161,43 @@ describe('formatDueDate', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
     const dueToday = formatDueDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
     expect(dueToday).toBe('Today');
+  });
+});
+
+describe('formatStartDate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 9, 0, 0)); // Tue June 10, 2025
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns "Today" for a date matching the current day', () => {
+    expect(formatStartDate(new Date(2025, 5, 10, 9, 0, 0).toISOString())).toBe('Today');
+  });
+
+  it('returns "Tomorrow" for the next day', () => {
+    expect(formatStartDate(new Date(2025, 5, 11, 9, 0, 0).toISOString())).toBe('Tomorrow');
+  });
+
+  it('returns the plain calendar date for a past date, not an overdue label', () => {
+    expect(formatStartDate(new Date(2025, 5, 7, 9, 0, 0).toISOString())).toBe('Jun 7');
+    expect(formatStartDate(new Date(2025, 3, 1, 9, 0, 0).toISOString())).toBe('Apr 1');
+  });
+
+  it('returns a day name for future dates within the current week', () => {
+    const result = formatStartDate(new Date(2025, 5, 12, 9, 0, 0).toISOString());
+    expect(result).toBe('Thursday');
+  });
+
+  it('returns "MMM d" for dates beyond this week', () => {
+    expect(formatStartDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
+  });
+
+  it('returns "MMM d, yyyy" for dates in a different year', () => {
+    expect(formatStartDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
   });
 });
 

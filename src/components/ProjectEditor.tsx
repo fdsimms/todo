@@ -21,7 +21,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -180,7 +180,7 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
             <OptionRow
               icon="play-outline"
               label="Start date"
-              value={targetStartDate ? formatDueDate(targetStartDate.toISOString()) : undefined}
+              value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
               onPress={() => setShowStartDatePicker(true)}
               onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
               colors={colors}

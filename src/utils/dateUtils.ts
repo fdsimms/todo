@@ -122,6 +122,21 @@ export function formatDueDate(iso: string, dayResetTime?: string): string {
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
+/**
+ * Like formatDueDate, but for a project's targetStartDate — which marks when
+ * to start thinking about/doing the project, not a deadline. A past start
+ * date should just read as its calendar date, not "Nd overdue".
+ */
+export function formatStartDate(iso: string, dayResetTime?: string): string {
+  const d = new Date(iso);
+  const today = getDayStart(new Date(), dayResetTime);
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, today);
+  if (diff >= 0 && isSameWeek(d, today)) return format(d, 'EEEE');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
+}
+
 export function formatDeferUntil(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
   const today = getDayStart(new Date(), dayResetTime);
