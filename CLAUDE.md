@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## PR workflow
+
+Once a change is complete and verified (`npx tsc --noEmit && npm test` green, feature manually
+exercised where applicable), open a PR automatically — don't wait to be asked. Skip only when
+there's a concrete reason (work is incomplete, checks are red, or the user said to hold off);
+say why instead of opening one silently.
+
+After creating a PR, immediately subscribe to its activity (merge conflicts, CI failures, review
+comments) so problems surface before the user has to check manually — no need to ask first.
+
 ## Commands
 
 ```bash
