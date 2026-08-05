@@ -113,82 +113,6 @@ export async function suggestTaskAttributes(
   };
 }
 
-export interface EffortEstimate {
-  minutes: number | null; // null = the model wasn't confident enough to estimate
-  reason: string;
-}
-
-const MIN_ESTIMATE = 5;
-const MAX_ESTIMATE = 1440; // a full day of focused work
-
-/**
- * Ask the AI to estimate focused working time for a task. The model is told to
- * abstain (confident=false) rather than guess when the task lacks enough signal;
- * in that case we return { minutes: null }.
- */
-export async function suggestTaskEffort(title: string, notes: string): Promise<EffortEstimate> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
-      tools: [{
-        name: 'estimate',
-        description: 'Estimate the focused working time a task will take',
-        input_schema: {
-          type: 'object',
-          properties: {
-            confident: {
-              type: 'boolean',
-              description: 'True only if the title/notes give enough signal to estimate without guessing. Vague or ambiguous tasks → false.',
-            },
-            minutes: {
-              type: 'integer',
-              description: `Estimated focused minutes (${MIN_ESTIMATE}–${MAX_ESTIMATE}). Only meaningful when confident is true.`,
-            },
-            reason: {
-              type: 'string',
-              description: 'A short (one sentence, <90 chars) justification, or why the task is too vague to estimate.',
-            },
-          },
-          required: ['confident', 'minutes', 'reason'],
-        },
-      }],
-      tool_choice: { type: 'tool', name: 'estimate' },
-      messages: [{
-        role: 'user',
-        content: [
-          'Estimate the focused working time for this task. Do NOT guess: if the task is too vague or ambiguous to estimate without inventing details, set confident=false.',
-          `Task: "${title || 'Untitled task'}"${notes ? `\nNotes: ${notes.slice(0, 300)}` : ''}`,
-        ].join('\n'),
-      }],
-    }),
-  });
-
-  if (!response.ok) throw new Error(`API error ${response.status}`);
-
-  const data = await response.json() as {
-    content?: Array<{ type: string; input?: { confident: boolean; minutes: number; reason: string } }>;
-  };
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
-  if (!toolUse?.input) throw new Error('No estimate returned');
-
-  const { confident, minutes: rawMinutes, reason } = toolUse.input;
-  if (!confident || rawMinutes == null || !Number.isFinite(rawMinutes) || rawMinutes <= 0) {
-    return { minutes: null, reason: reason?.trim() || 'Not enough detail to estimate.' };
-  }
-  const minutes = Math.max(MIN_ESTIMATE, Math.min(MAX_ESTIMATE, Math.round(rawMinutes)));
-  return { minutes, reason: reason?.trim() || 'Estimated from the task description.' };
-}
-
 export interface DateSuggestion {
   date: string; // ISO yyyy-MM-dd, one of the next 7 days
   reason: string;
@@ -422,7 +346,6 @@ export async function suggestPinTasks(
 export interface TemplateItemSuggestion {
   title: string;
   notes: string;
-  effort: Effort;
 }
 
 const MIN_TEMPLATE_SUGGESTIONS = 4;
@@ -475,14 +398,8 @@ export async function suggestTemplateItems(
                     type: 'string',
                     description: 'An optional one-line clarifying detail, or an empty string if none is needed.',
                   },
-                  effort: {
-                    type: 'integer',
-                    description: '0=unknown, 1=XXS ~1min, 2=XS ~15min, 3=S ~30min, 4=M ~1-2hr, 5=L ~4hr, 6=XL day+',
-                    minimum: 0,
-                    maximum: 6,
-                  },
                 },
-                required: ['title', 'notes', 'effort'],
+                required: ['title', 'notes'],
               },
             },
           },
@@ -504,7 +421,7 @@ export async function suggestTemplateItems(
   if (!response.ok) throw new Error(`API error ${response.status}`);
 
   const data = await response.json() as {
-    content?: Array<{ type: string; input?: { tasks?: Array<{ title?: string; notes?: string; effort?: number }> } }>;
+    content?: Array<{ type: string; input?: { tasks?: Array<{ title?: string; notes?: string }> } }>;
   };
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   if (!toolUse?.input?.tasks) throw new Error('No suggestions returned');
@@ -523,7 +440,6 @@ export async function suggestTemplateItems(
     result.push({
       title,
       notes: (t.notes ?? '').trim(),
-      effort: Math.max(0, Math.min(6, t.effort ?? 0)) as Effort,
     });
   }
   return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);

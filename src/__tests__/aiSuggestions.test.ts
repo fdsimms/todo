@@ -8,7 +8,6 @@
 import {
   suggestTaskAttributes,
   suggestTaskDate,
-  suggestTaskEffort,
   suggestPinTasks,
   suggestTemplateItems,
 } from '../services/aiSuggestions';
@@ -280,45 +279,6 @@ describe('suggestTaskAttributes', () => {
     const content = body.messages[0].content as string;
     expect(content).toContain('newCategory');
     expect(content).toContain('Strongly prefer an existing category');
-  });
-});
-
-// ============================================================================
-// suggestTaskEffort
-// ============================================================================
-
-describe('suggestTaskEffort', () => {
-  afterEach(() => jest.restoreAllMocks());
-
-  it('returns null minutes when the model is not confident', async () => {
-    mockFetchOnce(toolUseResponse('estimate', { confident: false, minutes: 120, reason: 'Too vague to estimate.' }));
-    const result = await suggestTaskEffort('do the thing', '');
-    expect(result.minutes).toBeNull();
-    expect(result.reason).toBe('Too vague to estimate.');
-  });
-
-  it('returns the estimated minutes when confident', async () => {
-    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 45, reason: 'Short focused task.' }));
-    const result = await suggestTaskEffort('Reply to 3 emails', '');
-    expect(result.minutes).toBe(45);
-    expect(result.reason).toBe('Short focused task.');
-  });
-
-  it('clamps an absurdly large estimate to the daily cap', async () => {
-    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 99999, reason: 'Huge.' }));
-    const result = await suggestTaskEffort('Build an OS', '');
-    expect(result.minutes).toBe(1440);
-  });
-
-  it('treats a non-positive estimate as an abstain', async () => {
-    mockFetchOnce(toolUseResponse('estimate', { confident: true, minutes: 0, reason: 'n/a' }));
-    const result = await suggestTaskEffort('x', '');
-    expect(result.minutes).toBeNull();
-  });
-
-  it('throws without an API error response', async () => {
-    mockFetchOnce({}, 500);
-    await expect(suggestTaskEffort('x', '')).rejects.toThrow('API error 500');
   });
 });
 
@@ -665,41 +625,41 @@ describe('suggestTemplateItems', () => {
   it('returns normalized suggestions from the tool payload', async () => {
     mockFetchOnce(toolUseResponse('suggest_tasks', {
       tasks: [
-        { title: '  Pack passport  ', notes: 'Check expiry', effort: 1 },
-        { title: 'Stop the mail', notes: '', effort: 2 },
+        { title: '  Pack passport  ', notes: 'Check expiry' },
+        { title: 'Stop the mail', notes: '' },
       ],
     }));
 
     const result = await suggestTemplateItems('Vacation prep', []);
     expect(result).toEqual([
-      { title: 'Pack passport', notes: 'Check expiry', effort: 1 },
-      { title: 'Stop the mail', notes: '', effort: 2 },
+      { title: 'Pack passport', notes: 'Check expiry' },
+      { title: 'Stop the mail', notes: '' },
     ]);
   });
 
-  it('drops blank titles and clamps effort into range', async () => {
+  it('drops blank titles', async () => {
     mockFetchOnce(toolUseResponse('suggest_tasks', {
       tasks: [
-        { title: '   ', notes: 'nothing', effort: 3 },
-        { title: 'Water the plants', notes: '', effort: 99 },
+        { title: '   ', notes: 'nothing' },
+        { title: 'Water the plants', notes: '' },
       ],
     }));
 
     const result = await suggestTemplateItems('Home checklist', []);
-    expect(result).toEqual([{ title: 'Water the plants', notes: '', effort: 6 }]);
+    expect(result).toEqual([{ title: 'Water the plants', notes: '' }]);
   });
 
   it('filters out duplicates of existing items and repeated suggestions (case-insensitively)', async () => {
     mockFetchOnce(toolUseResponse('suggest_tasks', {
       tasks: [
-        { title: 'Pack Passport', notes: '', effort: 1 }, // dup of existing
-        { title: 'Buy sunscreen', notes: '', effort: 1 },
-        { title: 'buy sunscreen', notes: '', effort: 2 }, // dup of prior suggestion
+        { title: 'Pack Passport', notes: '' }, // dup of existing
+        { title: 'Buy sunscreen', notes: '' },
+        { title: 'buy sunscreen', notes: '' }, // dup of prior suggestion
       ],
     }));
 
     const result = await suggestTemplateItems('Vacation prep', ['pack passport']);
-    expect(result).toEqual([{ title: 'Buy sunscreen', notes: '', effort: 1 }]);
+    expect(result).toEqual([{ title: 'Buy sunscreen', notes: '' }]);
   });
 
   it('passes the template name and existing titles to the model', async () => {
