@@ -6,6 +6,7 @@ import {
   formatGroupHeader,
   getNextDueDate,
   getStreakDisplay,
+  getStreakOutcome,
   getDeadlineCountdown,
   getDeadlineFromMonthDay,
   getLogicalToday,
@@ -783,6 +784,103 @@ describe('getStreakDisplay', () => {
       streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
     };
     expect(getStreakDisplay(task)).toEqual({ sign: '+', count: 8 });
+  });
+});
+
+// ─── getStreakOutcome ───────────────────────────────────────────────────────
+
+describe('getStreakOutcome', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // Tue June 10 2025, 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns reset for non-recurring tasks', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'none', streakDate: new Date(2025, 5, 9).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
+  it('returns reset when streakDate is null', () => {
+    expect(getStreakOutcome({ ...baseTask, recurrenceType: 'daily', streakDate: null })).toBe('reset');
+  });
+
+  it('returns same-day when already completed today', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'daily', streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString() };
+    expect(getStreakOutcome(task)).toBe('same-day');
+  });
+
+  it('continues a daily streak completed the very next day', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1, streakDate: new Date(2025, 5, 9).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('resets a daily streak after missing several days', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 1, streakDate: new Date(2025, 5, 7).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
+  it('respects recurrenceInterval for a "every 2 days" habit', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'daily', recurrenceInterval: 2, streakDate: new Date(2025, 5, 8).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('continues a weekly streak (no fixed days) completed a week later — the #691 regression', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 1, streakDate: new Date(2025, 5, 3).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('tolerates a weekly streak completed a day late', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 1, streakDate: new Date(2025, 5, 2).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('resets a weekly streak once it is more than a day late', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'weekly', recurrenceInterval: 1, streakDate: new Date(2025, 5, 1).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
+  it('derives the gap from selected weekdays, not a flat 7', () => {
+    // Mon/Wed/Fri habit last completed Monday June 2 — the next slot is Wednesday June 4, a 2-day gap.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceDays: [1, 3, 5],
+      streakDate: new Date(2025, 5, 2).toISOString(),
+    };
+    jest.setSystemTime(new Date(2025, 5, 4, 10, 0, 0)); // Wed June 4
+    expect(getStreakOutcome(task)).toBe('continued');
+
+    jest.setSystemTime(new Date(2025, 5, 6, 10, 0, 0)); // Fri June 6 — two slots missed
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
+  it('continues a monthly streak completed a calendar month later', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, streakDate: new Date(2025, 4, 10).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('resets a monthly streak after skipping a month', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 1, streakDate: new Date(2025, 3, 10).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
+  });
+
+  it('respects recurrenceInterval for a bimonthly habit', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'monthly', recurrenceInterval: 2, streakDate: new Date(2025, 3, 10).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('continues a yearly streak completed a calendar year later', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, streakDate: new Date(2024, 5, 10).toISOString() };
+    expect(getStreakOutcome(task)).toBe('continued');
+  });
+
+  it('resets a yearly streak after skipping a year', () => {
+    const task: Task = { ...baseTask, recurrenceType: 'yearly', recurrenceInterval: 1, streakDate: new Date(2023, 5, 10).toISOString() };
+    expect(getStreakOutcome(task)).toBe('reset');
   });
 });
 
