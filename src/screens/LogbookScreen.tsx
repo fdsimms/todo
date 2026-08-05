@@ -22,13 +22,13 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { SwipeableRow } from '../components/SwipeableRow';
-import { TagFilterBar } from '../components/TagFilterBar';
-import { CategoryFilterBar } from '../components/CategoryFilterBar';
+import { FilterChipBar } from '../components/FilterChipBar';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
+import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import type { Task } from '../types';
 
@@ -74,6 +74,17 @@ export function LogbookScreen() {
   const availableTags = useMemo(
     () => Array.from(new Set(completedTasks.flatMap(t => t.tags))).sort(),
     [completedTasks]
+  );
+  const categoryChipItems = useMemo(
+    () => availableCategories.map(category => {
+      const emoji = getCategoryByName(category)?.emoji;
+      return { key: category, label: emoji ? `${emoji} ${category}` : category };
+    }),
+    [availableCategories, getCategoryByName]
+  );
+  const tagChipItems = useMemo(
+    () => availableTags.map(tag => ({ key: tag, label: tag, color: tagColor(tag) })),
+    [availableTags]
   );
 
   const filteredTasks = useMemo(() => {
@@ -159,15 +170,16 @@ export function LogbookScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <CategoryFilterBar
-            categories={availableCategories}
+          <FilterChipBar
+            items={categoryChipItems}
             selected={selectedCategory}
             onSelect={setSelectedCategory}
           />
-          <TagFilterBar
-            tags={availableTags}
+          <FilterChipBar
+            items={tagChipItems}
             selected={selectedTag}
             onSelect={setSelectedTag}
+            showDot
           />
         </>
       )}
