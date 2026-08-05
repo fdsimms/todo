@@ -6,7 +6,7 @@ import type { Task, TaskGroup } from '../types';
 import { PRIORITY_COLORS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, animation, type Colors } from '../theme';
-import { isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { isRelevantToGroupToday, isGroupHiddenToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
@@ -72,11 +72,18 @@ export function TaskGroupHeader({
   const totalToday = dueToday.length;
   const allDone = totalToday > 0 && doneToday === totalToday;
   // The circle only shows checked once the user has explicitly dismissed a
-  // fully-done stack (group.completedAt) — allDone alone used to drive this
-  // and made the checkmark appear the instant the last child finished, with
-  // no way to actually clear the stack out of Today. Now allDone just makes
-  // the circle tappable-to-dismiss; it stays visually empty until then.
-  const dismissed = group.completedAt !== null;
+  // fully-done stack — allDone alone used to drive this and made the
+  // checkmark appear the instant the last child finished, with no way to
+  // actually clear the stack out of Today. Now allDone just makes the circle
+  // tappable-to-dismiss; it stays visually empty until then.
+  //
+  // Requiring allDone alongside the stamp is what keeps a dismissed stack
+  // honest: the moment it gains live work again (a spawn, an undo, a task
+  // added to it) allDone goes false and the stack shows itself, with no
+  // separate bookkeeping to clear the stamp. And the stamp itself only
+  // counts for the logical day it was made, so a nightly stack returns on
+  // its own tomorrow.
+  const dismissed = isGroupHiddenToday(group.completedAt, dueToday);
 
   const confirmDelete = () => {
     Alert.alert(

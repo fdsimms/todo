@@ -419,6 +419,76 @@ export function isRelevantToGroupToday(task: Task): boolean {
   return +getDayStart(new Date(task.completedAt)) === +getCurrentDayStart();
 }
 
+// A stack's real membership, and the only thing any surface should count.
+//
+// A recurring task isn't one row: completing it leaves the completed row
+// behind and inserts a fresh one (see completeTask), and *both* keep the same
+// groupId forever — so the raw child list grows by one row per completion for
+// the life of the stack. A stack of 8 nightly habits reads as 22 children
+// after two weeks and 1000 after a year, none of which the user thinks of as
+// being in the stack. The roster collapses that back to one entry per task
+// *series*: whichever occurrence represents that series right now.
+//
+// In:
+//   - anything relevant to today (due/visible now, or completed today), so
+//     the tally still reads 8/8 after the evening's completions have each
+//     spawned tomorrow's replacement;
+//   - a live occurrence with no successor yet, even when it isn't due for
+//     days — iron every other day is still a member of Supplements on the
+//     days it isn't due, it just isn't due.
+// Out:
+//   - old completions (the tombstones — this is the unbounded growth);
+//   - archived children;
+//   - an occurrence already superseded by a later one, which now speaks for
+//     the series;
+//   - a future occurrence whose own predecessor is already in the roster,
+//     which would otherwise count one series twice on the day it's completed
+//     (tonight's finished row plus tomorrow's fresh one).
+export function groupRoster(children: Task[]): Task[] {
+  const superseded = new Set<string>();
+  const byId = new Map<string, Task>();
+  for (const child of children) {
+    byId.set(child.id, child);
+    if (child.previousOccurrenceId) superseded.add(child.previousOccurrenceId);
+  }
+  return children.filter(child => {
+    // Checked first so a successor that IS due today (a chain step, which
+    // spawns undated and surfaces immediately) is never dropped as a
+    // duplicate of the step that spawned it.
+    if (isRelevantToGroupToday(child)) return true;
+    if (child.completed || child.archived) return false;
+    if (superseded.has(child.id)) return false;
+    const prev = child.previousOccurrenceId ? byId.get(child.previousOccurrenceId) : undefined;
+    if (prev && isRelevantToGroupToday(prev)) return false;
+    return true;
+  });
+}
+
+// True when the user has dismissed this stack for the current logical day.
+// Self-expiring by construction: the stamp is compared against today rather
+// than just checked for existence, so a daily stack comes back on its own at
+// the day rollover and nothing has to remember to clear it. Callers pair this
+// with "every member due today is done" (see TaskGroupHeader) so a stack that
+// gains live work again after being dismissed can't stay hidden.
+export function isGroupDismissedToday(completedAt: string | null): boolean {
+  if (!completedAt) return false;
+  return +getDayStart(new Date(completedAt)) === +getCurrentDayStart();
+}
+
+// Whether a dismissed stack should actually stay hidden right now. `dueToday`
+// is the stack's members relevant to today (roster ∩ isRelevantToGroupToday).
+//
+// The "and everything due today is still done" half is what makes the
+// dismissal safe to leave lying around: a stack that gains live work again —
+// a recurring member spawning its next occurrence, an undo, a task added to
+// it — stops satisfying this and shows itself, so nothing has to detect those
+// events and clear the stamp. The old design did clear it, from four separate
+// call sites, and missed a fifth.
+export function isGroupHiddenToday(completedAt: string | null, dueToday: Task[]): boolean {
+  if (!isGroupDismissedToday(completedAt)) return false;
+  return dueToday.length > 0 && dueToday.every(t => t.completed);
+}
+
 export function getSegmentLabels(task: Task): string[] {
   const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
   return task.timeSegments.map(s => SEG_LABELS[s]);
