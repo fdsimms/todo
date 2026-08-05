@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -32,6 +33,7 @@ type RootStackParamList = {
 export function CategoryDetailScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardInset = useKeyboardListInset();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RootStackParamList, 'CategoryDetail'>>();
   const { category } = route.params;
@@ -150,8 +152,11 @@ export function CategoryDetailScreen() {
         <FlatList
           data={categoryTasks}
           keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+          contentContainerStyle={[
+            { flexGrow: 1 },
+            selectionListPadding !== undefined && { paddingBottom: selectionListPadding },
+            keyboardInset > 0 && { paddingBottom: keyboardInset },
+          ]}
           renderItem={({ item }) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
             return (

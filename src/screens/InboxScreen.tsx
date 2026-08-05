@@ -6,6 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -36,6 +37,7 @@ export function InboxScreen() {
   const navigation = useNavigation();
   const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardInset = useKeyboardListInset();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const allTasks = useTaskStore(s => s.tasks);
@@ -183,12 +185,12 @@ export function InboxScreen() {
         <FlatList
           data={inboxTasks}
           keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={
+          contentContainerStyle={[
             inboxTasks.length === 0
               ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }],
+            keyboardInset > 0 && { paddingBottom: keyboardInset },
+          ]}
           renderItem={({ item }) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
             return (

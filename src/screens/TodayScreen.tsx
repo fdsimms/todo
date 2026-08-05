@@ -37,6 +37,7 @@ import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -298,6 +299,7 @@ export function TodayScreen() {
   const route = useRoute<any>();
   const inboxCount = useTaskStore(s => s.inboxTasks().length);
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardInset = useKeyboardListInset();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
@@ -1532,9 +1534,12 @@ export function TodayScreen() {
           keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => renderItem({ item })}
-          contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+          contentContainerStyle={[
+            styles.listContent,
+            selectionListPadding !== undefined && { paddingBottom: selectionListPadding },
+            keyboardInset > 0 && { paddingBottom: keyboardInset },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={pullingToAdd}
@@ -1736,7 +1741,6 @@ export function TodayScreen() {
         <FlatList
           data={unscheduledTasks}
           keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => {
             const subs = subtasksByParent.get(item.id) ?? [];
             return (
@@ -1766,11 +1770,12 @@ export function TodayScreen() {
               />
             );
           }}
-          contentContainerStyle={
+          contentContainerStyle={[
             unscheduledTasks.length === 0
               ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
+              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }],
+            keyboardInset > 0 && { paddingBottom: keyboardInset },
+          ]}
           ListEmptyComponent={
             <EmptyState
               icon="layers-outline"

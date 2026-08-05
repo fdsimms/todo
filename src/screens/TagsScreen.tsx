@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
@@ -33,6 +34,7 @@ import type { Task } from '../types';
 export function TagsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
+  const keyboardInset = useKeyboardListInset();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -271,8 +273,11 @@ export function TagsScreen() {
             <FlatList
               data={tagTasks}
               keyExtractor={t => t.id}
-              automaticallyAdjustKeyboardInsets
-              contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+              contentContainerStyle={[
+                { flexGrow: 1 },
+                selectionListPadding !== undefined && { paddingBottom: selectionListPadding },
+                keyboardInset > 0 && { paddingBottom: keyboardInset },
+              ]}
               renderItem={({ item }) => {
                 const subs = allTasks.filter(t => t.parentId === item.id);
                 return (

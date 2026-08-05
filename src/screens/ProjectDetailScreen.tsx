@@ -19,6 +19,7 @@ import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { EmptyState } from '../components/EmptyState';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -37,6 +38,7 @@ export function ProjectDetailScreen() {
   const { projectId } = route.params;
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const keyboardInset = useKeyboardListInset();
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
@@ -116,8 +118,7 @@ export function ProjectDetailScreen() {
         <FlatList
           data={incompleteProjectTasks}
           keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={{ flexGrow: 1 }}
+          contentContainerStyle={[{ flexGrow: 1 }, keyboardInset > 0 && { paddingBottom: keyboardInset }]}
           renderItem={({ item }) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
             return (

@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { moveItem, dropIndexFromTranslation, rowDragOffset, rowIndexAtContentY } from '../utils/reorder';
 import { useTheme } from '../theme/ThemeContext';
+import { useKeyboardListInset } from '../hooks/useKeyboardListInset';
 
 const ROW_SHIFT_DURATION = 180;
 
@@ -131,6 +132,7 @@ export function ReorderableList<T>({
   onEndReachedThreshold = 300,
 }: Props<T>) {
   const { shadows } = useTheme();
+  const keyboardInset = useKeyboardListInset();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   // The committed order, rendered locally the instant a drop lands. This is
   // set in the SAME state batch as the drag reset, so the first frame after
@@ -531,12 +533,11 @@ export function ReorderableList<T>({
         scrollEventThrottle={16}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
         onContentSizeChange={(_w, h) => { contentHeightRef.current = h; }}
-        contentContainerStyle={contentContainerStyle}
+        contentContainerStyle={[contentContainerStyle, keyboardInset > 0 && { paddingBottom: keyboardInset }]}
         refreshControl={refreshControl}
         onScrollBeginDrag={onScrollBeginDrag}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
       >
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
