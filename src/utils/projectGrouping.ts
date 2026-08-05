@@ -40,9 +40,40 @@ export function groupProjectsByCategory(projects: Project[], categoryOrder: stri
   return items;
 }
 
-export const isProjectHeader = (item: ProjectListItem): boolean => item.type === 'header';
+export interface ProjectDropResolution {
+  /** Project ids in their new top-to-bottom order (for sortOrder persistence). */
+  projectIds: string[];
+  /** Projects whose category changed because of where they were dropped. */
+  categoryUpdates: Array<{ id: string; category: string | null }>;
+  /** The final, regrouped layout to show immediately after the drop. */
+  settled: ProjectListItem[];
+}
 
-/** Project ids in flattened order, headers dropped — for sortOrder persistence. */
-export function projectOrderFromItems(items: ProjectListItem[]): string[] {
-  return items.filter((i): i is Extract<ProjectListItem, { type: 'project' }> => i.type === 'project').map(i => i.project.id);
+/**
+ * Resolve a drag-and-drop drop on the Projects list, mirroring taskGrouping's
+ * resolveDrop: a project adopts the category of the nearest section header
+ * above it, and a project dragged above every header becomes uncategorized.
+ */
+export function resolveProjectDrop(reordered: ProjectListItem[], categoryOrder: string[] = []): ProjectDropResolution {
+  const projectIds: string[] = [];
+  const categoryUpdates: Array<{ id: string; category: string | null }> = [];
+  const orderedProjects: Project[] = [];
+  let currentSection: string | null = null;
+
+  for (const item of reordered) {
+    if (item.type === 'header') {
+      currentSection = item.label;
+      continue;
+    }
+    projectIds.push(item.project.id);
+    const target = currentSection;
+    const project = target === item.project.category ? item.project : { ...item.project, category: target };
+    if (target !== item.project.category) {
+      categoryUpdates.push({ id: item.project.id, category: target });
+    }
+    orderedProjects.push(project);
+  }
+
+  const settled = groupProjectsByCategory(orderedProjects, categoryOrder);
+  return { projectIds, categoryUpdates, settled };
 }

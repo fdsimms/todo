@@ -21,8 +21,7 @@ import { PressableScale } from '../components/PressableScale';
 import { ReorderableList } from '../components/ReorderableList';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
-import { groupTemplatesByCategory, isTemplateHeader, templateOrderFromItems } from '../utils/templateGrouping';
-import { dragRange } from '../utils/reorder';
+import { groupTemplatesByCategory, resolveTemplateDrop } from '../utils/templateGrouping';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -41,7 +40,7 @@ export function TemplatesScreen() {
   const templates = useTemplateStore(useShallow(s => s.templates));
   const addTemplate = useTemplateStore(s => s.addTemplate);
   const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
-  const reorderTemplates = useTemplateStore(s => s.reorderTemplates);
+  const reorderTemplatesWithCategoryUpdates = useTemplateStore(s => s.reorderTemplatesWithCategoryUpdates);
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
 
   const [addingTemplate, setAddingTemplate] = useState(false);
@@ -148,8 +147,10 @@ export function TemplatesScreen() {
       <ReorderableList
         data={templateListItems}
         keyExtractor={item => item.key}
-        dragRange={(data, idx) => dragRange(data, idx, isTemplateHeader)}
-        onReorder={data => reorderTemplates(templateOrderFromItems(data))}
+        onReorder={data => {
+          const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
+          reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
+        }}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           !addingTemplate ? (

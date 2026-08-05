@@ -324,6 +324,19 @@ describe('reorderTemplates', () => {
   });
 });
 
+describe('reorderTemplatesWithCategoryUpdates', () => {
+  it('reorders and applies category changes together', () => {
+    const a = useTemplateStore.getState().addTemplate('A');
+    const b = useTemplateStore.getState().addTemplate('B');
+    useTemplateStore.getState().reorderTemplatesWithCategoryUpdates(
+      [b.id, a.id],
+      [{ id: b.id, category: 'Trips' }],
+    );
+    expect(useTemplateStore.getState().templates.map(t => t.name)).toEqual(['B', 'A']);
+    expect(useTemplateStore.getState().templates.find(t => t.id === b.id)?.category).toBe('Trips');
+  });
+});
+
 describe('item groups', () => {
   it('addItemGroup creates a group scoped to the template', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');

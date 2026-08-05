@@ -36,6 +36,7 @@ interface ProjectStore {
   updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category'>>) => void;
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
+  reorderProjectsWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
   archiveProject: (id: string) => void;
   unarchiveProject: (id: string) => void;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
@@ -95,6 +96,11 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
         })
         .sort((a, b) => a.sortOrder - b.sortOrder),
     }));
+  },
+
+  reorderProjectsWithCategoryUpdates(orderedIds, categoryUpdates) {
+    get().reorderProjects(orderedIds);
+    categoryUpdates.forEach(u => get().updateProject(u.id, { category: u.category }));
   },
 
   archiveProject(id) {

@@ -24,6 +24,7 @@ interface TemplateStore {
   setTemplateCategory: (id: string, category: string | null) => void;
   deleteTemplate: (id: string) => void;
   reorderTemplates: (orderedIds: string[]) => void;
+  reorderTemplatesWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
   addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem;
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
@@ -89,6 +90,11 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const updated = ordered.map((t, index) => ({ ...t, sortOrder: index + 1 }));
     updated.forEach(t => dbUpdateTemplate(t));
     set(() => ({ templates: updated }));
+  },
+
+  reorderTemplatesWithCategoryUpdates(orderedIds, categoryUpdates) {
+    get().reorderTemplates(orderedIds);
+    categoryUpdates.forEach(u => get().setTemplateCategory(u.id, u.category));
   },
 
   setTemplateItems(id, items) {
