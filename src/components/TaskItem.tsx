@@ -1192,6 +1192,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   categoryLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
   },
   projectLabel: {
     color: colors.textTertiary,
