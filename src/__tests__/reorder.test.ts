@@ -174,22 +174,32 @@ describe('rowIndexAtContentY', () => {
 
 describe('contentOriginOffset', () => {
   it('is zero when the content starts flush with the container', () => {
-    expect(contentOriginOffset(200, 200, 0)).toBe(0);
-    expect(contentOriginOffset(120, 200, 80)).toBe(0);
+    expect(contentOriginOffset(200, 200)).toBe(0);
+  });
+
+  it('stays zero however far the list is scrolled', () => {
+    // measureLayout answers in layout coordinates, so a row at content-Y 900
+    // measures at 900 whether the list is at the top or scrolled right to it.
+    // Reading that against the row's on-screen position (900 - 380) and calling
+    // the difference an inset is what pushed the floating drag card a whole
+    // scroll offset below the finger — worse the further down the list it went.
+    expect(contentOriginOffset(900, 900)).toBe(0);
   });
 
   it('recovers a top content inset from a measured row', () => {
-    // Row sits at content-Y 200 with the list scrolled 80, so without an inset
-    // it would be on screen at 120 — it actually measures at 320.
-    expect(contentOriginOffset(320, 200, 80)).toBe(200);
+    // Row laid out at content-Y 200 measures at 320 against the container, so
+    // the content starts 120 below the container's top edge.
+    expect(contentOriginOffset(320, 200)).toBe(120);
   });
 
-  it('round-trips a content-Y back to the measured on-screen position', () => {
-    const origin = contentOriginOffset(320, 200, 80);
-    expect(200 - 80 + origin).toBe(320);
+  it('round-trips a content-Y back to where the row is on screen', () => {
+    const origin = contentOriginOffset(320, 200);
+    // Scrolled 80: the row measures at 320 in layout space and sits at 240 on
+    // screen, one scroll offset higher.
+    expect(200 - 80 + origin).toBe(240);
   });
 
   it('handles content drawn above the container origin', () => {
-    expect(contentOriginOffset(90, 200, 80)).toBe(-30);
+    expect(contentOriginOffset(170, 200)).toBe(-30);
   });
 });
