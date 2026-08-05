@@ -15,8 +15,19 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { resolveOffsetDate, formatOffsetLabel, anchorLabel, type TemplateAnchors } from '../utils/templateUtils';
+import {
+  resolveOffsetDate,
+  formatOffsetLabel,
+  anchorLabel,
+  buildApplyTree,
+  flattenApplyTree,
+  leafIdsUnder,
+  expandSelectionWithAncestors,
+  type TemplateAnchors,
+  type ApplyTreeNode,
+} from '../utils/templateUtils';
 import { formatDueDate } from '../utils/dateUtils';
 import { CalendarPicker } from './CalendarPicker';
 import type { TaskTemplate, TemplateItem } from '../types';
@@ -52,18 +63,40 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | nu
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/** Recursively collect the ids of every leaf item under `nodes` that should start checked (optional items, and everything under an optional nested-template block, start unchecked). */
+function initialLeafSelection(nodes: ApplyTreeNode[], ancestorOptional: boolean, out: Set<string>) {
+  for (const node of nodes) {
+    if (node.broken) continue;
+    if (node.item.refTemplateId === null) {
+      if (!node.item.optional && !ancestorOptional) out.add(node.item.id);
+    } else {
+      initialLeafSelection(node.children, ancestorOptional || node.item.optional, out);
+    }
+  }
+}
+
 /**
  * Bottom sheet for applying a template: pick an optional anchor date, toggle
- * which items to include (optional items start unchecked), then create them
- * all as real tasks.
+ * which items to include (optional items start unchecked, including whole
+ * nested-template blocks), then create them all as real tasks.
  */
 export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const templates = useTemplateStore(useShallow(s => s.templates));
   const applyTemplate = useTemplateStore(s => s.applyTemplate);
 
+  const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
+  const tree = useMemo(
+    () => (template ? buildApplyTree(template.items, template.id, templatesById) : []),
+    [template, templatesById]
+  );
+
+  // Leaf item ids the user has checked — the only ids the checklist UI
+  // itself needs to track; ref-item ids are derived at apply time.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [collapsedRefIds, setCollapsedRefIds] = useState<Set<string>>(new Set());
   const [startAnchor, setStartAnchor] = useState<Date | null>(null);
   const [endAnchor, setEndAnchor] = useState<Date | null>(null);
   const [calendarTarget, setCalendarTarget] = useState<'start' | 'end' | null>(null);
@@ -74,8 +107,12 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
   useEffect(() => {
     if (visible && template) {
-      // Non-optional items start checked; optional ones start unchecked.
-      setSelectedIds(new Set(template.items.filter(i => !i.optional).map(i => i.id)));
+      // Non-optional leaves start checked; optional ones (and everything
+      // under an optional nested-template block) start unchecked.
+      const initial = new Set<string>();
+      initialLeafSelection(buildApplyTree(template.items, template.id, templatesById), false, initial);
+      setSelectedIds(initial);
+      setCollapsedRefIds(new Set());
       setStartAnchor(null);
       setEndAnchor(null);
       setCalendarTarget(null);
@@ -171,8 +208,30 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
     });
   };
 
-  const selectedCount = selectedIds.size;
-  const anchorless = template.items.some(i => {
+  /** Toggle every leaf under a ref node together: all-select if any are unchecked, else deselect all. */
+  const toggleNode = (node: ApplyTreeNode) => {
+    haptics.tap();
+    const leafIds = leafIdsUnder(node);
+    setSelectedIds(prev => {
+      const allChecked = leafIds.every(id => prev.has(id));
+      const next = new Set(prev);
+      leafIds.forEach(id => (allChecked ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  };
+
+  const toggleCollapsed = (id: string) => {
+    haptics.tap();
+    setCollapsedRefIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const flatLeaves = flattenApplyTree(tree);
+  const selectedCount = flatLeaves.filter(l => selectedIds.has(l.item.id)).length;
+  const anchorless = flatLeaves.some(({ item: i }) => {
     if (!selectedIds.has(i.id)) return false;
     if (i.dueOffsetDays === null && i.deferOffsetDays === null) return false;
     return i.anchor === 'end' ? endAnchor === null : startAnchor === null;
@@ -181,8 +240,98 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   const handleApply = () => {
     if (selectedCount === 0) return;
     haptics.success();
-    applyTemplate(template.id, selectedIds, anchors);
+    const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
+    applyTemplate(template.id, flatSelection, anchors);
     dismiss();
+  };
+
+  const renderApplyTreeNodes = (nodes: ApplyTreeNode[], depth: number) =>
+    nodes.map((node, idx) => {
+      const isLast = idx === nodes.length - 1;
+      const row = renderApplyTreeNode(node, depth);
+      return (
+        <React.Fragment key={node.item.id}>
+          {row}
+          {!isLast && <View style={styles.inlineSep} />}
+        </React.Fragment>
+      );
+    });
+
+  const renderApplyTreeNode = (node: ApplyTreeNode, depth: number) => {
+    const indent = { paddingLeft: spacing.md + depth * spacing.lg };
+
+    if (node.broken) {
+      return (
+        <View style={[styles.itemRow, indent]}>
+          <Ionicons name="alert-circle" size={20} color={colors.warning} />
+          <View style={styles.itemContent}>
+            <Text style={[styles.itemTitle, { color: colors.warning }]} numberOfLines={1}>
+              {node.item.refTemplateName || 'Nested template'} was deleted — skipped
+            </Text>
+          </View>
+        </View>
+      );
+    }
+
+    if (node.item.refTemplateId !== null) {
+      const resolved = templatesById.get(node.item.refTemplateId);
+      const name = resolved?.name ?? node.item.refTemplateName;
+      const leafIds = leafIdsUnder(node);
+      const allChecked = leafIds.length > 0 && leafIds.every(id => selectedIds.has(id));
+      const collapsed = collapsedRefIds.has(node.item.id);
+      return (
+        <View>
+          <View style={[styles.itemRow, indent]}>
+            <TouchableOpacity onPress={() => toggleNode(node)} activeOpacity={interaction.activeOpacity}>
+              <Ionicons
+                name={allChecked ? 'checkmark-circle' : 'ellipse-outline'}
+                size={22}
+                color={allChecked ? colors.accent : colors.textTertiary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.itemContent}
+              onPress={() => toggleCollapsed(node.item.id)}
+              activeOpacity={interaction.activeOpacity}
+            >
+              <View style={styles.nestedTitleRow}>
+                <Ionicons name="git-branch-outline" size={13} color={colors.textSecondary} />
+                <Text style={[styles.itemTitle, !allChecked && styles.itemTitleUnchecked]} numberOfLines={1}>
+                  {name}
+                </Text>
+              </View>
+              <Text style={styles.itemSub} numberOfLines={1}>
+                {leafIds.length} item{leafIds.length === 1 ? '' : 's'}
+              </Text>
+            </TouchableOpacity>
+            <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
+          </View>
+          {!collapsed && renderApplyTreeNodes(node.children, depth + 1)}
+        </View>
+      );
+    }
+
+    const checked = selectedIds.has(node.item.id);
+    const sublabel = itemSublabel(node.item, anchors);
+    return (
+      <TouchableOpacity
+        style={[styles.itemRow, indent]}
+        onPress={() => toggleItem(node.item.id)}
+        activeOpacity={interaction.activeOpacity}
+      >
+        <Ionicons
+          name={checked ? 'checkmark-circle' : 'ellipse-outline'}
+          size={22}
+          color={checked ? colors.accent : colors.textTertiary}
+        />
+        <View style={styles.itemContent}>
+          <Text style={[styles.itemTitle, !checked && styles.itemTitleUnchecked]} numberOfLines={1}>
+            {node.item.title}
+          </Text>
+          {sublabel && <Text style={styles.itemSub} numberOfLines={1}>{sublabel}</Text>}
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -235,34 +384,9 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
           <View style={styles.inlineSep} />
 
-          {/* Item checklist */}
+          {/* Item checklist, including any nested templates' items indented beneath their ref row */}
           <ScrollView style={styles.itemList} bounces={false}>
-            {template.items.map((item, idx) => {
-              const checked = selectedIds.has(item.id);
-              const sublabel = itemSublabel(item, anchors);
-              return (
-                <React.Fragment key={item.id}>
-                  <TouchableOpacity
-                    style={styles.itemRow}
-                    onPress={() => toggleItem(item.id)}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Ionicons
-                      name={checked ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={22}
-                      color={checked ? colors.accent : colors.textTertiary}
-                    />
-                    <View style={styles.itemContent}>
-                      <Text style={[styles.itemTitle, !checked && styles.itemTitleUnchecked]} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      {sublabel && <Text style={styles.itemSub} numberOfLines={1}>{sublabel}</Text>}
-                    </View>
-                  </TouchableOpacity>
-                  {idx < template.items.length - 1 && <View style={styles.inlineSep} />}
-                </React.Fragment>
-              );
-            })}
+            {renderApplyTreeNodes(tree, 0)}
           </ScrollView>
 
           {anchorless && (
@@ -404,6 +528,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 12,
   },
   itemContent: { flex: 1, gap: 1 },
+  nestedTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   itemTitle: {
     color: colors.text,
     fontSize: font.md,

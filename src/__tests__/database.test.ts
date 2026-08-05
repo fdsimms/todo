@@ -801,6 +801,8 @@ describe('Templates', () => {
     chainItems: [],
     subtasks: [],
     groupId: null,
+    refTemplateId: null,
+    refTemplateName: '',
     ...overrides,
   });
 
