@@ -320,9 +320,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       projectId: task ? (task.projectId ?? null) : (initialDraft?.projectId ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
-      deadline: task?.deadline ?? null,
+      deadline: task
+        ? (task.deadlineOffsetDays !== null && task.deadlineOffsetDays !== undefined && task.dueDate
+            ? getDeadlineFromOffset(new Date(task.dueDate), task.deadlineOffsetDays).toISOString()
+            : task.deadlineMonthDay !== null && task.deadlineMonthDay !== undefined && task.dueDate
+            ? getDeadlineFromMonthDay(new Date(task.dueDate), task.deadlineMonthDay).toISOString()
+            : task.deadline ?? null)
+        : null,
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
+      timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
       deferUntil: task?.deferUntil ?? null,
@@ -643,10 +650,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay,
+      timeSegments,
       windowStart, windowEnd,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
-      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceFromCompletion,
+      recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
