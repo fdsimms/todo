@@ -424,7 +424,7 @@ export function SettingsScreen() {
                 <Ionicons name="sparkles-outline" size={18} color={colors.purple} style={{ marginTop: 2 }} />
                 <View style={styles.rowContent}>
                   <Text style={styles.rowLabel}>Anthropic API Key</Text>
-                  <Text style={styles.rowHint}>Enables auto-tag, effort, and date suggestions in the task editor, plus pin suggestions and template drafting</Text>
+                  <Text style={styles.rowHint}>Enables auto-tag, effort, and date suggestions in the task editor, plus template drafting</Text>
                   <TextInput
                     style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
                     value={apiKeyDraft}
