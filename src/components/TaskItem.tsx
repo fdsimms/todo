@@ -31,6 +31,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { startLinkLiveActivity } from '../utils/liveActivity';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -145,6 +146,12 @@ export function TaskItem({
   const handleOpenLink = async () => {
     if (!task.linkUrl) return;
     haptics.tap();
+    // Must happen before openURL, and awaited: ActivityKit refuses to start a
+    // Live Activity once the app has lost the foreground, which is exactly
+    // what the next line does. No-ops on Android, in Expo Go, below iOS 17, or
+    // when the setting is off — never throws, so it stays outside the try
+    // below (failing to start the activity must not stop the link opening).
+    await startLinkLiveActivity(task);
     try {
       // Skip Linking.canOpenURL: on iOS it only returns true for schemes
       // pre-declared in LSApplicationQueriesSchemes, which would break both
