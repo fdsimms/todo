@@ -1,0 +1,4 @@
+{
+  "message": "Fixed time-windowed tasks (with a start/end time) disappearing right at midnight instead of staying put until your day reset time",
+  "date": "2026-08-05"
+}
