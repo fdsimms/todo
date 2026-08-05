@@ -58,6 +58,17 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
   target[key] = source[key];
 }
 
+// A dismissed stack (TaskGroup.completedAt set — see TaskGroupHeader) is only
+// ever hidden while every child is actually done. Anything that hands the
+// group a new incomplete child — a recurring/chained spawn, an undo, or
+// adding an existing task to it — must un-dismiss it here, otherwise it
+// would keep hiding live work on Today.
+function clearGroupDismissal(groupId: string | null): void {
+  if (!groupId) return;
+  const group = useTaskGroupStore.getState().getGroupById(groupId);
+  if (group?.completedAt) useTaskGroupStore.getState().setGroupCompletedAt(groupId, null);
+}
+
 // A completed task keeps appearing wherever it would if it were still
 // incomplete, for COMPLETION_HOLD_MS after it's completed — and every new
 // completion pushes the hold back out (see the clearTimeout/setTimeout pair
@@ -162,6 +173,7 @@ interface TaskStore {
   groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
   completeGroup: (groupId: string) => void;
   uncompleteGroup: (groupId: string) => void;
+  dismissGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
   deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
@@ -565,6 +577,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ],
       completionHoldIds: [...s.completionHoldIds, id],
     }));
+    if (nextTask) clearGroupDismissal(nextTask.groupId);
 
     // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
     // finishing a project never happens automatically otherwise; the user
@@ -647,6 +660,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
     }));
+    clearGroupDismissal(task.groupId);
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
     // shake-to-undo — this restores the exact prior completed state rather
@@ -988,6 +1002,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
+    clearGroupDismissal(groupId);
     return task;
   },
 
@@ -997,6 +1012,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const siblings = get().tasks.filter(t => t.groupId === groupId);
     const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
     get().updateTask(taskId, { groupId, sortOrder: maxOrder + 1 });
+    if (!task.completed) clearGroupDismissal(groupId);
   },
 
   removeFromGroup(taskId) {
@@ -1071,6 +1087,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${children.length} task${children.length === 1 ? '' : 's'} uncompleted`,
       undo: () => undos.forEach(fn => fn()),
+    });
+  },
+
+  // Marks a fully-done stack as explicitly dismissed so it drops off Today
+  // (see TaskGroupHeader/visibleGroupItems) instead of sitting there checked
+  // off forever. Distinct from uncompleteGroup: this doesn't touch any
+  // child's completed state at all, it only stamps the group itself.
+  dismissGroup(groupId) {
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group || group.completedAt) return;
+    useTaskGroupStore.getState().setGroupCompletedAt(groupId, new Date().toISOString());
+    get().setLastAction({
+      label: 'Stack completed',
+      undo: () => useTaskGroupStore.getState().setGroupCompletedAt(groupId, null),
     });
   },
 

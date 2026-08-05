@@ -167,6 +167,7 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
+  completedAt: null,
   ...overrides,
 });
 
@@ -1695,6 +1696,60 @@ describe('uncompleteGroup', () => {
     expect(tasks.find(t => t.id === 'today')?.completed).toBe(false);
     expect(tasks.find(t => t.id === 'old-1')?.completed).toBe(true);
     expect(tasks.find(t => t.id === 'old-2')?.completed).toBe(true);
+  });
+});
+
+describe('dismissGroup', () => {
+  it('stamps the group completedAt without touching any child', () => {
+    const today = new Date().toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: today })],
+    });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.getState().dismissGroup('g1');
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).not.toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(true);
+  });
+
+  it('is undoable via lastAction', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.getState().dismissGroup('g1');
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+  });
+
+  it('does nothing if the group is already dismissed', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: '2026-01-01T00:00:00.000Z' })] });
+    useTaskStore.getState().dismissGroup('g1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('clears automatically once a completed recurring child respawns an incomplete occurrence', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', groupId: 'g1', completed: false,
+        recurrenceType: 'daily', recurrenceInterval: 1,
+      })],
+    });
+    useTaskStore.getState().completeTask('a');
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+  });
+
+  it('clears automatically when an incomplete task is added to a dismissed group', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: null, completed: false })] });
+    useTaskStore.getState().addExistingToGroup('a', 'g1');
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+  });
+
+  it('leaves a dismissed group cleared when uncompleting one of its children', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: new Date().toISOString() })],
+    });
+    useTaskStore.getState().uncompleteTask('a');
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
   });
 });
 
