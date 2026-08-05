@@ -17,6 +17,7 @@ import {
   dbBulkSetPinned,
   dbBulkAddTags,
   dbMarkTaskSeen,
+  dbTransaction,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -61,6 +62,7 @@ jest.mock('../db/database', () => ({
   dbBulkSetPinned: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
+  dbTransaction: jest.fn((fn: () => void) => fn()),
   dbGetAllTemplates: jest.fn().mockReturnValue([]),
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
@@ -1752,6 +1754,17 @@ describe('completeGroup', () => {
     expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
   });
 
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'b', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1');
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('never force-completes a child not yet due (mismatched recurrence cadence)', () => {
     const farFuture = new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString();
     useTaskStore.setState({
@@ -2008,6 +2021,15 @@ describe('deleteGroup', () => {
     expect(useTaskGroupStore.getState().groups).toHaveLength(0);
   });
 
+  it('runs its cascade writes inside a single db transaction', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' })],
+    });
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('queues an undo that restores the group and its orphaned children', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', title: 'Supplements' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: 'g1' })] });
@@ -2066,12 +2088,17 @@ describe('bulkDeleteTasks', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(0);
   });
 
-  it('calls dbBulkDeleteTasks and cancels reminders', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a' }), makeTask({ id: 'b' })] });
+  it('calls dbBulkDeleteTasks and cancels reminders for tasks that have one', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', reminderTime: '2025-06-01T09:00:00.000Z' }),
+        makeTask({ id: 'b' }),
+      ],
+    });
     useTaskStore.getState().bulkDeleteTasks(['a', 'b']);
     expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['a', 'b']);
     expect(cancelTaskReminder).toHaveBeenCalledWith('a');
-    expect(cancelTaskReminder).toHaveBeenCalledWith('b');
+    expect(cancelTaskReminder).not.toHaveBeenCalledWith('b');
   });
 
   it('does nothing for an empty id list', () => {
@@ -2139,6 +2166,14 @@ describe('bulkCompleteTasks', () => {
     });
     useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
     expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'none' }), makeTask({ id: 'b', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().bulkCompleteTasks(['a', 'b']);
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('queues an undo action that uncompletes every specified task', () => {
@@ -2577,6 +2612,15 @@ describe('deleteProject', () => {
     expect(useTaskStore.getState().tasks.every(t => t.projectId === null)).toBe(true);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
     expect(useProjectStore.getState().projects).toHaveLength(0);
+  });
+
+  it('runs its cascade writes inside a single db transaction', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().deleteProject('p1', { cascade: true });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('deletes member tasks too (cascade: true)', () => {

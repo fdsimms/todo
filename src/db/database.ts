@@ -413,6 +413,16 @@ export function dbClearAllPins(): void {
   db.runSync('UPDATE tasks SET pinned = 0 WHERE pinned = 1');
 }
 
+// Lets a store-level cascade (looping a single-task action like completeTask
+// or deleteTask over many ids) commit as one WAL transaction instead of one
+// per iteration. Safe to wrap around any of dbInsertTask/dbUpdateTask/
+// dbDeleteTask/dbDeleteSubtasks — all plain runSync — but never around a
+// dbBulk* function below, which already opens its own transaction and would
+// nest.
+export function dbTransaction(fn: () => void): void {
+  db.withTransactionSync(fn);
+}
+
 export function dbBulkDeleteTasks(ids: string[]): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {

@@ -4,6 +4,7 @@ import {
   dbUpdateTemplate,
   dbDeleteTemplate,
   dbGetAllTemplates,
+  dbTransaction,
 } from '../db/database';
 import type { TaskTemplate, TemplateItem, TaskDraft } from '../types';
 
@@ -12,6 +13,7 @@ jest.mock('../db/database', () => ({
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
   dbDeleteTemplate: jest.fn(),
+  dbTransaction: jest.fn((fn: () => void) => fn()),
 }));
 
 const mockAddTask = jest.fn();
@@ -168,6 +170,16 @@ describe('applyTemplate', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(2);
     expect(created).toHaveLength(2);
     expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Pack', 'Trash']);
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Pack' }), makeItem({ id: 'b', title: 'Trash' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b']), { start: null, end: null });
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('computes dueDate/deferUntil from the start anchor', () => {
