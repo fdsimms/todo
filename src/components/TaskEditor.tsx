@@ -863,6 +863,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               placeholder="Task title"
               placeholderTextColor={colors.textTertiary}
               maxLength={TITLE_MAX_LENGTH}
+              // iOS's own inline predictive-text completion draws its candidate
+              // directly into the field, on top of (and misaligned with) the
+              // schedule-phrase overlay above — it reads as our highlight
+              // glitching. Autocorrect off suppresses that native suggestion.
+              autoCorrect={false}
               multiline blurOnSubmit
             />
           </View>

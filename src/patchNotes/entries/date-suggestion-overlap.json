@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the date-suggestion highlight in task titles sometimes overlapping the text you typed, in both the task editor and quick add",
+  "date": "2026-08-05"
+}
