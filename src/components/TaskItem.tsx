@@ -37,6 +37,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
+import { usePaintSelectionRow } from './PaintSelection';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 
@@ -196,6 +197,11 @@ export function TaskItem({
   // strength and fade *that* out instead.
   const isSpotlighted = useSpotlightLinger(expanded);
   const swipeableRef = useRef<Swipeable>(null);
+  // Lets a paint-select drag find this row by its on-screen position. A no-op
+  // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
+  // the floating copy of a row being dragged, which would otherwise take the
+  // real row's registration with it when the drop ends.
+  const paintRowRef = usePaintSelectionRow(isActive ? null : task.id);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
 
@@ -933,6 +939,10 @@ export function TaskItem({
     <>
       <Reanimated.View style={collapseStyle} onLayout={handleItemLayout}>
         <Animated.View
+          // The card itself, not the collapse wrapper above it — its frame is
+          // exactly the band a finger painting down the list should hit, with
+          // the inter-row margins left out.
+          ref={paintRowRef}
           style={[
             styles.itemWrapper,
             shadows.card,
