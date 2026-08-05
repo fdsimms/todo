@@ -33,7 +33,8 @@ import { PressableScale } from './PressableScale';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput } from '../utils/parseTaskInput';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
@@ -56,7 +57,12 @@ interface Props {
   initialRecurrenceType?: RecurrenceType;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | null;
+
+/** Known app name for a link scheme, else the raw URL. */
+function linkLabel(url: string): string {
+  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+}
 
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
@@ -143,6 +149,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
+  const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [customLinkText, setCustomLinkText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -183,6 +191,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setTimeSegments([]);
       setTags([]);
       setCategory(null);
+      setLinkUrl(null);
+      setCustomLinkText('');
       setTagInput('');
       setActivePanel(initialRecurrenceType ? 'repeat' : null);
       setRecurrenceType(initialRecurrenceType ?? 'none');
@@ -226,14 +236,26 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
   );
-  const matchEnd = parsed ? parsed.matchStart + parsed.matchedText.length : 0;
+  // Pasted URL/app-link detection — same tooltip mechanism as the schedule
+  // parse above, just not suffix-anchored. Only checked when no schedule
+  // phrase matched, so the two tooltips never compete for the same slot.
+  const linkParsed = useMemo(
+    () => (!parsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed]
+  );
+  const activeMatch = parsed
+    ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
+    : linkParsed
+      ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
+      : null;
+  const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
-  // while a schedule phrase is detected so the list doesn't fight the tooltip
-  // that renders just below the input row.
+  // while a schedule/link phrase is detected so the list doesn't fight the
+  // tooltip that renders just below the input row.
   const suggestions = useMemo(
-    () => (parsed ? [] : suggestTitles(tasks, title)),
-    [tasks, title, parsed]
+    () => (activeMatch ? [] : suggestTitles(tasks, title)),
+    [tasks, title, activeMatch]
   );
 
   const applySuggestion = (suggestion: string) => {
@@ -245,12 +267,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   // Pop the tooltip in when a phrase is first detected (not on every keystroke
   // that merely extends it).
   useEffect(() => {
-    if (parsed && !hadParse.current) {
+    if (activeMatch && !hadParse.current) {
       tooltipAnim.setValue(0);
       Animated.spring(tooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
     }
-    hadParse.current = parsed != null;
-  }, [parsed]);
+    hadParse.current = activeMatch != null;
+  }, [activeMatch]);
 
   // Tooltip geometry: center the bubble under the highlighted phrase and aim
   // the caret at it, clamped to the row. Mirror-text widths land a frame after
@@ -258,7 +280,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const CARET_W = 12;
   let bubbleLeft = 0;
   let caretLeft = 14;
-  if (parsed && prefixW != null && matchW != null) {
+  if (activeMatch && prefixW != null && matchW != null) {
     const center = Math.min((prefixW + matchW) / 2, Math.max(inputW - 8, 0));
     bubbleLeft = Math.min(Math.max(center - bubbleW / 2, 0), Math.max(tooltipRowW - bubbleW, 0));
     caretLeft = Math.min(
@@ -285,6 +307,21 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
   };
 
+  // Apply the detected link and strip it from the title.
+  const applyLink = () => {
+    if (!linkParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(linkParsed.cleanTitle);
+    setLinkUrl(linkParsed.url);
+  };
+
+  const commitCustomLink = () => {
+    const t = customLinkText.trim();
+    setLinkUrl(t || null);
+    setActivePanel(null);
+  };
+
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -297,6 +334,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       timeSegments,
       tags,
       category,
+      linkUrl,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays,
@@ -349,6 +387,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       timeSegments,
       tags,
       category,
+      linkUrl,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays,
@@ -363,6 +402,9 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setActivePanel(prev => prev === panel ? null : panel);
     if (panel === 'tags') {
       setTimeout(() => tagInputRef.current?.focus(), 100);
+    }
+    if (panel === 'link' && linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+      setCustomLinkText(linkUrl);
     }
   };
 
@@ -489,16 +531,16 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
-              {parsed && (
+              {activeMatch && (
                 <Text style={[styles.input, styles.inputOverlay]} pointerEvents="none">
-                  {title.slice(0, parsed.matchStart)}
-                  <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
+                  {title.slice(0, activeMatch.matchStart)}
+                  <Text style={styles.inputHighlight}>{title.slice(activeMatch.matchStart, matchEnd)}</Text>
                   {title.slice(matchEnd)}
                 </Text>
               )}
               <TextInput
                 ref={inputRef}
-                style={[styles.input, parsed && styles.inputHidden]}
+                style={[styles.input, activeMatch && styles.inputHidden]}
                 placeholder="New task…"
                 placeholderTextColor={colors.textTertiary}
                 value={title}
@@ -511,14 +553,14 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
               />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
-              {parsed && (
+              {activeMatch && (
                 <View style={styles.measureWrap} pointerEvents="none">
                   <Text style={styles.measureText} onLayout={e => setPrefixW(e.nativeEvent.layout.width)}>
-                    {title.slice(0, parsed.matchStart)}
+                    {title.slice(0, activeMatch.matchStart)}
                   </Text>
                   <Text style={styles.measureText} onLayout={e => setMatchW(e.nativeEvent.layout.width)}>
-                    {title.slice(0, parsed.matchStart)}
-                    <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
+                    {title.slice(0, activeMatch.matchStart)}
+                    <Text style={styles.inputHighlight}>{title.slice(activeMatch.matchStart, matchEnd)}</Text>
                   </Text>
                 </View>
               )}
@@ -557,8 +599,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
             </View>
           )}
 
-          {/* Schedule tooltip — points at the highlighted phrase; tap to apply */}
-          {parsed && (
+          {/* Schedule/link tooltip — points at the highlighted phrase; tap to apply */}
+          {activeMatch && (
             <Animated.View
               style={[styles.tooltipRow, {
                 opacity: tooltipAnim,
@@ -573,15 +615,17 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={applyParse}
+                  onPress={parsed ? applyParse : applyLink}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
-                    name={parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+                    name={parsed ? (parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline') : 'link-outline'}
                     size={14}
                     color={colors.onAccent}
                   />
-                  <Text style={styles.tooltipText}>{describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))}</Text>
+                  <Text style={styles.tooltipText}>
+                    {parsed ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime)) : linkLabel(linkParsed!.url)}
+                  </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>
                 </PressableScale>
@@ -728,6 +772,26 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
               {category !== null && (
                 <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
                   {categoryLabel(category, categories)}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* Link chip */}
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'link' && styles.toolChipActive, linkUrl !== null && styles.toolChipSet]}
+              onPress={() => togglePanel('link')}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={linkUrl !== null ? `Link: ${linkLabel(linkUrl)}` : 'Set link'}
+            >
+              <Ionicons
+                name="link-outline"
+                size={13}
+                color={linkUrl ? colors.accent : colors.textTertiary}
+              />
+              {linkUrl !== null && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                  {linkLabel(linkUrl)}
                 </Text>
               )}
             </TouchableOpacity>
@@ -1150,6 +1214,54 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
             </View>
           )}
 
+          {activePanel === 'link' && (
+            <View style={styles.panel}>
+              <View style={styles.presetRow}>
+                {KNOWN_LINK_APPS.map(app => (
+                  <TouchableOpacity
+                    key={app.scheme}
+                    style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                    onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Ionicons
+                      name={app.icon as never}
+                      size={13}
+                      color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
+                    />
+                    <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                      {app.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.linkCustomRow}>
+                <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={customLinkText}
+                  onChangeText={setCustomLinkText}
+                  onSubmitEditing={commitCustomLink}
+                  onBlur={commitCustomLink}
+                  placeholder="https://... or app://"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+                {linkUrl !== null && (
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* More details */}
           <TouchableOpacity style={styles.moreBtn} onPress={handleOpenFull} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
@@ -1314,6 +1426,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   toolChipTextSet: {
     color: colors.accent,
+  },
+  toolChipTextTruncate: {
+    maxWidth: 140,
   },
   priorityDot: {
     width: 8,
@@ -1589,5 +1704,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   aiChipText: {
     color: colors.purple,
     fontWeight: '600',
+  },
+  linkAppChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  linkAppChipActive: {
+    backgroundColor: colors.accent,
+  },
+  linkAppChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  linkAppChipTextActive: {
+    color: colors.onAccent,
+    fontWeight: fontWeight.semibold,
+  },
+  linkCustomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  linkCustomInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.accent,
+    paddingVertical: 4,
   },
 });
