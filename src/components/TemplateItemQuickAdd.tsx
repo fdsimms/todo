@@ -118,7 +118,6 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           intensity={30}
           tint={isDark ? 'dark' : 'light'}
           style={StyleSheet.absoluteFill}
-          fallbackColor={colors.blurFallback}
         />
       </TouchableOpacity>
       <KeyboardAvoidingView

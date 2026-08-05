@@ -44,7 +44,7 @@ export function ProjectDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const projects = useProjectStore(useShallow(s => s.projects));
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const addCategory = useTaskStore(s => s.addCategory);

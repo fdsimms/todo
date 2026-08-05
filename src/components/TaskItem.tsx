@@ -130,19 +130,25 @@ export function TaskItem({
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const groupTitle = useTaskGroupStore(s => task.groupId ? s.getGroupById(task.groupId)?.title ?? null : null);
-  const completeTask = useTaskStore(s => s.completeTask);
-  const updateTask = useTaskStore(s => s.updateTask);
-  const setLastAction = useTaskStore(s => s.setLastAction);
-  const markTaskSeen = useTaskStore(s => s.markTaskSeen);
-  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
-  const togglePin = useTaskStore(s => s.togglePin);
-  const startTimer = useTaskStore(s => s.startTimer);
-  const stopTimer = useTaskStore(s => s.stopTimer);
-  const discardTimer = useTaskStore(s => s.discardTimer);
-  const toggleSubtask = useTaskStore(s => s.toggleSubtask);
-  const deleteSubtask = useTaskStore(s => s.deleteSubtask);
-  const reorderSubtasks = useTaskStore(s => s.reorderSubtasks);
-  const duplicateTask = useTaskStore(s => s.duplicateTask);
+  // Action functions are built once by the store and never replaced, so
+  // reading them via getState() here is safe even though it skips the
+  // subscription — there is no update to these references to miss, and
+  // TaskItem is mounted once per row, not re-created per render.
+  const {
+    completeTask,
+    updateTask,
+    setLastAction,
+    markTaskSeen,
+    skipNextRecurrence,
+    togglePin,
+    startTimer,
+    stopTimer,
+    discardTimer,
+    toggleSubtask,
+    deleteSubtask,
+    reorderSubtasks,
+    duplicateTask,
+  } = useTaskStore.getState();
   const handleOpenLink = async () => {
     if (!task.linkUrl) return;
     haptics.tap();

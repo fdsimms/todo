@@ -9,9 +9,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format, subDays, isToday, startOfWeek, isSameDay } from 'date-fns';
+import { format } from 'date-fns/format';
+import { subDays } from 'date-fns/subDays';
+import { isToday } from 'date-fns/isToday';
+import { startOfWeek } from 'date-fns/startOfWeek';
+import { isSameDay } from 'date-fns/isSameDay';
 import { useTaskStore } from '../store/useTaskStore';
-import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
@@ -63,7 +66,7 @@ function expectedCount(recurrenceType: string, interval: number): number {
 export function StatsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
-  const tasks = useTaskStore(useShallow(s => s.tasks));
+  const tasks = useTaskStore(s => s.tasks);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 

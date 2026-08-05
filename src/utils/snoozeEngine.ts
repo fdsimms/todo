@@ -1,4 +1,8 @@
-import { addDays, differenceInCalendarDays, isSameDay, isThisWeek, format } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { isSameDay } from 'date-fns/isSameDay';
+import { isThisWeek } from 'date-fns/isThisWeek';
+import { format } from 'date-fns/format';
 import type { Task } from '../types';
 import { getNextDueDate } from './dateUtils';
 import { minutesToEffort } from './effort';

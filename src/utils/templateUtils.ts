@@ -3,7 +3,8 @@
  * turning template items into task drafts at apply time. Kept free of store
  * imports so the date-offset math can be unit-tested like reorder.ts.
  */
-import { addDays, startOfDay } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskDraft, TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
 import { generateId } from './id';
 

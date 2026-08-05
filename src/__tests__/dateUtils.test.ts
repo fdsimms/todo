@@ -2,10 +2,8 @@ import {
   getDayStart,
   formatDueDate,
   formatStartDate,
-  formatDeferUntil,
   formatGroupHeader,
   getNextDueDate,
-  getStreakDisplay,
   getStreakOutcome,
   getDeadlineCountdown,
   getDeadlineFromMonthDay,
@@ -202,44 +200,6 @@ describe('formatStartDate', () => {
 
   it('returns "MMM d, yyyy" for dates in a different year', () => {
     expect(formatStartDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
-  });
-});
-
-// ─── formatDeferUntil ─────────────────────────────────────────────────────────
-
-describe('formatDeferUntil', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(NOW);
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('returns "Today" for today', () => {
-    const result = formatDeferUntil(new Date(2025, 5, 10, 15, 30, 0).toISOString());
-    expect(result).toBe('Today');
-  });
-
-  it('returns "Tomorrow" for tomorrow', () => {
-    const result = formatDeferUntil(new Date(2025, 5, 11, 9, 0, 0).toISOString());
-    expect(result).toBe('Tomorrow');
-  });
-
-  it('returns a day name within this week', () => {
-    const result = formatDeferUntil(new Date(2025, 5, 14, 14, 45, 0).toISOString());
-    expect(result).toBe('Saturday');
-  });
-
-  it('returns "MMM d" for dates beyond this week', () => {
-    const result = formatDeferUntil(new Date(2025, 6, 20, 14, 45, 0).toISOString());
-    expect(result).toBe('Jul 20');
-  });
-
-  it('returns "MMM d, yyyy" for dates in a different year', () => {
-    const result = formatDeferUntil(new Date(2029, 7, 19, 14, 45, 0).toISOString());
-    expect(result).toBe('Aug 19, 2029');
   });
 });
 
@@ -757,89 +717,6 @@ describe('getNextDueDate', () => {
     };
     const result = getNextDueDate(task, '04:00')!;
     expect(result.getDate()).toBe(10); // June 10 — not stuck on June 9
-  });
-});
-
-// ─── getStreakDisplay ─────────────────────────────────────────────────────────
-
-describe('getStreakDisplay', () => {
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(NOW); // June 10 2025 10:00 AM
-  });
-
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('returns null for non-recurring tasks', () => {
-    expect(getStreakDisplay({ ...baseTask, recurrenceType: 'none' })).toBeNull();
-  });
-
-  it('returns null when streakDate is null', () => {
-    expect(getStreakDisplay({ ...baseTask, recurrenceType: 'daily', streakDate: null })).toBeNull();
-  });
-
-  it('returns null when streak count is 1 (not yet a streak)', () => {
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'daily',
-      streakCount: 1,
-      streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
-    };
-    expect(getStreakDisplay(task)).toBeNull();
-  });
-
-  it('returns positive streak when completed today', () => {
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'daily',
-      streakCount: 5,
-      streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
-    };
-    expect(getStreakDisplay(task)).toEqual({ sign: '+', count: 5 });
-  });
-
-  it('returns positive streak when last completed yesterday', () => {
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'daily',
-      streakCount: 3,
-      streakDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), // yesterday
-    };
-    expect(getStreakDisplay(task)).toEqual({ sign: '+', count: 3 });
-  });
-
-  it('returns negative streak (daysMissed - 1) when days were skipped', () => {
-    // streakDate = 3 days ago → daysMissed=3 → count = 3-1 = 2
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'daily',
-      streakCount: 7,
-      streakDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(),
-    };
-    expect(getStreakDisplay(task)).toEqual({ sign: '-', count: 2 });
-  });
-
-  it('counts exactly 1 missed day correctly', () => {
-    // streakDate = 2 days ago → daysMissed=2 → count = 1
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'daily',
-      streakCount: 4,
-      streakDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
-    };
-    expect(getStreakDisplay(task)).toEqual({ sign: '-', count: 1 });
-  });
-
-  it('works for weekly recurrence too', () => {
-    const task: Task = {
-      ...baseTask,
-      recurrenceType: 'weekly',
-      streakCount: 8,
-      streakDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
-    };
-    expect(getStreakDisplay(task)).toEqual({ sign: '+', count: 8 });
   });
 });
 

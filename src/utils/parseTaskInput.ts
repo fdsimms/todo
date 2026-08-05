@@ -1,4 +1,14 @@
-import { addDays, addMonths, addWeeks, addYears, format, isSameDay, lastDayOfMonth, setDate, setHours, startOfDay, startOfMonth } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { addMonths } from 'date-fns/addMonths';
+import { addWeeks } from 'date-fns/addWeeks';
+import { addYears } from 'date-fns/addYears';
+import { format } from 'date-fns/format';
+import { isSameDay } from 'date-fns/isSameDay';
+import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
+import { setDate } from 'date-fns/setDate';
+import { setHours } from 'date-fns/setHours';
+import { startOfDay } from 'date-fns/startOfDay';
+import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { RecurrenceType, TimeOfDay } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS } from './parseNaturalDate';

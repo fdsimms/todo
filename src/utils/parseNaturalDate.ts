@@ -1,19 +1,17 @@
-import {
-  addDays,
-  addWeeks,
-  addMonths,
-  addYears,
-  addHours,
-  addMinutes,
-  setHours,
-  setMinutes,
-  setSeconds,
-  setMilliseconds,
-  startOfDay,
-  nextDay,
-  isSameWeek,
-  type Day,
-} from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { addWeeks } from 'date-fns/addWeeks';
+import { addMonths } from 'date-fns/addMonths';
+import { addYears } from 'date-fns/addYears';
+import { addHours } from 'date-fns/addHours';
+import { addMinutes } from 'date-fns/addMinutes';
+import { setHours } from 'date-fns/setHours';
+import { setMinutes } from 'date-fns/setMinutes';
+import { setSeconds } from 'date-fns/setSeconds';
+import { setMilliseconds } from 'date-fns/setMilliseconds';
+import { startOfDay } from 'date-fns/startOfDay';
+import { nextDay } from 'date-fns/nextDay';
+import { isSameWeek } from 'date-fns/isSameWeek';
+import type { Day } from 'date-fns';
 
 /**
  * Lightweight natural-language date parser built on date-fns.

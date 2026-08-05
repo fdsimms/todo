@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns/format';
+import { parseISO } from 'date-fns/parseISO';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
 import { patchNotes } from '../utils/patchNotes';

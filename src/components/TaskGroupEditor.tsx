@@ -60,7 +60,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
 
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useTaskStore(s => s.tasks);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);

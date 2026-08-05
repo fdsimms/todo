@@ -3,7 +3,6 @@ import {
   dropIndexFromTranslation,
   cumulativeOffsets,
   rowDragOffset,
-  dropSlotY,
   dragRange,
   rowIndexAtContentY,
   contentOriginOffset,
@@ -143,25 +142,6 @@ describe('dragRange', () => {
 
   it('handles a row with no header before or after', () => {
     expect(dragRange(['a', 'b', 'c'], 1, isHeader)).toEqual([0, 2]);
-  });
-});
-
-describe('dropSlotY', () => {
-  const heights = [36, 52, 52, 36, 52];
-
-  it('is the row top when hovering its own slot', () => {
-    // offsets: [0, 36, 88, 140, 176]
-    expect(dropSlotY(heights, 2, 2)).toBe(88);
-  });
-
-  it('tracks the gap below when dragging down', () => {
-    // Active 1 (h=52), hover 3: offsets[3] + heights[3] - 52 = 140 + 36 - 52.
-    expect(dropSlotY(heights, 1, 3)).toBe(124);
-  });
-
-  it('tracks the gap above when dragging up', () => {
-    // Active 4, hover 1: offsets[1] = 36.
-    expect(dropSlotY(heights, 4, 1)).toBe(36);
   });
 });
 

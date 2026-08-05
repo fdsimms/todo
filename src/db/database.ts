@@ -535,22 +535,6 @@ export function dbGetCategoryRegistry(): string[] {
   try { return JSON.parse(val) as string[]; } catch { return []; }
 }
 
-export function dbAddToCategoryRegistry(name: string): void {
-  const current = dbGetCategoryRegistry();
-  if (!current.includes(name)) {
-    dbSetSetting('category_registry', JSON.stringify([...current, name]));
-  }
-}
-
-export function dbRemoveFromCategoryRegistry(name: string): void {
-  const current = dbGetCategoryRegistry();
-  dbSetSetting('category_registry', JSON.stringify(current.filter(c => c !== name)));
-}
-
-export function dbRemoveCategoryFromAllTasks(name: string): void {
-  db.runSync("UPDATE tasks SET category = NULL WHERE category = ?", [name]);
-}
-
 // ─── Categories ───────────────────────────────────────────────────────────────
 
 function rowToCategory(row: Record<string, unknown>): Category {
@@ -708,14 +692,6 @@ export function dbUpdateTaskGroup(group: TaskGroup): void {
 
 export function dbDeleteTaskGroup(id: string): void {
   db.runSync('DELETE FROM task_groups WHERE id = ?', [id]);
-}
-
-export function dbBatchUpdateTaskGroupSortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
-    for (const { id, sortOrder } of updates) {
-      db.runSync('UPDATE task_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
-    }
-  });
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────
