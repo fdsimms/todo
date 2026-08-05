@@ -54,6 +54,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
   const pendingActionRef = useRef<(() => void) | null>(null);
+  // Settings navigates to a whole new screen, so the drawer's own close
+  // animation is invisible to the user anyway — closing it with a quick
+  // timing (instead of the spring used for a plain swipe/backdrop close)
+  // gets the Settings push started sooner without reintroducing the
+  // two-Modal-at-once glitch the deferred navigate below guards against.
+  const fastCloseRef = useRef(false);
 
   const swipePanResponder = useRef(
     PanResponder.create({
@@ -78,6 +84,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
 
   useEffect(() => {
     if (visible) {
+      fastCloseRef.current = false;
       setIsRendered(true);
       Animated.parallel([
         Animated.spring(translateX, {
@@ -93,19 +100,33 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         }),
       ]).start();
     } else {
-      Animated.parallel([
-        Animated.spring(translateX, {
-          toValue: -DRAWER_WIDTH,
-          damping: 30,
-          stiffness: 280,
-          useNativeDriver: true,
-        }),
-        Animated.timing(backdropOpacity, {
-          toValue: 0,
-          duration: 180,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
+      const closeAnimations = fastCloseRef.current
+        ? [
+            Animated.timing(translateX, {
+              toValue: -DRAWER_WIDTH,
+              duration: animation.duration.fast,
+              useNativeDriver: true,
+            }),
+            Animated.timing(backdropOpacity, {
+              toValue: 0,
+              duration: animation.duration.fast,
+              useNativeDriver: true,
+            }),
+          ]
+        : [
+            Animated.spring(translateX, {
+              toValue: -DRAWER_WIDTH,
+              damping: 30,
+              stiffness: 280,
+              useNativeDriver: true,
+            }),
+            Animated.timing(backdropOpacity, {
+              toValue: 0,
+              duration: 180,
+              useNativeDriver: true,
+            }),
+          ];
+      Animated.parallel(closeAnimations).start(() => {
         setIsRendered(false);
         // Let the native Modal fully unmount before presenting another one —
         // two RN Modals visible at once on iOS can leave touches inert.
@@ -123,6 +144,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
 
   const handleSettings = () => {
     haptics.tap();
+    fastCloseRef.current = true;
     pendingActionRef.current = onOpenSettings;
     onClose();
   };
