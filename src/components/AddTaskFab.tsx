@@ -21,7 +21,7 @@ interface Props {
   onSelect: (type: AddTaskType) => void;
   disabled?: boolean;
   /** Fades the resting FAB (e.g. while a task is spotlighted). Ignored while the menu is open. */
-  opacity?: Animated.Value;
+  opacity?: Animated.AnimatedInterpolation<number> | Animated.Value;
 }
 
 /** FAB that accordions out into Chain/Stack/Recurring/Task shortcuts, each of which opens the editor with that type preselected. */

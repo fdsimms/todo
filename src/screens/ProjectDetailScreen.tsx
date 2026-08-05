@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { TaskItem } from '../components/TaskItem';
+import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { EmptyState } from '../components/EmptyState';
@@ -52,6 +53,9 @@ export function ProjectDetailScreen() {
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  // Every row's scrim shares this one animation, so the dim lands as a
+  // single motion — see SpotlightOverlay.
+  const spotlightProgress = useSpotlightProgress(expandedTaskId !== null);
 
   const project = projects.find(p => p.id === projectId) ?? null;
   const projectTasks = project
@@ -93,208 +97,210 @@ export function ProjectDetailScreen() {
   }, [allTasks, existingSearch, project]);
 
   return (
-    <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-      <View style={styles.detailHeader}>
-        <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <Text style={styles.detailTitleText} numberOfLines={1}>{project?.title}</Text>
-        <TouchableOpacity
-          onPress={() => project && setEditingProject(project)}
-          accessibilityRole="button"
-          accessibilityLabel="Edit project"
+    <SpotlightProvider progress={spotlightProgress}>
+      <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
+        <View style={styles.detailHeader}>
+          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
+            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <Text style={styles.detailTitleText} numberOfLines={1}>{project?.title}</Text>
+          <TouchableOpacity
+            onPress={() => project && setEditingProject(project)}
+            accessibilityRole="button"
+            accessibilityLabel="Edit project"
+          >
+            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
+        <View
+          style={{ flex: 1 }}
+          onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
+          onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
         >
-          <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
-      </View>
-
-      <View
-        style={{ flex: 1 }}
-        onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
-        onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
-      >
-        <FlatList
-          data={incompleteProjectTasks}
-          keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={{ flexGrow: 1 }}
-          renderItem={({ item }) => {
-            const subs = allTasks.filter(t => t.parentId === item.id);
-            return (
-              <TaskItem
-                task={item}
-                onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                    setExpandedTaskId(null);
-                    return;
-                  }
-                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                }}
-                expanded={expandedTaskId === item.id}
-                onEdit={() => openEditor(item)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
-              />
-            );
-          }}
-          ListEmptyComponent={
-            completedProjectTasks.length === 0 ? (
-              <EmptyState icon="briefcase-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
-            ) : null
-          }
-          ListFooterComponent={
-            <View style={styles.detailFooter}>
-              {completedProjectTasks.length > 0 && (
-                <View style={styles.completedSection}>
-                  <TouchableOpacity
-                    style={styles.completedToggle}
-                    onPress={() => { animateLayout(); setShowCompleted(v => !v); }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} completed tasks`}
-                  >
-                    <Ionicons name="checkmark-circle-outline" size={13} color={colors.textTertiary} />
-                    <Text style={styles.completedToggleText}>
-                      {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} completed
-                    </Text>
-                    <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                  {showCompleted && completedProjectTasks.map(task => {
-                    const subs = allTasks.filter(t => t.parentId === task.id);
-                    return (
-                      <TaskItem
-                        key={task.id}
-                        task={task}
-                        onPress={() => {
-                          if (expandedTaskId !== null && expandedTaskId !== task.id) {
-                            setExpandedTaskId(null);
-                            return;
-                          }
-                          setExpandedTaskId(prev => prev === task.id ? null : task.id);
-                        }}
-                        expanded={expandedTaskId === task.id}
-                        onEdit={() => openEditor(task)}
-                        subtaskCount={subs.length}
-                        subtaskDoneCount={subs.filter(t => t.completed).length}
-                        subtasks={subs}
-                        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id}
-                      />
-                    );
-                  })}
-                </View>
-              )}
-              {addingTask ? (
-                <View style={styles.addRow}>
-                  <TextInput
-                    autoFocus
-                    style={styles.addInput}
-                    value={newTaskTitle}
-                    onChangeText={setNewTaskTitle}
-                    placeholder="New task title"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      const t = newTaskTitle.trim();
-                      if (t && project) addTask({ title: t, projectId: project.id });
-                      setNewTaskTitle('');
-                      haptics.tap();
-                    }}
-                    onBlur={() => {
-                      const t = newTaskTitle.trim();
-                      if (t && project) addTask({ title: t, projectId: project.id });
-                      setNewTaskTitle('');
-                      setAddingTask(false);
-                    }}
-                  />
-                </View>
-              ) : (
-                <TouchableOpacity style={styles.footerBtn} onPress={() => setAddingTask(true)} activeOpacity={interaction.activeOpacity}>
-                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                  <Text style={styles.footerBtnText}>New task</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                style={styles.footerBtn}
-                onPress={() => { setExistingSearch(''); setShowExistingPicker(true); }}
-                activeOpacity={interaction.activeOpacity}
-              >
-                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                <Text style={styles.footerBtnText}>Add existing task</Text>
-              </TouchableOpacity>
-            </View>
-          }
-        />
-      </View>
-
-      {/* Add-existing-task picker — nested inside this screen's own tree
-          (not a sibling top-level Modal), same nested-modal-stacking risk as
-          the old Projects detail Modal. */}
-      <Modal
-        visible={showExistingPicker}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowExistingPicker(false)}
-      >
-        <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
-          <View style={styles.detailHeader}>
-            <TouchableOpacity onPress={() => setShowExistingPicker(false)} accessibilityRole="button" accessibilityLabel="Close">
-              <Text style={styles.headerBtnText}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.detailTitleText}>Add Existing Task</Text>
-            <View style={{ width: 48 }} />
-          </View>
-          <View style={styles.searchRow}>
-            <Ionicons name="search" size={16} color={colors.textTertiary} />
-            <TextInput
-              autoFocus
-              style={styles.searchInput}
-              value={existingSearch}
-              onChangeText={setExistingSearch}
-              placeholder="Search tasks"
-              placeholderTextColor={colors.textTertiary}
-            />
-          </View>
           <FlatList
-            data={eligibleForAdd}
+            data={incompleteProjectTasks}
             keyExtractor={t => t.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.pickerRow}
-                onPress={() => {
-                  if (project) addExistingToProject(item.id, project.id);
-                  haptics.tap();
-                }}
-                activeOpacity={interaction.activeOpacity}
-              >
-                <Text style={styles.pickerRowText} numberOfLines={1}>{item.title}</Text>
-                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-              </TouchableOpacity>
-            )}
+            automaticallyAdjustKeyboardInsets
+            contentContainerStyle={{ flexGrow: 1 }}
+            renderItem={({ item }) => {
+              const subs = allTasks.filter(t => t.parentId === item.id);
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
+                  expanded={expandedTaskId === item.id}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                />
+              );
+            }}
             ListEmptyComponent={
-              <EmptyState icon="search" title="No matching tasks" subtitle="Tasks already in a project, or completed, won't show here" />
+              completedProjectTasks.length === 0 ? (
+                <EmptyState icon="briefcase-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
+              ) : null
+            }
+            ListFooterComponent={
+              <View style={styles.detailFooter}>
+                {completedProjectTasks.length > 0 && (
+                  <View style={styles.completedSection}>
+                    <TouchableOpacity
+                      style={styles.completedToggle}
+                      onPress={() => { animateLayout(); setShowCompleted(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${showCompleted ? 'Hide' : 'Show'} ${completedProjectTasks.length} completed tasks`}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={13} color={colors.textTertiary} />
+                      <Text style={styles.completedToggleText}>
+                        {showCompleted ? 'Hide' : 'Show'} {completedProjectTasks.length} completed
+                      </Text>
+                      <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                    {showCompleted && completedProjectTasks.map(task => {
+                      const subs = allTasks.filter(t => t.parentId === task.id);
+                      return (
+                        <TaskItem
+                          key={task.id}
+                          task={task}
+                          onPress={() => {
+                            if (expandedTaskId !== null && expandedTaskId !== task.id) {
+                              setExpandedTaskId(null);
+                              return;
+                            }
+                            setExpandedTaskId(prev => prev === task.id ? null : task.id);
+                          }}
+                          expanded={expandedTaskId === task.id}
+                          onEdit={() => openEditor(task)}
+                          subtaskCount={subs.length}
+                          subtaskDoneCount={subs.filter(t => t.completed).length}
+                          subtasks={subs}
+                          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+                {addingTask ? (
+                  <View style={styles.addRow}>
+                    <TextInput
+                      autoFocus
+                      style={styles.addInput}
+                      value={newTaskTitle}
+                      onChangeText={setNewTaskTitle}
+                      placeholder="New task title"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        const t = newTaskTitle.trim();
+                        if (t && project) addTask({ title: t, projectId: project.id });
+                        setNewTaskTitle('');
+                        haptics.tap();
+                      }}
+                      onBlur={() => {
+                        const t = newTaskTitle.trim();
+                        if (t && project) addTask({ title: t, projectId: project.id });
+                        setNewTaskTitle('');
+                        setAddingTask(false);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TouchableOpacity style={styles.footerBtn} onPress={() => setAddingTask(true)} activeOpacity={interaction.activeOpacity}>
+                    <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                    <Text style={styles.footerBtnText}>New task</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.footerBtn}
+                  onPress={() => { setExistingSearch(''); setShowExistingPicker(true); }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                  <Text style={styles.footerBtnText}>Add existing task</Text>
+                </TouchableOpacity>
+              </View>
             }
           />
         </View>
-      </Modal>
 
-      <ProjectEditor
-        visible={editingProject !== null}
-        project={editingProject}
-        onClose={() => setEditingProject(null)}
-      />
+        {/* Add-existing-task picker — nested inside this screen's own tree
+            (not a sibling top-level Modal), same nested-modal-stacking risk as
+            the old Projects detail Modal. */}
+        <Modal
+          visible={showExistingPicker}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowExistingPicker(false)}
+        >
+          <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
+            <View style={styles.detailHeader}>
+              <TouchableOpacity onPress={() => setShowExistingPicker(false)} accessibilityRole="button" accessibilityLabel="Close">
+                <Text style={styles.headerBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.detailTitleText}>Add Existing Task</Text>
+              <View style={{ width: 48 }} />
+            </View>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={16} color={colors.textTertiary} />
+              <TextInput
+                autoFocus
+                style={styles.searchInput}
+                value={existingSearch}
+                onChangeText={setExistingSearch}
+                placeholder="Search tasks"
+                placeholderTextColor={colors.textTertiary}
+              />
+            </View>
+            <FlatList
+              data={eligibleForAdd}
+              keyExtractor={t => t.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerRow}
+                  onPress={() => {
+                    if (project) addExistingToProject(item.id, project.id);
+                    haptics.tap();
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Text style={styles.pickerRowText} numberOfLines={1}>{item.title}</Text>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <EmptyState icon="search" title="No matching tasks" subtitle="Tasks already in a project, or completed, won't show here" />
+              }
+            />
+          </View>
+        </Modal>
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        onClose={() => {
-          setEditorVisible(false);
-          setExpandedTaskId(null);
-        }}
-      />
-    </View>
+        <ProjectEditor
+          visible={editingProject !== null}
+          project={editingProject}
+          onClose={() => setEditingProject(null)}
+        />
+
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          onClose={() => {
+            setEditorVisible(false);
+            setExpandedTaskId(null);
+          }}
+        />
+      </View>
+    </SpotlightProvider>
   );
 }
 
