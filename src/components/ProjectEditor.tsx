@@ -30,10 +30,12 @@ import { animateLayout } from '../utils/layoutAnimation';
 interface Props {
   visible: boolean;
   project: Project | null;
+  /** Titles the sheet "New Project" — set when arriving from quick add's "More details". */
+  isNew?: boolean;
   onClose: () => void;
 }
 
-export function ProjectEditor({ visible, project, onClose }: Props) {
+export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -109,7 +111,7 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
           <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Project</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
