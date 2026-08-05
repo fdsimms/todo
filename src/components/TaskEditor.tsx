@@ -1955,13 +1955,28 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
           onConfirm={(date) => { setRecurrenceEndDate(date); setShowEndDatePicker(false); }}
           onCancel={() => setShowEndDatePicker(false)}
         />
+        {/* Same picker as Date above — only the title differs, so there's no
+            second way to pick a day anywhere in the editor. */}
         <WhenPicker
           visible={showDeadlinePicker}
           value={deadline}
           title="Deadline"
-          showTimeOfDay={false}
-          showSuggest={false}
-          onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+          timeSegments={timeSegments}
+          taskTitle={title}
+          taskNotes={notes}
+          taskEffort={effort}
+          taskEstimatedMinutes={estimatedMinutes}
+          onConfirm={(date, segs) => {
+            if (date) {
+              const noon = new Date(date);
+              noon.setHours(12, 0, 0, 0);
+              setDeadline(noon);
+            } else {
+              setDeadline(null);
+            }
+            setTimeSegments(segs);
+            setShowDeadlinePicker(false);
+          }}
           onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
           onCancel={() => setShowDeadlinePicker(false)}
         />
