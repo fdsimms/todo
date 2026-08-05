@@ -1,0 +1,4 @@
+{
+  "message": "Fixed empty screens getting stuck half-faded if you switched tabs while they were fading in",
+  "date": "2026-08-05"
+}
