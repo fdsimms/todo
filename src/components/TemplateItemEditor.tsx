@@ -21,8 +21,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { anchorLabel, formatOffsetWithAnchor } from '../utils/templateUtils';
+import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { WeekdaySelector } from './WeekdaySelector';
@@ -71,6 +73,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const updateItem = useTemplateStore(s => s.updateItem);
 
@@ -845,7 +848,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <View style={styles.sectionCard}>
             <CollapsibleField
               label="Category"
-              summary={category ?? undefined}
+              summary={category ? categoryLabel(category, categories) : undefined}
               hint="One home for the task — drives the Categories screen and its filters."
               expanded={fieldOpen('category')}
               onToggle={() => toggleField('category')}
@@ -863,7 +866,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     style={[styles.pill, category === cat && styles.pillActiveNeutral]}
                     onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                   >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
