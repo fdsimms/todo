@@ -7,7 +7,6 @@
 
 import {
   suggestTaskAttributes,
-  suggestTaskDate,
   suggestTaskEffort,
   suggestPinTasks,
   suggestTemplateItems,
@@ -319,111 +318,6 @@ describe('suggestTaskEffort', () => {
   it('throws without an API error response', async () => {
     mockFetchOnce({}, 500);
     await expect(suggestTaskEffort('x', '')).rejects.toThrow('API error 500');
-  });
-});
-
-// ============================================================================
-// suggestTaskDate
-// ============================================================================
-
-describe('suggestTaskDate', () => {
-  // Pin the clock so candidate dates are deterministic.
-  // "today" = 2025-06-09 → candidates are 2025-06-10 … 2025-06-16
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(new Date('2025-06-09T10:00:00.000Z'));
-  });
-
-  it('throws when no API key is configured', async () => {
-    jest.spyOn(
-      require('../store/useSettingsStore').useSettingsStore,
-      'getState',
-    ).mockReturnValue({ anthropicApiKey: '' });
-
-    await expect(suggestTaskDate('title', '', 0, [])).rejects.toThrow('No API key');
-  });
-
-  it('throws on a non-OK HTTP response', async () => {
-    mockFetchOnce({}, 503);
-    await expect(suggestTaskDate('title', '', 0, [])).rejects.toThrow('API error 503');
-  });
-
-  it('throws when the response contains no tool_use block', async () => {
-    mockFetchOnce({ content: [] });
-    await expect(suggestTaskDate('title', '', 0, [])).rejects.toThrow('No suggestion returned');
-  });
-
-  it('returns the date and reason from the tool_use response', async () => {
-    mockFetchOnce(
-      toolUseResponse('schedule', { date: '2025-06-12', reason: 'Light load on Thursday.' }),
-    );
-    const result = await suggestTaskDate('Review PR', '', 2, []);
-    expect(result.date).toBe('2025-06-12');
-    expect(result.reason).toBe('Light load on Thursday.');
-  });
-
-  it('falls back to the lightest day when the model returns an off-list date', async () => {
-    // Load up 2025-06-10 heavily so it is NOT the lightest day
-    const heavyTask = makeTask({ id: 'h', effort: 5, dueDate: '2025-06-10T00:00:00.000Z' });
-
-    mockFetchOnce(
-      toolUseResponse('schedule', { date: '1999-01-01', reason: 'Bad date.' }),
-    );
-    const result = await suggestTaskDate('task', '', 0, [heavyTask]);
-
-    // Fallback should skip 2025-06-10 (effort=5) and pick the first day with load=0
-    expect(result.date).not.toBe('1999-01-01');
-    expect(result.date).not.toBe('2025-06-10');
-    // The lightest day is 2025-06-11 (first day with zero load)
-    expect(result.date).toBe('2025-06-11');
-  });
-
-  it('provides a default reason when the model returns an empty one', async () => {
-    mockFetchOnce(
-      toolUseResponse('schedule', { date: '2025-06-11', reason: '   ' }),
-    );
-    const result = await suggestTaskDate('task', '', 0, []);
-    expect(result.reason).toBe('Balances your upcoming workload.');
-  });
-
-  it('only counts non-completed tasks with due dates in the load calculation', async () => {
-    // These should NOT contribute to load
-    const completed = makeTask({ id: 'c', completed: true, completedAt: '2025-06-09T10:00:00.000Z', dueDate: '2025-06-10T00:00:00.000Z', effort: 5 });
-    const noDate = makeTask({ id: 'n', effort: 5, dueDate: null });
-    // This one IS in the window and open
-    const open = makeTask({ id: 'o', effort: 4, dueDate: '2025-06-10T00:00:00.000Z' });
-
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(toolUseResponse('schedule', { date: '2025-06-10', reason: 'ok' })),
-    } as Response);
-
-    await suggestTaskDate('task', '', 0, [completed, noDate, open]);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const content = body.messages[0].content as string;
-    // 2025-06-10 should reflect only the open task's time (effort 4 → 90min → 1.5h),
-    // not the completed/no-date tasks.
-    expect(content).toContain('2025-06-10');
-    expect(content).toContain('load 1.5h');
-  });
-
-  it('ignores tasks due outside the 7-day horizon', async () => {
-    const farFuture = makeTask({ id: 'ff', effort: 5, dueDate: '2025-07-31T00:00:00.000Z' });
-
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(toolUseResponse('schedule', { date: '2025-06-10', reason: 'ok' })),
-    } as Response);
-
-    await suggestTaskDate('task', '', 0, [farFuture]);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const content = body.messages[0].content as string;
-    // 2025-06-10 should show no load (0m), since the far-future task is out of window
-    expect(content).toMatch(/2025-06-10.*load 0m/);
   });
 });
 

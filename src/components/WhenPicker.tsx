@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Dimensions,
   Animated,
-  ActivityIndicator,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
@@ -24,25 +23,50 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
-import type { TimeOfDay, Effort } from '../types';
+import { generateId } from '../utils/id';
+import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { suggestTaskDate } from '../services/aiSuggestions';
+import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
+
+// Placeholder fields the snooze engine doesn't consider — only the ones it
+// actually reads (title/notes/tags/category/priority/effort) get overridden
+// with the in-progress edits below.
+const BLANK_SNOOZE_TASK: Task = {
+  id: '', title: '', notes: '', completed: false, completedAt: null,
+  createdAt: '', seenAt: null, dueDate: null, deadline: null,
+  deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
+  timeSegments: [], windowStart: null, windowEnd: null,
+  recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
+  recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceEndDate: null,
+  recurrenceCount: null, recurrenceFromCompletion: false,
+  tags: [], category: null, sortOrder: 0, pinned: false, priority: 0, effort: 0,
+  estimatedMinutes: null, reminderTime: null, linkUrl: null,
+  streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null,
+  parentId: null, groupId: null, projectId: null,
+  chainEnabled: false, chainIndex: 0, chainItems: [], vacationPause: false,
+  archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
+  previousOccurrenceId: null, seriesDefaults: null,
+};
 
 interface Props {
   visible: boolean;
   value?: Date | null;
   timeSegments?: TimeOfDay[];
-  // Context for the AI "Suggest" date feature.
+  // Context for the "Suggest" date feature.
+  taskId?: string;
   taskTitle?: string;
   taskNotes?: string;
+  taskTags?: string[];
+  taskCategory?: string | null;
+  taskPriority?: Priority;
   taskEffort?: Effort;
   taskEstimatedMinutes?: number | null;
   onConfirm: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   onClear?: () => void;
   onCancel: () => void;
   title?: string;
-  // Hides the "Time of day" section and the AI "Suggest" button — used when
+  // Hides the "Time of day" section and the "Suggest" button — used when
   // there's no single task to anchor them to, e.g. rescheduling a whole group.
   showTimeOfDay?: boolean;
   showSuggest?: boolean;
@@ -91,21 +115,19 @@ function buildCalendarGrid(displayMonth: Date): Date[] {
 
 export function WhenPicker({
   visible, value, timeSegments: initialSegments,
-  taskTitle, taskNotes, taskEffort, taskEstimatedMinutes,
+  taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
   title = 'When?', showTimeOfDay = true, showSuggest = true,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
   // Day currently being confirmed — drives the brief "you picked it" feedback.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
   const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
@@ -125,7 +147,6 @@ export function WhenPicker({
       setDisplayMonth(startOfMonth(value ?? new Date()));
       setSegments(initialSegments ?? []);
       setPendingKey(null);
-      setAiLoading(false);
       setSuggestion(null);
       setSuggestError(null);
       pendingRef.current = false;
@@ -178,23 +199,30 @@ export function WhenPicker({
     onConfirm(value ?? null, segments);
   };
 
-  const handleSuggest = async () => {
-    if (aiLoading || pendingRef.current) return;
-    setAiLoading(true);
+  const handleSuggest = () => {
+    if (pendingRef.current) return;
     setSuggestion(null);
     setSuggestError(null);
     haptics.impactLight();
     try {
-      const res = await suggestTaskDate(taskTitle ?? '', taskNotes ?? '', taskEffort ?? 0, tasks, taskEstimatedMinutes ?? null);
-      const suggested = noonOf(new Date(`${res.date}T12:00:00`));
-      setSuggestion({ key: res.date, reason: res.reason });
-      setDisplayMonth(startOfMonth(suggested));
+      const draftTask: Task = {
+        ...BLANK_SNOOZE_TASK,
+        id: taskId ?? generateId(),
+        title: taskTitle ?? '',
+        notes: taskNotes ?? '',
+        tags: taskTags ?? [],
+        category: taskCategory ?? null,
+        priority: taskPriority ?? 0,
+        effort: taskEffort ?? 0,
+        estimatedMinutes: taskEstimatedMinutes ?? null,
+      };
+      const res = computeSnoozeSuggestion(draftTask, tasks);
+      setSuggestion({ key: dayKey(res.date), reason: res.reason });
+      setDisplayMonth(startOfMonth(res.date));
       haptics.success();
     } catch (e) {
       setSuggestError(e instanceof Error ? e.message : 'Could not suggest a date.');
       haptics.error();
-    } finally {
-      setAiLoading(false);
     }
   };
 
@@ -289,23 +317,16 @@ export function WhenPicker({
                 popAnim={popAnim}
                 onPress={handleTomorrow}
               />
-              {showSuggest && !!anthropicApiKey && (
+              {showSuggest && (
                 <TouchableOpacity
                   style={[styles.quickButton, styles.suggestButton]}
                   onPress={handleSuggest}
                   activeOpacity={interaction.activeOpacity}
-                  disabled={aiLoading}
                 >
-                  {aiLoading ? (
-                    <ActivityIndicator size="small" color={colors.purple} />
-                  ) : (
-                    <Ionicons name="sparkles" size={15} color={colors.purple} />
-                  )}
-                  {!aiLoading && (
-                    <Text style={[styles.quickButtonLabel, { color: colors.purple, fontWeight: fontWeight.semibold }]}>
-                      Suggest
-                    </Text>
-                  )}
+                  <Ionicons name="sparkles" size={15} color={colors.purple} />
+                  <Text style={[styles.quickButtonLabel, { color: colors.purple, fontWeight: fontWeight.semibold }]}>
+                    Suggest
+                  </Text>
                 </TouchableOpacity>
               )}
             </View>

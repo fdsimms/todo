@@ -8,6 +8,12 @@ jest.mock('../store/useSettingsStore', () => ({
   },
 }));
 
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: () => ({ getCategoryByName: () => null }),
+  },
+}));
+
 const BASE: Task = {
   id: 'task-1',
   title: 'Test',
@@ -182,6 +188,23 @@ describe('computeSnoozeSuggestion', () => {
     const result = computeSnoozeSuggestion(task, [task]);
     const tomorrow = addDays(new Date(), 1);
     expect(isoDate(result.date)).toBe(isoDate(tomorrow));
+  });
+
+  it('only suggests a day the category is scheduled for', () => {
+    // Whichever of the next 7 days is NOT the category's scheduled day-of-week
+    const tomorrow = addDays(new Date(), 1);
+    const scheduledDow = (tomorrow.getDay() + 2) % 7; // definitely not tomorrow's dow
+
+    jest.spyOn(
+      require('../store/useCategoryStore').useCategoryStore,
+      'getState',
+    ).mockReturnValue({
+      getCategoryByName: () => ({ scheduleDays: [scheduledDow] }),
+    });
+
+    const task = makeTask({ id: 'snooze-me', category: 'Errands' });
+    const result = computeSnoozeSuggestion(task, [task]);
+    expect(result.date.getDay()).toBe(scheduledDow);
   });
 });
 

@@ -1273,6 +1273,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
         value={dueDate}
         timeSegments={timeSegments}
         taskTitle={title}
+        taskTags={tags}
+        taskCategory={category}
+        taskPriority={priority}
+        taskEffort={effort}
+        taskEstimatedMinutes={estimatedMinutes}
         onConfirm={(date, segs) => {
           setDueDate(date);
           setTimeSegments(segs);
