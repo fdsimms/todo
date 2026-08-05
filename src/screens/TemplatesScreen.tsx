@@ -5,9 +5,7 @@ import {
   TouchableOpacity,
   TextInput,
   StyleSheet,
-  Alert,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
@@ -23,10 +21,10 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { groupTemplatesByCategory, resolveTemplateDrop } from '../utils/templateGrouping';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { templateHasBrokenRefs, findTemplatesReferencing } from '../utils/templateUtils';
+import { templateHasBrokenRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
 
 export function TemplatesScreen() {
@@ -39,7 +37,6 @@ export function TemplatesScreen() {
 
   const templates = useTemplateStore(useShallow(s => s.templates));
   const addTemplate = useTemplateStore(s => s.addTemplate);
-  const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
   const reorderTemplatesWithCategoryUpdates = useTemplateStore(s => s.reorderTemplatesWithCategoryUpdates);
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
 
@@ -77,32 +74,6 @@ export function TemplatesScreen() {
     }
     setNewTemplateText('');
     setAddingTemplate(false);
-  };
-
-  const handleDeleteTemplate = (id: string, name: string) => {
-    haptics.warning();
-    const referencing = findTemplatesReferencing(templates, id);
-    const base = `Delete "${name}"? Tasks already created from it are unaffected.`;
-    const message = referencing.length === 0
-      ? base
-      : referencing.length === 1
-        ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
-        : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
-    Alert.alert(
-      'Delete Template',
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => {
-            animateLayout();
-            deleteTemplate(id);
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -190,7 +161,6 @@ export function TemplatesScreen() {
                 haptics.tap();
                 setApplyTemplateId(tpl.id);
               }}
-              onDelete={() => handleDeleteTemplate(tpl.id, tpl.name)}
             />
           );
         }}
@@ -223,9 +193,14 @@ export function TemplatesScreen() {
   );
 }
 
-/** Template list row: swipe left to reveal Delete. */
+/**
+ * Template list row. No swipe: there's no bulk mode for templates to swipe
+ * left into, and nothing to reschedule. Deleting used to be a swipe *right* —
+ * the direction that reschedules everywhere else — and now lives in
+ * TemplateEditor behind the ⋯ button.
+ */
 function TemplateRow({
-  template, broken, colors, styles, drag, onPress, onEdit, onApply, onDelete,
+  template, broken, colors, styles, drag, onPress, onEdit, onApply,
 }: {
   template: TaskTemplate;
   /** True if a template this one nests (at any depth) was deleted or is itself broken. */
@@ -236,75 +211,61 @@ function TemplateRow({
   onPress: () => void;
   onEdit: () => void;
   onApply: () => void;
-  onDelete: () => void;
 }) {
-  const renderLeftActions = () => (
-    <TouchableOpacity
-      style={styles.deleteAction}
-      onPress={onDelete}
-      accessibilityRole="button"
-      accessibilityLabel={`Delete template ${template.name}`}
-    >
-      <Ionicons name="trash" size={iconSize.md} color={colors.text} />
-    </TouchableOpacity>
-  );
-
   return (
-    <Swipeable renderLeftActions={renderLeftActions} overshootLeft={false}>
+    <TouchableOpacity
+      style={styles.tplRow}
+      onPress={onPress}
+      onLongPress={drag}
+      delayLongPress={interaction.delayLongPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : ''}`}
+      accessibilityHint="Double tap to edit template"
+    >
+      <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
+        <Ionicons name="copy" size={18} color={colors.accent} />
+      </View>
+      <View style={styles.tplInfo}>
+        <View style={styles.tplNameRow}>
+          <Text style={styles.tplName}>{template.name}</Text>
+          {broken && (
+            <Ionicons
+              name="alert-circle"
+              size={14}
+              color={colors.warning}
+              accessibilityLabel="A nested template is missing"
+            />
+          )}
+        </View>
+        <Text style={styles.tplHint}>
+          {template.items.length === 0
+            ? 'No items'
+            : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}
+        </Text>
+      </View>
       <TouchableOpacity
-        style={styles.tplRow}
-        onPress={onPress}
-        onLongPress={drag}
-        delayLongPress={interaction.delayLongPress}
+        onPress={onEdit}
+        style={styles.rowButton}
         activeOpacity={interaction.activeOpacity}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         accessibilityRole="button"
-        accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : ''}`}
-        accessibilityHint="Double tap to edit template"
+        accessibilityLabel={`Edit ${template.name}`}
       >
-        <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
-          <Ionicons name="copy" size={18} color={colors.accent} />
-        </View>
-        <View style={styles.tplInfo}>
-          <View style={styles.tplNameRow}>
-            <Text style={styles.tplName}>{template.name}</Text>
-            {broken && (
-              <Ionicons
-                name="alert-circle"
-                size={14}
-                color={colors.warning}
-                accessibilityLabel="A nested template is missing"
-              />
-            )}
-          </View>
-          <Text style={styles.tplHint}>
-            {template.items.length === 0
-              ? 'No items'
-              : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}
-          </Text>
-        </View>
-        <TouchableOpacity
-          onPress={onEdit}
-          style={styles.rowButton}
-          activeOpacity={interaction.activeOpacity}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={`Edit ${template.name}`}
-        >
-          <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={onApply}
-          style={styles.rowButton}
-          activeOpacity={interaction.activeOpacity}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          accessibilityRole="button"
-          accessibilityLabel={`Apply template ${template.name}`}
-        >
-          <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
-        </TouchableOpacity>
-        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
       </TouchableOpacity>
-    </Swipeable>
+      <TouchableOpacity
+        onPress={onApply}
+        style={styles.rowButton}
+        activeOpacity={interaction.activeOpacity}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Apply template ${template.name}`}
+      >
+        <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
+      </TouchableOpacity>
+      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+    </TouchableOpacity>
   );
 }
 
@@ -403,12 +364,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fab: {
     width: 56, height: 56, borderRadius: 28,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-  },
-  deleteAction: {
-    backgroundColor: colors.red,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
   },
 });

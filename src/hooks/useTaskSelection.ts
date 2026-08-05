@@ -21,11 +21,14 @@ export function useTaskSelection(allTasks: Task[]) {
   // screens suspend their list's scrolling on it.
   const [painting, setPainting] = useState(false);
 
-  const enterSelectionMode = (initialId?: string) => {
+  // Takes a list as well as a single id: swiping a stack header selects every
+  // live task in it at once (see TaskGroupHeader's onSwipeSelect).
+  const enterSelectionMode = (initial?: string | string[]) => {
     haptics.impactHeavy();
     animateLayout();
     setSelectionMode(true);
-    setSelectedIds(initialId ? new Set([initialId]) : new Set());
+    const ids = initial === undefined ? [] : Array.isArray(initial) ? initial : [initial];
+    setSelectedIds(new Set(ids));
   };
 
   // Every change to the selection ticks, so adding rows one at a time feels

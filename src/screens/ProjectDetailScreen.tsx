@@ -10,15 +10,19 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskSelection } from '../hooks/useTaskSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { EmptyState } from '../components/EmptyState';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -39,10 +43,19 @@ export function ProjectDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const tabBarHeight = useBottomTabBarHeight();
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const addTask = useTaskStore(s => s.addTask);
+  const addCategory = useTaskStore(s => s.addCategory);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
+  const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
+  const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
+  const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
+  const bulkAddTags = useTaskStore(s => s.bulkAddTags);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -53,9 +66,23 @@ export function ProjectDetailScreen() {
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+    painting,
+    paintProps,
+  } = useTaskSelection(allTasks);
+  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   // Every row's scrim shares this one animation, so the dim lands as a
   // single motion — see SpotlightOverlay.
-  const spotlightProgress = useSpotlightProgress(expandedTaskId !== null);
+  const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
 
   const project = projects.find(p => p.id === projectId) ?? null;
   const projectTasks = project
@@ -65,8 +92,16 @@ export function ProjectDetailScreen() {
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+  // What "Select all" covers, and what the bar counts against to decide it has
+  // everything: the rows actually on screen. Completed tasks are collapsed
+  // behind a toggle, and counting hidden rows would leave the bar stuck
+  // offering "Select all" after the user already had.
+  const selectableTasks = showCompleted ? projectTasks : incompleteProjectTasks;
 
-  const onClose = () => navigation.goBack();
+  const onClose = () => {
+    if (selectionMode) exitSelection();
+    navigation.goBack();
+  };
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -118,11 +153,13 @@ export function ProjectDetailScreen() {
           onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
           onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
         >
+        <PaintSelectionProvider {...paintProps}>
           <FlatList
+            scrollEnabled={!painting}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
             automaticallyAdjustKeyboardInsets
-            contentContainerStyle={{ flexGrow: 1 }}
+            contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
               return (
@@ -140,7 +177,11 @@ export function ProjectDetailScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
                   showActions={false}
                 />
               );
@@ -185,7 +226,11 @@ export function ProjectDetailScreen() {
                           subtaskCount={subs.length}
                           subtaskDoneCount={subs.filter(t => t.completed).length}
                           subtasks={subs}
-                          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id}
+                          spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+                          selectionMode={selectionMode}
+                          selected={selectedIds.has(task.id)}
+                          onSelect={() => toggleSelection(task.id)}
+                          onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
                           showActions={false}
                         />
                       );
@@ -234,7 +279,31 @@ export function ProjectDetailScreen() {
               </View>
             }
           />
+        </PaintSelectionProvider>
         </View>
+
+        {selectionMode && (
+          // No onGroup: stacks are a Today/Later concept, and BulkActionBar
+          // hides the action when the prop is absent.
+          <BulkActionBar
+            selectedCount={selectedIds.size}
+            totalCount={selectableTasks.length}
+            existingTags={allTags}
+            existingCategories={allCategories}
+            onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+            onDelete={handleBulkDelete}
+            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
+            onAddCategory={addCategory}
+            onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+            onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
+            onDeselectAll={deselectAll}
+            onCancel={exitSelection}
+            bottomInset={tabBarHeight}
+            onHeightChange={setBulkBarHeight}
+          />
+        )}
 
         {/* Add-existing-task picker — nested inside this screen's own tree
             (not a sibling top-level Modal), same nested-modal-stacking risk as
