@@ -1,0 +1,4 @@
+{
+  "message": "Fixed \"every N weeks/months\" recurring tasks with specific days set — they now actually repeat every N weeks/months instead of every 1",
+  "date": "2026-08-05"
+}

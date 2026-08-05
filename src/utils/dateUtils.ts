@@ -182,14 +182,14 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
       break;
     case 'weekly':
       next = task.recurrenceDays.length > 0
-        ? getNextWeekdayOccurrence(task.recurrenceDays, base)
+        ? getNextWeekdayOccurrence(task.recurrenceDays, base, task.recurrenceInterval)
         : addWeeks(base, task.recurrenceInterval);
       break;
     case 'monthly':
       next = task.recurrenceWeekOrdinal !== null && task.recurrenceDays.length > 0
-        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base)
+        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base, task.recurrenceInterval)
         : task.recurrenceMonthDay
-          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
+          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base, task.recurrenceInterval)
           : addMonths(base, task.recurrenceInterval);
       break;
     case 'yearly':
@@ -207,13 +207,13 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   return next;
 }
 
-function getNextWeekdayOccurrence(days: number[], from: Date): Date {
+function getNextWeekdayOccurrence(days: number[], from: Date, interval: number): Date {
   const dow = from.getDay();
   const sorted = [...days].sort((a, b) => a - b);
   for (const day of sorted) {
     if (day > dow) return addDays(from, day - dow);
   }
-  return addDays(from, 7 - dow + sorted[0]);
+  return addDays(from, 7 - dow + sorted[0] + (interval - 1) * 7);
 }
 
 /**
@@ -231,10 +231,10 @@ export function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: num
   return addDays(first, offset + (ordinal - 1) * 7);
 }
 
-function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from: Date): Date {
+function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from: Date, interval: number): Date {
   const thisMonth = nthWeekdayOfMonth(from, weekday, ordinal);
-  if (thisMonth > from) return thisMonth;
-  return nthWeekdayOfMonth(addMonths(from, 1), weekday, ordinal);
+  if (interval === 1 && thisMonth > from) return thisMonth;
+  return nthWeekdayOfMonth(addMonths(from, interval), weekday, ordinal);
 }
 
 /**
@@ -242,12 +242,12 @@ function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from:
  * last day of short months. `day === -1` means "the last day of the month",
  * whatever that is for each occurrence (28-31).
  */
-function getNextMonthDayOccurrence(day: number, from: Date): Date {
+function getNextMonthDayOccurrence(day: number, from: Date, interval: number): Date {
   const clampToMonth = (d: Date) =>
     day === -1 ? lastDayOfMonth(d) : setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
   const thisMonth = clampToMonth(from);
-  if (thisMonth > from) return thisMonth;
-  return clampToMonth(addMonths(from, 1));
+  if (interval === 1 && thisMonth > from) return thisMonth;
+  return clampToMonth(addMonths(from, interval));
 }
 
 /** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
