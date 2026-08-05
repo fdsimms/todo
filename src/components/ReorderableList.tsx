@@ -231,6 +231,17 @@ export function ReorderableList<T>({
   // needs the raw committed copy cleared, or the list stays stuck on it.
   useEffect(() => {
     if (activeIndexRef.current === null) setCommittedData(null);
+    // A ScrollView's native scroll offset isn't automatically clamped when its
+    // content shrinks (e.g. a bulk edit removes most of the visible rows) —
+    // the viewport can be left scrolled past the end of the new, shorter
+    // content, rendering blank and refusing to scroll (nothing left to pull
+    // it back up). Snap back to top whenever the data goes empty; for a
+    // partial shrink, onContentSizeChange (below) catches the case where the
+    // current offset now overshoots the new content.
+    if (data.length === 0 && scrollOffsetRef.current > 0) {
+      scrollOffsetRef.current = 0;
+      scrollRef.current?.scrollTo({ y: 0, animated: false });
+    }
   }, [data]);
 
   // Cancel an in-progress drag only if the actual items changed underneath it.
@@ -604,7 +615,17 @@ export function ReorderableList<T>({
         onScroll={handleScroll}
         scrollEventThrottle={16}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
-        onContentSizeChange={(_w, h) => { contentHeightRef.current = h; }}
+        onContentSizeChange={(_w, h) => {
+          contentHeightRef.current = h;
+          // Same clamp as the data-empty case above, for shrinks that leave
+          // some rows (not zero) but fewer than the current scroll offset
+          // can show.
+          const maxOffset = Math.max(0, h - viewportHeightRef.current);
+          if (scrollOffsetRef.current > maxOffset) {
+            scrollOffsetRef.current = maxOffset;
+            scrollRef.current?.scrollTo({ y: maxOffset, animated: false });
+          }
+        }}
         contentContainerStyle={contentContainerStyle}
         refreshControl={refreshControl}
         onScrollBeginDrag={onScrollBeginDrag}

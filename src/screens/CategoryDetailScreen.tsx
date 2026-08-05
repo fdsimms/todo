@@ -127,9 +127,9 @@ export function CategoryDetailScreen() {
                 <Ionicons name="folder" size={14} color={colors.accent} />
               )}
             </View>
-            <Text style={styles.detailTitleText}>
-              {catObj?.emoji ? `${catObj.emoji} ${category}` : category}
-            </Text>
+            {/* The tile to the left already carries the emoji — repeating it
+                in the title just doubles it up. */}
+            <Text style={styles.detailTitleText} numberOfLines={1}>{category}</Text>
           </View>
           <TouchableOpacity
             onPress={handlePinCategory}

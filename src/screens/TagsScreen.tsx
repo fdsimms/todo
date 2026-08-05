@@ -4,7 +4,6 @@ import {
   Text,
   FlatList,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
   Modal,
   Alert,
@@ -23,6 +22,8 @@ import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -58,10 +59,8 @@ export function TagsScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [addingTag, setAddingTag] = useState(false);
-  const [newTagText, setNewTagText] = useState('');
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
   const allTasks = useTaskStore(s => s.tasks);
-  const inputRef = useRef<TextInput>(null);
   const {
     selectionMode,
     selectedIds,
@@ -115,21 +114,11 @@ export function TagsScreen() {
 
   const tagTasks = selectedTag ? tasksByTag(selectedTag) : [];
 
-  const handleAddTag = () => {
-    const trimmed = newTagText.trim().toLowerCase();
-    if (trimmed) {
-      haptics.success();
-      animateLayout();
-      addTag(trimmed);
-    }
-    setNewTagText('');
-    setAddingTag(false);
-  };
-
-  const handleStartAdding = () => {
+  // Tags are always stored lowercase, so "Errands" and "errands" can't split
+  // into two entries.
+  const handleAddTag = (name: string) => {
     animateLayout();
-    setAddingTag(true);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    addTag(name.toLowerCase());
   };
 
   const handleDeleteTag = (tag: string) => {
@@ -156,57 +145,23 @@ export function TagsScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader
           title="Tags"
-          actions={[{ icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add tag' }]}
+          subtitle={allTags.length > 0 ? `${allTags.length} ${allTags.length === 1 ? 'tag' : 'tags'}` : undefined}
         />
-
-        {addingTag && (
-          <View style={styles.addRow}>
-            <View style={[styles.tagIcon, { backgroundColor: colors.bgSecondary }]}>
-              <Ionicons name="pricetag" size={18} color={colors.textTertiary} />
-            </View>
-            <TextInput
-              ref={inputRef}
-              style={styles.addInput}
-              value={newTagText}
-              onChangeText={setNewTagText}
-              placeholder="New tag name"
-              placeholderTextColor={colors.textTertiary}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={handleAddTag}
-              onBlur={() => {
-                if (!newTagText.trim()) setAddingTag(false);
-              }}
-            />
-            <TouchableOpacity onPress={handleAddTag} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new tag">
-              <Ionicons name="checkmark" size={20} color={colors.accent} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => { setNewTagText(''); setAddingTag(false); }}
-              style={styles.addCancel}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel="Cancel"
-            >
-              <Ionicons name="close" size={20} color={colors.textTertiary} />
-            </TouchableOpacity>
-          </View>
-        )}
 
         <FlatList
           data={allTags}
           keyExtractor={t => t}
           contentContainerStyle={styles.list}
+          ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           ListEmptyComponent={
-            !addingTag ? (
-              <EmptyState
-                icon="pricetag"
-                title="No tags yet"
-                subtitle="Tap + to create a tag, or add tags to tasks"
-                bottomOffset={tabBarHeight}
-              />
-            ) : null
+            <EmptyState
+              icon="pricetag"
+              title="No tags yet"
+              subtitle="Tags cut across categories — one task can carry as many as you like"
+              actionLabel="New tag"
+              onAction={() => setQuickAddVisible(true)}
+              bottomOffset={tabBarHeight}
+            />
           }
           renderItem={({ item: tag }) => {
             const count = tasksByTag(tag).length;
@@ -242,6 +197,20 @@ export function TagsScreen() {
               </TouchableOpacity>
             );
           }}
+        />
+
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add tag"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
+
+        <QuickAddNameSheet
+          visible={quickAddVisible}
+          placeholder="New tag…"
+          autoCapitalize="none"
+          onSubmit={handleAddTag}
+          onClose={() => setQuickAddVisible(false)}
         />
 
         {/* Tag detail modal */}
@@ -360,31 +329,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  // Mirrors the inset-grouped card footprint of the tag rows below.
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: spacing.md,
-  },
-  addInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: '500',
-    paddingVertical: 0,
-  },
-  addConfirm: {
-    padding: 4,
-  },
-  addCancel: {
-    padding: 4,
   },
   list: {
     paddingTop: spacing.sm,
