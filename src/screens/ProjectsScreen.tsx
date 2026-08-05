@@ -139,6 +139,7 @@ export function ProjectsScreen() {
           data={projectListItems}
           keyExtractor={item => item.key}
           contentContainerStyle={styles.list}
+          ListFooterComponent={<View style={{ height: tabBarHeight + spacing.md }} />}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
           onReorder={reordered => {
