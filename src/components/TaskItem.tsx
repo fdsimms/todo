@@ -142,8 +142,12 @@ export function TaskItem({
     if (!task.linkUrl) return;
     haptics.tap();
     try {
-      const supported = await Linking.canOpenURL(task.linkUrl);
-      if (supported) await Linking.openURL(task.linkUrl);
+      // Skip Linking.canOpenURL: on iOS it only returns true for schemes
+      // pre-declared in LSApplicationQueriesSchemes, which would break both
+      // the preset chips and arbitrary user-entered custom schemes. openURL
+      // itself isn't restricted — it just fails harmlessly if nothing
+      // handles the scheme.
+      await Linking.openURL(task.linkUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
