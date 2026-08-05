@@ -125,6 +125,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -153,6 +154,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
   ...overrides,
 });
 

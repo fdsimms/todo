@@ -4,8 +4,17 @@ import {
   buildDraftsFromTemplate,
   formatOffsetLabel,
   anchorLabel,
+  wouldCreateCycle,
+  expandTemplateItems,
+  buildDraftsFromTemplateTree,
+  getDirectBrokenRefItemIds,
+  templateHasBrokenRefs,
+  findTemplatesReferencing,
+  buildApplyTree,
+  flattenApplyTree,
+  expandSelectionWithAncestors,
 } from '../utils/templateUtils';
-import type { TemplateItem } from '../types';
+import type { TaskTemplate, TemplateItem } from '../types';
 
 const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   id: 'item-1',
@@ -37,6 +46,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   chainItems: [],
   subtasks: [],
   groupId: null,
+  refTemplateId: null,
+  refTemplateName: '',
   ...overrides,
 });
 
@@ -222,5 +233,207 @@ describe('anchorLabel', () => {
   it('labels "start" and "end"', () => {
     expect(anchorLabel('start')).toBe('Start date');
     expect(anchorLabel('end')).toBe('End date');
+  });
+});
+
+const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
+  id: 'tpl-1',
+  name: 'Template',
+  items: [],
+  itemGroups: [],
+  createdAt: '2025-01-01T00:00:00.000Z',
+  sortOrder: 1,
+  category: null,
+  ...overrides,
+});
+
+const refItem = (id: string, refTemplateId: string, overrides: Partial<TemplateItem> = {}) =>
+  makeItem({ id, refTemplateId, refTemplateName: refTemplateId, ...overrides });
+
+describe('wouldCreateCycle', () => {
+  it('flags self-reference', () => {
+    expect(wouldCreateCycle([makeTemplate({ id: 'a' })], 'a', 'a')).toBe(true);
+  });
+
+  it('flags a direct 2-hop cycle (A -> B, adding B -> A)', () => {
+    const templates = [
+      makeTemplate({ id: 'a', items: [refItem('a1', 'b')] }),
+      makeTemplate({ id: 'b', items: [] }),
+    ];
+    // A already references B, so adding B -> A would close the loop.
+    expect(wouldCreateCycle(templates, 'b', 'a')).toBe(true);
+    // But B -> some unrelated template C is fine.
+    const withC = [...templates, makeTemplate({ id: 'c', items: [] })];
+    expect(wouldCreateCycle(withC, 'b', 'c')).toBe(false);
+  });
+
+  it('flags a 3-hop cycle (A -> B -> C, adding C -> A)', () => {
+    const templates = [
+      makeTemplate({ id: 'a', items: [refItem('a1', 'b')] }),
+      makeTemplate({ id: 'b', items: [refItem('b1', 'c')] }),
+      makeTemplate({ id: 'c', items: [] }),
+    ];
+    expect(wouldCreateCycle(templates, 'c', 'a')).toBe(true);
+  });
+
+  it('does not flag a non-cyclic chain', () => {
+    const templates = [
+      makeTemplate({ id: 'a', items: [refItem('a1', 'b')] }),
+      makeTemplate({ id: 'b', items: [refItem('b1', 'c')] }),
+      makeTemplate({ id: 'c', items: [] }),
+    ];
+    expect(wouldCreateCycle(templates, 'a', 'c')).toBe(false);
+    expect(wouldCreateCycle(templates, 'b', 'c')).toBe(false);
+  });
+});
+
+describe('getDirectBrokenRefItemIds / templateHasBrokenRefs', () => {
+  it('flags a directly dangling reference', () => {
+    const template = makeTemplate({ id: 'trip', items: [refItem('t1', 'missing')] });
+    const templatesById = new Map([[template.id, template]]);
+    expect(getDirectBrokenRefItemIds(template, templatesById)).toEqual(new Set(['t1']));
+    expect(templateHasBrokenRefs(template, templatesById)).toBe(true);
+  });
+
+  it('flags a transitively broken reference without flagging it directly', () => {
+    const packing = makeTemplate({ id: 'packing', items: [refItem('p1', 'missing')] });
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'packing')] });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+    expect(getDirectBrokenRefItemIds(trip, templatesById)).toEqual(new Set());
+    expect(templateHasBrokenRefs(trip, templatesById)).toBe(true);
+  });
+
+  it('does not flag a healthy reference', () => {
+    const packing = makeTemplate({ id: 'packing', items: [makeItem({ id: 'p1' })] });
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'packing')] });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+    expect(templateHasBrokenRefs(trip, templatesById)).toBe(false);
+  });
+
+  it('does not infinite-loop on cyclic data', () => {
+    const a = makeTemplate({ id: 'a', items: [refItem('a1', 'b')] });
+    const b = makeTemplate({ id: 'b', items: [refItem('b1', 'a')] });
+    const templatesById = new Map([[a.id, a], [b.id, b]]);
+    expect(() => templateHasBrokenRefs(a, templatesById)).not.toThrow();
+    expect(templateHasBrokenRefs(a, templatesById)).toBe(false);
+  });
+});
+
+describe('findTemplatesReferencing', () => {
+  it('finds every template that directly references the target', () => {
+    const packing = makeTemplate({ id: 'packing' });
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'packing')] });
+    const move = makeTemplate({ id: 'move', items: [refItem('m1', 'packing')] });
+    const unrelated = makeTemplate({ id: 'unrelated' });
+    const result = findTemplatesReferencing([packing, trip, move, unrelated], 'packing');
+    expect(result.map(t => t.id).sort()).toEqual(['move', 'trip']);
+  });
+
+  it('returns [] when nothing references the target', () => {
+    const packing = makeTemplate({ id: 'packing' });
+    expect(findTemplatesReferencing([packing], 'packing')).toEqual([]);
+  });
+});
+
+describe('expandTemplateItems / buildDraftsFromTemplateTree', () => {
+  const end = new Date('2026-06-27T09:00:00');
+
+  it('expands a nested template reference into its own leaf items', () => {
+    const packing = makeTemplate({
+      id: 'packing',
+      items: [
+        makeItem({ id: 'p1', title: 'Pack bag', anchor: 'end', dueOffsetDays: -1 }),
+        makeItem({ id: 'p2', title: 'Charger' }),
+      ],
+    });
+    const trip = makeTemplate({
+      id: 'trip',
+      items: [
+        makeItem({ id: 't1', title: 'Book flights' }),
+        refItem('t2', 'packing'),
+      ],
+    });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+    const selected = new Set(['t1', 't2', 'p1', 'p2']);
+
+    const expanded = expandTemplateItems(trip.items, trip.id, selected, templatesById);
+    expect(expanded.map(e => e.item.title)).toEqual(['Book flights', 'Pack bag', 'Charger']);
+    expect(expanded.filter(e => e.sourceTemplateId === 'packing')).toHaveLength(2);
+
+    const drafts = buildDraftsFromTemplateTree(expanded, { start: null, end });
+    expect(new Date(drafts[1].dueDate!).getDate()).toBe(26);
+  });
+
+  it('contributes zero leaves for a deleted or empty nested template', () => {
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'missing')] });
+    const templatesById = new Map([[trip.id, trip]]);
+    const expanded = expandTemplateItems(trip.items, trip.id, new Set(['t1']), templatesById);
+    expect(expanded).toEqual([]);
+  });
+
+  it('only expands the selected descendant leaves', () => {
+    const packing = makeTemplate({
+      id: 'packing',
+      items: [makeItem({ id: 'p1', title: 'Pack bag' }), makeItem({ id: 'p2', title: 'Charger' })],
+    });
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'packing')] });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+    const expanded = expandTemplateItems(trip.items, trip.id, new Set(['t1', 'p1']), templatesById);
+    expect(expanded.map(e => e.item.title)).toEqual(['Pack bag']);
+  });
+
+  it('does not infinite-loop on a cyclic reference', () => {
+    const a = makeTemplate({ id: 'a', items: [refItem('a1', 'b')] });
+    const b = makeTemplate({ id: 'b', items: [refItem('b1', 'a')] });
+    const templatesById = new Map([[a.id, a], [b.id, b]]);
+    const expanded = expandTemplateItems(a.items, a.id, new Set(['a1', 'b1']), templatesById);
+    expect(expanded).toEqual([]);
+  });
+});
+
+describe('buildApplyTree / flattenApplyTree / expandSelectionWithAncestors', () => {
+  it('builds a nested tree and flattens it back to leaves', () => {
+    const packing = makeTemplate({
+      id: 'packing',
+      items: [makeItem({ id: 'p1', title: 'Pack bag' })],
+    });
+    const trip = makeTemplate({
+      id: 'trip',
+      items: [makeItem({ id: 't1', title: 'Book flights' }), refItem('t2', 'packing')],
+    });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+
+    const tree = buildApplyTree(trip.items, trip.id, templatesById);
+    expect(tree).toHaveLength(2);
+    expect(tree[1].children.map(c => c.item.title)).toEqual(['Pack bag']);
+    expect(tree[1].broken).toBe(false);
+
+    const leaves = flattenApplyTree(tree);
+    expect(leaves.map(l => l.item.title)).toEqual(['Book flights', 'Pack bag']);
+  });
+
+  it('marks a node broken when its target is missing, contributing no children', () => {
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t1', 'missing')] });
+    const templatesById = new Map([[trip.id, trip]]);
+    const tree = buildApplyTree(trip.items, trip.id, templatesById);
+    expect(tree[0].broken).toBe(true);
+    expect(tree[0].children).toEqual([]);
+    expect(flattenApplyTree(tree)).toEqual([]);
+  });
+
+  it('expandSelectionWithAncestors adds the ref item id whenever any descendant leaf is selected', () => {
+    const packing = makeTemplate({
+      id: 'packing',
+      items: [makeItem({ id: 'p1' }), makeItem({ id: 'p2' })],
+    });
+    const trip = makeTemplate({ id: 'trip', items: [refItem('t2', 'packing')] });
+    const templatesById = new Map([[packing.id, packing], [trip.id, trip]]);
+    const tree = buildApplyTree(trip.items, trip.id, templatesById);
+
+    const flat = expandSelectionWithAncestors(tree, new Set(['p1']));
+    expect(flat).toEqual(new Set(['t2', 'p1']));
+
+    const none = expandSelectionWithAncestors(tree, new Set());
+    expect(none).toEqual(new Set());
   });
 });

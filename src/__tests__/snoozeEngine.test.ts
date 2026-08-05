@@ -27,6 +27,7 @@ const BASE: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -55,6 +56,7 @@ const BASE: Task = {
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

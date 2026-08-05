@@ -58,7 +58,7 @@ function matchWeekday(token: string): Day | undefined {
   return matches.length === 1 ? matches[0][1] : undefined;
 }
 
-const MONTHS: Record<string, number> = {
+export const MONTHS: Record<string, number> = {
   january: 0, jan: 0,
   february: 1, feb: 1,
   march: 2, mar: 2,
@@ -151,7 +151,7 @@ function relativeUnit(unit: string, n: number, now: Date): DatePart | null {
 }
 
 /** Resolve a month/day (and optional year) to a date, rolling into next year if already past. */
-function monthDay(month: number, day: number, year: number | null, now: Date): DatePart | null {
+export function monthDay(month: number, day: number, year: number | null, now: Date): DatePart | null {
   if (day < 1 || day > 31) return null;
   let y = year ?? now.getFullYear();
   let date = startOfDay(new Date(y, month, day));

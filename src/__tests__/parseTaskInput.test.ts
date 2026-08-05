@@ -243,9 +243,117 @@ describe('parseTaskInput — recurrence', () => {
     expect(tue.schedule.timeSegments).toEqual(['evening']);
   });
 
-  it('rejects out-of-scope recurrence grammar', () => {
-    expect(parseTaskInput('pay rent biweekly', NOW)).toBeNull();
-    expect(parseTaskInput('check mail fortnightly', NOW)).toBeNull();
+  it('maps interval synonyms', () => {
+    const biweekly = parseTaskInput('pay rent biweekly', NOW)!;
+    expect(biweekly.schedule.recurrenceType).toBe('weekly');
+    expect(biweekly.schedule.recurrenceInterval).toBe(2);
+
+    const fortnightly = parseTaskInput('check mail fortnightly', NOW)!;
+    expect(fortnightly.schedule.recurrenceType).toBe('weekly');
+    expect(fortnightly.schedule.recurrenceInterval).toBe(2);
+
+    const quarterly = parseTaskInput('review budget quarterly', NOW)!;
+    expect(quarterly.schedule.recurrenceType).toBe('monthly');
+    expect(quarterly.schedule.recurrenceInterval).toBe(3);
+
+    const biannually = parseTaskInput('dentist biannually', NOW)!;
+    expect(biannually.schedule.recurrenceType).toBe('monthly');
+    expect(biannually.schedule.recurrenceInterval).toBe(6);
+
+    const twiceAYear = parseTaskInput('eye exam twice a year', NOW)!;
+    expect(twiceAYear.schedule.recurrenceType).toBe('monthly');
+    expect(twiceAYear.schedule.recurrenceInterval).toBe(6);
+  });
+
+  it('maps a specific annual date to yearly recurrence anchored to that date', () => {
+    const r = parseTaskInput('go running every september 15th', NOW)!;
+    expect(r.cleanTitle).toBe('go running');
+    expect(r.schedule.recurrenceType).toBe('yearly');
+    expect(r.schedule.recurrenceInterval).toBe(1);
+    expectDay(r.schedule.dueDate, 2025, 8, 15);
+
+    // Already past this year → rolls to next year.
+    const past = parseTaskInput('renew passport every january 1', NOW)!;
+    expectDay(past.schedule.dueDate, 2026, 0, 1);
+
+    const yearlyOn = parseTaskInput('review lease yearly on june 1', NOW)!;
+    expect(yearlyOn.schedule.recurrenceType).toBe('yearly');
+    expectDay(yearlyOn.schedule.dueDate, 2026, 5, 1); // June 1 already passed this year
+  });
+
+  it('maps a fixed day-of-month to monthly recurrence with recurrenceMonthDay', () => {
+    const a = parseTaskInput('pay rent on the 1st of every month', NOW)!;
+    expect(a.schedule.recurrenceType).toBe('monthly');
+    expect(a.schedule.recurrenceMonthDay).toBe(1);
+    expectDay(a.schedule.dueDate, 2025, 6, 1); // 1st already passed this month
+
+    const b = parseTaskInput('pay bills every month on the 15th', NOW)!;
+    expect(b.schedule.recurrenceMonthDay).toBe(15);
+    expectDay(b.schedule.dueDate, 2025, 5, 15);
+
+    const c = parseTaskInput('reconcile monthly on the last day', NOW)!;
+    expect(c.schedule.recurrenceMonthDay).toBe(-1);
+    expectDay(c.schedule.dueDate, 2025, 5, 30);
+  });
+
+  it('maps an Nth-weekday-of-month phrase to monthly + recurrenceWeekOrdinal', () => {
+    const a = parseTaskInput('team sync every 2nd tuesday', NOW)!;
+    expect(a.schedule.recurrenceType).toBe('monthly');
+    expect(a.schedule.recurrenceWeekOrdinal).toBe(2);
+    expect(a.schedule.recurrenceDays).toEqual([2]);
+    expectDay(a.schedule.dueDate, 2025, 5, 10); // 2nd Tuesday of June 2025 is the 10th
+
+    const b = parseTaskInput('board meeting every last friday of the month', NOW)!;
+    expect(b.schedule.recurrenceWeekOrdinal).toBe(-1);
+    expect(b.schedule.recurrenceDays).toEqual([5]);
+    expectDay(b.schedule.dueDate, 2025, 5, 27); // last Friday of June 2025
+
+    const c = parseTaskInput('review first monday of every month', NOW)!;
+    expect(c.schedule.recurrenceWeekOrdinal).toBe(1);
+    expect(c.schedule.recurrenceDays).toEqual([1]);
+  });
+
+  it('applies a "starting <date>" clause as the anchor due date', () => {
+    const r = parseTaskInput('water plants every 2 weeks starting next friday', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceInterval).toBe(2);
+    expectDay(r.schedule.dueDate, 2025, 5, 20); // next Friday from Jun 10 2025 (a Tuesday; "next" skips this week's Friday)
+  });
+
+  it('maps "after completion" to recurrenceFromCompletion', () => {
+    const r = parseTaskInput('water plants every 3 days after completion', NOW)!;
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+
+    const r2 = parseTaskInput('journal daily after i finish it', NOW)!;
+    expect(r2.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
+  it('maps an "until <date>" clause to recurrenceEndDate', () => {
+    const r = parseTaskInput('gym every monday until december', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('weekly');
+    expect(r.schedule.recurrenceEndDate).not.toBeNull();
+    const end = new Date(r.schedule.recurrenceEndDate!);
+    expect(end.getMonth()).toBe(11); // December
+    expect(end.getFullYear()).toBe(2025);
+
+    const r2 = parseTaskInput('gym every monday until july 4', NOW)!;
+    const end2 = new Date(r2.schedule.recurrenceEndDate!);
+    expect(end2.getMonth()).toBe(6);
+    expect(end2.getDate()).toBe(4);
+  });
+
+  it('maps a "for N times/occurrences" clause to recurrenceCount', () => {
+    const r = parseTaskInput('take medicine daily for 10 occurrences', NOW)!;
+    expect(r.schedule.recurrenceCount).toBe(10);
+
+    const r2 = parseTaskInput('take medicine daily for 5 times', NOW)!;
+    expect(r2.schedule.recurrenceCount).toBe(5);
+  });
+
+  it('maps a "for N days/weeks/months" duration clause to recurrenceEndDate', () => {
+    const r = parseTaskInput('take antibiotics daily for 10 days', NOW)!;
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expectDay(new Date(r.schedule.recurrenceEndDate!), 2025, 5, 20);
   });
 });
 
@@ -275,7 +383,14 @@ describe('describeSchedule', () => {
     expect(describeSchedule({ ...base, recurrenceType: 'weekly', recurrenceDays: [1, 2, 3, 4, 5] }, NOW)).toBe('Every weekday');
     expect(describeSchedule({ ...base, recurrenceType: 'weekly', recurrenceDays: [0, 6] }, NOW)).toBe('Every weekend');
     expect(describeSchedule({ ...base, recurrenceType: 'monthly' }, NOW)).toBe('Monthly');
-    expect(describeSchedule({ ...base, recurrenceType: 'yearly' }, NOW)).toBe('Yearly');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceInterval: 3 }, NOW)).toBe('Quarterly');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceInterval: 6 }, NOW)).toBe('Every 6 months');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceMonthDay: 15 }, NOW)).toBe('Monthly on the 15th');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceMonthDay: -1 }, NOW)).toBe('Monthly on the last day');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceWeekOrdinal: 2, recurrenceDays: [2] }, NOW)).toBe('Every 2nd Tuesday');
+    expect(describeSchedule({ ...base, recurrenceType: 'monthly', recurrenceWeekOrdinal: -1, recurrenceDays: [5] }, NOW)).toBe('Every last Friday');
+    expect(describeSchedule({ ...base, recurrenceType: 'yearly', dueDate: new Date(2025, 8, 15) }, NOW)).toBe('Every Sep 15');
+    expect(describeSchedule({ ...base, recurrenceType: 'yearly', recurrenceInterval: 2 }, NOW)).toBe('Every 2 years');
   });
 
   it('appends the time segment', () => {

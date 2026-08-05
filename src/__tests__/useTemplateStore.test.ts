@@ -53,6 +53,8 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   chainItems: [],
   subtasks: [],
   groupId: null,
+  refTemplateId: null,
+  refTemplateName: '',
   ...overrides,
 });
 
@@ -234,6 +236,74 @@ describe('applyTemplate', () => {
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a', 'b', 'c']), { start: null, end: null });
     expect(mockGroupTasks).toHaveBeenCalledTimes(1);
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Coq10', 'task-Vitamin D'], 'Supplements', 'Health');
+  });
+
+  it('expands a nested template item into that template\'s own tasks', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({
+          id: 'packing',
+          name: 'Packing List',
+          items: [makeItem({ id: 'p1', title: 'Passport' }), makeItem({ id: 'p2', title: 'Charger' })],
+        }),
+        makeTemplate({
+          id: 'trip',
+          name: 'Trip Planning',
+          items: [
+            makeItem({ id: 't1', title: 'Book flights' }),
+            makeItem({ id: 't2', title: 'Packing List', refTemplateId: 'packing', refTemplateName: 'Packing List' }),
+          ],
+        }),
+      ],
+    });
+    const created = useTemplateStore.getState().applyTemplate(
+      'trip',
+      new Set(['t1', 't2', 'p1', 'p2']),
+      { start: null, end: null }
+    );
+    expect(created).toHaveLength(3);
+    expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Book flights', 'Passport', 'Charger']);
+  });
+
+  it('groups a nested template\'s own itemGroup using that template\'s group metadata', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({
+          id: 'packing',
+          name: 'Packing List',
+          itemGroups: [{ id: 'g1', title: 'Documents', sortOrder: 1 }],
+          items: [
+            makeItem({ id: 'p1', title: 'Passport', groupId: 'g1', category: 'Travel' }),
+            makeItem({ id: 'p2', title: 'Visa', groupId: 'g1', category: 'Travel' }),
+          ],
+        }),
+        makeTemplate({
+          id: 'trip',
+          name: 'Trip Planning',
+          items: [makeItem({ id: 't2', refTemplateId: 'packing', refTemplateName: 'Packing List' })],
+        }),
+      ],
+    });
+    useTemplateStore.getState().applyTemplate('trip', new Set(['t2', 'p1', 'p2']), { start: null, end: null });
+    expect(mockGroupTasks).toHaveBeenCalledWith(['task-Passport', 'task-Visa'], 'Documents', 'Travel');
+  });
+
+  it('yields zero tasks for a ref item pointing at a deleted template', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({
+          id: 'trip',
+          name: 'Trip Planning',
+          items: [
+            makeItem({ id: 't1', title: 'Book flights' }),
+            makeItem({ id: 't2', refTemplateId: 'missing', refTemplateName: 'Gone' }),
+          ],
+        }),
+      ],
+    });
+    const created = useTemplateStore.getState().applyTemplate('trip', new Set(['t1', 't2']), { start: null, end: null });
+    expect(created).toHaveLength(1);
+    expect(mockAddTask.mock.calls.map(([d]) => d.title)).toEqual(['Book flights']);
   });
 });
 

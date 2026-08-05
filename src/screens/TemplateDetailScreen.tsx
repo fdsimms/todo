@@ -20,14 +20,15 @@ import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
 import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatOffsetLabel } from '../utils/templateUtils';
-import type { TemplateItem } from '../types';
+import { formatOffsetLabel, getDirectBrokenRefItemIds } from '../utils/templateUtils';
+import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
   TemplateDetail: { templateId: string };
@@ -55,6 +56,8 @@ export function TemplateDetailScreen() {
 
   const templates = useTemplateStore(s => s.templates);
   const deleteItem = useTemplateStore(s => s.deleteItem);
+  const updateItem = useTemplateStore(s => s.updateItem);
+  const addItem = useTemplateStore(s => s.addItem);
   const reorderItems = useTemplateStore(s => s.reorderItems);
   const deleteItemGroup = useTemplateStore(s => s.deleteItemGroup);
   const groupItems = useTemplateStore(s => s.groupItems);
@@ -70,9 +73,41 @@ export function TemplateDetailScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Nested-template picker: null = closed; a string itemId means "replace
+  // that item's reference"; the sentinel below means "add a new ref item".
+  const [nestedPickerReplacingId, setNestedPickerReplacingId] = useState<string | null>(null);
+  const [nestedPickerVisible, setNestedPickerVisible] = useState(false);
 
   const template = templates.find(t => t.id === templateId) ?? null;
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
+
+  const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
+  const brokenItemIds = useMemo(
+    () => (template ? getDirectBrokenRefItemIds(template, templatesById) : new Set<string>()),
+    [template, templatesById]
+  );
+
+  const openNestedPicker = (replacingItemId: string | null) => {
+    haptics.tap();
+    setNestedPickerReplacingId(replacingItemId);
+    setNestedPickerVisible(true);
+  };
+
+  const handleNestedTemplateSelected = (target: TaskTemplate) => {
+    if (!templateId) return;
+    if (nestedPickerReplacingId) {
+      updateItem(templateId, nestedPickerReplacingId, {
+        refTemplateId: target.id,
+        refTemplateName: target.name,
+      });
+    } else {
+      addItem(templateId, {
+        title: target.name,
+        refTemplateId: target.id,
+        refTemplateName: target.name,
+      });
+    }
+  };
 
   const onClose = () => navigation.goBack();
 
@@ -228,6 +263,22 @@ export function TemplateDetailScreen() {
           const showHeader = group && firstOfGroup.has(item.id);
           const hidden = hiddenByCollapse.has(item.id);
           const categoryEmoji = item.category ? getCategoryByName(item.category)?.emoji ?? null : null;
+          const resolvedRefTemplate = item.refTemplateId ? templatesById.get(item.refTemplateId) ?? null : null;
+          const broken = brokenItemIds.has(item.id);
+
+          const handlePress = () => {
+            if (selectionMode) {
+              toggleItemSelection(item.id);
+            } else if (broken) {
+              // Broken rows expose Replace/Remove inline instead of navigating.
+              return;
+            } else if (resolvedRefTemplate) {
+              haptics.tap();
+              (navigation as any).navigate('TemplateDetail', { templateId: resolvedRefTemplate.id });
+            } else {
+              openItemEditor(item);
+            }
+          };
 
           return (
             <View>
@@ -247,15 +298,18 @@ export function TemplateDetailScreen() {
                   item={item}
                   hint={hint}
                   categoryEmoji={categoryEmoji}
+                  resolvedRefTemplate={resolvedRefTemplate}
+                  broken={broken}
                   colors={colors}
                   styles={styles}
                   drag={selectionMode ? undefined : drag}
                   isActive={isActive}
                   selectionMode={selectionMode}
                   selected={selectedItemIds.has(item.id)}
-                  onPress={() => (selectionMode ? toggleItemSelection(item.id) : openItemEditor(item))}
+                  onPress={handlePress}
                   onDelete={() => handleDeleteItem(item.id)}
                   onSwipeSelect={() => enterSelectionMode(item.id)}
+                  onReplace={() => openNestedPicker(item.id)}
                 />
               )}
             </View>
@@ -304,6 +358,19 @@ export function TemplateDetailScreen() {
             setQuickAddVisible(false);
             openItemEditor(null, draft);
           }}
+          onAddNested={() => {
+            setQuickAddVisible(false);
+            openNestedPicker(null);
+          }}
+        />
+      )}
+
+      {template && (
+        <NestedTemplatePicker
+          visible={nestedPickerVisible}
+          currentTemplateId={template.id}
+          onClose={() => setNestedPickerVisible(false)}
+          onSelect={handleNestedTemplateSelected}
         />
       )}
 
@@ -343,11 +410,15 @@ export function TemplateDetailScreen() {
 
 /** Item row: swipe left reveals both Delete and Select (enters bulk mode). */
 function TemplateItemRow({
-  item, hint, categoryEmoji, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect,
+  item, hint, categoryEmoji, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
 }: {
   item: TemplateItem;
   hint: string | null;
   categoryEmoji: string | null;
+  /** The live template this item references, or null if it isn't a reference item. */
+  resolvedRefTemplate: TaskTemplate | null;
+  /** True if this item references a template that no longer exists. */
+  broken: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   drag?: () => void;
@@ -357,6 +428,7 @@ function TemplateItemRow({
   onPress: () => void;
   onDelete: () => void;
   onSwipeSelect: () => void;
+  onReplace: () => void;
 }) {
   const renderLeftActions = () => (
     <View style={styles.leftActionsRow}>
@@ -379,16 +451,26 @@ function TemplateItemRow({
     </View>
   );
 
+  const isRef = resolvedRefTemplate !== null || broken;
+  const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
+  const refCount = resolvedRefTemplate?.items.length ?? 0;
+
   const rowBody = (
     <TouchableOpacity
-      style={[styles.itemRow, isActive && styles.itemRowActive]}
+      style={[styles.itemRow, isActive && styles.itemRowActive, broken && styles.itemRowBroken]}
       onPress={onPress}
       onLongPress={selectionMode ? undefined : drag}
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${item.title}${item.optional ? ', optional' : ''}`}
-      accessibilityHint="Double tap to edit item"
+      accessibilityLabel={
+        broken
+          ? `${refTitle} was deleted, remove or replace this`
+          : isRef
+            ? `Nested template ${refTitle}, ${refCount} item${refCount === 1 ? '' : 's'}`
+            : `${item.title}${item.optional ? ', optional' : ''}`
+      }
+      accessibilityHint={broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
     >
       {selectionMode && (
         <Ionicons
@@ -397,24 +479,82 @@ function TemplateItemRow({
           color={selected ? colors.accent : colors.textTertiary}
         />
       )}
+      {!selectionMode && isRef && (
+        <Ionicons
+          name={broken ? 'alert-circle' : 'git-branch-outline'}
+          size={20}
+          color={broken ? colors.warning : colors.accent}
+        />
+      )}
       <View style={styles.itemInfo}>
-        <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
-        {hint && <Text style={styles.itemHintText} numberOfLines={1}>{hint}</Text>}
-        {categoryEmoji !== null || item.category ? (
-          <View style={styles.categoryRow}>
-            <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+        {broken ? (
+          <>
+            <Text style={[styles.itemTitle, styles.itemTitleBroken]} numberOfLines={1}>{refTitle} was deleted</Text>
+            <Text style={styles.itemHintBroken} numberOfLines={1}>Remove or replace this</Text>
+          </>
+        ) : isRef ? (
+          <>
+            <Text style={styles.itemTitle} numberOfLines={1}>{refTitle}</Text>
             <Text style={styles.itemHintText} numberOfLines={1}>
-              {categoryEmoji ? `${categoryEmoji} ${item.category}` : item.category}
+              {refCount === 0 ? 'No items' : `${refCount} item${refCount === 1 ? '' : 's'}`}
             </Text>
-          </View>
-        ) : null}
+          </>
+        ) : (
+          <>
+            <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
+            {hint && <Text style={styles.itemHintText} numberOfLines={1}>{hint}</Text>}
+            {categoryEmoji !== null || item.category ? (
+              <View style={styles.categoryRow}>
+                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.itemHintText} numberOfLines={1}>
+                  {categoryEmoji ? `${categoryEmoji} ${item.category}` : item.category}
+                </Text>
+              </View>
+            ) : null}
+          </>
+        )}
       </View>
-      {item.optional && (
+      {item.optional && !broken && (
         <View style={styles.optionalBadge}>
           <Text style={styles.optionalBadgeText}>Optional</Text>
         </View>
       )}
-      {!selectionMode && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+      {!selectionMode && broken && (
+        <View style={styles.brokenActions}>
+          <TouchableOpacity
+            onPress={onReplace}
+            hitSlop={8}
+            style={styles.brokenActionBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Replace nested template"
+          >
+            <Ionicons name="swap-horizontal-outline" size={16} color={colors.warning} />
+            <Text style={styles.brokenActionText}>Replace</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onDelete}
+            hitSlop={8}
+            style={styles.brokenActionBtn}
+            accessibilityRole="button"
+            accessibilityLabel="Remove nested template item"
+          >
+            <Ionicons name="trash-outline" size={16} color={colors.warning} />
+            <Text style={styles.brokenActionText}>Remove</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {!selectionMode && !broken && isRef && (
+        <TouchableOpacity
+          onPress={onReplace}
+          hitSlop={8}
+          style={styles.rowButton}
+          accessibilityRole="button"
+          accessibilityLabel="Replace nested template"
+        >
+          <Ionicons name="swap-horizontal-outline" size={16} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
+      {!selectionMode && !broken && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
     </TouchableOpacity>
   );
 
@@ -542,6 +682,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   itemRowActive: {
     opacity: 0.85,
   },
+  itemRowBroken: {
+    backgroundColor: colors.warningBg,
+  },
   itemInfo: {
     flex: 1,
     gap: 2,
@@ -550,9 +693,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
   },
+  itemTitleBroken: {
+    color: colors.warning,
+    fontWeight: '600',
+  },
   itemHintText: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  itemHintBroken: {
+    color: colors.warning,
+    fontSize: font.xs,
+  },
+  brokenActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+  },
+  brokenActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  brokenActionText: {
+    color: colors.warning,
+    fontSize: font.xs,
+    fontWeight: '600',
+  },
+  rowButton: {
+    padding: 2,
   },
   categoryRow: {
     flexDirection: 'row',

@@ -89,6 +89,20 @@ function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
     .reduce((min, t) => (t < min ? t : min));
 }
 
+// Anchored to the current *logical* day (getCurrentDayStart()), same as
+// getTimeOfDayThreshold above and for the same reason: hhmmToDate()'s default
+// base is the literal wall-clock date, so during the early-morning grace
+// window before dayResetTime a windowStart/windowEnd time would compare
+// against *today's* clock instant instead of the logical day (still
+// "yesterday") that's actually in progress — hiding an already-active
+// windowed task the instant the calendar flips, well before dayResetTime.
+function getWindowThreshold(hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = getCurrentDayStart();
+  t.setHours(h, m, 0, 0);
+  return t;
+}
+
 // True once the task's own day (deferUntil / dueDate) has arrived — i.e. it's
 // not sitting hidden behind a future date. Used to distinguish a genuinely
 // expired time window from a window on a task that hasn't come up yet, and to
@@ -116,8 +130,8 @@ export function isTaskWindowActive(task: Task): boolean {
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
   const now = new Date();
-  if (now < hhmmToDate(task.windowStart)) return false;
-  if (task.windowEnd && now >= hhmmToDate(task.windowEnd)) return false;
+  if (now < getWindowThreshold(task.windowStart)) return false;
+  if (task.windowEnd && now >= getWindowThreshold(task.windowEnd)) return false;
   return true;
 }
 
@@ -130,7 +144,7 @@ export function isTaskExpired(task: Task): boolean {
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (!hasDayArrived(task)) return false;
-  return new Date() >= hhmmToDate(task.windowEnd);
+  return new Date() >= getWindowThreshold(task.windowEnd);
 }
 
 export function isTaskVisible(task: Task): boolean {
@@ -155,7 +169,7 @@ export function isTaskVisible(task: Task): boolean {
     if (now < threshold) return false;
   }
 
-  if (task.windowStart && now < hhmmToDate(task.windowStart)) return false;
+  if (task.windowStart && now < getWindowThreshold(task.windowStart)) return false;
 
   if (isTaskExpired(task)) return false;
 
@@ -328,7 +342,7 @@ export function getVisibleAt(task: Task): Date {
     const threshold = earliestSegmentThreshold(task.timeSegments)!;
     if (threshold > now) candidates.push(threshold);
   } else if (task.windowStart && candidates.length === 0) {
-    const threshold = hhmmToDate(task.windowStart);
+    const threshold = getWindowThreshold(task.windowStart);
     if (threshold > now) candidates.push(threshold);
   }
 

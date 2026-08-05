@@ -27,6 +27,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { templateHasBrokenRefs, findTemplatesReferencing } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
 
 export function TemplatesScreen() {
@@ -49,6 +50,7 @@ export function TemplatesScreen() {
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
 
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
+  const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
 
   const templateCategoryOrder = useMemo(
     () => [...templateCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
@@ -80,9 +82,16 @@ export function TemplatesScreen() {
 
   const handleDeleteTemplate = (id: string, name: string) => {
     haptics.warning();
+    const referencing = findTemplatesReferencing(templates, id);
+    const base = `Delete "${name}"? Tasks already created from it are unaffected.`;
+    const message = referencing.length === 0
+      ? base
+      : referencing.length === 1
+        ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
+        : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
     Alert.alert(
       'Delete Template',
-      `Delete "${name}"? Tasks already created from it are unaffected.`,
+      message,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -166,6 +175,7 @@ export function TemplatesScreen() {
           return (
             <TemplateRow
               template={tpl}
+              broken={templateHasBrokenRefs(tpl, templatesById)}
               colors={colors}
               styles={styles}
               drag={drag}
@@ -214,9 +224,11 @@ export function TemplatesScreen() {
 
 /** Template list row: swipe left to reveal Delete. */
 function TemplateRow({
-  template, colors, styles, drag, onPress, onEdit, onApply, onDelete,
+  template, broken, colors, styles, drag, onPress, onEdit, onApply, onDelete,
 }: {
   template: TaskTemplate;
+  /** True if a template this one nests (at any depth) was deleted or is itself broken. */
+  broken: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   drag: () => void;
@@ -245,14 +257,24 @@ function TemplateRow({
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
-        accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}`}
+        accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : ''}`}
         accessibilityHint="Double tap to edit template"
       >
         <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
           <Ionicons name="copy" size={18} color={colors.accent} />
         </View>
         <View style={styles.tplInfo}>
-          <Text style={styles.tplName}>{template.name}</Text>
+          <View style={styles.tplNameRow}>
+            <Text style={styles.tplName}>{template.name}</Text>
+            {broken && (
+              <Ionicons
+                name="alert-circle"
+                size={14}
+                color={colors.warning}
+                accessibilityLabel="A nested template is missing"
+              />
+            )}
+          </View>
           <Text style={styles.tplHint}>
             {template.items.length === 0
               ? 'No items'
@@ -354,6 +376,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tplInfo: {
     flex: 1,
     gap: 2,
+  },
+  tplNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   tplName: {
     color: colors.text,

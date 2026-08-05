@@ -25,15 +25,15 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import type { Project } from '../types';
 
 function dateRangeLabel(project: Project): string | null {
   if (project.targetStartDate && project.targetEndDate) {
-    return `${formatDueDate(project.targetStartDate)} – ${formatDueDate(project.targetEndDate)}`;
+    return `${formatStartDate(project.targetStartDate)} – ${formatDueDate(project.targetEndDate)}`;
   }
   if (project.targetEndDate) return `By ${formatDueDate(project.targetEndDate)}`;
-  if (project.targetStartDate) return `From ${formatDueDate(project.targetStartDate)}`;
+  if (project.targetStartDate) return `From ${formatStartDate(project.targetStartDate)}`;
   return null;
 }
 
@@ -182,7 +182,9 @@ export function ProjectsScreen() {
                   </View>
                   {progress.total > 0 && (
                     <View style={styles.progressRow}>
-                      <ProgressBar progress={progress.done / progress.total} />
+                      <View style={styles.progressBarWrap}>
+                        <ProgressBar progress={progress.done / progress.total} />
+                      </View>
                       <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
                     </View>
                   )}
@@ -192,7 +194,6 @@ export function ProjectsScreen() {
                     </Text>
                   )}
                 </View>
-                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
               </TouchableOpacity>
             );
           }}
@@ -290,6 +291,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  progressBarWrap: {
+    flex: 1,
   },
   progressText: {
     color: colors.textTertiary,

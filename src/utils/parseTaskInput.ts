@@ -1,7 +1,24 @@
-import { addDays, format, isSameDay, setHours, startOfDay } from 'date-fns';
+import { addDays, addMonths, addWeeks, addYears, format, isSameDay, lastDayOfMonth, setDate, setHours, startOfDay, startOfMonth } from 'date-fns';
 import type { Day } from 'date-fns';
 import type { RecurrenceType, TimeOfDay } from '../types';
-import { extractDayPart, extractTime, parseDatePart, WEEKDAYS } from './parseNaturalDate';
+import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS } from './parseNaturalDate';
+
+/**
+ * The Nth (1-4) or last (-1) weekday-of-month occurrence within the month
+ * containing `monthDate`. Duplicated from dateUtils.ts's identical helper
+ * rather than imported — dateUtils pulls in the SQLite db layer transitively
+ * (via useSettingsStore), which this module must stay free of to keep parsing
+ * pure and Jest-testable without native module mocks.
+ */
+function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: number): Date {
+  if (ordinal === -1) {
+    const last = lastDayOfMonth(monthDate);
+    return addDays(last, -((last.getDay() - weekday + 7) % 7));
+  }
+  const first = startOfMonth(monthDate);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return addDays(first, offset + (ordinal - 1) * 7);
+}
 
 /**
  * Extracts a schedule phrase from the end of a quick-add title.
@@ -28,8 +45,18 @@ export interface ParsedSchedule {
   /** 'none' for one-off dates. */
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
-  /** Weekly only; 0 = Sunday. Sorted. */
+  /**
+   * Weekly: the recurring weekdays, 0 = Sunday, sorted. Monthly with
+   * recurrenceWeekOrdinal set: a single weekday (only the first entry is used).
+   */
   recurrenceDays: number[];
+  /** Monthly only: fixed day of month (1-31), -1 = last day. Mutually exclusive with recurrenceWeekOrdinal. */
+  recurrenceMonthDay?: number | null;
+  /** Monthly only: 1-4 = Nth weekday of month, -1 = last weekday of month ("every 2nd Tuesday", "last Friday"). */
+  recurrenceWeekOrdinal?: number | null;
+  recurrenceEndDate?: string | null;
+  recurrenceCount?: number | null;
+  recurrenceFromCompletion?: boolean;
 }
 
 export interface ParsedTaskInput {
@@ -83,6 +110,40 @@ function firstOccurrence(days: number[], now: Date): Date {
     if (days.includes(d.getDay())) return d;
   }
   return today;
+}
+
+/** Earliest occurrence (today or later) of a fixed day-of-month; day === -1 means the last day. */
+function firstMonthDayOccurrence(day: number, now: Date): Date {
+  const today = startOfDay(now);
+  const clamp = (d: Date) => (day === -1 ? lastDayOfMonth(d) : setDate(d, Math.min(day, lastDayOfMonth(d).getDate())));
+  let candidate = clamp(today);
+  if (candidate < today) candidate = clamp(addMonths(today, 1));
+  return candidate;
+}
+
+/** Earliest occurrence (today or later) of the Nth (or last) weekday-of-month. */
+function firstWeekdayOfMonthOccurrence(weekday: number, ordinal: number, now: Date): Date {
+  const today = startOfDay(now);
+  let candidate = nthWeekdayOfMonth(today, weekday, ordinal);
+  if (candidate < today) candidate = nthWeekdayOfMonth(addMonths(today, 1), weekday, ordinal);
+  return candidate;
+}
+
+const ORDINAL_WORDS: Record<string, number> = {
+  '1st': 1, first: 1,
+  '2nd': 2, second: 2,
+  '3rd': 3, third: 3,
+  '4th': 4, fourth: 4,
+  last: -1,
+};
+
+/** "15th" / "15" → 15; "last"/"last day" → -1. */
+function parseMonthDayToken(token: string): number | null {
+  if (token === 'last' || token === 'last day') return -1;
+  const m = token.match(/^(\d{1,2})(?:st|nd|rd|th)?$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return n >= 1 && n <= 31 ? n : null;
 }
 
 function recurrence(
@@ -166,6 +227,54 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   if (/^every weekdays?$/.test(text)) return recurrence('weekly', 1, [1, 2, 3, 4, 5], segments, now);
   if (/^every weekends?$/.test(text)) return recurrence('weekly', 1, [0, 6], segments, now);
 
+  // Interval synonyms.
+  if (/^(?:biweekly|fortnightly)$/.test(text)) return recurrence('weekly', 2, [], segments, now);
+  if (/^(?:quarterly|every quarter)$/.test(text)) return recurrence('monthly', 3, [], segments, now);
+  if (/^(?:biannually|semiannually|semi-annually|twice a year)$/.test(text)) return recurrence('monthly', 6, [], segments, now);
+
+  // A specific annual date: "every september 15", "every sep 15th", "yearly on june 1".
+  if ((m = text.match(/^every ([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/))
+    || (m = text.match(/^(?:yearly|annually) on ([a-z]+)\.?\s+(\d{1,2})(?:st|nd|rd|th)?$/))) {
+    const month = MONTHS[m[1]];
+    if (month !== undefined) {
+      const dp = monthDay(month, parseInt(m[2], 10), null, now);
+      if (dp) {
+        return {
+          dueDate: dueAt(dp.date), timeSegments: segments,
+          recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceDays: [],
+        };
+      }
+    }
+  }
+
+  // Monthly on a fixed day-of-month: "on the 1st of every month", "every month
+  // on the 15th", "monthly on the last day".
+  if ((m = text.match(/^on the (.+) of every month$/))
+    || (m = text.match(/^every month on the (.+)$/))
+    || (m = text.match(/^monthly on the (.+)$/))) {
+    const day = parseMonthDayToken(m[1]);
+    if (day !== null) {
+      return {
+        dueDate: dueAt(firstMonthDayOccurrence(day, now)), timeSegments: segments,
+        recurrenceType: 'monthly', recurrenceInterval: 1, recurrenceDays: [], recurrenceMonthDay: day,
+      };
+    }
+  }
+
+  // Nth weekday of the month: "every 2nd tuesday", "every last friday of the
+  // month", "2nd tuesday of every month", "last friday of every month".
+  if ((m = text.match(/^every (1st|2nd|3rd|4th|first|second|third|fourth|last) ([a-z]+)(?: of the month)?$/))
+    || (m = text.match(/^(1st|2nd|3rd|4th|first|second|third|fourth|last) ([a-z]+) of every month$/))) {
+    const ord = ORDINAL_WORDS[m[1]];
+    const weekday = WEEKDAYS[m[2]] ?? WEEKDAYS[m[2].replace(/s$/, '')];
+    if (ord !== undefined && weekday !== undefined) {
+      return {
+        dueDate: dueAt(firstWeekdayOfMonthOccurrence(weekday, ord, now)), timeSegments: segments,
+        recurrenceType: 'monthly', recurrenceInterval: 1, recurrenceDays: [weekday], recurrenceWeekOrdinal: ord,
+      };
+    }
+  }
+
   // "every tuesday", "every mon and wed", "every tue/thu"
   if ((m = text.match(/^every (.+)$/))) {
     const days = parseWeekdayList(m[1], false);
@@ -182,25 +291,108 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   return null;
 }
 
-function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
-  const direct = matchRecurrenceCore(text, now, []);
-  if (direct) return direct;
+/** Peels a trailing "starting <date>" clause, e.g. "every 2 weeks starting next friday". */
+function extractStartingClause(text: string, now: Date): { date: Date; rest: string } | null {
+  const m = text.match(/^(.*?)\s+starting\s+(.+)$/);
+  if (!m) return null;
+  const dp = parseDatePart(m[2], now);
+  return dp ? { date: dp.date, rest: m[1] } : null;
+}
 
-  // Peel a trailing clock time / day part ("every tuesday at 6pm") into a segment.
-  let segments: TimeOfDay[];
-  let rest: string;
-  const clock = extractTime(text);
-  if (clock) {
-    segments = [segmentForHour(clock.time.h)];
-    rest = clock.rest;
-  } else {
-    const part = extractDayPart(text);
-    if (!part) return null;
-    segments = [DAY_PART_SEGMENT[part.part]];
-    rest = part.rest;
+/** Peels a trailing "after completion" clause, mapping to recurrenceFromCompletion. */
+function extractFromCompletionClause(text: string): { rest: string } | null {
+  const m = text.match(/^(.*?)\s+after\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/);
+  return m ? { rest: m[1] } : null;
+}
+
+interface EndCondition {
+  endDate?: Date;
+  count?: number;
+  durationN?: number;
+  durationUnit?: string;
+}
+
+/**
+ * Peels a trailing end condition: "until <date>" (including a bare month name,
+ * meaning "through the end of that month"), "for N times/occurrences", or
+ * "for N days/weeks/months/years" (a duration from the first due date).
+ */
+function extractEndCondition(text: string, now: Date): { end: EndCondition; rest: string } | null {
+  let m: RegExpMatchArray | null;
+  if ((m = text.match(/^(.*?)\s+until\s+(.+)$/))) {
+    const target = m[2];
+    const month = MONTHS[target];
+    if (month !== undefined) {
+      const dp = monthDay(month, 1, null, now);
+      if (dp) return { end: { endDate: lastDayOfMonth(dp.date) }, rest: m[1] };
+    } else {
+      const dp = parseDatePart(target, now);
+      if (dp) return { end: { endDate: dp.date }, rest: m[1] };
+    }
+    return null;
   }
-  rest = rest.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
-  return matchRecurrenceCore(rest, now, segments);
+  if ((m = text.match(/^(.*?)\s+for\s+(\d+)\s+(?:times|occurrences?)$/))) {
+    return { end: { count: parseInt(m[2], 10) }, rest: m[1] };
+  }
+  if ((m = text.match(/^(.*?)\s+for\s+(\d+)\s+(days?|weeks?|months?|years?)$/))) {
+    return { end: { durationN: parseInt(m[2], 10), durationUnit: m[3] }, rest: m[1] };
+  }
+  return null;
+}
+
+function durationAddFn(unit: string): (date: Date, amount: number) => Date {
+  if (/^day/.test(unit)) return addDays;
+  if (/^week/.test(unit)) return addWeeks;
+  if (/^month/.test(unit)) return addMonths;
+  return addYears;
+}
+
+function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
+  let t = text;
+
+  const fromCompletion = extractFromCompletionClause(t);
+  if (fromCompletion) t = fromCompletion.rest;
+
+  const endMatch = extractEndCondition(t, now);
+  if (endMatch) t = endMatch.rest;
+
+  const starting = extractStartingClause(t, now);
+  const core = starting ? starting.rest : t;
+
+  let schedule = matchRecurrenceCore(core, now, []);
+  if (!schedule) {
+    // Peel a trailing clock time / day part ("every tuesday at 6pm") into a segment.
+    let segments: TimeOfDay[];
+    let rest: string;
+    const clock = extractTime(core);
+    if (clock) {
+      segments = [segmentForHour(clock.time.h)];
+      rest = clock.rest;
+    } else {
+      const part = extractDayPart(core);
+      if (!part) return null;
+      segments = [DAY_PART_SEGMENT[part.part]];
+      rest = part.rest;
+    }
+    rest = rest.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+    schedule = matchRecurrenceCore(rest, now, segments);
+  }
+  if (!schedule) return null;
+
+  if (starting) schedule = { ...schedule, dueDate: dueAt(starting.date) };
+  if (fromCompletion) schedule = { ...schedule, recurrenceFromCompletion: true };
+  if (endMatch) {
+    const { end } = endMatch;
+    if (end.endDate) {
+      schedule = { ...schedule, recurrenceEndDate: dueAt(end.endDate).toISOString() };
+    } else if (end.count !== undefined) {
+      schedule = { ...schedule, recurrenceCount: end.count };
+    } else if (end.durationN !== undefined && end.durationUnit) {
+      const endDate = durationAddFn(end.durationUnit)(schedule.dueDate, end.durationN);
+      schedule = { ...schedule, recurrenceEndDate: endDate.toISOString() };
+    }
+  }
+  return schedule;
 }
 
 /** Try to parse an entire suffix as a one-off date/time or recurrence phrase. */
@@ -290,6 +482,17 @@ function sameDays(a: number[], b: number[]): boolean {
   return a.length === b.length && a.every((d, i) => d === b[i]);
 }
 
+function ordinalLabel(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
 /** Human label for the parse chip: "Tue, Jun 17", "Every Mon & Wed", "Daily · morning". */
 export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): string {
   const n = s.recurrenceInterval;
@@ -316,10 +519,17 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
       break;
     }
     case 'monthly':
-      label = n === 1 ? 'Monthly' : `Every ${n} months`;
+      if (s.recurrenceWeekOrdinal != null && s.recurrenceDays.length > 0) {
+        const ordWord = s.recurrenceWeekOrdinal === -1 ? 'last' : ordinalLabel(s.recurrenceWeekOrdinal);
+        label = `Every ${ordWord} ${DAY_NAMES_FULL[s.recurrenceDays[0]]}`;
+      } else if (s.recurrenceMonthDay != null) {
+        label = s.recurrenceMonthDay === -1 ? 'Monthly on the last day' : `Monthly on the ${ordinalLabel(s.recurrenceMonthDay)}`;
+      } else {
+        label = n === 1 ? 'Monthly' : n === 3 ? 'Quarterly' : n === 6 ? 'Every 6 months' : `Every ${n} months`;
+      }
       break;
     case 'yearly':
-      label = n === 1 ? 'Yearly' : `Every ${n} years`;
+      label = n === 1 ? `Every ${format(s.dueDate, 'MMM d')}` : `Every ${n} years`;
       break;
     default: {
       const d = s.dueDate;
