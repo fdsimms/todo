@@ -1,9 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
@@ -17,6 +16,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { CategoryEditor } from '../components/CategoryEditor';
+import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -37,31 +38,14 @@ export function CategoriesScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
-  const [addingCategory, setAddingCategory] = useState(false);
-  const [newCategoryText, setNewCategoryText] = useState('');
-  const [newCategoryEmoji, setNewCategoryEmoji] = useState('');
-  const inputRef = useRef<TextInput>(null);
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
 
   const getCategoryObj = (name: string) => categories.find(c => c.name === name) ?? null;
 
-  const handleAddCategory = () => {
-    const trimmed = newCategoryText.trim();
-    if (trimmed) {
-      haptics.success();
-      animateLayout();
-      addCategory(trimmed);
-      const trimmedEmoji = newCategoryEmoji.trim();
-      if (trimmedEmoji) setCategoryEmoji(trimmed, trimmedEmoji);
-    }
-    setNewCategoryText('');
-    setNewCategoryEmoji('');
-    setAddingCategory(false);
-  };
-
-  const handleStartAdding = () => {
+  const createCategory = (name: string, emoji: string | null) => {
     animateLayout();
-    setAddingCategory(true);
-    setTimeout(() => inputRef.current?.focus(), 50);
+    addCategory(name);
+    if (emoji) setCategoryEmoji(name, emoji);
   };
 
   return (
@@ -71,62 +55,15 @@ export function CategoriesScreen() {
         subtitle={allCategories.length > 0
           ? `${allCategories.length} ${allCategories.length === 1 ? 'category' : 'categories'}`
           : undefined}
-        actions={[{ icon: 'add', onPress: handleStartAdding, accessibilityLabel: 'Add category' }]}
       />
 
-      {addingCategory && (
-        <View style={styles.addRow}>
-          <View style={[styles.catIcon, { backgroundColor: colors.bgTertiary }]}>
-            {newCategoryEmoji.trim() ? (
-              <Text style={styles.catIconEmoji}>{newCategoryEmoji.trim()}</Text>
-            ) : (
-              <Ionicons name="folder-outline" size={18} color={colors.textTertiary} />
-            )}
-          </View>
-          <TextInput
-            style={styles.addEmojiInput}
-            value={newCategoryEmoji}
-            onChangeText={setNewCategoryEmoji}
-            placeholder="🙂"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={4}
-            accessibilityLabel="Category emoji"
-          />
-          <TextInput
-            ref={inputRef}
-            style={styles.addInput}
-            value={newCategoryText}
-            onChangeText={setNewCategoryText}
-            placeholder="Category name"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="words"
-            autoCorrect={false}
-            returnKeyType="done"
-            onSubmitEditing={handleAddCategory}
-            onBlur={() => {
-              if (!newCategoryText.trim()) setAddingCategory(false);
-            }}
-          />
-          <TouchableOpacity onPress={handleAddCategory} style={styles.addConfirm} activeOpacity={interaction.activeOpacity} accessibilityRole="button" accessibilityLabel="Confirm new category">
-            <Ionicons name="checkmark" size={20} color={colors.accent} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => { setNewCategoryText(''); setNewCategoryEmoji(''); setAddingCategory(false); }}
-            style={styles.addCancel}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel="Cancel"
-          >
-            <Ionicons name="close" size={20} color={colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {allCategories.length === 0 && !addingCategory ? (
+      {allCategories.length === 0 ? (
         <EmptyState
           icon="folder-open-outline"
           title="No categories yet"
-          subtitle="Tap + to create a category, or assign one when editing a task"
+          subtitle="Group tasks by the part of life they belong to — work, health, errands — and give each one its own visibility schedule"
+          actionLabel="New category"
+          onAction={() => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -134,7 +71,7 @@ export function CategoriesScreen() {
           data={allCategories}
           keyExtractor={c => c}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<View style={{ height: tabBarHeight + spacing.md }} />}
+          ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
           onReorder={reordered => reorderCategories(reordered)}
@@ -203,6 +140,24 @@ export function CategoriesScreen() {
         />
       )}
 
+      <Fab
+        onPress={() => setQuickAddVisible(true)}
+        accessibilityLabel="Add category"
+        bottom={insets.bottom + tabBarHeight + spacing.md}
+      />
+
+      <QuickAddNameSheet
+        visible={quickAddVisible}
+        placeholder="New category…"
+        withEmoji
+        moreLabel="More details"
+        onSubmit={createCategory}
+        // "More details" creates it first, then hands straight over to the
+        // editor — same move Projects makes from its quick add.
+        onOpenFull={(name, emoji) => { createCategory(name, emoji); setEditingCategory(name); }}
+        onClose={() => setQuickAddVisible(false)}
+      />
+
       <CategoryEditor
         visible={editingCategory !== null}
         category={editingCategory}
@@ -216,38 +171,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  // Mirrors the inset-grouped card footprint of the category rows below.
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: spacing.md,
-  },
-  addInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-    paddingVertical: 0,
-  },
-  addEmojiInput: {
-    width: 36,
-    color: colors.text,
-    fontSize: font.md,
-    paddingVertical: 0,
-    textAlign: 'center',
-  },
-  addConfirm: {
-    padding: 4,
-  },
-  addCancel: {
-    padding: 4,
   },
   list: {
     paddingTop: spacing.sm,

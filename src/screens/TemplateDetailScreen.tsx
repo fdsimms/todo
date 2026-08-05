@@ -13,7 +13,7 @@ import { useNavigation, useRoute, type RouteProp } from '@react-navigation/nativ
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from '../components/EmptyState';
-import { PressableScale } from '../components/PressableScale';
+import { Fab } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
 import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
@@ -23,7 +23,7 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -52,7 +52,6 @@ export function TemplateDetailScreen() {
   const route = useRoute<RouteProp<RootStackParamList, 'TemplateDetail'>>();
   const { templateId } = route.params;
   const colors = useColors();
-  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const templates = useTemplateStore(s => s.templates);
@@ -328,16 +327,12 @@ export function TemplateDetailScreen() {
       />
 
       {!selectionMode && (
-        <View style={styles.detailFabContainer}>
-          <PressableScale
-            style={[styles.fab, shadows.fab, { shadowColor: colors.accent }]}
-            pressScale={0.9}
-            onPress={() => { haptics.impactLight(); setQuickAddVisible(true); }}
-            accessibilityLabel="Add item"
-          >
-            <Ionicons name="add" size={24} color={colors.onAccent} />
-          </PressableScale>
-        </View>
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add item"
+          bottom={spacing.xl}
+          size={48}
+        />
       )}
 
       {selectionMode && (
@@ -634,16 +629,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   listWithBulkBar: {
     paddingBottom: 200,
-  },
-  detailFabContainer: {
-    position: 'absolute',
-    right: spacing.lg,
-    bottom: spacing.xl,
-    zIndex: 20,
-  },
-  fab: {
-    width: 48, height: 48, borderRadius: 24,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   selectAction: {
     backgroundColor: colors.accent,

@@ -18,17 +18,15 @@ import { ProjectEditor } from '../components/ProjectEditor';
 import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
-import { PressableScale } from '../components/PressableScale';
+import { Fab, FAB_SIZE } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import type { Project } from '../types';
-
-const FAB_SIZE = 56;
 
 function dateRangeLabel(project: Project): string | null {
   if (project.targetStartDate && project.targetEndDate) {
@@ -43,7 +41,6 @@ export function ProjectsScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
-  const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const navigation = useNavigation();
@@ -119,7 +116,9 @@ export function ProjectsScreen() {
         <EmptyState
           icon={showArchived ? 'archive-outline' : 'briefcase-outline'}
           title={showArchived ? 'No archived projects' : 'No projects yet'}
-          subtitle={showArchived ? 'Projects you archive will show up here' : 'Tap + to start a themed collection, like a summer bucket list'}
+          subtitle={showArchived ? 'Projects you archive will show up here' : 'Start a themed collection, like a summer bucket list, and pick tasks off it over time'}
+          actionLabel={showArchived ? undefined : 'New project'}
+          onAction={showArchived ? undefined : () => setQuickAddVisible(true)}
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -191,16 +190,11 @@ export function ProjectsScreen() {
       )}
 
       {!showArchived && (
-        <View style={[styles.fabContainer, { bottom: insets.bottom + tabBarHeight + spacing.md }]}>
-          <PressableScale
-            style={[styles.fab, shadows.fab]}
-            pressScale={0.9}
-            onPress={() => { haptics.impactLight(); setQuickAddVisible(true); }}
-            accessibilityLabel="Add project"
-          >
-            <Ionicons name="add" size={28} color={colors.onAccent} />
-          </PressableScale>
-        </View>
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add project"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
       )}
 
       <QuickAddProjectModal
@@ -223,16 +217,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  fabContainer: {
-    position: 'absolute',
-    right: spacing.lg,
-    zIndex: 20,
-  },
-  fab: {
-    width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2,
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
-    shadowColor: colors.accent,
   },
   list: {
     paddingTop: spacing.sm,
