@@ -14,8 +14,11 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, type TemplateItemSuggestion } from '../services/aiSuggestions';
+import { estimateEffort } from '../utils/effortEstimator';
+import { minutesToEffort } from '../utils/effort';
 
 interface Props {
   visible: boolean;
@@ -42,6 +45,14 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
   const [suggestions, setSuggestions] = useState<TemplateItemSuggestion[]>([]);
   // Indices of accepted suggestions; everything starts accepted.
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
+
+  // Effort isn't part of the AI suggestion anymore — it's estimated from the
+  // user's own timer history, same as a new task in the editor. Computed once
+  // per suggestion set rather than per render.
+  const estimates = useMemo(() => {
+    const tasks = useTaskStore.getState().tasks;
+    return suggestions.map(s => estimateEffort(s.title, { notes: s.notes }, tasks));
+  }, [suggestions]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,7 +100,13 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
     haptics.success();
     suggestions.forEach((s, i) => {
       if (!accepted.has(i)) return;
-      addItem(templateId, { title: s.title, notes: s.notes, effort: s.effort });
+      const minutes = estimates[i]?.minutes ?? null;
+      addItem(templateId, {
+        title: s.title,
+        notes: s.notes,
+        effort: minutes != null ? minutesToEffort(minutes) : 0,
+        estimatedMinutes: minutes,
+      });
     });
     onClose();
   };
@@ -148,6 +165,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
             </Text>
             {suggestions.map((s, i) => {
               const isAccepted = accepted.has(i);
+              const estimatedEffort = estimates[i]?.minutes != null ? minutesToEffort(estimates[i].minutes!) : 0;
               return (
                 <TouchableOpacity
                   key={`${s.title}-${i}`}
@@ -170,9 +188,9 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
                       </Text>
                     )}
                   </View>
-                  {s.effort > 0 && (
+                  {estimatedEffort > 0 && (
                     <View style={styles.effortBadge}>
-                      <Text style={styles.effortBadgeText}>{EFFORT_HINTS[s.effort]}</Text>
+                      <Text style={styles.effortBadgeText}>{EFFORT_HINTS[estimatedEffort]}</Text>
                     </View>
                   )}
                 </TouchableOpacity>

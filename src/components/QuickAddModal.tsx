@@ -38,7 +38,8 @@ import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
-import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
+import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal, type TaskDraft } from './TaskEditor';
@@ -143,7 +144,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [customEffortText, setCustomEffortText] = useState('');
   const [effortNote, setEffortNote] = useState<string | null>(null);
-  const [effortAiLoading, setEffortAiLoading] = useState(false);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -181,7 +181,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setEstimatedMinutes(null);
       setCustomEffortText('');
       setEffortNote(null);
-      setEffortAiLoading(false);
       setDueDate(
         context === 'later' ? getLogicalTomorrow(dayResetTime)
         : context === 'inbox' || context === 'unscheduled' ? null
@@ -476,25 +475,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setEffort(minutesToEffort(n));
   };
 
-  const handleEstimateEffort = async () => {
+  const handleEstimateEffort = () => {
     if (!title.trim()) return;
-    setEffortAiLoading(true);
-    setEffortNote(null);
-    try {
-      const result = await suggestTaskEffort(title.trim(), '');
-      if (result.minutes != null) {
-        setEstimatedMinutes(result.minutes);
-        setEffort(minutesToEffort(result.minutes));
-        setCustomEffortText('');
-        setEffortNote(result.reason);
-      } else {
-        setEffortNote(result.reason);
-      }
-    } catch {
-      setEffortNote('Could not estimate right now.');
-    } finally {
-      setEffortAiLoading(false);
+    const result = estimateEffort(title.trim(), { category, tags }, useTaskStore.getState().tasks);
+    if (result.minutes != null) {
+      setEstimatedMinutes(result.minutes);
+      setEffort(minutesToEffort(result.minutes));
+      setCustomEffortText('');
     }
+    setEffortNote(result.reason);
   };
 
   const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
@@ -1100,24 +1089,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                   placeholder="custom min"
                   placeholderTextColor={colors.textTertiary}
                 />
-                {!!anthropicApiKey && (
-                  <TouchableOpacity
-                    style={styles.effortAiBtn}
-                    onPress={handleEstimateEffort}
-                    disabled={effortAiLoading || !title.trim()}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    {effortAiLoading
-                      ? <ActivityIndicator size="small" color={colors.purple} />
-                      : (
-                        <>
-                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                          <Text style={styles.effortAiBtnText}>AI estimate</Text>
-                        </>
-                      )
-                    }
-                  </TouchableOpacity>
-                )}
+                <TouchableOpacity
+                  style={styles.effortAiBtn}
+                  onPress={handleEstimateEffort}
+                  disabled={!title.trim()}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="stopwatch-outline" size={12} color={colors.purple} />
+                  <Text style={styles.effortAiBtnText}>Estimate</Text>
+                </TouchableOpacity>
               </View>
               {effortNote ? <Text style={styles.effortNote}>{effortNote}</Text> : null}
             </View>

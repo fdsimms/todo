@@ -43,7 +43,8 @@ import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffse
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
-import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
+import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
@@ -216,7 +217,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [customEffortText, setCustomEffortText] = useState('');
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [effortNote, setEffortNote] = useState<string | null>(null);
-  const [effortAiLoading, setEffortAiLoading] = useState(false);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [logTimeText, setLogTimeText] = useState('');
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
@@ -312,7 +312,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setLogTimeText(''); setLogTimeUnit('min');
-    setEffortNote(null); setEffortAiLoading(false);
+    setEffortNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
@@ -794,25 +794,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setEffort(minutesToEffort(minutes));
   };
 
-  const handleEstimateEffort = async () => {
-    setEffortAiLoading(true);
-    setEffortNote(null);
-    try {
-      const result = await suggestTaskEffort(title.trim(), notes);
-      if (result.minutes != null) {
-        setEstimatedMinutes(result.minutes);
-        setEffort(minutesToEffort(result.minutes));
-        setCustomEffortOpen(false);
-        setEffortNote(result.reason);
-      } else {
-        // The model abstained — surface why and leave the estimate untouched.
-        setEffortNote(result.reason);
-      }
-    } catch {
-      setEffortNote('Could not estimate right now.');
-    } finally {
-      setEffortAiLoading(false);
+  const handleEstimateEffort = () => {
+    const result = estimateEffort(
+      title.trim(),
+      { notes, category, tags, previousOccurrenceId: task?.previousOccurrenceId ?? null, excludeTaskId: task?.id ?? null },
+      useTaskStore.getState().tasks,
+    );
+    if (result.minutes != null) {
+      setEstimatedMinutes(result.minutes);
+      setEffort(minutesToEffort(result.minutes));
+      setCustomEffortOpen(false);
     }
+    // Otherwise not enough timer history yet — the reason explains why, estimate untouched.
+    setEffortNote(result.reason);
   };
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -1683,22 +1677,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               hint="Roughly how long this takes, so a day's list can be sized realistically."
               expanded={fieldOpen('effort')}
               onToggle={() => toggleField('effort')}
-              right={!!anthropicApiKey && (
+              right={(
                 <TouchableOpacity
                   style={styles.suggestBtn}
                   onPress={handleEstimateEffort}
-                  disabled={effortAiLoading || !title.trim()}
+                  disabled={!title.trim()}
                   hitSlop={8}
                 >
-                  {effortAiLoading
-                    ? <ActivityIndicator size="small" color={colors.purple} />
-                    : (
-                      <>
-                        <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                        <Text style={styles.suggestBtnText}>AI estimate</Text>
-                      </>
-                    )
-                  }
+                  <Ionicons name="stopwatch-outline" size={12} color={colors.purple} />
+                  <Text style={styles.suggestBtnText}>Estimate</Text>
                 </TouchableOpacity>
               )}
             >
