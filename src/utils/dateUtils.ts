@@ -8,6 +8,7 @@ import {
   isSameDay,
   isSameWeek,
   startOfDay,
+  startOfMonth,
   differenceInCalendarDays,
   setDate,
   lastDayOfMonth,
@@ -170,9 +171,11 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
         : addWeeks(base, task.recurrenceInterval);
       break;
     case 'monthly':
-      next = task.recurrenceMonthDay
-        ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
-        : addMonths(base, task.recurrenceInterval);
+      next = task.recurrenceWeekOrdinal !== null && task.recurrenceDays.length > 0
+        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base)
+        : task.recurrenceMonthDay
+          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
+          : addMonths(base, task.recurrenceInterval);
       break;
     case 'yearly':
       next = addYears(base, task.recurrenceInterval);
@@ -196,6 +199,27 @@ function getNextWeekdayOccurrence(days: number[], from: Date): Date {
     if (day > dow) return addDays(from, day - dow);
   }
   return addDays(from, 7 - dow + sorted[0]);
+}
+
+/**
+ * The Nth weekday-of-month occurrence within the month containing `monthDate`,
+ * e.g. "the 2nd Tuesday" (ordinal=2) or "the last Friday" (ordinal=-1).
+ * Ordinals 1-4 are always within the month (every month has at least 28 days).
+ */
+export function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: number): Date {
+  if (ordinal === -1) {
+    const last = lastDayOfMonth(monthDate);
+    return subDays(last, (last.getDay() - weekday + 7) % 7);
+  }
+  const first = startOfMonth(monthDate);
+  const offset = (weekday - first.getDay() + 7) % 7;
+  return addDays(first, offset + (ordinal - 1) * 7);
+}
+
+function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from: Date): Date {
+  const thisMonth = nthWeekdayOfMonth(from, weekday, ordinal);
+  if (thisMonth > from) return thisMonth;
+  return nthWeekdayOfMonth(addMonths(from, 1), weekday, ordinal);
 }
 
 /**

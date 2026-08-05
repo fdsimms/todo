@@ -78,6 +78,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],

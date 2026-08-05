@@ -40,7 +40,7 @@ import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dat
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import { RECURRENCE_LABELS, ordinal, type TaskDraft } from './TaskEditor';
+import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal, type TaskDraft } from './TaskEditor';
 
 interface Props {
   visible: boolean;
@@ -147,6 +147,9 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState<string | null>(null);
+  const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   // Natural-language suggestion measurements: mirror-text widths locate the
   // highlighted phrase so the tooltip can point at it.
@@ -183,6 +186,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setRecurrenceType(initialRecurrenceType ?? 'none');
       setRecurrenceInterval(1);
       setRecurrenceDays([]);
+      setRecurrenceMonthDay(null);
+      setRecurrenceWeekOrdinal(null);
+      setRecurrenceEndDate(null);
+      setRecurrenceCount(null);
       setRecurrenceFromCompletion(false);
       setPrefixW(null);
       setMatchW(null);
@@ -269,7 +276,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setRecurrenceType(parsed.schedule.recurrenceType);
     setRecurrenceInterval(parsed.schedule.recurrenceInterval);
     setRecurrenceDays(parsed.schedule.recurrenceDays);
-    setRecurrenceMonthDay(null);
+    setRecurrenceMonthDay(parsed.schedule.recurrenceMonthDay ?? null);
+    setRecurrenceWeekOrdinal(parsed.schedule.recurrenceWeekOrdinal ?? null);
+    setRecurrenceEndDate(parsed.schedule.recurrenceEndDate ?? null);
+    setRecurrenceCount(parsed.schedule.recurrenceCount ?? null);
+    setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
   };
 
   const createTask = (finalTitle: string) => {
@@ -288,6 +299,9 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      recurrenceWeekOrdinal,
+      recurrenceEndDate,
+      recurrenceCount,
       recurrenceFromCompletion,
     });
     onCreated?.(task);
@@ -336,6 +350,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
+      recurrenceWeekOrdinal,
       recurrenceFromCompletion,
     });
   };
@@ -859,14 +874,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
               {recurrenceType === 'monthly' && (
                 <View style={styles.scheduleRow}>
                   <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceMonthDay === null && styles.schedulePillActive]}
+                    style={[styles.schedulePill, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillActive]}
                     onPress={() => {
                       haptics.tap();
                       setRecurrenceMonthDay(null);
+                      setRecurrenceWeekOrdinal(null);
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
-                    <Text style={[styles.schedulePillText, recurrenceMonthDay === null && styles.schedulePillTextActive]}>
+                    <Text style={[styles.schedulePillText, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillTextActive]}>
                       Same day as due date
                     </Text>
                   </TouchableOpacity>
@@ -874,6 +890,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                     style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
                     onPress={() => {
                       haptics.tap();
+                      setRecurrenceWeekOrdinal(null);
                       setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate());
                     }}
                     activeOpacity={interaction.activeOpacity}
@@ -886,12 +903,27 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                     style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
                     onPress={() => {
                       haptics.tap();
+                      setRecurrenceWeekOrdinal(null);
                       setRecurrenceMonthDay(-1);
                     }}
                     activeOpacity={interaction.activeOpacity}
                   >
                     <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
                       Last day
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.schedulePill, recurrenceWeekOrdinal !== null && styles.schedulePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setRecurrenceMonthDay(null);
+                      setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
+                      if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
+                    }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.schedulePillText, recurrenceWeekOrdinal !== null && styles.schedulePillTextActive]}>
+                      On a weekday
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -919,6 +951,30 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                     <Ionicons name="add" size={16} color={colors.text} />
                   </TouchableOpacity>
                 </View>
+              )}
+              {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
+                <>
+                  <View style={styles.scheduleRow}>
+                    {ORDINAL_OPTIONS.map(({ value, label }) => (
+                      <TouchableOpacity
+                        key={value}
+                        style={[styles.schedulePill, recurrenceWeekOrdinal === value && styles.schedulePillActive]}
+                        onPress={() => {
+                          haptics.tap();
+                          setRecurrenceWeekOrdinal(value);
+                        }}
+                        activeOpacity={interaction.activeOpacity}
+                      >
+                        <Text style={[styles.schedulePillText, recurrenceWeekOrdinal === value && styles.schedulePillTextActive]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  <View style={styles.weekdayRow}>
+                    <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, setRecurrenceDays)} />
+                  </View>
+                </>
               )}
               {recurrenceType !== 'none' && (
                 <View style={styles.scheduleRow}>
