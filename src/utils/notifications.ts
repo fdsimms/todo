@@ -46,13 +46,19 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(taskId).catch(() => {});
 }
 
+// iOS caps pending local notification requests at 64.
+const MAX_PENDING_REMINDERS = 64;
+
 export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
   const now = new Date();
-  for (const task of tasks) {
-    if (task.completed || task.archived || !task.reminderTime || new Date(task.reminderTime) <= now) {
-      await cancelTaskReminder(task.id);
-    } else {
-      await scheduleTaskReminder(task);
-    }
+  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
+
+  const upcoming = tasks
+    .filter(t => t.reminderTime && !t.completed && !t.archived && new Date(t.reminderTime) > now)
+    .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime())
+    .slice(0, MAX_PENDING_REMINDERS);
+
+  for (const task of upcoming) {
+    await scheduleTaskReminder(task);
   }
 }

@@ -23,7 +23,11 @@ interface TemplateStore {
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
-  deleteTemplate: (id: string) => void;
+  // Deletion's undo lives in useTaskStore, mirroring restoreProject/restoreGroup —
+  // these are the low-level row operations it calls, kept here so this store
+  // never has to import useTaskStore.
+  removeTemplateRow: (id: string) => void;
+  restoreTemplate: (template: TaskTemplate) => void;
   reorderTemplates: (orderedIds: string[]) => void;
   reorderTemplatesWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
@@ -79,9 +83,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
   },
 
-  deleteTemplate(id) {
+  removeTemplateRow(id) {
     dbDeleteTemplate(id);
     set(s => ({ templates: s.templates.filter(t => t.id !== id) }));
+  },
+
+  restoreTemplate(template) {
+    dbInsertTemplate(template);
+    set(s => ({ templates: [...s.templates, template] }));
   },
 
   reorderTemplates(orderedIds) {

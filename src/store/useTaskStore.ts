@@ -203,6 +203,8 @@ interface TaskStore {
   removeFromProject: (taskId: string) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
 
+  deleteTemplate: (id: string) => void;
+
   forgivVacationStreaks: () => void;
   checkVacationExpiry: () => void;
   resetAllStreaks: () => void;
@@ -409,8 +411,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
       const updated = { ...t, ...updates, seriesDefaults };
       dbUpdateTask(updated);
-      cancelTaskReminder(id);
-      scheduleTaskReminder(updated);
+      if (
+        'reminderTime' in updates ||
+        'completed' in updates ||
+        'archived' in updates ||
+        'title' in updates ||
+        'notes' in updates
+      ) {
+        cancelTaskReminder(id);
+        scheduleTaskReminder(updated);
+      }
       return updated;
     });
     set({ tasks });
@@ -1240,6 +1250,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  deleteTemplate(id) {
+    const template = useTemplateStore.getState().templates.find(t => t.id === id);
+    if (!template) return;
+    useTemplateStore.getState().removeTemplateRow(id);
+    get().setLastAction({
+      label: 'Template deleted',
+      undo: () => useTemplateStore.getState().restoreTemplate(template),
+    });
+  },
+
   forgivVacationStreaks() {
     const today = getCurrentDayStart().toISOString();
     const toUpdate = get().tasks.filter(
@@ -1529,10 +1549,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteCategory(name) {
+    const category = useCategoryStore.getState().getCategoryByName(name);
+    const affectedTaskIds = get().tasks.filter(t => t.category === name).map(t => t.id);
+    const affectedGroupIds = useTaskGroupStore.getState().groups.filter(g => g.category === name).map(g => g.id);
+
     useCategoryStore.getState().deleteCategory(name);
     set(s => ({
       tasks: s.tasks.map(t => t.category === name ? { ...t, category: null } : t),
     }));
+    useTaskGroupStore.setState(s => ({
+      groups: s.groups.map(g => g.category === name ? { ...g, category: null } : g),
+    }));
+
+    if (!category) return;
+    get().setLastAction({
+      label: 'Category deleted',
+      undo: () => {
+        useCategoryStore.getState().restoreCategory(category);
+        if (affectedTaskIds.length > 0) {
+          dbBulkSetCategory(affectedTaskIds, name);
+          set(s => ({
+            tasks: s.tasks.map(t => affectedTaskIds.includes(t.id) ? { ...t, category: name } : t),
+          }));
+        }
+        affectedGroupIds.forEach(id => useTaskGroupStore.getState().updateGroup(id, { category: name }));
+      },
+    });
   },
 
   renameCategory(name, newName) {

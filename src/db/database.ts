@@ -160,6 +160,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN link_url TEXT',
     'ALTER TABLE templates ADD COLUMN category TEXT',
     'ALTER TABLE task_groups ADD COLUMN completed_at TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -423,12 +424,16 @@ export function dbTransaction(fn: () => void): void {
   db.withTransactionSync(fn);
 }
 
+const BULK_DELETE_CHUNK_SIZE = 500;
+
 export function dbBulkDeleteTasks(ids: string[]): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
-    for (const id of ids) {
-      db.runSync('DELETE FROM tasks WHERE parent_id = ?', [id]);
-      db.runSync('DELETE FROM tasks WHERE id = ?', [id]);
+    for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      db.runSync(`DELETE FROM tasks WHERE parent_id IN (${placeholders})`, chunk);
+      db.runSync(`DELETE FROM tasks WHERE id IN (${placeholders})`, chunk);
     }
   });
 }
@@ -603,8 +608,30 @@ export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'sc
 }
 
 export function dbDeleteCategory(name: string): void {
-  db.runSync('DELETE FROM categories WHERE name = ?', [name]);
-  db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM categories WHERE name = ?', [name]);
+    db.runSync('UPDATE tasks SET category = NULL WHERE category = ?', [name]);
+    db.runSync('UPDATE task_groups SET category = NULL WHERE category = ?', [name]);
+  });
+}
+
+// Full-row insert used only to restore a category snapshot on undo —
+// dbInsertCategory(name) mints a fresh id/sortOrder and can't bring back
+// the schedule/vacation fields a deleted category carried.
+export function dbInsertCategoryRow(category: Category): void {
+  db.runSync(
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?)',
+    [
+      category.id,
+      category.name,
+      category.scheduleDays ? JSON.stringify(category.scheduleDays) : null,
+      category.scheduleStart,
+      category.scheduleEnd,
+      category.hideOnVacation ? 1 : 0,
+      category.sortOrder,
+      category.emoji,
+    ]
+  );
 }
 
 export function dbRenameCategory(id: string, oldName: string, newName: string): void {

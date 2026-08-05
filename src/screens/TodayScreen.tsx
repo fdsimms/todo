@@ -311,6 +311,7 @@ export function TodayScreen() {
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
+  const isEmptyDatabase = allTasks.length === 0;
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const updateTask = useTaskStore(s => s.updateTask);
@@ -1420,7 +1421,16 @@ export function TodayScreen() {
     </>
   );
 
-  const emptyComponent = (
+  const emptyComponent = isEmptyDatabase ? (
+    <EmptyState
+      icon="sparkles-outline"
+      title="Welcome to your list"
+      subtitle="Add your first task to get started"
+      actionLabel="Add a task"
+      onAction={() => setQuickAddVisible(true)}
+      bottomOffset={tabBarHeight}
+    />
+  ) : (
     <EmptyState
       icon="checkmark-circle"
       title="All clear"
@@ -1665,12 +1675,23 @@ export function TodayScreen() {
                 : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
             ListEmptyComponent={
-              <EmptyState
-                icon="moon"
-                title="Nothing deferred"
-                subtitle="Swipe a task right to defer it"
-                bottomOffset={tabBarHeight}
-              />
+              isEmptyDatabase ? (
+                <EmptyState
+                  icon="sparkles-outline"
+                  title="Welcome to your list"
+                  subtitle="Add your first task to get started"
+                  actionLabel="Add a task"
+                  onAction={() => setQuickAddVisible(true)}
+                  bottomOffset={tabBarHeight}
+                />
+              ) : (
+                <EmptyState
+                  icon="moon"
+                  title="Nothing deferred"
+                  subtitle="Swipe a task right to defer it"
+                  bottomOffset={tabBarHeight}
+                />
+              )
             }
             ListFooterComponent={
               <>
@@ -1942,12 +1963,23 @@ export function TodayScreen() {
                 : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
             ListEmptyComponent={
-              <EmptyState
-                icon="layers-outline"
-                title="Nothing unscheduled"
-                subtitle="Tasks with no due date land here once they're organized"
-                bottomOffset={tabBarHeight}
-              />
+              isEmptyDatabase ? (
+                <EmptyState
+                  icon="sparkles-outline"
+                  title="Welcome to your list"
+                  subtitle="Add your first task to get started"
+                  actionLabel="Add a task"
+                  onAction={() => setQuickAddVisible(true)}
+                  bottomOffset={tabBarHeight}
+                />
+              ) : (
+                <EmptyState
+                  icon="layers-outline"
+                  title="Nothing unscheduled"
+                  subtitle="Tasks with no due date land here once they're organized"
+                  bottomOffset={tabBarHeight}
+                />
+              )
             }
             ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
@@ -1982,12 +2014,23 @@ export function TodayScreen() {
                 : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
             ListEmptyComponent={
-              <EmptyState
-                icon="file-tray-outline"
-                title="Inbox zero"
-                subtitle="Voice-added and quick tasks land here to be sorted."
-                bottomOffset={tabBarHeight}
-              />
+              isEmptyDatabase ? (
+                <EmptyState
+                  icon="sparkles-outline"
+                  title="Welcome to your list"
+                  subtitle="Add your first task to get started"
+                  actionLabel="Add a task"
+                  onAction={() => setQuickAddVisible(true)}
+                  bottomOffset={tabBarHeight}
+                />
+              ) : (
+                <EmptyState
+                  icon="file-tray-outline"
+                  title="Inbox zero"
+                  subtitle="Voice-added and quick tasks land here to be sorted."
+                  bottomOffset={tabBarHeight}
+                />
+              )
             }
             ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
             ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
