@@ -19,6 +19,7 @@ import Reanimated, {
   interpolate,
   Easing,
   Extrapolation,
+  runOnJS,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
@@ -216,7 +217,21 @@ export function TaskItem({
   // has to keep doing so until the mask has faded back out — dropping the
   // exemption the moment it collapses would flash a scrim over it at full
   // strength and fade *that* out instead.
-  const isSpotlighted = useSpotlightLinger(expanded);
+  //
+  // The linger alone isn't enough, because it runs the mask's clock (150ms) and
+  // the collapse below runs its own (250ms): the scrim would mount back onto a
+  // card that is still shrinking. That mount is what reads as a flash. A newly
+  // mounted Animated.View takes its first frame from the *JS* value of the
+  // screen's spotlight progress, and that value never moves — the fade is
+  // `useNativeDriver: true`, and native-driven animations don't report frames
+  // back to JS (see the comment in AnimatedValue.animate) — so the scrim paints
+  // once at a stale 0 before the native node connects and overwrites it with
+  // the real one. Staying exempt until this row's own collapse has settled puts
+  // that mount somewhere both animations have finished, where every value
+  // agrees and the extra layer is invisible.
+  const [collapsing, setCollapsing] = useState(false);
+  const wasExpandedRef = useRef(expanded);
+  const isSpotlighted = useSpotlightLinger(expanded) || collapsing;
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
   // the floating copy of a row being dragged, which would otherwise take the
@@ -226,14 +241,27 @@ export function TaskItem({
   const subtaskTitleInputRef = useRef<TextInput>(null);
 
   useEffect(() => {
+    // Only a row coming *down* from expanded has a collapse to wait out; a row
+    // that merely mounted collapsed must keep drawing its scrim right away, or
+    // it would sit undimmed under a mask that is already up.
+    if (!expanded && wasExpandedRef.current) setCollapsing(true);
+    wasExpandedRef.current = expanded;
     // Timing rather than a spring: a spring is underdamped, so it overshoots
     // past 0 on collapse (clamped by the height interpolation), which reads as
     // a jitter at the end. inOut easing accelerates and decelerates so the
     // height change settles as one continuous motion.
-    expansionProgress.value = withTiming(expanded ? 1 : 0, {
-      duration: animation.duration.normal,
-      easing: Easing.inOut(Easing.cubic),
-    });
+    expansionProgress.value = withTiming(
+      expanded ? 1 : 0,
+      {
+        duration: animation.duration.normal,
+        easing: Easing.inOut(Easing.cubic),
+      },
+      // `finished` is false when a re-tap interrupts this animation — the row is
+      // expanding again, so it keeps the exemption and the next callback clears it.
+      finished => {
+        if (finished) runOnJS(setCollapsing)(false);
+      },
+    );
   }, [expanded]);
 
   // Height interpolates to the measured panel height; opacity fades only in the
