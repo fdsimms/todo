@@ -582,6 +582,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           pinned: false, // pin resets on new occurrence
           streakCount: streakAdvances ? newStreakCount : task.streakCount,
           streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+          previousStreakCount: task.streakCount,
+          previousStreakDate: task.streakDate,
           reminderTime: nextReminderTime,
           chainIndex: nextChainIndex,
           recurrenceCount:
@@ -653,7 +655,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   uncompleteTask(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task) return;
+    if (!task || !task.completed) return;
     const original = task;
     const updated = {
       ...task,
@@ -1292,10 +1294,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkCompleteTasks(ids) {
     if (ids.length === 0) return;
-    ids.forEach(id => get().completeTask(id));
+    const completedIds: string[] = [];
+    ids.forEach(id => {
+      get().completeTask(id);
+      if (get().tasks.find(t => t.id === id)?.completed) completedIds.push(id);
+    });
+    if (completedIds.length === 0) return;
     get().setLastAction({
-      label: `${ids.length} task${ids.length === 1 ? '' : 's'} completed`,
-      undo: () => ids.forEach(id => get().uncompleteTask(id)),
+      label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
+      undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
     });
   },
 

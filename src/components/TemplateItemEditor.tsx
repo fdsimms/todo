@@ -92,7 +92,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
-  const [focused, setFocused] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
@@ -138,7 +137,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPriority(item?.priority ?? draft?.priority ?? 0);
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
-    setFocused(item?.focused ?? draft?.focused ?? false);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
@@ -202,7 +200,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       priority,
       effort,
       estimatedMinutes,
-      focused,
       vacationPause,
       recurrenceType,
       recurrenceInterval,
@@ -673,21 +670,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               </View>
               <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.sep} />
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setFocused(!focused); }}
-              activeOpacity={interaction.activeOpacity}
-            >
-              <Ionicons name="star-outline" size={18} color={focused ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Focused</Text>
-                <Text style={styles.optionHint}>Added to the Focus list when applied</Text>
-              </View>
-              <View style={[styles.toggle, focused && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, focused && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
           </View>

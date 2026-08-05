@@ -1,0 +1,4 @@
+{
+  "message": "Undoing a bulk complete no longer resets streaks on tasks that weren't actually completed",
+  "date": "2026-08-05"
+}
