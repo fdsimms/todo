@@ -15,31 +15,38 @@ interface Props {
   children: React.ReactNode;
 }
 
+// Stands in for the measured height until the first onLayout lands: a cap so
+// far above any real section that it doesn't clamp anything, so "open but not
+// measured yet" renders at the children's natural height instead of at zero.
+const UNMEASURED_MAX = 100000;
+
 /**
- * Animates `children` open/closed by interpolating height to their measured
- * natural size on the UI thread — the same technique TaskItem uses for its
- * own detail panel. A plain `LayoutAnimation.configureNext` reflow (the
- * usual RN shortcut for this) reads as an instant snap for content nested
- * inside a FlatList/ReorderableList row rather than a smooth grow/shrink.
+ * Animates `children` open/closed on the UI thread — the same technique
+ * TaskItem uses for its own detail panel. A plain
+ * `LayoutAnimation.configureNext` reflow (the usual RN shortcut for this)
+ * reads as an instant snap for content nested inside a
+ * FlatList/ReorderableList row rather than a smooth grow/shrink.
  *
- * Measuring costs a frame, so a section that starts out expanded must not
- * depend on the measurement to be visible: the children are laid out in
- * normal flow and the wrapper clips them, which means its natural (unset)
- * height is already the open height. The animated height only ever has to
- * take over from a value that was correct anyway — no first-paint gap where
- * a stack's rows are missing while every ordinary row beside them is drawn,
- * and no gap either on the render where the animated style first attaches.
+ * The clamp is `maxHeight`, not `height`, and the children stay in normal
+ * flow. That combination is what makes the measurement optional rather than
+ * load-bearing: the wrapper's own height is `min(natural, maxHeight)`, so an
+ * unmeasured section falls back to exactly the height its children want, and
+ * every state — first paint, mid-animation, settled — is driven by the one
+ * animated style that has been attached since the very first render.
+ *
+ * **Don't reintroduce a conditional style** (`cond && animatedStyle`) to
+ * special-case the unmeasured render. Reanimated records a style's initial
+ * value only on a component's first render, and attaching/detaching the style
+ * later moves the view in and out of its descriptor set — so a wrapper that
+ * mounted without the animated style ends up with the animated height as the
+ * only thing that can size it, and React's own style contributing nothing.
+ * The last value Reanimated committed then sticks: after the first collapse
+ * the section stayed pinned at zero and expanding it never brought the rows
+ * back.
  */
 export function AnimatedCollapsible({ expanded, children }: Props) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const progress = useSharedValue(expanded ? 1 : 0);
-
-  // Before the first onLayout there is no height to interpolate to, so an
-  // attached animated style would clamp to 0 and hide content that should be
-  // on screen from the very first paint. Until then the two states are driven
-  // statically instead: open takes its height from the children, closed is
-  // pinned shut.
-  const unmeasured = contentHeight === null;
 
   useEffect(() => {
     progress.value = withTiming(expanded ? 1 : 0, {
@@ -48,8 +55,13 @@ export function AnimatedCollapsible({ expanded, children }: Props) {
     });
   }, [expanded]);
 
+  // A zero measurement is treated as no measurement: an empty section has
+  // nothing to clamp anyway (its natural height is 0), and falling back to the
+  // sentinel keeps a stale zero from being able to hide real content.
+  const openHeight = contentHeight || UNMEASURED_MAX;
+
   const style = useAnimatedStyle(() => ({
-    height: interpolate(progress.value, [0, 1], [0, contentHeight ?? 0], Extrapolation.CLAMP),
+    maxHeight: interpolate(progress.value, [0, 1], [0, openHeight], Extrapolation.CLAMP),
     opacity: interpolate(progress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
@@ -59,18 +71,12 @@ export function AnimatedCollapsible({ expanded, children }: Props) {
   };
 
   return (
-    <Reanimated.View
-      style={[
-        !(unmeasured && expanded) && style,
-        styles.clip,
-        unmeasured && !expanded && styles.shut,
-      ]}
-    >
+    <Reanimated.View style={[style, styles.clip]}>
       {/* In normal flow, so the wrapper falls back to exactly the open height
-          whenever the animated height isn't driving it. The children keep
-          their natural height regardless of the clamp above them (a View
-          doesn't shrink below its content in RN), so this still measures the
-          full open height even while collapsed. */}
+          whenever maxHeight isn't clamping it. The children keep their natural
+          height regardless of the clamp above them (a View doesn't shrink
+          below its content in RN), so this still measures the full open height
+          even while collapsed. */}
       <View onLayout={handleLayout}>
         {children}
       </View>
@@ -81,10 +87,5 @@ export function AnimatedCollapsible({ expanded, children }: Props) {
 const styles = StyleSheet.create({
   clip: {
     overflow: 'hidden',
-  },
-  // Only ever applied before the first measurement, where the animated height
-  // has nothing to interpolate to; from then on the animated style owns height.
-  shut: {
-    height: 0,
   },
 });
