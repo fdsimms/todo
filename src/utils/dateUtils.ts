@@ -10,6 +10,8 @@ import {
   startOfDay,
   startOfMonth,
   differenceInCalendarDays,
+  differenceInCalendarMonths,
+  differenceInCalendarYears,
   setDate,
   lastDayOfMonth,
 } from 'date-fns';
@@ -182,14 +184,14 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
       break;
     case 'weekly':
       next = task.recurrenceDays.length > 0
-        ? getNextWeekdayOccurrence(task.recurrenceDays, base)
+        ? getNextWeekdayOccurrence(task.recurrenceDays, base, task.recurrenceInterval)
         : addWeeks(base, task.recurrenceInterval);
       break;
     case 'monthly':
       next = task.recurrenceWeekOrdinal !== null && task.recurrenceDays.length > 0
-        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base)
+        ? getNextWeekdayOfMonthOccurrence(task.recurrenceDays[0], task.recurrenceWeekOrdinal, base, task.recurrenceInterval)
         : task.recurrenceMonthDay
-          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base)
+          ? getNextMonthDayOccurrence(task.recurrenceMonthDay, base, task.recurrenceInterval)
           : addMonths(base, task.recurrenceInterval);
       break;
     case 'yearly':
@@ -207,13 +209,13 @@ export function getNextDueDate(task: Task, dayResetTime?: string): Date | null {
   return next;
 }
 
-function getNextWeekdayOccurrence(days: number[], from: Date): Date {
+function getNextWeekdayOccurrence(days: number[], from: Date, interval: number): Date {
   const dow = from.getDay();
   const sorted = [...days].sort((a, b) => a - b);
   for (const day of sorted) {
     if (day > dow) return addDays(from, day - dow);
   }
-  return addDays(from, 7 - dow + sorted[0]);
+  return addDays(from, 7 - dow + sorted[0] + (interval - 1) * 7);
 }
 
 /**
@@ -231,10 +233,10 @@ export function nthWeekdayOfMonth(monthDate: Date, weekday: number, ordinal: num
   return addDays(first, offset + (ordinal - 1) * 7);
 }
 
-function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from: Date): Date {
+function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from: Date, interval: number): Date {
   const thisMonth = nthWeekdayOfMonth(from, weekday, ordinal);
-  if (thisMonth > from) return thisMonth;
-  return nthWeekdayOfMonth(addMonths(from, 1), weekday, ordinal);
+  if (interval === 1 && thisMonth > from) return thisMonth;
+  return nthWeekdayOfMonth(addMonths(from, interval), weekday, ordinal);
 }
 
 /**
@@ -242,12 +244,12 @@ function getNextWeekdayOfMonthOccurrence(weekday: number, ordinal: number, from:
  * last day of short months. `day === -1` means "the last day of the month",
  * whatever that is for each occurrence (28-31).
  */
-function getNextMonthDayOccurrence(day: number, from: Date): Date {
+function getNextMonthDayOccurrence(day: number, from: Date, interval: number): Date {
   const clampToMonth = (d: Date) =>
     day === -1 ? lastDayOfMonth(d) : setDate(d, Math.min(day, lastDayOfMonth(d).getDate()));
   const thisMonth = clampToMonth(from);
-  if (thisMonth > from) return thisMonth;
-  return clampToMonth(addMonths(from, 1));
+  if (interval === 1 && thisMonth > from) return thisMonth;
+  return clampToMonth(addMonths(from, interval));
 }
 
 /** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
@@ -284,6 +286,64 @@ export function getDeadlineFromOffset(dueDate: Date, offsetDays: number): Date {
  */
 export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
   return day === -1 ? lastDayOfMonth(dueDate) : setDate(dueDate, Math.min(day, lastDayOfMonth(dueDate).getDate()));
+}
+
+/**
+ * How many days late a weekly completion can land and still count as "on
+ * schedule" (e.g. a Monday habit finished on Tuesday). Daily cadences stay
+ * exact — "every day" or "every N days" means what it says, with no slack —
+ * so this only widens the weekly window.
+ */
+const STREAK_LATE_TOLERANCE_DAYS = 1;
+
+/**
+ * The cadence-derived gap (in days) a daily/weekly task expects between
+ * consecutive completions, evaluated from `from` (the previous completion's
+ * logical day) — daily is just its interval, weekly is either the interval
+ * in weeks or, when specific weekdays are picked, the actual day-count to
+ * the next selected weekday (so e.g. Mon/Wed/Fri expects a 2-or-3-day gap,
+ * not a flat 7).
+ */
+function getExpectedStreakGapDays(task: Task, from: Date): number {
+  if (task.recurrenceType === 'daily') return task.recurrenceInterval;
+  if (task.recurrenceDays.length > 0) {
+    return Math.max(1, differenceInCalendarDays(getNextWeekdayOccurrence(task.recurrenceDays, from, task.recurrenceInterval), from));
+  }
+  return 7 * task.recurrenceInterval;
+}
+
+/**
+ * Whether completing a recurring task today continues its streak, per #691:
+ * the daily-only `daysBetween === 1` check reset every non-daily habit's
+ * streak on its very first on-time completion. The expected gap is derived
+ * from the task's own cadence instead of assuming one day, with a small
+ * tolerance for lateness (e.g. a weekly Monday habit finished on Tuesday
+ * still continues). Monthly/yearly use calendar-unit differences rather than
+ * day counts, since month/year lengths vary — that unit itself supplies the
+ * tolerance, so no extra grace period is added on top.
+ */
+export function getStreakOutcome(
+  task: Task,
+  dayResetTime?: string
+): 'same-day' | 'continued' | 'reset' {
+  if (task.recurrenceType === 'none' || !task.streakDate) return 'reset';
+
+  const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
+  const todayDay = getDayStart(new Date(), dayResetTime);
+  const daysBetween = differenceInCalendarDays(todayDay, lastDay);
+  if (daysBetween <= 0) return 'same-day';
+
+  if (task.recurrenceType === 'monthly' || task.recurrenceType === 'yearly') {
+    const unitsBetween =
+      task.recurrenceType === 'monthly'
+        ? differenceInCalendarMonths(todayDay, lastDay)
+        : differenceInCalendarYears(todayDay, lastDay);
+    return unitsBetween >= 1 && unitsBetween <= task.recurrenceInterval ? 'continued' : 'reset';
+  }
+
+  const expectedGapDays = getExpectedStreakGapDays(task, lastDay);
+  const tolerance = task.recurrenceType === 'weekly' ? STREAK_LATE_TOLERANCE_DAYS : 0;
+  return daysBetween <= expectedGapDays + tolerance ? 'continued' : 'reset';
 }
 
 /**

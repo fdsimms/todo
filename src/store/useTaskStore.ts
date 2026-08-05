@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { differenceInCalendarDays } from 'date-fns';
 import type { Task, TaskDraft, Priority, TimeOfDay } from '../types';
 import {
   initDatabase,
@@ -21,7 +20,6 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
-  dbGetSetting,
   dbMarkTaskSeen,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
@@ -34,7 +32,7 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
-import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
@@ -117,6 +115,7 @@ interface TaskStore {
   completionHoldIds: string[];
 
   initialize: () => void;
+  sweepExpiredTasks: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
   // scope 'occurrence' ("this task only") applies `updates` to this row but
@@ -228,22 +227,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
-    let tasks = dbGetAllTasks();
+    const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
-
-    // Read the setting straight from the DB rather than useSettingsStore —
-    // this runs before useSettingsStore.initialize() (see App.tsx), so the
-    // store would still be holding its default value at this point.
-    if (dbGetSetting('autoRemoveExpiredTasks') === 'true') {
-      const expiredIds = tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
-      if (expiredIds.length > 0) {
-        dbBulkDeleteTasks(expiredIds);
-        tasks = tasks.filter(t => !expiredIds.includes(t.id) && (t.parentId === null || !expiredIds.includes(t.parentId)));
-      }
-    }
 
     set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
+  },
+
+  // Must run after useSettingsStore.initialize() so autoRemoveExpiredTasks,
+  // vacationMode and dayResetTime are the user's real values rather than
+  // defaults — see App.tsx call order.
+  sweepExpiredTasks() {
+    if (!useSettingsStore.getState().autoRemoveExpiredTasks) return;
+    const expiredIds = get().tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
+    if (expiredIds.length > 0) {
+      get().bulkDeleteTasks(expiredIds);
+    }
   },
 
   addTask(draft) {
@@ -480,21 +479,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // step, which always advances immediately.
     const advancesBySchedule = !chainAdvances || atChainEnd;
 
-    // Calculate streak
+    // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
     let newStreakCount = 1;
     if (recurs && advancesBySchedule && task.streakDate) {
-      const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
-      const todayDay = getCurrentDayStart();
-      const daysBetween = differenceInCalendarDays(todayDay, lastDay);
-
-      if (daysBetween === 0) {
-        // Already completed this logical day — don't increment
+      const outcome = getStreakOutcome(task, dayResetTime);
+      if (outcome === 'same-day') {
         newStreakCount = task.streakCount;
-      } else if (daysBetween === 1) {
-        // Consecutive — increment
+      } else if (outcome === 'continued') {
         newStreakCount = task.streakCount + 1;
       }
-      // else: missed days → reset to 1 (already set above)
+      // else 'reset': missed too many cadence units → reset to 1 (already set above)
     }
 
     const streakAdvances = recurs && advancesBySchedule;

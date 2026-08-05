@@ -1,0 +1,4 @@
+{
+  "message": "Fixed weekly, monthly, and yearly recurring tasks getting stuck at a streak of 1 forever — streaks now build correctly for any repeat schedule",
+  "date": "2026-08-05"
+}

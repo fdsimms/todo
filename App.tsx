@@ -40,6 +40,7 @@ function AppContent() {
 export default function App() {
   const initTasks = useTaskStore(s => s.initialize);
   const initSettings = useSettingsStore(s => s.initialize);
+  const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
 
   useEffect(() => {
@@ -47,12 +48,16 @@ export default function App() {
     initTasks();
     // Then load settings from the now-initialized DB
     initSettings();
+    // Sweep expired tasks now that settings (vacationMode, dayResetTime,
+    // autoRemoveExpiredTasks) are loaded for real, before vacation expiry
+    // can turn vacationMode back off — see issue #689.
+    sweepExpiredTasks();
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     checkVacationExpiry();
     // Request notification permissions
     requestNotificationPermissions();
-  }, [initTasks, initSettings, checkVacationExpiry]);
+  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
