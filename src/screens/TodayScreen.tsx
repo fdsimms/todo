@@ -235,6 +235,7 @@ function LaterTodaySection({
           {section.label && (
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionHeaderText}>{section.label}</Text>
+              <SpotlightScrim />
             </View>
           )}
           {section.groups.map(g => (
