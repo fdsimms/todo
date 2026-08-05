@@ -1509,7 +1509,7 @@ export function TodayScreen() {
             onEndReached={handleLaterEndReached}
             onEndReachedThreshold={400}
             contentContainerStyle={
-              laterSections.length === 0
+              laterDraggableData.length === 0
                 ? styles.emptyContainer
                 : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
