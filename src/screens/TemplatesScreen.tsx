@@ -175,7 +175,7 @@ function TemplateRow({
       accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : ''}`}
       accessibilityHint="Double tap to edit template"
     >
-      <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
+      <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
         <Ionicons name="copy" size={18} color={colors.accent} />
       </View>
       <View style={styles.tplInfo}>

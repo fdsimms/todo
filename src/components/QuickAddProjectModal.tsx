@@ -433,7 +433,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   toolChipSet: {
-    backgroundColor: colors.accent + '22',
+    backgroundColor: colors.accentSubtle,
   },
   toolChipText: {
     color: colors.textTertiary,

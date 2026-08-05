@@ -208,6 +208,7 @@ export const animation = {
     snappy: { damping: 22, stiffness: 300, mass: 0.8 },
     smooth: { damping: 26, stiffness: 220, mass: 1.0 },
     bouncy: { damping: 15, stiffness: 350, mass: 0.9 },
+    sheetDismiss: { damping: 28, stiffness: 320 },
   },
 };
 

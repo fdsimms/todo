@@ -42,7 +42,8 @@ import { suggestTaskAttributes } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal, type TaskDraft } from './TaskEditor';
+import { type TaskDraft } from './TaskEditor';
+import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
 
 interface Props {
   visible: boolean;
@@ -1340,7 +1341,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   inputHighlight: {
     color: colors.accent,
     fontWeight: fontWeight.semibold,
-    backgroundColor: colors.accent + '26',
+    backgroundColor: colors.accentSubtle,
   },
   suggestionsBox: {
     backgroundColor: colors.bgTertiary,
@@ -1408,7 +1409,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   toolChipSet: {
-    backgroundColor: colors.accent + '22',
+    backgroundColor: colors.accentSubtle,
   },
   toolChipText: {
     color: colors.textTertiary,

@@ -137,8 +137,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
     Animated.parallel([
       Animated.spring(translateY, {
         toValue: 700,
-        damping: 28,
-        stiffness: 320,
+        ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
       Animated.timing(backdropOpacity, {
@@ -157,8 +156,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   const openCalendar = (target: 'start' | 'end') => {
     Animated.spring(translateY, {
       toValue: 700,
-      damping: 28,
-      stiffness: 320,
+      ...animation.spring.sheetDismiss,
       useNativeDriver: true,
     }).start(() => {
       setCalendarTarget(target);
@@ -187,8 +185,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
         } else {
           Animated.spring(translateY, {
             toValue: 0,
-            damping: 22,
-            stiffness: 300,
+            ...animation.spring.snappy,
             useNativeDriver: true,
           }).start();
         }

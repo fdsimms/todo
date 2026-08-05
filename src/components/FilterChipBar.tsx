@@ -4,26 +4,32 @@ import {
   TouchableOpacity,
   Text,
   StyleSheet,
+  View,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
-import { useCategoryStore } from '../store/useCategoryStore';
 
-interface Props {
-  categories: string[];
-  selected: string | null;
-  onSelect: (category: string | null) => void;
+export interface FilterChipItem {
+  key: string;
+  label: string;
+  /** Per-item accent color (e.g. a tag's color). Omit for items with no per-item color, like categories. */
+  color?: string;
 }
 
-// Single-select chip row for filtering by category, styled to match
-// TagFilterBar. Categories have no per-item color (unlike tags), so chips
-// lead with the category's emoji when it has one instead of a color dot.
-export function CategoryFilterBar({ categories, selected, onSelect }: Props) {
+interface Props {
+  items: FilterChipItem[];
+  selected: string | null;
+  onSelect: (key: string | null) => void;
+  /** Show a color dot on inactive chips — on for tag-style bars, off for plain ones like categories. */
+  showDot?: boolean;
+}
+
+// Single-select chip row for filtering by a set of items (tags, categories, ...).
+export function FilterChipBar({ items, selected, onSelect, showDot }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
 
-  if (categories.length === 0) return null;
+  if (items.length === 0) return null;
 
   return (
     <ScrollView
@@ -31,19 +37,25 @@ export function CategoryFilterBar({ categories, selected, onSelect }: Props) {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      <Chip label="All" active={selected === null} onPress={() => onSelect(null)} styles={styles} />
-      {categories.map(category => {
-        const emoji = getCategoryByName(category)?.emoji;
-        return (
-          <Chip
-            key={category}
-            label={emoji ? `${emoji} ${category}` : category}
-            active={selected === category}
-            onPress={() => onSelect(selected === category ? null : category)}
-            styles={styles}
-          />
-        );
-      })}
+      <Chip
+        label="All"
+        active={selected === null}
+        color={colors.accent}
+        showDot={!!showDot}
+        onPress={() => onSelect(null)}
+        styles={styles}
+      />
+      {items.map(item => (
+        <Chip
+          key={item.key}
+          label={item.label}
+          active={selected === item.key}
+          color={item.color ?? colors.accent}
+          showDot={!!showDot}
+          onPress={() => onSelect(selected === item.key ? null : item.key)}
+          styles={styles}
+        />
+      ))}
     </ScrollView>
   );
 }
@@ -51,11 +63,15 @@ export function CategoryFilterBar({ categories, selected, onSelect }: Props) {
 function Chip({
   label,
   active,
+  color,
+  showDot,
   onPress,
   styles,
 }: {
   label: string;
   active: boolean;
+  color: string;
+  showDot: boolean;
   onPress: () => void;
   styles: ReturnType<typeof makeStyles>;
 }) {
@@ -63,8 +79,9 @@ function Chip({
     <TouchableOpacity
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
-      style={[styles.chip, active && styles.chipActive]}
+      style={[styles.chip, active && { backgroundColor: color }]}
     >
+      {showDot && !active && <View style={[styles.dot, { backgroundColor: color }]} />}
       <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
     </TouchableOpacity>
   );
@@ -75,19 +92,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 5,
     paddingHorizontal: spacing.md,
     paddingVertical: 7,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
-  chipActive: {
-    backgroundColor: colors.accent,
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: radius.full,
   },
   chipText: {
     color: colors.textSecondary,

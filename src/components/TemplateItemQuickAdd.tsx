@@ -14,7 +14,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { PressableScale } from './PressableScale';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useColors, useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -54,7 +54,6 @@ interface Props {
  */
 export function TemplateItemQuickAdd({ visible, templateId, templateName, onClose, onOpenFull, onAddNested, onCreated }: Props) {
   const colors = useColors();
-  const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -116,7 +115,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
       <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
         <SafeBlurView
           intensity={30}
-          tint={isDark ? 'dark' : 'light'}
+          tint="dark"
           style={StyleSheet.absoluteFill}
         />
       </TouchableOpacity>

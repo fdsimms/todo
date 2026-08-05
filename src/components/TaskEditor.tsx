@@ -19,7 +19,6 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
-import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
@@ -49,6 +48,8 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
 import { EditorRow } from './EditorRow';
+import { RecurrencePicker, ordinal } from './RecurrencePicker';
+import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
@@ -87,59 +88,6 @@ type PickerMode = 'none' | 'reminder';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'timeSpent' | 'subtasks';
-
-export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
-  none: 'Never',
-  daily: 'Daily',
-  weekly: 'Weekly',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
-};
-
-export function ordinal(n: number): string {
-  const rem100 = n % 100;
-  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
-  switch (n % 10) {
-    case 1: return `${n}st`;
-    case 2: return `${n}nd`;
-    case 3: return `${n}rd`;
-    default: return `${n}th`;
-  }
-}
-
-// Nth-weekday-of-month picker options ("every 2nd Tuesday", "every last Friday").
-export const ORDINAL_OPTIONS: { value: number; label: string }[] = [
-  { value: 1, label: '1st' },
-  { value: 2, label: '2nd' },
-  { value: 3, label: '3rd' },
-  { value: 4, label: '4th' },
-  { value: -1, label: 'Last' },
-];
-
-// WeekdaySelector toggles a day in/out of an array; the Nth-weekday-of-month
-// picker needs exactly one day selected at a time, so this wraps its
-// onChange to always keep the most recently tapped day (ignoring a tap that
-// would deselect the only day, since a weekday must stay chosen).
-export function onlyNewestWeekday(current: number[], setDays: (days: number[]) => void): (days: number[]) => void {
-  return (days: number[]) => {
-    if (days.length === 0) return;
-    const added = days.find(d => !current.includes(d));
-    setDays(added !== undefined ? [added] : [days[days.length - 1]]);
-  };
-}
-
-const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
-  daily: 'day',
-  weekly: 'week',
-  monthly: 'month',
-  yearly: 'year',
-};
-
-function recurrenceUnitLabel(type: RecurrenceType, interval: number): string {
-  if (type === 'none') return '';
-  const unit = RECURRENCE_UNIT_SINGULAR[type];
-  return interval === 1 ? unit : `${unit}s`;
-}
 
 function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
   if (type === 'none') return '';
@@ -1134,211 +1082,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
             />
             {recurrenceType !== 'none' && (
-              <>
-                <View style={styles.scheduleRow}>
-                  {(['daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[]).map(type => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[styles.schedulePill, recurrenceType === type && styles.schedulePillActive]}
-                      onPress={() => setRecurrenceType(type)}
-                    >
-                      <Text style={[styles.schedulePillText, recurrenceType === type && styles.schedulePillTextActive]}>
-                        {RECURRENCE_LABELS[type]}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.intervalRow}>
-                  <Text style={styles.intervalLabel}>Every</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => setRecurrenceInterval(Math.max(1, recurrenceInterval - 1))}
-                    accessibilityRole="button"
-                    accessibilityLabel="Decrease recurrence interval"
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => setRecurrenceInterval(recurrenceInterval + 1)}
-                    accessibilityRole="button"
-                    accessibilityLabel="Increase recurrence interval"
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalLabel}>{recurrenceUnitLabel(recurrenceType, recurrenceInterval)}</Text>
-                </View>
-                {recurrenceType === 'weekly' && (
-                  <View style={styles.weekdayRow}>
-                    <WeekdaySelector value={recurrenceDays} onChange={setRecurrenceDays} />
-                  </View>
-                )}
-                {recurrenceType === 'monthly' && (
-                  <View style={styles.scheduleRow}>
-                    <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillActive]}
-                      onPress={() => { setRecurrenceMonthDay(null); setRecurrenceWeekOrdinal(null); }}
-                    >
-                      <Text style={[styles.schedulePillText, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillTextActive]}>
-                        Same day as due date
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
-                      onPress={() => { setRecurrenceWeekOrdinal(null); setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate()); }}
-                    >
-                      <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
-                        On a day
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
-                      onPress={() => { setRecurrenceWeekOrdinal(null); setRecurrenceMonthDay(-1); }}
-                    >
-                      <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
-                        Last day
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceWeekOrdinal !== null && styles.schedulePillActive]}
-                      onPress={() => {
-                        setRecurrenceMonthDay(null);
-                        setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
-                        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
-                      }}
-                    >
-                      <Text style={[styles.schedulePillText, recurrenceWeekOrdinal !== null && styles.schedulePillTextActive]}>
-                        On a weekday
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
-                  <View style={styles.intervalRow}>
-                    <Text style={styles.intervalLabel}>On the</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease day of month"
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{ordinal(recurrenceMonthDay)}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase day of month"
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
-                  <>
-                    <View style={styles.scheduleRow}>
-                      {ORDINAL_OPTIONS.map(({ value, label }) => (
-                        <TouchableOpacity
-                          key={value}
-                          style={[styles.schedulePill, recurrenceWeekOrdinal === value && styles.schedulePillActive]}
-                          onPress={() => setRecurrenceWeekOrdinal(value)}
-                        >
-                          <Text style={[styles.schedulePillText, recurrenceWeekOrdinal === value && styles.schedulePillTextActive]}>
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                    <View style={styles.weekdayRow}>
-                      <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, setRecurrenceDays)} />
-                    </View>
-                  </>
-                )}
-                <View style={styles.scheduleRow}>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, !recurrenceFromCompletion && styles.schedulePillActive]}
-                    onPress={() => setRecurrenceFromCompletion(false)}
-                  >
-                    <Text style={[styles.schedulePillText, !recurrenceFromCompletion && styles.schedulePillTextActive]}>
-                      On schedule
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceFromCompletion && styles.schedulePillActive]}
-                    onPress={() => setRecurrenceFromCompletion(true)}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceFromCompletion && styles.schedulePillTextActive]}>
-                      After completion
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.scheduleRow}>
-                  <Text style={[styles.intervalLabel, styles.endsLabel]}>Ends</Text>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceEndMode === 'never' && styles.schedulePillActive]}
-                    onPress={setRecurrenceEndNever}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'never' && styles.schedulePillTextActive]}>
-                      Never
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceEndMode === 'date' && styles.schedulePillActive]}
-                    onPress={setRecurrenceEndOnDate}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'date' && styles.schedulePillTextActive]}>
-                      On date
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.schedulePill, recurrenceEndMode === 'count' && styles.schedulePillActive]}
-                    onPress={setRecurrenceEndAfterCount}
-                  >
-                    <Text style={[styles.schedulePillText, recurrenceEndMode === 'count' && styles.schedulePillTextActive]}>
-                      After
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {recurrenceEndMode === 'date' && recurrenceEndDate && (
-                  <View style={styles.endDateRow}>
-                    <TouchableOpacity
-                      style={styles.endDateChip}
-                      onPress={() => setShowEndDatePicker(true)}
-                      activeOpacity={interaction.activeOpacity}
-                    >
-                      <Ionicons name="calendar-outline" size={14} color={colors.accent} />
-                      <Text style={styles.endDateChipText}>{format(recurrenceEndDate, 'MMM d, yyyy')}</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {recurrenceEndMode === 'count' && (
-                  <View style={styles.intervalRow}>
-                    <Text style={styles.intervalLabel}>After</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setRecurrenceCount(c => Math.max(1, (c ?? 1) - 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease occurrence count"
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{recurrenceCount ?? 1}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setRecurrenceCount(c => (c ?? 0) + 1)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase occurrence count"
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalLabel}>
-                      {(recurrenceCount ?? 1) === 1 ? 'occurrence' : 'occurrences'}
-                    </Text>
-                  </View>
-                )}
-              </>
+              <RecurrencePicker
+                recurrenceType={recurrenceType}
+                onChangeType={setRecurrenceType}
+                recurrenceInterval={recurrenceInterval}
+                onChangeInterval={setRecurrenceInterval}
+                recurrenceDays={recurrenceDays}
+                onChangeDays={setRecurrenceDays}
+                recurrenceMonthDay={recurrenceMonthDay}
+                onChangeMonthDay={setRecurrenceMonthDay}
+                seedMonthDay={() => (dueDate ?? new Date()).getDate()}
+                recurrenceFromCompletion={recurrenceFromCompletion}
+                onChangeFromCompletion={setRecurrenceFromCompletion}
+                recurrenceCount={recurrenceCount}
+                onChangeCount={setRecurrenceCount}
+                weekOrdinal={{
+                  value: recurrenceWeekOrdinal,
+                  onChange: setRecurrenceWeekOrdinal,
+                  seedWeekday: () => (dueDate ?? new Date()).getDay(),
+                }}
+                onSelectEndNever={setRecurrenceEndNever}
+                onSelectEndCount={setRecurrenceEndAfterCount}
+                endDate={{
+                  value: recurrenceEndDate,
+                  onSelect: setRecurrenceEndOnDate,
+                  onOpenPicker: () => setShowEndDatePicker(true),
+                }}
+              />
             )}
             <View style={styles.sep} />
             <View style={styles.cardSection}>
@@ -2159,7 +1929,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleHighlight: {
     color: colors.accent,
     fontWeight: '700',
-    backgroundColor: colors.accent + '26',
+    backgroundColor: colors.accentSubtle,
   },
   scheduleBanner: {
     marginHorizontal: spacing.md,
@@ -2338,9 +2108,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
   intervalLabel: { color: colors.textSecondary, fontSize: font.sm },
-  weekdayRow: {
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
   scheduleRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
@@ -2352,17 +2119,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   schedulePillActive: { backgroundColor: colors.accent },
   schedulePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   schedulePillTextActive: { color: colors.bg },
-  endsLabel: { marginRight: spacing.xs },
-  endDateRow: {
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
-  endDateChip: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 12, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
-  },
-  endDateChipText: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
   intervalBtn: {
     width: 30, height: 30, borderRadius: 15,
     backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
