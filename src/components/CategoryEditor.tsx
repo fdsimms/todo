@@ -59,6 +59,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const setCategorySchedule = useCategoryStore(s => s.setCategorySchedule);
   const removeCategorySchedule = useCategoryStore(s => s.removeCategorySchedule);
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
+  const setCategoryExcludeFromPinSuggestions = useCategoryStore(s => s.setCategoryExcludeFromPinSuggestions);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
   const renameCategory = useTaskStore(s => s.renameCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
@@ -72,6 +73,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [start, setStart] = useState(DEFAULT_START);
   const [end, setEnd] = useState(DEFAULT_END);
   const [hideOnVacation, setHideOnVacation] = useState(false);
+  const [excludeFromPins, setExcludeFromPins] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [pickerDate, setPickerDate] = useState(() => new Date());
   const emojiInputRef = useRef<TextInput>(null);
@@ -89,6 +91,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setStart(cat?.scheduleStart ?? DEFAULT_START);
     setEnd(cat?.scheduleEnd ?? DEFAULT_END);
     setHideOnVacation(!!cat?.hideOnVacation);
+    setExcludeFromPins(!!cat?.excludeFromPinSuggestions);
     setPicker(null);
     // Intentionally keyed on the category name only — `cat` changes on every
     // store write, and re-syncing on those would stomp in-progress edits.
@@ -149,6 +152,9 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     }
     if (hideOnVacation !== !!cat?.hideOnVacation) {
       setCategoryHideOnVacation(category, hideOnVacation);
+    }
+    if (excludeFromPins !== !!cat?.excludeFromPinSuggestions) {
+      setCategoryExcludeFromPinSuggestions(category, excludeFromPins);
     }
     const trimmedEmoji = emoji.trim();
     if (trimmedEmoji !== (cat?.emoji ?? '')) {
@@ -336,6 +342,24 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               </View>
               <View style={[styles.toggle, hideOnVacation && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, hideOnVacation && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setExcludeFromPins(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: excludeFromPins }}
+              accessibilityLabel="Skip in suggested pins"
+            >
+              <Ionicons name="sparkles-outline" size={18} color={excludeFromPins ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Skip in suggested pins</Text>
+                <Text style={styles.optionHint}>Keeps these out of suggested pins — you can still pin them by hand</Text>
+              </View>
+              <View style={[styles.toggle, excludeFromPins && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, excludeFromPins && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
           </View>

@@ -47,7 +47,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { suggestPinTasks } from '../services/aiSuggestions';
+import { suggestPinTasks, MAX_SUGGESTED_PINS } from '../services/aiSuggestions';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
@@ -1469,7 +1469,7 @@ export function TodayScreen() {
           accessibilityLabel: 'More options',
         }]
       : []),
-    ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
+    ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
           onPress: handleSuggestPin,

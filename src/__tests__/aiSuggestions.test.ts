@@ -9,8 +9,9 @@ import {
   suggestTaskAttributes,
   suggestPinTasks,
   suggestTemplateItems,
+  MAX_SUGGESTED_PINS,
 } from '../services/aiSuggestions';
-import type { Task } from '../types';
+import type { Category, Task } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mocks
@@ -19,6 +20,12 @@ import type { Task } from '../types';
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({ anthropicApiKey: 'test-key-does-not-hit-network' }),
+  },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: () => ({ categories: [] }),
   },
 }));
 
@@ -295,8 +302,8 @@ describe('suggestPinTasks', () => {
     await expect(suggestPinTasks([makeTask()], 0)).rejects.toThrow('No API key');
   });
 
-  it('returns [] when already 5 tasks are pinned', async () => {
-    const result = await suggestPinTasks([makeTask()], 5);
+  it('returns [] when the pinned list is already full', async () => {
+    const result = await suggestPinTasks([makeTask()], MAX_SUGGESTED_PINS);
     expect(result).toEqual([]);
   });
 
@@ -310,10 +317,10 @@ describe('suggestPinTasks', () => {
 
   it('returns all candidate IDs without calling the API when candidates ≤ needed', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch');
-    // 4 already pinned → need 1 more; only 1 unpinned candidate
+    // 2 already pinned → need 1 more; only 1 unpinned candidate
     const result = await suggestPinTasks(
       [makeTask({ id: 'a', pinned: false })],
-      4,
+      2,
     );
     expect(result).toEqual(['a']);
     expect(fetchSpy).not.toHaveBeenCalled();
@@ -338,9 +345,9 @@ describe('suggestPinTasks', () => {
       makeTask({ id: 'c' }),
       makeTask({ id: 'd' }),
     ];
-    // 2 already pinned → need 3, so all 4 candidates aren't auto-returned
+    // none pinned → need 3, so all 4 candidates aren't auto-returned
     mockFetchOnce(toolUseResponse('pin', { task_ids: ['b', 'c', 'd'] }));
-    const result = await suggestPinTasks(tasks, 2);
+    const result = await suggestPinTasks(tasks, 0);
     expect(result).toEqual(['b', 'c', 'd']);
   });
 
@@ -348,17 +355,17 @@ describe('suggestPinTasks', () => {
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
     // Model returns a hallucinated ID alongside valid ones
     mockFetchOnce(toolUseResponse('pin', { task_ids: ['a', 'hallucinated-id', 'c'] }));
-    const result = await suggestPinTasks(tasks, 2);
+    const result = await suggestPinTasks(tasks, 0);
     expect(result).toContain('a');
     expect(result).toContain('c');
     expect(result).not.toContain('hallucinated-id');
   });
 
-  it('never returns more IDs than needed to reach 5 pinned', async () => {
-    // 4 already pinned → need 1; model returns 3
+  it('never returns more IDs than needed to fill the pinned list', async () => {
+    // 2 already pinned → need 1; model returns 3
     const tasks = [makeTask({ id: 'a' }), makeTask({ id: 'b' }), makeTask({ id: 'c' }), makeTask({ id: 'd' })];
     mockFetchOnce(toolUseResponse('pin', { task_ids: ['a', 'b', 'c'] }));
-    const result = await suggestPinTasks(tasks, 4);
+    const result = await suggestPinTasks(tasks, 2);
     expect(result).toHaveLength(1);
   });
 
@@ -376,13 +383,102 @@ describe('suggestPinTasks', () => {
       json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['unpinned-a'] })),
     } as Response);
 
-    // 2 already pinned → need 3, less than the 4 unpinned candidates, so the API is called
-    await suggestPinTasks(tasks, 2);
+    // none pinned → need 3, less than the 4 unpinned candidates, so the API is called
+    await suggestPinTasks(tasks, 0);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
     expect(content).not.toContain('id:pinned');
     expect(content).toContain('id:unpinned-a');
+  });
+
+  describe('categories opted out of suggested pins', () => {
+    const makeCategory = (name: string, exclude: boolean): Category => ({
+      id: `cat-${name}`,
+      name,
+      scheduleDays: null,
+      scheduleStart: null,
+      scheduleEnd: null,
+      hideOnVacation: false,
+      excludeFromPinSuggestions: exclude,
+      sortOrder: 1,
+      emoji: null,
+    });
+
+    /** Point the mocked category store at a specific set of categories. */
+    const withCategories = (categories: Category[]) => {
+      jest.spyOn(
+        require('../store/useCategoryStore').useCategoryStore,
+        'getState',
+      ).mockReturnValue({ categories });
+    };
+
+    it('keeps excluded-category tasks out of the candidate list sent to the API', async () => {
+      withCategories([makeCategory('Routine', true), makeCategory('Work', false)]);
+      const tasks = [
+        makeTask({ id: 'shower', category: 'Routine' }),
+        makeTask({ id: 'teeth', category: 'Routine' }),
+        makeTask({ id: 'deck', category: 'Work' }),
+        makeTask({ id: 'email', category: 'Work' }),
+        makeTask({ id: 'review', category: 'Work' }),
+        makeTask({ id: 'loose', category: null }),
+      ];
+      const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve(toolUseResponse('pin', { task_ids: ['deck'] })),
+      } as Response);
+
+      await suggestPinTasks(tasks, 0);
+
+      const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+      const content = body.messages[0].content as string;
+      expect(content).not.toContain('id:shower');
+      expect(content).not.toContain('id:teeth');
+      expect(content).toContain('id:deck');
+      expect(content).toContain('id:loose');
+    });
+
+    it('returns [] rather than calling the API when every candidate is excluded', async () => {
+      withCategories([makeCategory('Routine', true)]);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      const result = await suggestPinTasks(
+        [makeTask({ id: 'shower', category: 'Routine' }), makeTask({ id: 'teeth', category: 'Routine' })],
+        0,
+      );
+      expect(result).toEqual([]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('counts remaining candidates after exclusion, not before', async () => {
+      withCategories([makeCategory('Routine', true)]);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      // 5 tasks, but only 2 survive exclusion — under the 3 needed, so they
+      // are returned wholesale instead of being sent to the model.
+      const result = await suggestPinTasks(
+        [
+          makeTask({ id: 'shower', category: 'Routine' }),
+          makeTask({ id: 'teeth', category: 'Routine' }),
+          makeTask({ id: 'gym', category: 'Routine' }),
+          makeTask({ id: 'deck', category: 'Work' }),
+          makeTask({ id: 'email', category: 'Work' }),
+        ],
+        0,
+      );
+      expect(result).toEqual(['deck', 'email']);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
+
+    it('ignores the flag on categories that are not excluded', async () => {
+      withCategories([makeCategory('Work', false)]);
+      const fetchSpy = jest.spyOn(global, 'fetch');
+      const result = await suggestPinTasks(
+        [makeTask({ id: 'deck', category: 'Work' })],
+        MAX_SUGGESTED_PINS - 1,
+      );
+      expect(result).toEqual(['deck']);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    });
   });
 });
 
