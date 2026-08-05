@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Done button on a task's Live Activity not completing the task when it was in Later, Unscheduled, or the Inbox.",
+  "date": "2026-08-05"
+}
