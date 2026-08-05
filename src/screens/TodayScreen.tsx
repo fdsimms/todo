@@ -756,6 +756,49 @@ export function TodayScreen() {
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, upcomingTaskIds]);
 
+  // Same pairing again, for the Inbox lens: stacks with at least one Inbox
+  // member, each paired with just those members. Being in a stack isn't one
+  // of the things isInboxTask() counts as filed (a stack is a label, not a
+  // schedule), so a stacked-but-otherwise-bare task legitimately sits here —
+  // and it should sit under its stack's header, the same as everywhere else,
+  // rather than loose among the untriaged rows.
+  //
+  // Built from inboxTasks rather than childrenByGroupId so the children come
+  // out in the Inbox's own sortOrder. No dismissal check: a dismissal means
+  // "done with this stack for today", and Inbox members are undated, so they
+  // still need triaging regardless.
+  const inboxGroupItems = useMemo(() => {
+    const byGroup = new Map<string, Task[]>();
+    for (const t of inboxTasks) {
+      if (!t.groupId) continue;
+      const list = byGroup.get(t.groupId);
+      if (list) list.push(t);
+      else byGroup.set(t.groupId, [t]);
+    }
+    return taskGroups
+      .map(group => ({ group, children: byGroup.get(group.id) ?? [] }))
+      .filter(g => g.children.length > 0);
+  }, [taskGroups, inboxTasks]);
+
+  // The Inbox list itself: one row per untriaged task, with each stack's
+  // header taking the slot of its first member and that member's siblings
+  // pulled out of the loose run underneath it.
+  const inboxData = useMemo((): ListItem[] => {
+    const headerAt = new Map<string, { group: TaskGroup; children: Task[] }>();
+    const inGroup = new Set<string>();
+    for (const item of inboxGroupItems) {
+      headerAt.set(item.children[0].id, item);
+      for (const child of item.children) inGroup.add(child.id);
+    }
+    const items: ListItem[] = [];
+    for (const task of inboxTasks) {
+      const header = headerAt.get(task.id);
+      if (header) items.push({ type: 'group', group: header.group, children: header.children });
+      if (!inGroup.has(task.id)) items.push({ type: 'task', task });
+    }
+    return items;
+  }, [inboxTasks, inboxGroupItems]);
+
   const upcomingUngroupedTasks = useMemo(
     () => upcomingTodayTasks.filter(t => !t.groupId),
     [upcomingTodayTasks],
@@ -1238,6 +1281,73 @@ export function TodayScreen() {
         <AnimatedCollapsible expanded={!group.collapsed}>
           {children.map(child => (
             <React.Fragment key={child.id}>{renderHiddenTask(child, { indented: true })}</React.Fragment>
+          ))}
+        </AnimatedCollapsible>
+      </View>
+    );
+  };
+
+  // An Inbox row. Deliberately plainer than renderTaskRow: no category or
+  // project chip and no "today" label, because an Inbox task has none of
+  // that by definition (see isInboxTask), and no drag, since the Inbox list
+  // doesn't reorder. Shared by the loose rows and a stack's children.
+  const renderInboxTask = (task: Task, opts?: { indented?: boolean }) => {
+    const subs = subtasksByParent.get(task.id) ?? [];
+    return (
+      <TaskItem
+        task={task}
+        indented={opts?.indented}
+        onPress={() => {
+          if (expandedTaskId !== null && expandedTaskId !== task.id) {
+            setExpandedTaskId(null);
+            return;
+          }
+          setExpandedTaskId(prev => prev === task.id ? null : task.id);
+        }}
+        expanded={expandedTaskId === task.id}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+        onEdit={() => openEditor(task)}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(task.id)}
+        onSelect={() => toggleSelection(task.id)}
+        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
+        justCreated={task.id === justCreatedId}
+      />
+    );
+  };
+
+  // Group header + children for a stack rendered in the Inbox — mirrors
+  // renderLaterGroup, minus the drag (the Inbox list doesn't reorder). No
+  // dueTodayOverride here, unlike Later Today: these children are undated,
+  // so the honest "N/M today" tally is the one TaskGroupHeader computes from
+  // the full roster — 0 for an all-Inbox stack, which hides the badge, and
+  // the real count for a stack that also has members due today.
+  const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
+    const allChildren = childrenByGroupId.get(group.id) ?? [];
+    return (
+      <View>
+        <TaskGroupHeader
+          group={group}
+          allChildren={allChildren}
+          onToggleCollapse={() => {
+            if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+            haptics.tap();
+            animateLayout();
+            setGroupCollapsed(group.id, !group.collapsed);
+          }}
+          onComplete={() => completeGroup(group.id)}
+          onDismiss={() => { animateLayout(); dismissGroup(group.id); }}
+          onDefer={date => deferGroup(group.id, date)}
+          onPin={() => pinGroup(group.id)}
+          onSwipeSelect={() => selectGroupRoster(group.id)}
+          onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
+        />
+        <AnimatedCollapsible expanded={!group.collapsed}>
+          {children.map(child => (
+            <React.Fragment key={child.id}>{renderInboxTask(child, { indented: true })}</React.Fragment>
           ))}
         </AnimatedCollapsible>
       </View>
@@ -1839,39 +1949,23 @@ export function TodayScreen() {
             It's where voice-added ("Hey Siri") and quickly-jotted tasks surface
             for sorting. A computed lens like the others, so a task leaves the
             moment it's organized — no rows show their metadata because by
-            definition they have none. */}
+            definition they have none. Stacks are the exception: a stack is a
+            label rather than a schedule, so its members can still be untriaged,
+            and they render under the stack's header here just as they do on
+            Today (see inboxData). */}
         {viewMode === 'inbox' && (
           <FlatList
             scrollEnabled={!painting}
-            data={inboxTasks}
-            keyExtractor={t => t.id}
+            data={inboxData}
+            keyExtractor={listItemKey}
             automaticallyAdjustKeyboardInsets
-            renderItem={({ item }) => {
-              const subs = subtasksByParent.get(item.id) ?? [];
-              return (
-                <TaskItem
-                  task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
-                  expanded={expandedTaskId === item.id}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
-                  justCreated={item.id === justCreatedId}
-                />
-              );
-            }}
+            renderItem={({ item }) =>
+              item.type === 'group'
+                ? renderInboxGroup(item.group, item.children)
+                : item.type === 'task'
+                  ? renderInboxTask(item.task)
+                  : null
+            }
             contentContainerStyle={
               inboxTasks.length === 0
                 ? styles.emptyContainer
@@ -1967,11 +2061,11 @@ export function TodayScreen() {
             onAddCategory={addCategory}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-            // No grouping from the Inbox: a stack is an organizing construct,
-            // but being in a stack isn't one of the things isInboxTask() counts
-            // as filed, so the tasks would stay here with nothing visibly
-            // changed (the Inbox list renders rows flat, without stack headers).
-            onGroup={viewMode === 'inbox' ? undefined : title => {
+            // Grouping works from the Inbox too: the tasks stay here (being in
+            // a stack isn't one of the things isInboxTask() counts as filed),
+            // but they collect under the new stack's header instead of staying
+            // loose — see inboxData.
+            onGroup={title => {
               const ids = Array.from(selectedIds);
               const selectedCategories = new Set(
                 ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
