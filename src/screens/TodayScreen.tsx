@@ -1643,6 +1643,7 @@ export function TodayScreen() {
                   hideTodayLabel
                   showCategory
                   showProject
+                  showGroup
                   showActions={false}
                   justCreated={item.task.id === justCreatedId}
                 />
