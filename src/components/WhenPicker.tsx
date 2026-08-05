@@ -178,8 +178,7 @@ export function WhenPicker({
     Animated.spring(popAnim, {
       toValue: 1.16,
       useNativeDriver: true,
-      friction: 4,
-      tension: 180,
+      ...animation.spring.bouncy,
     }).start();
     confirmTimer.current = setTimeout(() => onConfirm(date, segments), CONFIRM_DELAY_MS);
   };
