@@ -1,0 +1,4 @@
+{
+  "message": "Fixed chain steps disappearing after the first, and repeating chains taking one day per step instead of running through in one sitting",
+  "date": "2026-08-05"
+}

@@ -307,7 +307,7 @@ const STREAK_LATE_TOLERANCE_DAYS = 1;
 function getExpectedStreakGapDays(task: Task, from: Date): number {
   if (task.recurrenceType === 'daily') return task.recurrenceInterval;
   if (task.recurrenceDays.length > 0) {
-    return Math.max(1, differenceInCalendarDays(getNextWeekdayOccurrence(task.recurrenceDays, from), from));
+    return Math.max(1, differenceInCalendarDays(getNextWeekdayOccurrence(task.recurrenceDays, from, task.recurrenceInterval), from));
   }
   return 7 * task.recurrenceInterval;
 }

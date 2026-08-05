@@ -263,7 +263,7 @@ export function isInboxTask(task: Task): boolean {
 // three fields isTaskVisible/isTaskDeferred check to decide whether a task is
 // "scheduled" at all. isInboxTask is a subset of this: a bare inbox task has
 // no date signal AND no other organizing metadata either.
-function hasNoDateSignal(task: Task): boolean {
+export function hasNoDateSignal(task: Task): boolean {
   return (
     task.dueDate == null &&
     task.deferUntil == null &&
@@ -452,9 +452,9 @@ export function groupRoster(children: Task[]): Task[] {
     if (child.previousOccurrenceId) superseded.add(child.previousOccurrenceId);
   }
   return children.filter(child => {
-    // Checked first so a successor that IS due today (a chain step, which
-    // spawns undated and surfaces immediately) is never dropped as a
-    // duplicate of the step that spawned it.
+    // Checked first so a successor that IS due today (a chain step spawned
+    // from a dated predecessor picks up today's date — see completeTask)
+    // is never dropped as a duplicate of the step that spawned it.
     if (isRelevantToGroupToday(child)) return true;
     if (child.completed || child.archived) return false;
     if (superseded.has(child.id)) return false;

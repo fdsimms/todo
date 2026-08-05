@@ -33,7 +33,7 @@ import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface UndoableAction {
@@ -463,37 +463,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const now = new Date();
     const { dayResetTime } = useSettingsStore.getState();
 
-    // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
-    let newStreakCount = 1;
-    if (task.recurrenceType !== 'none' && task.streakDate) {
-      const outcome = getStreakOutcome(task, dayResetTime);
-      if (outcome === 'same-day') {
-        newStreakCount = task.streakCount;
-      } else if (outcome === 'continued') {
-        newStreakCount = task.streakCount + 1;
-      }
-      // else 'reset': missed too many cadence units → reset to 1 (already set above)
-    }
-
-    const completed: Task = {
-      ...task,
-      completed: true,
-      completedAt: now.toISOString(),
-      // Pin is cleared once the completion hold below expires, not
-      // immediately — otherwise a pinned row would vanish from the Pinned
-      // section instantly instead of getting the same fade-out grace period
-      // every other list gives a completed task.
-      streakCount: task.recurrenceType !== 'none' ? newStreakCount : task.streakCount,
-      streakDate: task.recurrenceType !== 'none' ? getCurrentDayStart().toISOString() : task.streakDate,
-      previousStreakCount: task.streakCount,
-      previousStreakDate: task.streakDate,
-    };
-    if (task.pinned) pendingUnpinIds.push(id);
-    dbUpdateTask(completed);
-
-    cancelTaskReminder(id);
-
-    let nextTask: Task | null = null;
     const recurs = task.recurrenceType !== 'none';
     const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
     const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
@@ -503,20 +472,85 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // instead of ending, the whole chain loops back to the first item on
     // the recurrence's schedule. A chain with no Repeat set never spawns
     // past its last item; a plain recurring task with no chain just keeps
-    // recurring on schedule as always.
-    const spawnsNext = recurs ? true : (chainAdvances && !atChainEnd);
+    // recurring on schedule as always. So the recurrence's own schedule
+    // (streak, recurrenceCount, getNextDueDate) only ever applies once per
+    // cycle — at the last step of a repeating chain, or on every completion
+    // of a plain recurring task with no chain at all — never on a mid-chain
+    // step, which always advances immediately.
+    const advancesBySchedule = !chainAdvances || atChainEnd;
+
+    // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
+    let newStreakCount = 1;
+    if (recurs && advancesBySchedule && task.streakDate) {
+      const outcome = getStreakOutcome(task, dayResetTime);
+      if (outcome === 'same-day') {
+        newStreakCount = task.streakCount;
+      } else if (outcome === 'continued') {
+        newStreakCount = task.streakCount + 1;
+      }
+      // else 'reset': missed too many cadence units → reset to 1 (already set above)
+    }
+
+    const streakAdvances = recurs && advancesBySchedule;
+    const completed: Task = {
+      ...task,
+      completed: true,
+      completedAt: now.toISOString(),
+      // Pin is cleared once the completion hold below expires, not
+      // immediately — otherwise a pinned row would vanish from the Pinned
+      // section instantly instead of getting the same fade-out grace period
+      // every other list gives a completed task.
+      streakCount: streakAdvances ? newStreakCount : task.streakCount,
+      streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+      previousStreakCount: task.streakCount,
+      previousStreakDate: task.streakDate,
+    };
+    if (task.pinned) pendingUnpinIds.push(id);
+    dbUpdateTask(completed);
+
+    cancelTaskReminder(id);
+
+    let nextTask: Task | null = null;
+    const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
     if (spawnsNext) {
-      const nextDue = recurs ? getNextDueDate(task, dayResetTime) : null;
-      if (!recurs || nextDue !== null) {
+      // The recurrence's schedule only decides the date at the point it
+      // actually applies (see advancesBySchedule above) — everywhere else
+      // there's no date to compute.
+      const nextDue = recurs && advancesBySchedule ? getNextDueDate(task, dayResetTime) : null;
+      // Skip the spawn only when we actually consulted the schedule and it
+      // says the series has ended — a mid-chain step never consults it, so
+      // it always spawns regardless of recurrenceEndDate/recurrenceCount.
+      if (!advancesBySchedule || nextDue !== null) {
         // A "this task only" edit (see updateTask) stores what content fields
         // should revert to for the next occurrence in seriesDefaults — apply
         // it before spreading so the clone below reflects the series' real
         // values, not a one-off edit made on this occurrence.
         const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+        // A mid-chain step carries no schedule of its own, so it only gets a
+        // date when the step it's replacing had one — preserving placement
+        // rather than always dating (which would drop a fully undated chain's
+        // steps into having dates, and would drop a dated chain's steps out
+        // of view entirely once they lost theirs — see isTaskVisible).
+        //
+        // Accepted trade-off: getNextDueDate's fixed-schedule anchor
+        // (dateUtils.ts) reads the last step's own dueDate, which is now
+        // "today" (whatever day that step happened to be completed) rather
+        // than the cycle's original schedule-anchored date. For the normal
+        // case — a chain finished in one sitting, same day it started — this
+        // anchors identically to the old fixed schedule. A chain left
+        // mid-way across a day boundary drifts the grid forward to the
+        // completion day instead, i.e. behaves like recurrenceFromCompletion
+        // for that cycle. Chosen deliberately over adding a separate
+        // cycle-anchor field, which no other part of the schema needs.
+        const midChainDue =
+          chainAdvances && !advancesBySchedule && !hasNoDateSignal(task)
+            ? (() => { const d = getCurrentDayStart(); d.setHours(12, 0, 0, 0); return d; })()
+            : null;
+        const effectiveDue = nextDue ?? midChainDue;
         let nextReminderTime: string | null = effective.reminderTime;
-        if (nextDue && effective.reminderTime) {
+        if (effectiveDue && effective.reminderTime) {
           const original = new Date(effective.reminderTime);
-          const next = new Date(nextDue);
+          const next = new Date(effectiveDue);
           next.setHours(original.getHours(), original.getMinutes(), 0, 0);
           nextReminderTime = next.toISOString();
         }
@@ -529,11 +563,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // so e.g. "the day before it's due" or "the last day of the month"
         // keeps meaning that on every future occurrence too.
         const nextDeadline =
-          !nextDue ? null
+          !effectiveDue ? null
           : effective.deadlineOffsetDays !== null
-            ? getDeadlineFromOffset(nextDue, effective.deadlineOffsetDays).toISOString()
+            ? getDeadlineFromOffset(effectiveDue, effective.deadlineOffsetDays).toISOString()
           : effective.deadlineMonthDay !== null
-            ? getDeadlineFromMonthDay(nextDue, effective.deadlineMonthDay).toISOString()
+            ? getDeadlineFromMonthDay(effectiveDue, effective.deadlineMonthDay).toISOString()
             : null;
         nextTask = {
           ...effective,
@@ -542,17 +576,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completedAt: null,
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
-          dueDate: nextDue ? nextDue.toISOString() : null,
+          dueDate: effectiveDue ? effectiveDue.toISOString() : null,
           deadline: nextDeadline,
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
-          streakCount: recurs ? newStreakCount : task.streakCount,
-          streakDate: recurs ? getCurrentDayStart().toISOString() : task.streakDate,
+          streakCount: streakAdvances ? newStreakCount : task.streakCount,
+          streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
           previousStreakCount: task.streakCount,
           previousStreakDate: task.streakDate,
           reminderTime: nextReminderTime,
           chainIndex: nextChainIndex,
-          recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
+          recurrenceCount:
+            advancesBySchedule && task.recurrenceCount !== null ? task.recurrenceCount - 1 : task.recurrenceCount,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again

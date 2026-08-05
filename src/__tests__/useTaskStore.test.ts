@@ -805,6 +805,42 @@ describe('completeTask', () => {
     expect(next?.dueDate).not.toBeNull();
   });
 
+  it('advances a mid-chain step immediately on a repeating chain instead of waiting a full cycle', () => {
+    const task = makeTask({
+      id: 'mid-chain-recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: 5,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      streakCount: 2,
+      streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('mid-chain-recurring');
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks).toHaveLength(2);
+    const completed = tasks.find(t => t.id === 'mid-chain-recurring')!;
+    const next = tasks.find(t => t.id !== 'mid-chain-recurring')!;
+    expect(next.chainIndex).toBe(1);
+    // Spawns today, not on the daily schedule's next date (2025-06-11).
+    expect(next.dueDate).not.toBeNull();
+    expect(new Date(next.dueDate!).toDateString()).toBe(new Date().toDateString());
+    expect(new Date(next.dueDate!).toDateString()).not.toBe('Wed Jun 11 2025');
+    // The recurrence's own schedule (count, streak) only advances at the end
+    // of the chain, not on every intermediate step.
+    expect(next.recurrenceCount).toBe(5);
+    expect(next.streakCount).toBe(task.streakCount);
+    expect(completed.streakCount).toBe(task.streakCount);
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -1603,17 +1639,22 @@ describe('groupRosterOf', () => {
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['daily', 'iron']);
   });
 
-  it('keeps a chain step that spawned undated and is due right now', () => {
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 'step-1', groupId: 'g1', completed: true, completedAt: today(), sortOrder: 1 }),
-        makeTask({
-          id: 'step-2', groupId: 'g1', previousOccurrenceId: 'step-1',
-          dueDate: today(), chainEnabled: true, chainIndex: 1, sortOrder: 2,
-        }),
+  it('keeps a chain step that spawned dated and is due right now', () => {
+    const step1 = makeTask({
+      id: 'step-1', groupId: 'g1', dueDate: today(), chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
       ],
+      chainIndex: 0, sortOrder: 1,
     });
-    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['step-1', 'step-2']);
+    useTaskStore.setState({ tasks: [step1] });
+    useTaskStore.getState().completeTask('step-1');
+
+    const { tasks } = useTaskStore.getState();
+    const step2 = tasks.find(t => t.id !== 'step-1')!;
+    expect(step2.dueDate).not.toBeNull();
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['step-1', step2.id]);
   });
 
   it('drops a one-off member once the day it was completed has passed', () => {
