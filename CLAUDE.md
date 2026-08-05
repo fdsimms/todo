@@ -9,7 +9,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck — ~10s
-npm test             # all 27 suites, 966 tests — ~4s, just run the whole thing
+npm test             # all 28 suites, 992 tests — ~4s, just run the whole thing
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
@@ -90,7 +90,10 @@ SQLite (expo-sqlite, WAL mode)
                     └── React screens / components
 ```
 
-All database calls are synchronous (expo-sqlite `runSync`/`getAllSync`). There is no backend or network layer — everything lives in a local SQLite file on device.
+All database calls are synchronous (expo-sqlite `runSync`/`getAllSync`). There is no backend, and every
+piece of user data lives in a local SQLite file on device. The one network call in the app is
+`src/services/aiSuggestions.ts`, which posts task titles/notes straight to `api.anthropic.com` using a
+user-supplied API key; every feature it powers is inert until the user pastes one into Settings.
 
 Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
 
@@ -172,7 +175,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 `initDatabase()` in `src/db/database.ts` creates tables and runs a list of `ALTER TABLE ADD COLUMN` migrations wrapped in try/catch — they fail silently if the column already exists. When adding a new column, append it to the migrations array rather than modifying the `CREATE TABLE` statement.
 
-Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`) AND in a registry (`tag_registry` / `category_registry` keys in the `settings` table). The registry tracks tags/categories that exist even if no task currently uses them.
+Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `category TEXT`). Tags are additionally tracked in a `tag_registry` key in the `settings` table, so a tag that exists but is currently unused doesn't disappear. Categories used to work the same way, but now live in their own `categories` table (they carry schedule/vacation fields a string list can't hold) — the `category_registry` setting is legacy, read only by the one-time migration in `initDatabase()` that backfills that table.
 
 ### iOS native extension targets (widgets, and future Watch/Live Activity targets)
 
