@@ -39,7 +39,11 @@ export function scoreSubstring(haystack: string, needle: string): { score: numbe
   return { score, ranges: firstMatch !== -1 ? [[firstMatch, lastMatch + 1]] : [] };
 }
 
-export function fuzzySearch(tasks: Task[], query: string): SearchResult[] {
+export function fuzzySearch(
+  tasks: Task[],
+  query: string,
+  projectNamesById: Map<string, string> = new Map()
+): SearchResult[] {
   const q = query.trim();
   if (!q) return [];
 
@@ -50,6 +54,8 @@ export function fuzzySearch(tasks: Task[], query: string): SearchResult[] {
     // Skip subtasks from top-level results
     if (task.parentId) continue;
 
+    const projectName = task.projectId ? projectNamesById.get(task.projectId) : undefined;
+
     let totalScore = 0;
     let titleMatches: [number, number][] = [];
 
@@ -57,9 +63,21 @@ export function fuzzySearch(tasks: Task[], query: string): SearchResult[] {
       const titleResult = scoreSubstring(task.title, word);
       const notesResult = scoreSubstring(task.notes, word);
       const tagScore = task.tags.some(t => t.toLowerCase().includes(word.toLowerCase())) ? 30 : 0;
+      const categoryResult = task.category ? scoreSubstring(task.category, word) : { score: 0, ranges: [] };
+      const projectResult = projectName ? scoreSubstring(projectName, word) : { score: 0, ranges: [] };
+      const chainScore = task.chainItems.reduce(
+        (best, item) => Math.max(best, scoreSubstring(item.title, word).score),
+        0
+      );
 
-      // Title matches score highest, notes lower, tags moderate
-      totalScore += titleResult.score * 2 + notesResult.score * 0.5 + tagScore;
+      // Title matches score highest, notes/category/project/chain steps lower, tags moderate
+      totalScore +=
+        titleResult.score * 2 +
+        notesResult.score * 0.5 +
+        categoryResult.score * 0.5 +
+        projectResult.score * 0.5 +
+        chainScore * 0.5 +
+        tagScore;
 
       if (titleResult.ranges.length > 0) {
         titleMatches = titleMatches.concat(titleResult.ranges);

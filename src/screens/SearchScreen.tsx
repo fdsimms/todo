@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { TaskEditor } from '../components/TaskEditor';
 import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
@@ -98,6 +99,7 @@ export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
+  const projects = useProjectStore(s => s.projects);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -106,9 +108,14 @@ export function SearchScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
+  const projectNamesById = useMemo(
+    () => new Map(projects.map(p => [p.id, p.title])),
+    [projects]
+  );
+
   const results: SearchResult[] = useMemo(
-    () => fuzzySearch(tasks, query),
-    [tasks, query]
+    () => fuzzySearch(tasks, query, projectNamesById),
+    [tasks, query, projectNamesById]
   );
 
   const activeResults = results.filter(r => !r.task.completed);

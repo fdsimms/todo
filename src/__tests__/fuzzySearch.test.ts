@@ -139,6 +139,41 @@ describe('fuzzySearch', () => {
     });
   });
 
+  describe('category, project and chain step matching', () => {
+    it('includes task when match is only in category', () => {
+      const task = makeTask({ title: 'Do chores', category: 'Groceries' });
+      expect(fuzzySearch([task], 'groceries')).toHaveLength(1);
+    });
+
+    it('includes task when match is only in project name', () => {
+      const task = makeTask({ title: 'Do chores', projectId: 'proj-1' });
+      const projectNamesById = new Map([['proj-1', 'Groceries run']]);
+      expect(fuzzySearch([task], 'groceries', projectNamesById)).toHaveLength(1);
+    });
+
+    it('does not match project name when projectNamesById is not provided', () => {
+      const task = makeTask({ title: 'Do chores', projectId: 'proj-1' });
+      expect(fuzzySearch([task], 'groceries')).toHaveLength(0);
+    });
+
+    it('includes task when match is only in a chain step title', () => {
+      const task = makeTask({
+        title: 'Landlord stuff',
+        chainItems: [
+          { id: 'c1', title: 'Call the landlord about groceries budget', notes: '' },
+        ],
+      });
+      expect(fuzzySearch([task], 'groceries')).toHaveLength(1);
+    });
+
+    it('title match scores higher than category/project/chain-only match', () => {
+      const titleTask = makeTask({ id: '1', title: 'important task' });
+      const categoryTask = makeTask({ id: '2', title: 'unrelated', category: 'important' });
+      const results = fuzzySearch([titleTask, categoryTask], 'important');
+      expect(results[0].task.id).toBe('1');
+    });
+  });
+
   describe('multi-word queries', () => {
     it('combines per-word scores so multi-word query scores higher than single-word', () => {
       const task = makeTask({ title: 'Buy groceries today' });
