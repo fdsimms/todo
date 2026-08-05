@@ -179,9 +179,9 @@ export function SearchScreen() {
       </View>
 
       {showEmpty ? (
-        <EmptyState icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} bottomOffset={tabBarHeight} />
+        <EmptyState key="no-results" icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} bottomOffset={tabBarHeight} />
       ) : query.trim().length === 0 ? (
-        <EmptyState icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
+        <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
       ) : (
         <FlatList
           data={listData}
