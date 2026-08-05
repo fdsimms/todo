@@ -11,7 +11,6 @@ import { requestNotificationPermissions } from './src/utils/notifications';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
-import { useLiveActivitySync } from './src/utils/liveActivity';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
@@ -66,11 +65,6 @@ export default function App() {
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();
-
-  // Ends any in-flight "link tapped" Live Activity whenever the app is
-  // foregrounded — see src/utils/liveActivity.ts for why that's the only end
-  // condition.
-  useLiveActivitySync();
 
   return (
     <ErrorBoundary>

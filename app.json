@@ -14,8 +14,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "NSSupportsLiveActivities": true
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
