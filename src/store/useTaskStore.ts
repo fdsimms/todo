@@ -21,6 +21,7 @@ import {
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
   dbMarkTaskSeen,
+  dbTransaction,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
@@ -102,6 +103,30 @@ function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
     const masked = { ...t, completed: false };
     heldMaskCache.set(t.id, { source: t, masked });
     return masked;
+  });
+}
+
+// O(n) task-array patch shared by every "apply a change to N ids" call site
+// below, in place of the O(n*m) `ids.includes(t.id)` / `updates.find(...)`
+// scan each site used to repeat inside its own `.map()` over all tasks.
+// `patch` may be a function when the new fields depend on the task itself
+// (e.g. bulkAddTags's merge).
+function patchTasks(tasks: Task[], ids: string[], patch: Partial<Task> | ((t: Task) => Partial<Task>)): Task[] {
+  if (ids.length === 0) return tasks;
+  const idSet = new Set(ids);
+  return tasks.map(t => {
+    if (!idSet.has(t.id)) return t;
+    return { ...t, ...(typeof patch === 'function' ? patch(t) : patch) };
+  });
+}
+
+// Map variant for the reorder sites, where every id's patch (its new
+// sortOrder) differs.
+function patchTasksById(tasks: Task[], updates: Map<string, Partial<Task>>): Task[] {
+  if (updates.size === 0) return tasks;
+  return tasks.map(t => {
+    const u = updates.get(t.id);
+    return u ? { ...t, ...u } : t;
   });
 }
 
@@ -413,7 +438,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     const now = new Date().toISOString();
     ids.forEach(id => dbMarkTaskSeen(id, now));
-    set(s => ({ tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, seenAt: now } : t)) }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { seenAt: now }) }));
   },
 
   setLastAction(action) {
@@ -801,9 +826,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({
-      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, pinned: nextPinned } : t)),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
   },
 
   startTimer(id) {
@@ -835,24 +858,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reorderTasks(orderedIds) {
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(updates);
-    set(s => ({
-      tasks: s.tasks.map(t => {
-        const u = updates.find(x => x.id === t.id);
-        return u ? { ...t, sortOrder: u.sortOrder } : t;
-      }),
-    }));
+    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   reorderWithCategoryUpdates(orderedIds, categoryUpdates, options) {
     const scope = options?.scope ?? 'series';
     const orderUpdates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(orderUpdates);
-    set(s => ({
-      tasks: s.tasks.map(t => {
-        const orderUpdate = orderUpdates.find(x => x.id === t.id);
-        return orderUpdate ? { ...t, sortOrder: orderUpdate.sortOrder } : t;
-      }),
-    }));
+    const byId = new Map(orderUpdates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
 
     // Snapshot full pre-drop tasks so a category move can be undone, and
     // route the category write through updateTask so it gets the same
@@ -966,12 +981,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reorderSubtasks(parentId, orderedIds) {
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(updates);
-    set(s => ({
-      tasks: s.tasks.map(t => {
-        const u = updates.find(x => x.id === t.id);
-        return u ? { ...t, sortOrder: u.sortOrder } : t;
-      }),
-    }));
+    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   // Every row ever assigned to the stack, completed occurrences included.
@@ -1067,12 +1078,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   reorderGroupChildren(groupId, orderedIds) {
     const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(updates);
-    set(s => ({
-      tasks: s.tasks.map(t => {
-        const u = updates.find(x => x.id === t.id);
-        return u ? { ...t, sortOrder: u.sortOrder } : t;
-      }),
-    }));
+    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   groupTasks(taskIds, title, category) {
@@ -1095,10 +1102,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   completeGroup(groupId) {
     const children = get().groupRosterOf(groupId);
     const completedIds: string[] = [];
-    children.forEach(child => {
-      if (child.completed) return;
-      get().completeTask(child.id);
-      if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
+    dbTransaction(() => {
+      children.forEach(child => {
+        if (child.completed) return;
+        get().completeTask(child.id);
+        if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
+      });
     });
     if (completedIds.length === 0) return;
     get().setLastAction({
@@ -1165,9 +1174,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
     dbBulkSetPinned(ids, nextPinned);
-    set(s => ({
-      tasks: s.tasks.map(t => (ids.includes(t.id) ? { ...t, pinned: nextPinned } : t)),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
   },
 
   deleteGroup(groupId, opts) {
@@ -1180,14 +1187,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // unfiled (group_id cleared), never destroyed. Deleting a stack the
     // user has run nightly for a year shouldn't erase a year of completions.
     const doomed = opts.cascade ? new Set(get().groupRosterOf(groupId).map(c => c.id)) : new Set<string>();
-    children.forEach(child => {
-      if (doomed.has(child.id)) {
-        get().deleteTask(child.id);
-        const action = get().lastAction;
-        if (action) undos.push(action.undo);
-      } else {
-        get().removeFromGroup(child.id);
-      }
+    dbTransaction(() => {
+      children.forEach(child => {
+        if (doomed.has(child.id)) {
+          get().deleteTask(child.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        } else {
+          get().removeFromGroup(child.id);
+        }
+      });
     });
     useTaskGroupStore.getState().removeGroupRow(groupId);
     if (!group) return;
@@ -1215,15 +1224,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const members = get().tasks.filter(t => t.projectId === projectId);
     const project = useProjectStore.getState().getProjectById(projectId);
     const undos: Array<() => void> = [];
-    if (opts.cascade) {
-      members.forEach(member => {
-        get().deleteTask(member.id);
-        const action = get().lastAction;
-        if (action) undos.push(action.undo);
-      });
-    } else {
-      members.forEach(member => get().removeFromProject(member.id));
-    }
+    dbTransaction(() => {
+      if (opts.cascade) {
+        members.forEach(member => {
+          get().deleteTask(member.id);
+          const action = get().lastAction;
+          if (action) undos.push(action.undo);
+        });
+      } else {
+        members.forEach(member => get().removeFromProject(member.id));
+      }
+    });
     useProjectStore.getState().removeProjectRow(projectId);
     if (!project) return;
     get().setLastAction({
@@ -1315,9 +1326,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkCompleteTasks(ids) {
     if (ids.length === 0) return;
     const completedIds: string[] = [];
-    ids.forEach(id => {
-      get().completeTask(id);
-      if (get().tasks.find(t => t.id === id)?.completed) completedIds.push(id);
+    dbTransaction(() => {
+      ids.forEach(id => {
+        get().completeTask(id);
+        if (get().tasks.find(t => t.id === id)?.completed) completedIds.push(id);
+      });
     });
     if (completedIds.length === 0) return;
     get().setLastAction({
@@ -1328,12 +1341,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkDeleteTasks(ids) {
     if (ids.length === 0) return;
-    const deleted = get().tasks.filter(t => ids.includes(t.id) || (t.parentId !== null && ids.includes(t.parentId)));
+    const idSet = new Set(ids);
+    const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
 
     dbBulkDeleteTasks(ids);
-    ids.forEach(id => cancelTaskReminder(id));
+    // Only ids that actually had a reminder are worth a native cancel call —
+    // see the same predicate in rescheduleAllReminders.
+    deleted.forEach(t => {
+      if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
+    });
     set(s => ({
-      tasks: s.tasks.filter(t => !ids.includes(t.id) && (t.parentId === null || !ids.includes(t.parentId))),
+      tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
     }));
 
     get().setLastAction({
@@ -1364,9 +1382,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkSetPriority(ids, priority) {
     if (ids.length === 0) return;
     dbBulkSetPriority(ids, priority);
-    set(s => ({
-      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, priority } : t),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { priority }) }));
   },
 
   bulkDefer(ids, until) {
@@ -1377,9 +1393,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     dbBulkSetDefer(ids, deferUntil);
-    set(s => ({
-      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, deferUntil } : t),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { deferUntil }) }));
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
@@ -1396,9 +1410,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     dbBulkSetWhen(ids, dueDate, timeSegments);
-    set(s => ({
-      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, dueDate, timeSegments } : t),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { dueDate, timeSegments }) }));
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
@@ -1410,19 +1422,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkSetCategory(ids, category) {
     if (ids.length === 0) return;
     dbBulkSetCategory(ids, category);
-    set(s => ({
-      tasks: s.tasks.map(t => ids.includes(t.id) ? { ...t, category } : t),
-    }));
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { category }) }));
   },
 
   bulkAddTags(ids, tags) {
     if (ids.length === 0 || tags.length === 0) return;
     dbBulkAddTags(ids, tags);
     set(s => ({
-      tasks: s.tasks.map(t => {
-        if (!ids.includes(t.id)) return t;
-        return { ...t, tags: Array.from(new Set([...t.tags, ...tags])) };
-      }),
+      tasks: patchTasks(s.tasks, ids, t => ({ tags: Array.from(new Set([...t.tags, ...tags])) })),
     }));
   },
 

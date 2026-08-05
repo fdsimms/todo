@@ -38,6 +38,7 @@ import {
   dbUpdateProject,
   dbDeleteProject,
   dbBatchUpdateProjectSortOrders,
+  dbTransaction,
   dbGetAllCategories,
   dbInsertCategory,
   dbInsertCategoryRow,
@@ -602,6 +603,27 @@ describe('dbBatchUpdateSortOrders', () => {
 // ---------------------------------------------------------------------------
 // Bulk task operations
 // ---------------------------------------------------------------------------
+
+describe('dbTransaction', () => {
+  it('commits every write made inside the callback', () => {
+    dbTransaction(() => {
+      dbInsertTask(makeTask({ id: 'a' }));
+      dbInsertTask(makeTask({ id: 'b' }));
+    });
+    expect(dbGetAllTasks().map((t) => t.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('rolls back every write if the callback throws', () => {
+    dbInsertTask(makeTask({ id: 'existing' }));
+    expect(() => {
+      dbTransaction(() => {
+        dbInsertTask(makeTask({ id: 'a' }));
+        throw new Error('boom');
+      });
+    }).toThrow('boom');
+    expect(dbGetAllTasks().map((t) => t.id)).toEqual(['existing']);
+  });
+});
 
 describe('dbBulkDeleteTasks', () => {
   it('deletes the specified task and cascades to its subtasks', () => {
