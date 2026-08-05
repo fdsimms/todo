@@ -1175,7 +1175,14 @@ export function TodayScreen() {
             onToggleCollapse={() => {
               if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
               haptics.tap();
-              animateLayout();
+              // No animateLayout() here: AnimatedCollapsible already owns a
+              // smooth Reanimated-driven height transition for this row, and
+              // stacking a LayoutAnimation on the same commit fights it —
+              // LayoutAnimation grabs the view's current committed frame to
+              // animate from, which can race the in-progress Reanimated
+              // value and leave the row frozen at zero height until
+              // something else (a remount) forces a fresh layout.
+              //
               // A tap landing here means no drag is in flight, so this
               // doubles as the recovery path if one ever ends without
               // onDragEnd — otherwise the stack would stay bodiless no
@@ -1268,7 +1275,9 @@ export function TodayScreen() {
           dueTodayOverride={children}
           onToggleCollapse={() => {
             haptics.tap();
-            animateLayout();
+            // See the main list's group onToggleCollapse: no animateLayout()
+            // here either, for the same reason — AnimatedCollapsible drives
+            // this row's own transition already.
             setGroupCollapsed(group.id, !group.collapsed);
           }}
           onComplete={() => completeGroup(group.id)}
