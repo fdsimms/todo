@@ -83,7 +83,7 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
                   accessibilityLabel={candidate.name}
                   accessibilityState={{ disabled }}
                 >
-                  <View style={[styles.tplIcon, { backgroundColor: colors.accent + '22' }]}>
+                  <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
                     <Ionicons name="copy" size={16} color={disabled ? colors.textTertiary : colors.accent} />
                   </View>
                   <View style={styles.rowInfo}>

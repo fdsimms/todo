@@ -1335,7 +1335,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   inputHighlight: {
     color: colors.accent,
     fontWeight: fontWeight.semibold,
-    backgroundColor: colors.accent + '26',
+    backgroundColor: colors.accentSubtle,
   },
   suggestionsBox: {
     backgroundColor: colors.bgTertiary,
@@ -1403,7 +1403,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   toolChipSet: {
-    backgroundColor: colors.accent + '22',
+    backgroundColor: colors.accentSubtle,
   },
   toolChipText: {
     color: colors.textTertiary,

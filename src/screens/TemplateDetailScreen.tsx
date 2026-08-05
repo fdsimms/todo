@@ -212,7 +212,7 @@ export function TemplateDetailScreen() {
           <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
         </TouchableOpacity>
         <View style={styles.detailTitle}>
-          <View style={[styles.tplIconSm, { backgroundColor: colors.accent + '22' }]}>
+          <View style={[styles.tplIconSm, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="copy" size={14} color={colors.accent} />
           </View>
           <Text style={styles.detailTitleText}>{template?.name}</Text>

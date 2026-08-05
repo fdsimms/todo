@@ -2167,7 +2167,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleHighlight: {
     color: colors.accent,
     fontWeight: '700',
-    backgroundColor: colors.accent + '26',
+    backgroundColor: colors.accentSubtle,
   },
   scheduleBanner: {
     marginHorizontal: spacing.md,

@@ -121,7 +121,7 @@ export function CategoryDetailScreen() {
             <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
           <View style={styles.detailTitle}>
-            <View style={[styles.catIconSm, { backgroundColor: colors.accent + '22' }]}>
+            <View style={[styles.catIconSm, { backgroundColor: colors.accentSubtle }]}>
               {catObj?.emoji ? (
                 <Text style={styles.catIconEmojiSm}>{catObj.emoji}</Text>
               ) : (
