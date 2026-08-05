@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -396,5 +396,49 @@ describe('describeSchedule', () => {
   it('appends the time segment', () => {
     expect(describeSchedule({ ...base, recurrenceType: 'daily', timeSegments: ['morning'] }, NOW)).toBe('Daily · morning');
     expect(describeSchedule({ ...base, timeSegments: ['evening'] }, NOW)).toBe('Today · evening');
+  });
+});
+
+describe('parseLinkInput', () => {
+  it('extracts a pasted https URL trailing the title', () => {
+    const result = parseLinkInput('read this article https://example.com/foo');
+    expect(result?.url).toBe('https://example.com/foo');
+    expect(result?.cleanTitle).toBe('read this article');
+  });
+
+  it('extracts a URL leading the title', () => {
+    const result = parseLinkInput('https://example.com/foo read this');
+    expect(result?.url).toBe('https://example.com/foo');
+    expect(result?.cleanTitle).toBe('read this');
+  });
+
+  it('extracts a URL in the middle of the title', () => {
+    const result = parseLinkInput('read https://example.com/foo later');
+    expect(result?.url).toBe('https://example.com/foo');
+    expect(result?.cleanTitle).toBe('read later');
+  });
+
+  it('extracts an app deep-link scheme', () => {
+    const result = parseLinkInput('practice spanish spotify://album/123');
+    expect(result?.url).toBe('spotify://album/123');
+    expect(result?.cleanTitle).toBe('practice spanish');
+  });
+
+  it('trims trailing sentence punctuation off the URL', () => {
+    const result = parseLinkInput('check this out: https://example.com/foo.');
+    expect(result?.url).toBe('https://example.com/foo');
+    expect(result?.cleanTitle).toBe('check this out:');
+  });
+
+  it('returns null when there is no URL', () => {
+    expect(parseLinkInput('just a normal title')).toBeNull();
+  });
+
+  it('returns null when the entire input is the URL', () => {
+    expect(parseLinkInput('https://example.com/foo')).toBeNull();
+  });
+
+  it('returns null for empty input', () => {
+    expect(parseLinkInput('')).toBeNull();
   });
 });

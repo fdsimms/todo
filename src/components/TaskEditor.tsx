@@ -63,6 +63,7 @@ export interface TaskDraft {
   chainEnabled?: boolean;
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
+  linkUrl?: string | null;
 }
 
 interface Props {
@@ -291,7 +292,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setActualMinutes(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
-      setLinkUrl(null);
+      setLinkUrl(initialDraft?.linkUrl ?? null);
     }
     setShowLinkPicker(false); setCustomLinkText('');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
@@ -336,7 +337,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       chainItems: task?.chainItems ?? [],
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
-      linkUrl: task?.linkUrl ?? null,
+      linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
     });
   }, [visible, task]);
 

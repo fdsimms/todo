@@ -472,6 +472,49 @@ export function parseTaskInput(input: string, now: Date = new Date()): ParsedTas
   return null;
 }
 
+export interface ParsedLink {
+  /** The URL/app-scheme, trailing sentence punctuation trimmed off. */
+  url: string;
+  /** Input minus the matched URL, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// http(s) URLs, or a generic app deep-link scheme ("spotify://...",
+// "duolingo://"). Schemes need 2+ letters before "://" so times like "5://x"
+// (not realistic, but keeps the pattern honest) can't slip through.
+const URL_PATTERN = /(?:https?:\/\/|[a-z][a-z0-9+.-]+:\/\/)\S+/i;
+// Trailing punctuation that reads as sentence structure, not part of the URL
+// ("check this out: https://example.com." → drop the period).
+const TRAILING_PUNCT = /[.,;:!?)\]}'"]+$/;
+
+/**
+ * Finds a pasted URL or app link anywhere in a quick-add title and splits it
+ * out, mirroring parseTaskInput's schedule-phrase extraction. Unlike the
+ * schedule grammar this isn't suffix-anchored — a link can land anywhere in
+ * the pasted text — so it's a plain substring search rather than a peeled
+ * suffix parse.
+ */
+export function parseLinkInput(input: string): ParsedLink | null {
+  const match = input.match(URL_PATTERN);
+  if (!match || match.index === undefined) return null;
+  let url = match[0];
+  const trimmed = url.match(TRAILING_PUNCT);
+  if (trimmed) url = url.slice(0, url.length - trimmed[0].length);
+  if (!url) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + url.length;
+  // The dropped trailing punctuation is sentence structure, not part of the
+  // title either — strip it from the leftover text too.
+  const rawEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(rawEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null; // a bare pasted link keeps the input as a literal title
+
+  return { url, cleanTitle, matchStart, matchEnd };
+}
+
 function joinDayNames(days: number[]): string {
   if (days.length === 1) return DAY_NAMES_FULL[days[0]];
   const names = days.map(d => DAY_NAMES_SHORT[d]);
