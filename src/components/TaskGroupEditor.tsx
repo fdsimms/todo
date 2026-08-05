@@ -66,6 +66,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
+  const pinGroup = useTaskStore(s => s.pinGroup);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
   const deleteGroup = useTaskStore(s => s.deleteGroup);
 
@@ -384,6 +385,21 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
               )}
             </View>
           </View>
+
+          {/* Pin-all used to be an icon button on the stack header itself,
+              which spent a permanent slot on every row for one of the rarest
+              things you can do to a stack. */}
+          <View style={styles.sectionCard}>
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => { haptics.tap(); pinGroup(group.id); onClose(); }}
+              accessibilityRole="button"
+              accessibilityLabel={`Pin all of ${group.title}`}
+            >
+              <Ionicons name="pin-outline" size={18} color={colors.accent} />
+              <Text style={styles.actionText}>Pin all tasks in this stack</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -415,6 +431,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  actionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  actionText: { color: colors.accent, fontSize: font.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
