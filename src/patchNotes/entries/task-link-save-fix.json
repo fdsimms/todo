@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where typing a link into a task's Link field and immediately hitting Save could discard it",
+  "date": "2026-08-05"
+}

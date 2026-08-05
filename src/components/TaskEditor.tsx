@@ -401,7 +401,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       chainItems,
       chainIndex,
       vacationPause,
-      linkUrl,
+      linkUrl: resolveLinkUrl(),
     };
 
     const commitSave = (scope?: 'occurrence' | 'series') => {
@@ -556,6 +556,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     const t = customLinkText.trim();
     setLinkUrl(t || null);
     setShowLinkPicker(false);
+  };
+
+  // Save can fire before the custom link input's onBlur/onSubmitEditing has
+  // committed its text to `linkUrl` state (e.g. tapping the header Save
+  // button blurs the input and saves in the same gesture, so this render's
+  // `linkUrl` closure is still stale). Fall back to the live text box value.
+  const resolveLinkUrl = () => {
+    const t = customLinkText.trim();
+    return showLinkPicker && t ? t : linkUrl;
   };
 
   const enableRecurrence = () => {
