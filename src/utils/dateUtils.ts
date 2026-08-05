@@ -237,6 +237,17 @@ export function getDeadlineFromOffset(dueDate: Date, offsetDays: number): Date {
 }
 
 /**
+ * Deadline expressed as a fixed day-of-month within the due date's own month,
+ * e.g. "due the 20th, deadline the last day of the month" — unlike
+ * getDeadlineFromOffset, this stays correct across months of different
+ * lengths since it isn't a fixed day count from the due date. `day === -1`
+ * means the last day of the month, same convention as recurrenceMonthDay.
+ */
+export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
+  return day === -1 ? lastDayOfMonth(dueDate) : setDate(dueDate, Math.min(day, lastDayOfMonth(dueDate).getDate()));
+}
+
+/**
  * Returns the current streak display for a recurring task:
  *   positive → { sign: '+', count: N }   (N consecutive completions)
  *   negative → { sign: '-', count: N }   (N days missed)

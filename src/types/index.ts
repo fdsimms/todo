@@ -90,6 +90,13 @@ export interface Task {
   // recurring task spawns its next occurrence (see completeTask). Null means
   // `deadline` is a one-off fixed date that doesn't carry forward.
   deadlineOffsetDays: number | null;
+  // Alternative to deadlineOffsetDays for monthly recurrence: pins `deadline`
+  // to a fixed day-of-month within the due date's own month instead of N days
+  // before due, e.g. due the 20th, deadline the last day of the same month —
+  // a case a fixed day offset can't express since month lengths vary. -1
+  // means the last day of the month. Mutually exclusive with
+  // deadlineOffsetDays; recomputed the same way on every new occurrence.
+  deadlineMonthDay: number | null;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -219,6 +226,14 @@ export interface TemplateItem {
 
   // Which of the template's itemGroups this item belongs to; null = ungrouped.
   groupId: string | null;
+
+  // When set, this item is a reference to another template rather than a
+  // real task — it expands into that template's own items at apply time.
+  // Every other task-shaped field above is ignored when this is set.
+  refTemplateId: string | null;
+  // Name captured when the reference was made; used only as a fallback
+  // label when refTemplateId no longer resolves (the target was deleted).
+  refTemplateName: string;
 }
 
 // A lightweight named group scoped to one template, mirroring TaskGroup's

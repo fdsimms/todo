@@ -148,6 +148,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN recurrence_month_day INTEGER',
     "ALTER TABLE templates ADD COLUMN item_groups TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN deadline_month_day INTEGER',
     'ALTER TABLE tasks ADD COLUMN link_url TEXT',
   ];
   for (const sql of migrations) {
@@ -257,6 +258,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     dueDate: (row.due_date as string) ?? null,
     deadline: (row.deadline as string) ?? null,
     deadlineOffsetDays: (row.deadline_offset_days as number | null) ?? null,
+    deadlineMonthDay: (row.deadline_month_day as number | null) ?? null,
     deferUntil: (row.defer_until as string) ?? null,
     timeSegments: parseTimeSegments(row.time_of_day),
     windowStart: (row.window_start as string) ?? null,
@@ -311,15 +313,15 @@ export function dbInsertTask(task: Task): void {
   db.runSync(
     `INSERT INTO tasks (
       id, title, notes, completed, completed_at, created_at, seen_at,
-      due_date, deadline, deadline_offset_days, defer_until, time_of_day, window_start, window_end,
+      due_date, deadline, deadline_offset_days, deadline_month_day, defer_until, time_of_day, window_start, window_end,
       recurrence_type, recurrence_interval, recurrence_days, recurrence_month_day, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
-      task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deferUntil,
+      task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
       task.timeSegments.length ? JSON.stringify(task.timeSegments) : null, task.windowStart, task.windowEnd,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceMonthDay ?? null, task.recurrenceEndDate, task.recurrenceCount,
@@ -344,7 +346,7 @@ export function dbUpdateTask(task: Task): void {
   db.runSync(
     `UPDATE tasks SET
       title=?, notes=?, completed=?, completed_at=?, seen_at=?,
-      due_date=?, deadline=?, deadline_offset_days=?, defer_until=?, time_of_day=?, window_start=?, window_end=?,
+      due_date=?, deadline=?, deadline_offset_days=?, deadline_month_day=?, defer_until=?, time_of_day=?, window_start=?, window_end=?,
       recurrence_type=?, recurrence_interval=?, recurrence_days=?, recurrence_month_day=?, recurrence_end_date=?, recurrence_count=?, recurrence_from_completion=?,
       tags=?, category=?, sort_order=?, pinned=?, priority=?, effort=?, estimated_minutes=?,
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
@@ -354,7 +356,7 @@ export function dbUpdateTask(task: Task): void {
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
-      task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deferUntil, task.timeSegments.length ? JSON.stringify(task.timeSegments) : null,
+      task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil, task.timeSegments.length ? JSON.stringify(task.timeSegments) : null,
       task.windowStart, task.windowEnd,
       task.recurrenceType, task.recurrenceInterval,
       JSON.stringify(task.recurrenceDays), task.recurrenceMonthDay ?? null, task.recurrenceEndDate, task.recurrenceCount,

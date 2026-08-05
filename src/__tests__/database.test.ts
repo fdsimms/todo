@@ -95,6 +95,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   dueDate: null,
   deadline: null,
   deadlineOffsetDays: null,
+  deadlineMonthDay: null,
   deferUntil: null,
   timeSegments: [],
   windowStart: null,
@@ -802,6 +803,8 @@ describe('Templates', () => {
     chainItems: [],
     subtasks: [],
     groupId: null,
+    refTemplateId: null,
+    refTemplateName: '',
     ...overrides,
   });
 
