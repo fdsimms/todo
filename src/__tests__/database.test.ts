@@ -982,6 +982,7 @@ describe('Categories', () => {
       scheduleStart: '09:00',
       scheduleEnd: '17:00',
       hideOnVacation: true,
+      excludeFromPinSuggestions: true,
       sortOrder: 3,
       emoji: '🏠',
     };

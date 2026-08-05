@@ -1,6 +1,7 @@
 import type { Effort, Task } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { effortToMinutes, formatDuration } from '../utils/effort';
 
 export interface AISuggestions {
@@ -142,6 +143,11 @@ function buildCoCompletionHints(completedTasks: Task[], candidates: Task[]): str
     relevant.map(([pair, count]) => `${pair} (${count}x)`).join(', ');
 }
 
+// How many tasks the suggester fills the pinned list up to. Deliberately small:
+// pins are a "what am I doing next" shortlist, not a second Today view, and a
+// longer list dilutes the focus the pinned mode exists to create.
+export const MAX_SUGGESTED_PINS = 3;
+
 export async function suggestPinTasks(
   tasks: Task[],
   alreadyPinnedCount: number,
@@ -150,10 +156,22 @@ export async function suggestPinTasks(
   const apiKey = useSettingsStore.getState().anthropicApiKey;
   if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
 
-  const needed = 5 - alreadyPinnedCount;
+  const needed = MAX_SUGGESTED_PINS - alreadyPinnedCount;
   if (needed <= 0) return [];
 
-  const candidates = tasks.filter(t => !t.pinned);
+  // Categories opted out of suggested pins never reach the model — errands and
+  // daily routines are real work, but pinning them alongside whatever else is
+  // due produces a shortlist with no shared context. Manual pinning is
+  // untouched, so an opted-out task is still one tap from the pinned list.
+  const excludedCategories = new Set(
+    useCategoryStore.getState().categories
+      .filter(c => c.excludeFromPinSuggestions)
+      .map(c => c.name)
+  );
+
+  const candidates = tasks.filter(
+    t => !t.pinned && !(t.category !== null && excludedCategories.has(t.category))
+  );
   if (candidates.length === 0) return [];
   if (candidates.length <= needed) return candidates.map(t => t.id);
 

@@ -13,6 +13,7 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     scheduleStart: null,
     scheduleEnd: null,
     hideOnVacation: false,
+    excludeFromPinSuggestions: false,
     sortOrder: 1,
     emoji: null,
     ...overrides,
