@@ -6,6 +6,8 @@
 #                           but imported by app code, so tsc fails without them
 set -euo pipefail
 
+echo '{"async": true, "asyncTimeout": 300000}'
+
 # Local machines already have a working checkout; only the web sandbox needs this.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
