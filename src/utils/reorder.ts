@@ -141,17 +141,4 @@ export function contentOriginOffset(
   return measuredOnScreenTop - (rowContentY - scrollOffset);
 }
 
-/**
- * Top offset (in content coordinates) of the gap that opens for the dragged
- * item — i.e. where its placeholder slot should be drawn and where the
- * floating card should glide to on drop.
- */
-export function dropSlotY(heights: number[], activeIndex: number, hoverIndex: number): number {
-  const offsets = cumulativeOffsets(heights);
-  const activeHeight = heights[activeIndex] ?? 0;
-  if (hoverIndex >= activeIndex) {
-    return (offsets[hoverIndex] ?? 0) + (heights[hoverIndex] ?? 0) - activeHeight;
-  }
-  return offsets[hoverIndex] ?? 0;
-}
 

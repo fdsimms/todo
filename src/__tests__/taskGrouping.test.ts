@@ -6,9 +6,40 @@ import {
   flattenLaterSections,
   laterTaskOrder,
   isLaterHeader,
+  laterSections,
+  visibleLaterSections,
+  laterTodaySections,
+  categorySpan,
+  applyCategoryCollapse,
+  categorySectionKeys,
+  LATER_TODAY_LABEL,
   type CategoryListItem,
+  type TodayListItem,
 } from '../utils/taskGrouping';
 import type { Task, TaskGroup } from '../types';
+
+const mockSettingsState = {
+  dayResetTime: '00:00',
+  morningStart: '06:00',
+  afternoonStart: '12:00',
+  eveningStart: '18:00',
+  nightStart: '21:00',
+};
+
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: {
+    getState: () => mockSettingsState,
+  },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: {
+    getState: () => ({
+      categories: [],
+      getCategoryByName: () => null,
+    }),
+  },
+}));
 
 const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   id: 'group-1',
@@ -462,5 +493,101 @@ describe('laterTaskOrder', () => {
       { title: 'TOMORROW — EVENING', data: [a] },
     ]);
     expect(laterTaskOrder(flattened)).toEqual(['a', 'b']);
+  });
+});
+
+describe('laterTodaySections', () => {
+  it('buckets ungrouped tasks by segment, with a "none" bucket for tasks with no segment', () => {
+    const morning = makeTask({ id: 'a', timeSegments: ['morning'] });
+    const evening = makeTask({ id: 'b', timeSegments: ['evening'] });
+    const untimed = makeTask({ id: 'c' });
+    const sections = laterTodaySections([morning, evening, untimed], []);
+    expect(sections.map(s => s.key)).toEqual(['morning', 'evening', 'none']);
+    expect(sections.map(s => s.tasks.map(t => t.id))).toEqual([['a'], ['b'], ['c']]);
+  });
+
+  // A stack with children split across segments must appear once per matching
+  // bucket, carrying its FULL later-today roster each time — not fragment
+  // into duplicate headers, and not drop the segment-mismatched sibling.
+  it('assigns a stack to every bucket a child matches, once per bucket, with the full roster', () => {
+    const morningChild = makeTask({ id: 'child-morning', timeSegments: ['morning'], groupId: 'g1' });
+    const eveningChild = makeTask({ id: 'child-evening', timeSegments: ['evening'], groupId: 'g1' });
+    const group = makeGroup({ id: 'g1' });
+    const sections = laterTodaySections([], [{ group, children: [morningChild, eveningChild] }]);
+
+    expect(sections.map(s => s.key)).toEqual(['morning', 'evening']);
+    sections.forEach(section => {
+      expect(section.groups).toHaveLength(1);
+      expect(section.groups[0].group.id).toBe('g1');
+      expect(section.groups[0].children.map(t => t.id)).toEqual(['child-morning', 'child-evening']);
+    });
+  });
+});
+
+describe('visibleLaterSections', () => {
+  const section = (title: string, count: number) => ({
+    title,
+    data: Array.from({ length: count }, (_, i) => makeTask({ id: `${title}-${i}` })),
+  });
+
+  it('includes whole sections up to the task budget', () => {
+    const sections = [section('a', 30), section('b', 30), section('c', 30)];
+    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  });
+
+  // A section straddling the budget boundary is included in full rather than
+  // cut off mid-section — a header must never render without all its tasks.
+  it('includes an entire section that pushes the running count past the budget', () => {
+    const sections = [section('a', 40), section('b', 40)];
+    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  });
+
+  it('includes everything when the budget exceeds the total', () => {
+    const sections = [section('a', 10), section('b', 10)];
+    expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  });
+});
+
+describe('categorySpan / applyCategoryCollapse / categorySectionKeys', () => {
+  const listItemKey = (item: TodayListItem): string =>
+    item.type === 'header' ? `h-${item.label}`
+    : item.type === 'group' ? `g-${item.group.id}`
+    : item.type === 'task' ? item.task.id
+    : item.type;
+
+  it('assigns null before the first header and while under "Later Today"', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const items: TodayListItem[] = [
+      { type: 'task', task: a },
+      { type: 'header', label: 'Work' },
+      { type: 'header', label: LATER_TODAY_LABEL },
+      { type: 'task', task: b },
+    ];
+    expect(categorySpan(items)).toEqual([null, 'Work', null, null]);
+  });
+
+  // categorySpan is the shared traversal behind both consumers — assert they
+  // agree on what counts as "under a collapsed/real category" for the same
+  // input, rather than re-deriving the walk independently.
+  it('applyCategoryCollapse and categorySectionKeys agree on which rows are under a real category', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const items: TodayListItem[] = [
+      { type: 'task', task: a },
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: b },
+    ];
+
+    const keys = categorySectionKeys(items, listItemKey);
+    expect(keys).toEqual(new Set(['b']));
+
+    const collapsed = applyCategoryCollapse(items, new Set(['Work']));
+    const collapsedTaskIds = collapsed.filter(i => i.type === 'task').map(i => i.task.id);
+    // Every row categorySectionKeys says is "under a real category" (only
+    // `b`, since `a` is the header-less loose group) is exactly the row
+    // applyCategoryCollapse removes once that category is collapsed.
+    expect(collapsedTaskIds).toEqual(['a']);
+    expect(keys.has('a')).toBe(false);
   });
 });

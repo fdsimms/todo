@@ -10,7 +10,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format, isToday, isYesterday } from 'date-fns';
+import { format } from 'date-fns/format';
+import { isToday } from 'date-fns/isToday';
+import { isYesterday } from 'date-fns/isYesterday';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';

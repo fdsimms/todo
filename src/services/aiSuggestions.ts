@@ -1,7 +1,9 @@
 import type { Effort, Task } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { addDays, startOfDay, format } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { startOfDay } from 'date-fns/startOfDay';
+import { format } from 'date-fns/format';
 import { effortToMinutes, formatDuration } from '../utils/effort';
 
 export interface AISuggestions {

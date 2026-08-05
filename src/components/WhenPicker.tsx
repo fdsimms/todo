@@ -10,11 +10,16 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import {
-  startOfMonth, endOfMonth, startOfWeek, endOfWeek,
-  addMonths, subMonths, isSameMonth, isSameDay,
-  format, addDays,
-} from 'date-fns';
+import { startOfMonth } from 'date-fns/startOfMonth';
+import { endOfMonth } from 'date-fns/endOfMonth';
+import { startOfWeek } from 'date-fns/startOfWeek';
+import { endOfWeek } from 'date-fns/endOfWeek';
+import { addMonths } from 'date-fns/addMonths';
+import { subMonths } from 'date-fns/subMonths';
+import { isSameMonth } from 'date-fns/isSameMonth';
+import { isSameDay } from 'date-fns/isSameDay';
+import { format } from 'date-fns/format';
+import { addDays } from 'date-fns/addDays';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';

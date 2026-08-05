@@ -49,7 +49,7 @@ export function ProjectsScreen() {
   const updateProject = useProjectStore(s => s.updateProject);
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
-  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const allTasks = useTaskStore(s => s.tasks);
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
 
   const [showArchived, setShowArchived] = useState(false);

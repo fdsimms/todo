@@ -1,20 +1,18 @@
-import {
-  addDays,
-  addWeeks,
-  addMonths,
-  addYears,
-  subDays,
-  format,
-  isSameDay,
-  isSameWeek,
-  startOfDay,
-  startOfMonth,
-  differenceInCalendarDays,
-  differenceInCalendarMonths,
-  differenceInCalendarYears,
-  setDate,
-  lastDayOfMonth,
-} from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { addWeeks } from 'date-fns/addWeeks';
+import { addMonths } from 'date-fns/addMonths';
+import { addYears } from 'date-fns/addYears';
+import { subDays } from 'date-fns/subDays';
+import { format } from 'date-fns/format';
+import { isSameDay } from 'date-fns/isSameDay';
+import { isSameWeek } from 'date-fns/isSameWeek';
+import { startOfDay } from 'date-fns/startOfDay';
+import { startOfMonth } from 'date-fns/startOfMonth';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { differenceInCalendarMonths } from 'date-fns/differenceInCalendarMonths';
+import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
+import { setDate } from 'date-fns/setDate';
+import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -137,16 +135,6 @@ export function formatStartDate(iso: string, dayResetTime?: string): string {
   if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
   const diff = differenceInCalendarDays(d, today);
   if (diff >= 0 && isSameWeek(d, today)) return format(d, 'EEEE');
-  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
-}
-
-export function formatDeferUntil(iso: string, dayResetTime?: string): string {
-  const d = new Date(iso);
-  const today = getDayStart(new Date(), dayResetTime);
-  if (isSameDay(d, today)) return 'Today';
-  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, today);
-  if (diff < 7) return format(d, 'EEEE');
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
@@ -344,28 +332,4 @@ export function getStreakOutcome(
   const expectedGapDays = getExpectedStreakGapDays(task, lastDay);
   const tolerance = task.recurrenceType === 'weekly' ? STREAK_LATE_TOLERANCE_DAYS : 0;
   return daysBetween <= expectedGapDays + tolerance ? 'continued' : 'reset';
-}
-
-/**
- * Returns the current streak display for a recurring task:
- *   positive → { sign: '+', count: N }   (N consecutive completions)
- *   negative → { sign: '-', count: N }   (N days missed)
- *   null     → not a recurring task or no history
- */
-export function getStreakDisplay(
-  task: Task
-): { sign: '+' | '-'; count: number } | null {
-  if (task.recurrenceType === 'none' || !task.streakDate) return null;
-
-  const dayResetTime = useSettingsStore.getState().dayResetTime;
-  const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
-  const today = getCurrentDayStart();
-  const daysMissed = differenceInCalendarDays(today, lastDay);
-
-  if (daysMissed <= 1) {
-    // Streak is current (completed today or yesterday)
-    return task.streakCount > 1 ? { sign: '+', count: task.streakCount } : null;
-  }
-  // daysMissed - 1 because "1 day missed" means you skipped one window
-  return { sign: '-', count: daysMissed - 1 };
 }

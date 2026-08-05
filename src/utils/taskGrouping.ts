@@ -1,9 +1,22 @@
 import type { Task, TaskGroup } from '../types';
+import { getVisibleAt } from './visibilityUtils';
+import { formatGroupHeader, formatHHMM } from './dateUtils';
 
 export type CategoryListItem =
   | { type: 'header'; label: string }
   | { type: 'task'; task: Task }
   | { type: 'group'; group: TaskGroup; children: Task[] };
+
+// TodayScreen's own list also carries a couple of row kinds (pinned
+// section, "everything else" divider) that don't belong to a category at
+// all — the category-shaping helpers below only ever look at the 'header' /
+// 'task' / 'group' arms, so they accept this wider union rather than
+// CategoryListItem.
+export type TodayListItem =
+  | { type: 'pinned-header' }
+  | { type: 'pinned-task'; task: Task }
+  | { type: 'rest-header' }
+  | CategoryListItem;
 
 const UNCATEGORIZED = '';
 
@@ -300,4 +313,179 @@ export function laterTaskOrder(items: LaterListItem[]): string[] {
     ids.push(item.task.id);
   }
   return ids;
+}
+
+// Shared with the Later screen's own day/segment grouping (see laterGroupKeys
+// below) so "later today" sub-headers read the same way in both places.
+export const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
+export const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
+
+/** The Later-view section title(s) a task belongs under — a task with multiple timeSegments belongs under more than one. */
+export function laterGroupKeys(task: Task): string[] {
+  const visibleAt = getVisibleAt(task);
+  const dayLabel = formatGroupHeader(visibleAt.toISOString());
+  if (task.timeSegments.length > 0) {
+    return task.timeSegments.map(seg => `${dayLabel} — ${SEGMENT_LABELS[seg]}`);
+  }
+  if (task.windowStart) {
+    const windowLabel = task.windowEnd
+      ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
+      : formatHHMM(task.windowStart);
+    return [`${dayLabel} — ${windowLabel}`];
+  }
+  return [dayLabel];
+}
+
+/** Group deferred tasks into Later-view sections, sorted by when each becomes visible. */
+export function laterSections(deferredTasks: Task[]): { title: string; data: Task[] }[] {
+  const grouped = new Map<string, Task[]>();
+  [...deferredTasks]
+    .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
+    .forEach(task => {
+      for (const key of laterGroupKeys(task)) {
+        if (!grouped.has(key)) grouped.set(key, []);
+        grouped.get(key)!.push(task);
+      }
+    });
+  return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
+}
+
+/**
+ * Truncate Later-view sections to a task budget, whole sections at a time, so
+ * a header never renders without at least one of its tasks. Used to keep the
+ * initial mount of the (unvirtualized) Later ReorderableList cheap.
+ */
+export function visibleLaterSections(
+  sections: { title: string; data: Task[] }[],
+  taskLimit: number,
+): { title: string; data: Task[] }[] {
+  const result: typeof sections = [];
+  let count = 0;
+  for (const section of sections) {
+    result.push(section);
+    count += section.data.length;
+    if (count >= taskLimit) break;
+  }
+  return result;
+}
+
+export type LaterTodaySectionData = {
+  key: string;
+  // null for tasks with no time segment (e.g. plain windowStart/deferUntil) —
+  // they render without a sub-header rather than under a manufactured one.
+  label: string | null;
+  tasks: Task[];
+  groups: { group: TaskGroup; children: Task[] }[];
+};
+
+/**
+ * Sub-groups Later Today's tasks/groups by time segment, mirroring the Later
+ * screen's own segment sub-headers. A task with no timeSegments falls into
+ * the 'none' bucket, which renders without a header. A group is assigned to
+ * every segment bucket any of its later-today children belong to, but only
+ * once per bucket — with its full later-today children roster underneath,
+ * not just the ones matching that segment — so a stack doesn't fragment into
+ * duplicate headers when its children have mixed segments.
+ */
+export function laterTodaySections(
+  upcomingUngroupedTasks: Task[],
+  laterGroupItems: { group: TaskGroup; children: Task[] }[],
+): LaterTodaySectionData[] {
+  type Bucket = { tasks: Task[]; groups: Map<string, { group: TaskGroup; children: Task[] }> };
+  const bySegment = new Map<string, Bucket>();
+  const ensure = (key: string): Bucket => {
+    let bucket = bySegment.get(key);
+    if (!bucket) {
+      bucket = { tasks: [], groups: new Map() };
+      bySegment.set(key, bucket);
+    }
+    return bucket;
+  };
+
+  upcomingUngroupedTasks.forEach(task => {
+    const segs = task.timeSegments.length > 0 ? task.timeSegments : ['none'];
+    segs.forEach(seg => ensure(seg).tasks.push(task));
+  });
+
+  laterGroupItems.forEach(({ group, children }) => {
+    const segs = new Set<string>();
+    children.forEach(child => {
+      (child.timeSegments.length > 0 ? child.timeSegments : ['none']).forEach(seg => segs.add(seg));
+    });
+    segs.forEach(seg => {
+      const bucket = ensure(seg);
+      if (!bucket.groups.has(group.id)) bucket.groups.set(group.id, { group, children });
+    });
+  });
+
+  return [...SEGMENT_ORDER, 'none']
+    .filter(key => bySegment.has(key))
+    .map(key => ({
+      key,
+      label: key === 'none' ? null : SEGMENT_LABELS[key],
+      tasks: bySegment.get(key)!.tasks,
+      groups: Array.from(bySegment.get(key)!.groups.values()),
+    }));
+}
+
+/**
+ * The category (or null, for the header-less loose group / Later Today) each
+ * item in a Today-list belongs to, aligned index-for-index with `items`.
+ * Shared traversal behind applyCategoryCollapse and categorySectionKeys —
+ * they used to walk the list independently and could drift.
+ */
+export function categorySpan(items: TodayListItem[]): (string | null)[] {
+  const spans: (string | null)[] = [];
+  let currentCategory: string | null = null;
+  for (const item of items) {
+    if (item.type === 'header') {
+      currentCategory = item.label === LATER_TODAY_LABEL ? null : item.label;
+    }
+    spans.push(currentCategory);
+  }
+  return spans;
+}
+
+/**
+ * Hide task/group rows under a collapsed category header, leaving the header
+ * itself in place so it stays tappable to re-expand. The "Later Today"
+ * header is a time section, not a category, so it's never collapsible.
+ */
+export function applyCategoryCollapse(
+  items: TodayListItem[],
+  collapsedCategories: Set<string>,
+): TodayListItem[] {
+  if (collapsedCategories.size === 0) return items;
+  const spans = categorySpan(items);
+  return items.filter((item, i) => {
+    if (item.type === 'header') return true;
+    if (
+      (item.type === 'task' || item.type === 'group') &&
+      spans[i] !== null &&
+      collapsedCategories.has(spans[i]!)
+    ) {
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * Keys of task/group rows that sit under a real category header (i.e. not
+ * the header-less loose group at top, and not "Later Today", which is a time
+ * section rather than a category). Used to decide what to hide while a
+ * category header is being dragged.
+ */
+export function categorySectionKeys(
+  data: TodayListItem[],
+  listItemKey: (item: TodayListItem) => string,
+): Set<string> {
+  const spans = categorySpan(data);
+  const keys = new Set<string>();
+  data.forEach((item, i) => {
+    if ((item.type === 'task' || item.type === 'group') && spans[i] !== null) {
+      keys.add(listItemKey(item));
+    }
+  });
+  return keys;
 }

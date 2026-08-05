@@ -16,10 +16,9 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 import type { Task, TaskGroup, SortOption, Priority, Effort, RecurrenceType } from '../types';
-import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
+import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -29,8 +28,15 @@ import {
   isLaterHeader,
   laterTaskOrder,
   LATER_TODAY_LABEL,
+  laterSections as computeLaterSections,
+  visibleLaterSections as computeVisibleLaterSections,
+  laterTodaySections as computeLaterTodaySections,
+  applyCategoryCollapse as applyCategoryCollapseTo,
+  categorySectionKeys as computeCategorySectionKeys,
   type LaterListItem,
   type CategoryListItem,
+  type LaterTodaySectionData,
+  type TodayListItem,
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
@@ -88,11 +94,6 @@ const VIEW_TITLES: Record<ViewMode, string> = {
   unscheduled: 'Unscheduled',
   inbox: 'Inbox',
 };
-
-// Shared with the Later screen's own day/segment grouping (see laterGroupKeys
-// below) so "later today" sub-headers read the same way in both places.
-const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
-const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -187,15 +188,6 @@ function VacationHiddenSection({
     </View>
   );
 }
-
-export type LaterTodaySectionData = {
-  key: string;
-  // null for tasks with no time segment (e.g. plain windowStart/deferUntil) —
-  // they render without a sub-header rather than under a manufactured one.
-  label: string | null;
-  tasks: Task[];
-  groups: { group: TaskGroup; children: Task[] }[];
-};
 
 // Collapsible reveal for tasks deferred to later today (a time segment or
 // window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
@@ -304,14 +296,12 @@ export function TodayScreen() {
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
-  const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
   const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
-  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllPins = useTaskStore(s => s.clearAllPins);
@@ -567,7 +557,7 @@ export function TodayScreen() {
   const handleSuggestPin = async () => {
     setIsSuggestingPin(true);
     try {
-      const ids = await suggestPinTasks(visibleTasks, pinnedTasks.length, completedTasks);
+      const ids = await suggestPinTasks(visibleTasks, pinnedTasks.length, useTaskStore.getState().completedTasks());
       for (const id of ids) updateTask(id, { pinned: true });
       // AI pin picks tasks in one shot rather than one tap at a time, so the
       // grace period that protects manual multi-pin tapping doesn't apply here.
@@ -811,66 +801,17 @@ export function TodayScreen() {
   // to, but only once per bucket — with its full later-today children roster
   // underneath, not just the ones matching that segment — so a stack doesn't
   // fragment into duplicate headers when its children have mixed segments.
-  const laterTodaySections = useMemo((): LaterTodaySectionData[] => {
-    type Bucket = { tasks: Task[]; groups: Map<string, { group: TaskGroup; children: Task[] }> };
-    const bySegment = new Map<string, Bucket>();
-    const ensure = (key: string): Bucket => {
-      let bucket = bySegment.get(key);
-      if (!bucket) {
-        bucket = { tasks: [], groups: new Map() };
-        bySegment.set(key, bucket);
-      }
-      return bucket;
-    };
-
-    upcomingUngroupedTasks.forEach(task => {
-      const segs = task.timeSegments.length > 0 ? task.timeSegments : ['none'];
-      segs.forEach(seg => ensure(seg).tasks.push(task));
-    });
-
-    laterGroupItems.forEach(({ group, children }) => {
-      const segs = new Set<string>();
-      children.forEach(child => {
-        (child.timeSegments.length > 0 ? child.timeSegments : ['none']).forEach(seg => segs.add(seg));
-      });
-      segs.forEach(seg => {
-        const bucket = ensure(seg);
-        if (!bucket.groups.has(group.id)) bucket.groups.set(group.id, { group, children });
-      });
-    });
-
-    return [...SEGMENT_ORDER, 'none']
-      .filter(key => bySegment.has(key))
-      .map(key => ({
-        key,
-        label: key === 'none' ? null : SEGMENT_LABELS[key],
-        tasks: bySegment.get(key)!.tasks,
-        groups: Array.from(bySegment.get(key)!.groups.values()),
-      }));
-  }, [upcomingUngroupedTasks, laterGroupItems]);
+  const laterTodaySections = useMemo(
+    (): LaterTodaySectionData[] => computeLaterTodaySections(upcomingUngroupedTasks, laterGroupItems),
+    [upcomingUngroupedTasks, laterGroupItems],
+  );
 
   // Hide task/group rows under a collapsed category header, leaving the
   // header itself in place so it stays tappable to re-expand. The "Later
   // Today" header is a time section, not a category, so it's never
   // collapsible.
-  const applyCategoryCollapse = (items: ListItem[]): ListItem[] => {
-    if (collapsedCategories.size === 0) return items;
-    let currentCategory: string | null = null;
-    return items.filter(item => {
-      if (item.type === 'header') {
-        currentCategory = item.label === LATER_TODAY_LABEL ? null : item.label;
-        return true;
-      }
-      if (
-        (item.type === 'task' || item.type === 'group') &&
-        currentCategory !== null &&
-        collapsedCategories.has(currentCategory)
-      ) {
-        return false;
-      }
-      return true;
-    });
-  };
+  const applyCategoryCollapse = (items: ListItem[]): ListItem[] =>
+    applyCategoryCollapseTo(items, collapsedCategories) as unknown as ListItem[];
 
   // When the "Hide categories" display option is on, drop every category
   // header (but keep the "Later Today" time-section header) so the list
@@ -909,25 +850,12 @@ export function TodayScreen() {
   // Keys of task/group rows that sit under a real category header (i.e. not
   // the header-less loose group at top, and not "Later Today", which is a
   // time section rather than a category). Used by autoCollapseForDrag to
-  // decide what to hide while a category header is being dragged — computed
-  // the same way applyCategoryCollapse walks the list, but as a lookup
-  // rather than a filter so the underlying data array (and what onReorder
-  // hands back) never changes shape.
-  const categorySectionKeys = useMemo(() => {
-    const keys = new Set<string>();
-    let currentCategory: string | null = null;
-    for (const item of data) {
-      if (item.type === 'header') {
-        currentCategory = item.label === LATER_TODAY_LABEL ? null : item.label;
-        continue;
-      }
-      if ((item.type === 'task' || item.type === 'group') && currentCategory !== null) {
-        keys.add(listItemKey(item));
-      }
-    }
-    return keys;
+  // decide what to hide while a category header is being dragged.
+  const categorySectionKeys = useMemo(
+    () => computeCategorySectionKeys(data, listItemKey as (item: TodayListItem) => string),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+    [data],
+  );
 
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
@@ -1051,6 +979,18 @@ export function TodayScreen() {
     setExpandedTaskId(null);
     enterSelectionMode(ids);
   };
+
+  // The six TaskGroupHeader callbacks below are identical across every place
+  // a stack header renders (main list, Later Today, Inbox) — only
+  // onToggleCollapse differs per site, so it stays out of this helper.
+  const groupHeaderProps = (group: TaskGroup) => ({
+    onComplete: () => completeGroup(group.id),
+    onDismiss: () => { animateLayout(); dismissGroup(group.id); },
+    onDefer: (date: Date) => deferGroup(group.id, date),
+    onPin: () => pinGroup(group.id),
+    onSwipeSelect: () => selectGroupRoster(group.id),
+    onPressEdit: () => { setEditingGroup(group); setGroupEditorVisible(true); },
+  });
 
   // Shared by the plain 'task' row case and a group's expanded children —
   // group children are full TaskItem rows with every normal capability
@@ -1190,12 +1130,7 @@ export function TodayScreen() {
               setDraggingGroupId(null);
               setGroupCollapsed(item.group.id, !item.group.collapsed);
             }}
-            onComplete={() => completeGroup(item.group.id)}
-            onDismiss={() => { animateLayout(); dismissGroup(item.group.id); }}
-            onDefer={date => deferGroup(item.group.id, date)}
-            onPin={() => pinGroup(item.group.id)}
-            onSwipeSelect={() => selectGroupRoster(item.group.id)}
-            onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
+            {...groupHeaderProps(item.group)}
             onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
           />
           <AnimatedCollapsible expanded={!item.group.collapsed && draggingGroupId !== item.group.id}>
@@ -1280,12 +1215,7 @@ export function TodayScreen() {
             // this row's own transition already.
             setGroupCollapsed(group.id, !group.collapsed);
           }}
-          onComplete={() => completeGroup(group.id)}
-          onDismiss={() => { animateLayout(); dismissGroup(group.id); }}
-          onDefer={date => deferGroup(group.id, date)}
-          onPin={() => pinGroup(group.id)}
-          onSwipeSelect={() => selectGroupRoster(group.id)}
-          onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
+          {...groupHeaderProps(group)}
         />
         <AnimatedCollapsible expanded={!group.collapsed}>
           {children.map(child => (
@@ -1347,12 +1277,7 @@ export function TodayScreen() {
             animateLayout();
             setGroupCollapsed(group.id, !group.collapsed);
           }}
-          onComplete={() => completeGroup(group.id)}
-          onDismiss={() => { animateLayout(); dismissGroup(group.id); }}
-          onDefer={date => deferGroup(group.id, date)}
-          onPin={() => pinGroup(group.id)}
-          onSwipeSelect={() => selectGroupRoster(group.id)}
-          onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
+          {...groupHeaderProps(group)}
         />
         <AnimatedCollapsible expanded={!group.collapsed}>
           {children.map(child => (
@@ -1440,33 +1365,7 @@ export function TodayScreen() {
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
-  const laterGroupKeys = (task: Task): string[] => {
-    const visibleAt = getVisibleAt(task);
-    const dayLabel = formatGroupHeader(visibleAt.toISOString());
-    if (task.timeSegments.length > 0) {
-      return task.timeSegments.map(seg => `${dayLabel} — ${SEGMENT_LABELS[seg]}`);
-    }
-    if (task.windowStart) {
-      const windowLabel = task.windowEnd
-        ? `${formatHHMM(task.windowStart)}–${formatHHMM(task.windowEnd)}`
-        : formatHHMM(task.windowStart);
-      return [`${dayLabel} — ${windowLabel}`];
-    }
-    return [dayLabel];
-  };
-
-  const laterSections = useMemo(() => {
-    const grouped = new Map<string, Task[]>();
-    [...deferredTasks]
-      .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
-      .forEach(task => {
-        for (const key of laterGroupKeys(task)) {
-          if (!grouped.has(key)) grouped.set(key, []);
-          grouped.get(key)!.push(task);
-        }
-      });
-    return Array.from(grouped.entries()).map(([title, data]) => ({ title, data }));
-  }, [deferredTasks]);
+  const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
   // ReorderableList renders every row unmounted-free (no virtualization — see
@@ -1479,16 +1378,10 @@ export function TodayScreen() {
   const LATER_TASK_PAGE_SIZE = 60;
   const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
 
-  const visibleLaterSections = useMemo(() => {
-    const result: typeof laterSections = [];
-    let count = 0;
-    for (const section of laterSections) {
-      result.push(section);
-      count += section.data.length;
-      if (count >= laterTaskLimit) break;
-    }
-    return result;
-  }, [laterSections, laterTaskLimit]);
+  const visibleLaterSections = useMemo(
+    () => computeVisibleLaterSections(laterSections, laterTaskLimit),
+    [laterSections, laterTaskLimit],
+  );
 
   const hasMoreLaterSections = useMemo(
     () => visibleLaterSections.length < laterSections.length,
@@ -2062,7 +1955,7 @@ export function TodayScreen() {
           <BulkActionBar
             selectedCount={selectedIds.size}
             totalCount={visibleForMode.length}
-            existingTags={allTags}
+            existingTags={useTaskStore.getState().allTags()}
             existingCategories={allCategories}
             onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
             onDelete={handleBulkDelete}

@@ -36,7 +36,7 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
@@ -87,7 +87,6 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
-  const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -352,7 +351,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     const finalTitle = title.trim();
     if (!finalTitle) return;
 
-    const archivedMatch = findArchivedMatch(archivedTasks, finalTitle);
+    const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), finalTitle);
     if (archivedMatch) {
       Alert.alert(
         'Resume archived task?',

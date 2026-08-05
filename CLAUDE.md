@@ -187,6 +187,8 @@ Two fixes that look unrelated to the widget but are load-bearing for *any* secon
 - `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
 - `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.81.4.patch` (applied via `patch-package` on `postinstall`) — RN 0.81 downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call gets rethrown across a dispatch-queue boundary instead of converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build.
 
+`enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it forces `@react-navigation`'s `ScreenFallback` → `ResourceSavingView` path instead of the native `react-native-screens` implementation, and `ResourceSavingView` never forwards `freezeOnBlur` — it only moves blurred children `FAR_FAR_AWAY`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
+
 ## Key conventions
 
 - **Path alias**: `@/` maps to `src/` (configured in `tsconfig.json` and `package.json` Jest `moduleNameMapper`).

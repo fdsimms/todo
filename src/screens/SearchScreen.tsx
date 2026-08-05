@@ -22,7 +22,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 
 function SearchResultItem({ result, onPress, styles, colors }: {
   result: SearchResult;

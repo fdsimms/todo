@@ -21,7 +21,11 @@ import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
-import { format, addMonths, addDays, subDays, differenceInCalendarDays } from 'date-fns';
+import { format } from 'date-fns/format';
+import { addMonths } from 'date-fns/addMonths';
+import { addDays } from 'date-fns/addDays';
+import { subDays } from 'date-fns/subDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -164,7 +168,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const subtasksOf = useTaskStore(s => s.subtasksOf);
   const archiveTask = useTaskStore(s => s.archiveTask);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
-  const archivedTasks = useTaskStore(useShallow(s => s.archivedTasks()));
   const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
   const allCategoriesStore = useTaskStore(useShallow(s => s.allCategories()));
   const allTags = tagOptions ?? allTagsStore;
@@ -408,7 +411,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     if (!title.trim()) return;
 
     if (!task) {
-      const archivedMatch = findArchivedMatch(archivedTasks, title.trim());
+      const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
       if (archivedMatch) {
         Alert.alert(
           'Resume archived task?',

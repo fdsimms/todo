@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, Alert } from 'react
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { addDays, subDays } from 'date-fns';
+import { addDays } from 'date-fns/addDays';
+import { subDays } from 'date-fns/subDays';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';

@@ -3,7 +3,7 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { format } from 'date-fns';
+import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor } from '../components/TaskEditor';

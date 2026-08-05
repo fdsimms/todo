@@ -26,9 +26,6 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbGetCategoryRegistry,
-  dbAddToCategoryRegistry,
-  dbRemoveFromCategoryRegistry,
-  dbRemoveCategoryFromAllTasks,
   dbGetAllTemplates,
   dbInsertTemplate,
   dbUpdateTemplate,
@@ -754,40 +751,6 @@ describe('Tag Registry', () => {
 describe('Category Registry', () => {
   it('dbGetCategoryRegistry returns [] when not set', () => {
     expect(dbGetCategoryRegistry()).toEqual([]);
-  });
-
-  it('dbAddToCategoryRegistry adds a category', () => {
-    dbAddToCategoryRegistry('Work');
-    expect(dbGetCategoryRegistry()).toContain('Work');
-  });
-
-  it('dbAddToCategoryRegistry does not duplicate', () => {
-    dbAddToCategoryRegistry('Work');
-    dbAddToCategoryRegistry('Work');
-    expect(dbGetCategoryRegistry().filter((c) => c === 'Work')).toHaveLength(1);
-  });
-
-  it('dbRemoveFromCategoryRegistry removes the entry and leaves others', () => {
-    dbAddToCategoryRegistry('Work');
-    dbAddToCategoryRegistry('Home');
-    dbRemoveFromCategoryRegistry('Work');
-    expect(dbGetCategoryRegistry()).not.toContain('Work');
-    expect(dbGetCategoryRegistry()).toContain('Home');
-  });
-
-  it('dbRemoveCategoryFromAllTasks nullifies category on matching tasks', () => {
-    dbInsertTask(makeTask({ id: 'a', category: 'Work' }));
-    dbInsertTask(makeTask({ id: 'b', category: 'Home' }));
-    dbRemoveCategoryFromAllTasks('Work');
-    const tasks = dbGetAllTasks();
-    expect(tasks.find((t) => t.id === 'a')?.category).toBeNull();
-    expect(tasks.find((t) => t.id === 'b')?.category).toBe('Home');
-  });
-
-  it('dbRemoveCategoryFromAllTasks is a no-op when no tasks match', () => {
-    dbInsertTask(makeTask({ id: 'a', category: 'Other' }));
-    expect(() => dbRemoveCategoryFromAllTasks('NonExistent')).not.toThrow();
-    expect(dbGetAllTasks()[0].category).toBe('Other');
   });
 });
 

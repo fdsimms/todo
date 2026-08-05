@@ -488,8 +488,3 @@ export function isGroupHiddenToday(completedAt: string | null, dueToday: Task[])
   if (!isGroupDismissedToday(completedAt)) return false;
   return dueToday.length > 0 && dueToday.every(t => t.completed);
 }
-
-export function getSegmentLabels(task: Task): string[] {
-  const SEG_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
-  return task.timeSegments.map(s => SEG_LABELS[s]);
-}
