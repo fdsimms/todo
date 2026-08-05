@@ -504,6 +504,9 @@ export function TaskItem({
               <Ionicons name="checkmark" size={14} color={colors.onAccent} />
             </Animated.View>
           )}
+          {!selectionMode && !completing && recurrenceNotYetDue && (
+            <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+          )}
         </Animated.View>
       </TouchableOpacity>
 
@@ -1135,7 +1138,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.green,
   },
   circleLocked: {
-    opacity: 0.4,
+    borderColor: colors.textTertiary,
   },
   circleSelected: {
     backgroundColor: colors.accent,

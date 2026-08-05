@@ -1,0 +1,4 @@
+{
+  "message": "Recurring tasks that aren't due yet now show a repeat icon in their checkbox instead of an empty-looking circle, so it's clear why tapping it doesn't complete the task",
+  "date": "2026-08-05"
+}
