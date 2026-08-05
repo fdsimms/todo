@@ -19,10 +19,13 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
+import { CollapsibleField } from './CollapsibleField';
+import { EditorRow } from './EditorRow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 
 interface Props {
   visible: boolean;
@@ -50,6 +53,8 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+  // Collapsed to the chosen category until tapped, like every other editor.
+  const [categoryOpen, setCategoryOpen] = useState(false);
 
   useEffect(() => {
     if (!project) return;
@@ -58,7 +63,10 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
     setCategory(project.category);
     setTargetStartDate(project.targetStartDate ? new Date(project.targetStartDate) : null);
     setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
+    setCategoryOpen(false);
   }, [project]);
+
+  const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
 
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
@@ -127,12 +135,17 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
           />
 
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Category</Text>
+            <CollapsibleField
+              label="Category"
+              summary={category ?? undefined}
+              hint="Groups this project with others of the same kind."
+              expanded={categoryOpen}
+              onToggle={() => setCategoryOpen(v => !v)}
+            >
               <View style={styles.pillRow}>
                 <TouchableOpacity
                   style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => setCategory(null)}
+                  onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
                 >
                   <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
@@ -140,7 +153,7 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
                   <TouchableOpacity
                     key={cat.id}
                     style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                    onPress={() => setCategory(cat.name)}
+                    onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
                   >
                     <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
                   </TouchableOpacity>
@@ -153,12 +166,12 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
                     onChangeText={setNewCategory}
                     onSubmitEditing={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     onBlur={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     placeholder="category name"
@@ -173,28 +186,24 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+            </CollapsibleField>
           </View>
 
           <View style={[styles.card, { marginTop: spacing.lg }]}>
-            <OptionRow
+            <EditorRow
               icon="play-outline"
               label="Start date"
               value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
               onPress={() => setShowStartDatePicker(true)}
               onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
-              colors={colors}
-              styles={styles}
             />
             <View style={styles.sep} />
-            <OptionRow
+            <EditorRow
               icon="flag-outline"
               label="Target date"
               value={targetEndDate ? formatDueDate(targetEndDate.toISOString()) : undefined}
               onPress={() => setShowEndDatePicker(true)}
               onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
-              colors={colors}
-              styles={styles}
             />
           </View>
           <Text style={styles.sectionFooter}>
@@ -250,34 +259,6 @@ export function ProjectEditor({ visible, project, onClose }: Props) {
   );
 }
 
-function OptionRow({
-  icon, label, value, onPress, onClear, colors, styles,
-}: {
-  icon: string; label: string; value?: string;
-  onPress: () => void; onClear?: () => void;
-  colors: Colors; styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
-      <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
-      <View style={styles.optionContent}>
-        <Text style={styles.optionLabel}>{label}</Text>
-      </View>
-      {value ? (
-        <View style={styles.optionValueRow}>
-          <Text style={styles.optionValue}>{value}</Text>
-          {onClear && (
-            <TouchableOpacity onPress={onClear} hitSlop={8}>
-              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-        </View>
-      ) : (
-        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-      )}
-    </TouchableOpacity>
-  );
-}
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -309,11 +290,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     overflow: 'hidden',
-  },
-  cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
@@ -354,8 +330,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-  optionValueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  optionValue: { color: colors.textSecondary, fontSize: font.md },
   toggle: {
     width: 44, height: 26, borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, padding: 2, justifyContent: 'center',

@@ -17,6 +17,7 @@ import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MA
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -27,6 +28,8 @@ import { generateId } from '../utils/id';
 import { WeekdaySelector } from './WeekdaySelector';
 import { SortableList } from './SortableList';
 import { RECURRENCE_LABELS, ordinal } from './TaskEditor';
+import { CollapsibleField } from './CollapsibleField';
+import { EditorRow } from './EditorRow';
 
 const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
   daily: 'day', weekly: 'week', monthly: 'month', yearly: 'year',
@@ -41,6 +44,9 @@ function formatMinutesOffset(mins: number): string {
   if (mins % 60 === 0) { const h = mins / 60; return `${h} hour${h === 1 ? '' : 's'} before`; }
   return `${mins} min before`;
 }
+
+/** Editor sections that collapse to a one-line summary of their current value. */
+type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks';
 
 interface Props {
   visible: boolean;
@@ -107,6 +113,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const subtaskSavedRef = useRef(false);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
+  // Same progressive disclosure as TaskEditor: each picker collapses to its
+  // current value so the form reads as a list of fields, not a wall of pills.
+  const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [showTimeOfDay, setShowTimeOfDay] = useState(false);
+  const [showTimeWindow, setShowTimeWindow] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -144,7 +155,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNewChainItemTitle('');
     setAddingSubtask(false);
     setNewSubtaskTitle('');
+    setOpenFields({});
+    setShowTimeOfDay(false);
+    setShowTimeWindow(false);
   }, [visible, item, initialDraft]);
+
+  const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
+  const toggleField = (key: FieldKey, fallback = false) =>
+    setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? fallback) }));
+  const closeField = (key: FieldKey) => {
+    animateLayout();
+    setOpenFields(prev => ({ ...prev, [key]: false }));
+  };
 
   const openWindowPicker = (which: 'start' | 'end') => {
     const current = which === 'start' ? windowStart : windowEnd;
@@ -206,6 +228,14 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setNewTag('');
     setAddingTag(false);
   };
+
+  const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
+  const timeOfDaySummary = timeSegments.length > 0
+    ? timeSegments.map(capitalize).join(', ')
+    : undefined;
+  const timeWindowSummary = (windowStart || windowEnd)
+    ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    : undefined;
 
   return (
     <Modal
@@ -316,90 +346,87 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               styles={styles}
             />
             <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Time of day</Text>
-                {timeSegments.length === 0 && <Text style={styles.optionHint}>Show from a specific part of the day</Text>}
+            <EditorRow
+              icon="time-outline"
+              label="Time of day"
+              hint="Hold it back until a part of the day"
+              value={timeOfDaySummary}
+              expanded={showTimeOfDay}
+              onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
+              onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
+            />
+            {showTimeOfDay && (
+              <View style={styles.timePillRow}>
+                {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+                  const active = timeSegments.includes(tod);
+                  return (
+                    <TouchableOpacity
+                      key={tod}
+                      style={[styles.timePill, active && styles.timePillActive]}
+                      onPress={() => {
+                        haptics.tap();
+                        setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                      }}
+                    >
+                      <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                        {capitalize(tod)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              {timeSegments.length > 0 && (
-                <TouchableOpacity onPress={() => setTimeSegments([])} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.timePillRow}>
-              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-                const active = timeSegments.includes(tod);
-                return (
+            )}
+            <View style={styles.sep} />
+            <EditorRow
+              icon="hourglass-outline"
+              label="Time window"
+              hint="Only active for part of the day, then expires"
+              value={timeWindowSummary}
+              expanded={showTimeWindow}
+              onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
+              onClear={(windowStart || windowEnd)
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+                : undefined}
+            />
+            {showTimeWindow && (
+              <>
+                <View style={styles.timePillRow}>
                   <TouchableOpacity
-                    key={tod}
-                    style={[styles.timePill, active && styles.timePillActive]}
-                    onPress={() => setTimeSegments(prev =>
-                      prev.includes(tod) ? [] : [tod]
-                    )}
+                    style={[styles.timePill, !!windowStart && styles.timePillActive]}
+                    onPress={() => openWindowPicker('start')}
                   >
-                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                      {tod.charAt(0).toUpperCase() + tod.slice(1)}
+                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                      {windowStart ? formatHHMM(windowStart) : 'Start'}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons
-                name="hourglass-outline"
-                size={18}
-                color={(windowStart || windowEnd) ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Time window</Text>
-                {!windowStart && !windowEnd && (
-                  <Text style={styles.optionHint}>Only active for part of the day, then expires</Text>
-                )}
-              </View>
-              {(windowStart || windowEnd) && (
-                <TouchableOpacity onPress={() => { setWindowStart(null); setWindowEnd(null); }} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.timePillRow}>
-              <TouchableOpacity
-                style={[styles.timePill, !!windowStart && styles.timePillActive]}
-                onPress={() => openWindowPicker('start')}
-              >
-                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowStart ? formatHHMM(windowStart) : 'Start'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.timePill, !!windowEnd && styles.timePillActive]}
-                onPress={() => openWindowPicker('end')}
-              >
-                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {windowPickerMode !== 'none' && (
-              <>
-                <DateTimePicker
-                  value={windowPickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setWindowPickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                />
-                <View style={styles.intervalRow}>
-                  <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
-                    <Ionicons name="close" size={16} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
-                    <Ionicons name="checkmark" size={16} color={colors.accent} />
+                  <TouchableOpacity
+                    style={[styles.timePill, !!windowEnd && styles.timePillActive]}
+                    onPress={() => openWindowPicker('end')}
+                  >
+                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
+                {windowPickerMode !== 'none' && (
+                  <>
+                    <DateTimePicker
+                      value={windowPickerDate}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(_e, d) => d && setWindowPickerDate(d)}
+                      themeVariant={isDark ? 'dark' : 'light'}
+                    />
+                    <View style={styles.intervalRow}>
+                      <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
+                        <Ionicons name="close" size={16} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
+                        <Ionicons name="checkmark" size={16} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </>
             )}
             <View style={styles.sep} />
@@ -760,8 +787,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
           {/* Subtasks */}
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Subtasks</Text>
+            <CollapsibleField
+              label="Subtasks"
+              summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
+              hint="Checklist items created alongside the task when the template is applied."
+              expanded={fieldOpen('subtasks', subtasks.length > 0)}
+              onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+            >
               <SortableList
                 data={subtasks}
                 onReorder={setSubtasks}
@@ -823,17 +855,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <Text style={styles.addTagText}>Add subtask</Text>
                 </TouchableOpacity>
               )}
-            </View>
+            </CollapsibleField>
           </View>
 
           {/* Category + Tags */}
+          <Text style={styles.groupLabel}>Organize</Text>
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Category</Text>
+            <CollapsibleField
+              label="Category"
+              summary={category ?? undefined}
+              hint="One home for the task — drives the Categories screen and its filters."
+              expanded={fieldOpen('category')}
+              onToggle={() => toggleField('category')}
+            >
               <View style={styles.pillRow}>
                 <TouchableOpacity
                   style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => setCategory(null)}
+                  onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
                 >
                   <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
@@ -841,18 +879,23 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   <TouchableOpacity
                     key={cat}
                     style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                    onPress={() => setCategory(cat)}
+                    onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                   >
                     <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </CollapsibleField>
 
             <View style={styles.cardSep} />
 
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Tags</Text>
+            <CollapsibleField
+              label="Tags"
+              summary={tags.length > 0 ? tags.join(', ') : undefined}
+              hint="Free-form labels. A task can carry several, and you can filter or search by them."
+              expanded={fieldOpen('tags')}
+              onToggle={() => toggleField('tags')}
+            >
               <View style={styles.tagRow}>
                 {tags.map(tag => (
                   <TouchableOpacity
@@ -898,13 +941,19 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   ))}
                 </View>
               )}
-            </View>
+            </CollapsibleField>
           </View>
 
           {/* Priority + Effort */}
+          <Text style={styles.groupLabel}>Priority & effort</Text>
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Priority</Text>
+            <CollapsibleField
+              label="Priority"
+              summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+              hint="Ranks the task against everything else on Today."
+              expanded={fieldOpen('priority')}
+              onToggle={() => toggleField('priority')}
+            >
               <View style={styles.pillRow}>
                 {([0, 1, 2, 3, 4] as Priority[]).map(p => (
                   <TouchableOpacity
@@ -914,7 +963,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       priority === p && p === 0 && styles.pillActiveNeutral,
                       priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
                     ]}
-                    onPress={() => setPriority(p)}
+                    onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
                   >
                     <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
                       {PRIORITY_LABELS[p]}
@@ -922,18 +971,24 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </CollapsibleField>
 
             <View style={styles.cardSep} />
 
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Effort</Text>
+            <CollapsibleField
+              label="Effort"
+              summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
+              emptySummary="Not set"
+              hint="Roughly how long this takes, so a day's list can be sized realistically."
+              expanded={fieldOpen('effort')}
+              onToggle={() => toggleField('effort')}
+            >
               <View style={styles.pillRow}>
                 {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => (
                   <TouchableOpacity
                     key={e}
                     style={[styles.pill, effort === e && styles.pillActiveNeutral]}
-                    onPress={() => setEffort(e)}
+                    onPress={() => { haptics.tap(); setEffort(e); }}
                   >
                     <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
                       {e === 0 ? '—' : EFFORT_LABELS[e]}
@@ -970,7 +1025,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+            </CollapsibleField>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

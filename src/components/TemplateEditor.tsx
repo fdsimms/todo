@@ -17,7 +17,10 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { CollapsibleField } from './CollapsibleField';
 
 interface Props {
   visible: boolean;
@@ -38,12 +41,17 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
+  // Collapsed to the chosen category until tapped, like every other editor.
+  const [categoryOpen, setCategoryOpen] = useState(false);
 
   useEffect(() => {
     if (!template) return;
     setName(template.name);
     setCategory(template.category);
+    setCategoryOpen(false);
   }, [template]);
+
+  const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
 
   const saveAndClose = () => {
     if (!template) { onClose(); return; }
@@ -78,12 +86,17 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
           />
 
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Category</Text>
+            <CollapsibleField
+              label="Category"
+              summary={category ?? undefined}
+              hint="Groups this template with others of the same kind."
+              expanded={categoryOpen}
+              onToggle={() => setCategoryOpen(v => !v)}
+            >
               <View style={styles.pillRow}>
                 <TouchableOpacity
                   style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => setCategory(null)}
+                  onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
                 >
                   <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
@@ -91,7 +104,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
                   <TouchableOpacity
                     key={cat.id}
                     style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                    onPress={() => setCategory(cat.name)}
+                    onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
                   >
                     <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
                   </TouchableOpacity>
@@ -104,12 +117,12 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
                     onChangeText={setNewCategory}
                     onSubmitEditing={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     onBlur={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); }
+                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     placeholder="category name"
@@ -124,7 +137,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+            </CollapsibleField>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -173,17 +186,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
-  },
-  cardSection: {
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  sectionLabel: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
   },
   pillRow: {
     flexDirection: 'row',

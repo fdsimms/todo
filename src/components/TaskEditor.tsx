@@ -39,6 +39,8 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
+import { CollapsibleField } from './CollapsibleField';
+import { EditorRow } from './EditorRow';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
@@ -81,6 +83,9 @@ interface Props {
 }
 
 type PickerMode = 'none' | 'reminder';
+
+/** Editor sections that collapse to a one-line summary of their current value. */
+type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'timeSpent' | 'subtasks';
 
 export const RECURRENCE_LABELS: Record<RecurrenceType, string> = {
   none: 'Never',
@@ -204,7 +209,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [effortNote, setEffortNote] = useState<string | null>(null);
   const [effortAiLoading, setEffortAiLoading] = useState(false);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
-  const [logTimeOpen, setLogTimeOpen] = useState(false);
   const [logTimeText, setLogTimeText] = useState('');
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
@@ -214,6 +218,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [customLinkText, setCustomLinkText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
+
+  // Every picker section starts collapsed to its current value; opening one is
+  // an explicit tap, so the form reads as a list of named fields rather than a
+  // wall of pills. `undefined` means "still on the default for this field".
+  const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [showTimeOfDay, setShowTimeOfDay] = useState(false);
+  const [showTimeWindow, setShowTimeWindow] = useState(false);
 
   const [newCategory, setNewCategory] = useState('');
   const [addingCategory, setAddingCategory] = useState(false);
@@ -285,8 +296,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     setNewSubtaskTitle(''); setAddingSubtask(false);
     setNewChainItemTitle(''); setAddingChainItem(false);
     setAiLoading(false);
+    setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
-    setLogTimeOpen(false); setLogTimeText(''); setLogTimeUnit('min');
+    setLogTimeText(''); setLogTimeUnit('min');
     setEffortNote(null); setEffortAiLoading(false);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
@@ -477,6 +489,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
         },
       ],
     );
+  };
+
+  const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
+  const toggleField = (key: FieldKey, fallback = false) =>
+    setOpenFields(prev => ({ ...prev, [key]: !(prev[key] ?? fallback) }));
+  // Picking a single-choice value is the whole reason the section was open, so
+  // fold it back up and let the summary row show what was chosen.
+  const closeField = (key: FieldKey) => {
+    animateLayout();
+    setOpenFields(prev => ({ ...prev, [key]: false }));
+  };
+
+  // Opening "Time spent" drops you straight into the input, so prefill it from
+  // whatever is already logged before the section unfolds.
+  const toggleTimeSpent = () => {
+    if (!fieldOpen('timeSpent')) {
+      if (actualMinutes != null && actualMinutes % 60 === 0) {
+        setLogTimeUnit('hr');
+        setLogTimeText(String(actualMinutes / 60));
+      } else {
+        setLogTimeUnit('min');
+        setLogTimeText(actualMinutes != null ? String(actualMinutes) : '');
+      }
+    }
+    toggleField('timeSpent');
   };
 
   const openPicker = (mode: PickerMode) => {
@@ -710,6 +747,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
     }
   };
 
+  const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+  const timeOfDaySummary = timeSegments.length > 0
+    ? timeSegments.map(capitalize).join(', ')
+    : undefined;
+  const timeWindowSummary = (windowStart || windowEnd)
+    ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
+    : undefined;
+  const effortSummary = customEffortActive && estimatedMinutes != null
+    ? formatDuration(estimatedMinutes)
+    : effort > 0 ? EFFORT_LABELS[effort] : undefined;
+  const subtasks = task ? subtasksOf(task.id) : [];
+
   return (
     <Modal
       visible={visible}
@@ -753,514 +802,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             multiline
           />
 
-          {/* Category + Tags */}
-          <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Category</Text>
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => setCategory(null)}
-                >
-                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {allCategories.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                    onPress={() => setCategory(cat)}
-                  >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                  </TouchableOpacity>
-                ))}
-                {addingCategory ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newCategory}
-                    onChangeText={setNewCategory}
-                    onSubmitEditing={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    onBlur={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    placeholder="category name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addTagText}>New</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            {projects.length > 0 && (
-              <>
-                <View style={styles.cardSep} />
-                <View style={styles.cardSection}>
-                  <Text style={styles.sectionLabel}>Project</Text>
-                  <View style={styles.pillRow}>
-                    <TouchableOpacity
-                      style={[styles.pill, !project && styles.pillActiveNeutral]}
-                      onPress={() => setProject(null)}
-                    >
-                      <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
-                    </TouchableOpacity>
-                    {projects.map(p => (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
-                        onPress={() => setProject(p.id)}
-                      >
-                        <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </>
-            )}
-
-            <View style={styles.cardSep} />
-
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>Tags</Text>
-                {!!anthropicApiKey && (
-                  <TouchableOpacity
-                    style={styles.suggestBtn}
-                    onPress={handleSuggest}
-                    disabled={aiLoading || !title.trim()}
-                    hitSlop={8}
-                  >
-                    {aiLoading
-                      ? <ActivityIndicator size="small" color={colors.purple} />
-                      : (
-                        <>
-                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                          <Text style={styles.suggestBtnText}>Suggest</Text>
-                        </>
-                      )
-                    }
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={styles.tagRow}>
-                {tags.map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                    onPress={() => setTags(prev => prev.filter(t => t !== tag))}
-                  >
-                    <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                    <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                    <Ionicons name="close" size={12} color={tagColor(tag)} />
-                  </TouchableOpacity>
-                ))}
-                {addingTag ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newTag}
-                    onChangeText={setNewTag}
-                    onSubmitEditing={addTagFromInput}
-                    onBlur={addTagFromInput}
-                    placeholder="tag name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="none"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addTagText}>Add tag</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              {allTags.filter(t => !tags.includes(t)).length > 0 && (
-                <View style={styles.tagSuggestions}>
-                  {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={styles.tagSuggestion}
-                      onPress={() => setTags(prev => [...prev, tag])}
-                    >
-                      <Text style={styles.tagSuggestionText}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-
-          {/* Priority + Effort */}
-          <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Priority</Text>
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.pill,
-                      priority === p && p === 0 && styles.pillActiveNeutral,
-                      priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                    ]}
-                    onPress={() => setPriority(p)}
-                  >
-                    <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                      {PRIORITY_LABELS[p]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.cardSep} />
-
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>Effort</Text>
-                {!!anthropicApiKey && (
-                  <TouchableOpacity
-                    style={styles.suggestBtn}
-                    onPress={handleEstimateEffort}
-                    disabled={effortAiLoading || !title.trim()}
-                    hitSlop={8}
-                  >
-                    {effortAiLoading
-                      ? <ActivityIndicator size="small" color={colors.purple} />
-                      : (
-                        <>
-                          <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                          <Text style={styles.suggestBtnText}>AI estimate</Text>
-                        </>
-                      )
-                    }
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-                  const active = !customEffortActive && effort === e;
-                  const presetMins = EFFORT_MINUTES[e];
-                  return (
-                    <TouchableOpacity
-                      key={e}
-                      style={[styles.pill, active && styles.pillActiveNeutral]}
-                      onPress={() => applyEffortPreset(e)}
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {e === 0 ? '—' : EFFORT_LABELS[e]}
-                      </Text>
-                      {presetMins != null ? (
-                        <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                      ) : null}
-                    </TouchableOpacity>
-                  );
-                })}
-                <TouchableOpacity
-                  style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
-                  onPress={openCustomEffort}
-                >
-                  <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
-                    {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
-                  </Text>
-                  <Text style={styles.pillHint}>exact</Text>
-                </TouchableOpacity>
-              </View>
-              {customEffortOpen && (
-                <View style={styles.customEffortRow}>
-                  <TextInput
-                    style={styles.customEffortInput}
-                    value={customEffortText}
-                    onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.textTertiary}
-                    autoFocus
-                  />
-                  <View style={styles.unitToggle}>
-                    {(['min', 'hr'] as const).map(u => (
-                      <TouchableOpacity
-                        key={u}
-                        style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
-                        onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
-                      >
-                        <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-              {effortNote ? (
-                <Text style={styles.effortNote}>{effortNote}</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.cardSep} />
-
-            <View style={styles.cardSection}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionLabel}>Time spent</Text>
-                <TouchableOpacity
-                  style={styles.suggestBtn}
-                  onPress={() => {
-                    if (!logTimeOpen) {
-                      if (actualMinutes != null && actualMinutes % 60 === 0) {
-                        setLogTimeUnit('hr');
-                        setLogTimeText(String(actualMinutes / 60));
-                      } else {
-                        setLogTimeUnit('min');
-                        setLogTimeText(actualMinutes != null ? String(actualMinutes) : '');
-                      }
-                    }
-                    setLogTimeOpen(o => !o);
-                  }}
-                  hitSlop={8}
-                >
-                  <Ionicons name="stopwatch-outline" size={12} color={colors.accent} />
-                  <Text style={[styles.suggestBtnText, { color: colors.accent }]}>
-                    {actualMinutes != null ? formatDuration(actualMinutes) : 'Log time'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              {logTimeOpen && (
-                <View style={styles.customEffortRow}>
-                  <TextInput
-                    style={styles.customEffortInput}
-                    value={logTimeText}
-                    onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
-                    keyboardType="number-pad"
-                    placeholder="0"
-                    placeholderTextColor={colors.textTertiary}
-                    autoFocus
-                  />
-                  <View style={styles.unitToggle}>
-                    {(['min', 'hr'] as const).map(u => (
-                      <TouchableOpacity
-                        key={u}
-                        style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
-                        onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
-                      >
-                        <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              )}
-              <Text style={styles.effortNote}>
-                {actualMinutes != null
-                  ? 'How long it actually took — also sets the estimate.'
-                  : 'Time this task with the stopwatch on its row, or log it here.'}
-              </Text>
-            </View>
-          </View>
-
-          {/* Subtasks — only shown when editing an existing task */}
-          {task && (() => {
-            const subtasks = subtasksOf(task.id);
-            const doneCount = subtasks.filter(s => s.completed).length;
-            return (
-              <View style={styles.sectionCard}>
-                <View style={styles.cardSection}>
-                  <View style={styles.subtaskHeader}>
-                    <Text style={styles.sectionLabel}>Subtasks</Text>
-                    {subtasks.length > 0 && (
-                      <Text style={styles.subtaskProgress}>{doneCount}/{subtasks.length}</Text>
-                    )}
-                  </View>
-                  <SortableList
-                    data={subtasks}
-                    onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-                    renderItem={(sub, _i, drag) => (
-                      <View style={styles.subtaskRow}>
-                        <TouchableOpacity
-                          onPress={() => toggleSubtask(sub.id)}
-                          hitSlop={6}
-                          style={styles.subtaskCheck}
-                        >
-                          <Ionicons
-                            name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                            size={20}
-                            color={sub.completed ? colors.green : colors.bgQuaternary}
-                          />
-                        </TouchableOpacity>
-                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                          {sub.title}
-                        </Text>
-                        <TouchableOpacity
-                          onLongPress={(e) => drag(e.nativeEvent.pageY)}
-                          delayLongPress={150}
-                          hitSlop={8}
-                          style={styles.dragHandle}
-                        >
-                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => deleteSubtask(sub.id)}
-                          hitSlop={8}
-                          style={styles.subtaskDelete}
-                        >
-                          <Ionicons name="close" size={14} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  />
-                  {addingSubtask ? (
-                    <View style={styles.subtaskInputRow}>
-                      <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
-                      <TextInput
-                        ref={subtaskInputRef}
-                        autoFocus
-                        style={styles.subtaskInput}
-                        value={newSubtaskTitle}
-                        onChangeText={setNewSubtaskTitle}
-                        placeholder="Subtask title"
-                        placeholderTextColor={colors.textTertiary}
-                        maxLength={TITLE_MAX_LENGTH}
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          subtaskSavedRef.current = true;
-                          const t = newSubtaskTitle.trim();
-                          if (t) addSubtask(task.id, t);
-                          setNewSubtaskTitle('');
-                          setTimeout(() => {
-                            subtaskSavedRef.current = false;
-                            subtaskInputRef.current?.focus();
-                          }, 50);
-                        }}
-                        onBlur={() => {
-                          if (subtaskSavedRef.current) return;
-                          const t = newSubtaskTitle.trim();
-                          if (t) addSubtask(task.id, t);
-                          setNewSubtaskTitle('');
-                          setAddingSubtask(false);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <TouchableOpacity
-                      style={styles.addSubtaskBtn}
-                      onPress={() => setAddingSubtask(true)}
-                    >
-                      <Ionicons name="add" size={14} color={colors.accent} />
-                      <Text style={styles.addSubtaskText}>Add subtask</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            );
-          })()}
-
-          {/* Options */}
+          {/* Schedule — when the task surfaces, and how it repeats */}
+          <Text style={styles.groupLabel}>Schedule</Text>
           <View style={styles.optionsCard}>
-            <TouchableOpacity style={styles.optionRow} onPress={() => setVacationPause(v => !v)} activeOpacity={interaction.activeOpacity}>
-              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Vacation pause</Text>
-                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
-              </View>
-              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            {task && task.recurrenceType !== 'none' && (
-              <>
-                <View style={styles.sep} />
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => {
-                    if (task.archived) {
-                      unarchiveTask(task.id);
-                    } else {
-                      haptics.success();
-                      archiveTask(task.id);
-                      onClose();
-                    }
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Archive</Text>
-                    <Text style={styles.optionHint}>
-                      {task.archived
-                        ? 'Hidden from every list — resuming resets your streak'
-                        : 'Hide indefinitely, keeping history — find it later in Archived'}
-                    </Text>
-                  </View>
-                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
-                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.sep} />
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={() => {
-                    setStreakDraft(task.streakCount);
-                    setStreakEditorOpen(o => !o);
-                  }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Streak</Text>
-                    <Text style={styles.optionHint}>
-                      {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
-                    </Text>
-                  </View>
-                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-                {streakEditorOpen && (
-                  <View style={styles.intervalRow}>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{streakDraft}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => d + 1)}
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
-                    <TouchableOpacity
-                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
-                      onPress={() => applyStreakChange(streakDraft)}
-                      disabled={streakDraft === task.streakCount}
-                    >
-                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
-                        {streakDraft === 0 ? 'Reset' : 'Apply'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            )}
-            <View style={styles.sep} />
-            <OptionRow
+            <EditorRow
               icon="calendar"
               label="Date"
+              hint="The day it shows up on Today"
               value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
               onPress={() => setShowWhenPicker(true)}
               onClear={dueDate ? () => { setDueDate(null); setTimeSegments([]); } : undefined}
-              colors={colors}
-              styles={styles}
             />
             <View style={styles.sep} />
-            <OptionRow
+            <EditorRow
               icon="flag-outline"
               label="Deadline"
               hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
@@ -1273,8 +827,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               }
               onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
               onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); } : undefined}
-              colors={colors}
-              styles={styles}
             />
             {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (
               <>
@@ -1379,170 +931,107 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
               </>
             )}
             <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons name="time-outline" size={18} color={timeSegments.length > 0 ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Time of day</Text>
-                {timeSegments.length === 0 && <Text style={styles.optionHint}>Show from a specific part of the day</Text>}
+            <EditorRow
+              icon="time-outline"
+              label="Time of day"
+              hint="Hold it back until a part of the day"
+              value={timeOfDaySummary}
+              expanded={showTimeOfDay}
+              onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
+              onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
+            />
+            {showTimeOfDay && (
+              <View style={styles.timePillRow}>
+                {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+                  const active = timeSegments.includes(tod);
+                  return (
+                    <TouchableOpacity
+                      key={tod}
+                      style={[styles.timePill, active && styles.timePillActive]}
+                      onPress={() => {
+                        haptics.tap();
+                        setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                      }}
+                    >
+                      <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                        {capitalize(tod)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              {timeSegments.length > 0 && (
-                <TouchableOpacity onPress={() => setTimeSegments([])} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.timePillRow}>
-              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-                const active = timeSegments.includes(tod);
-                return (
+            )}
+            <View style={styles.sep} />
+            <EditorRow
+              icon="hourglass-outline"
+              label="Time window"
+              hint="Only active for part of the day, then expires"
+              value={timeWindowSummary}
+              expanded={showTimeWindow}
+              onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
+              onClear={(windowStart || windowEnd)
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+                : undefined}
+            />
+            {showTimeWindow && (
+              <>
+                <View style={styles.windowPillRow}>
                   <TouchableOpacity
-                    key={tod}
-                    style={[styles.timePill, active && styles.timePillActive]}
-                    onPress={() => setTimeSegments(prev =>
-                      prev.includes(tod) ? [] : [tod]
-                    )}
+                    style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
+                    onPress={() => openWindowPicker('start')}
                   >
-                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                      {tod.charAt(0).toUpperCase() + tod.slice(1)}
+                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                      {windowStart ? formatHHMM(windowStart) : 'Start'}
                     </Text>
                   </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons
-                name="hourglass-outline"
-                size={18}
-                color={(windowStart || windowEnd) ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Time window</Text>
-                {!windowStart && !windowEnd && (
-                  <Text style={styles.optionHint}>Only active for part of the day, then expires</Text>
-                )}
-              </View>
-              {(windowStart || windowEnd) && (
-                <TouchableOpacity onPress={() => { setWindowStart(null); setWindowEnd(null); }} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              )}
-            </View>
-            <View style={styles.windowPillRow}>
-              <TouchableOpacity
-                style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
-                onPress={() => openWindowPicker('start')}
-              >
-                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowStart ? formatHHMM(windowStart) : 'Start'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
-                onPress={() => openWindowPicker('end')}
-              >
-                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {windowPickerMode !== 'none' && (
-              <>
-                <DateTimePicker
-                  value={windowPickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setWindowPickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  style={styles.windowPickerWidget}
-                />
-                <View style={styles.pickerButtons}>
-                  <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
-                    <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                    <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                  <TouchableOpacity
+                    style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
+                    onPress={() => openWindowPicker('end')}
+                  >
+                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                    </Text>
                   </TouchableOpacity>
                 </View>
+                {windowPickerMode !== 'none' && (
+                  <>
+                    <DateTimePicker
+                      value={windowPickerDate}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(_e, d) => d && setWindowPickerDate(d)}
+                      themeVariant={isDark ? 'dark' : 'light'}
+                      style={styles.windowPickerWidget}
+                    />
+                    <View style={styles.pickerButtons}>
+                      <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
+                        <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
+                        <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
+                )}
               </>
             )}
             <View style={styles.sep} />
-            <OptionRow
+            <EditorRow
               icon="notifications"
               label="Remind me"
               hint="Send a notification at this time"
               value={reminderTime ? format(reminderTime, "MMM d 'at' h:mm a") : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => setReminderTime(null) : undefined}
-              colors={colors}
-              styles={styles}
             />
             <View style={styles.sep} />
-            <OptionRow
-              icon="link-outline"
-              label="Link"
-              hint="Open an app or link from the task"
-              value={
-                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
-                  ?? (linkUrl ?? undefined)
-              }
-              onPress={() => {
-                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
-                  setCustomLinkText(linkUrl);
-                }
-                setShowLinkPicker(v => !v);
-              }}
-              onClear={linkUrl ? () => { setLinkUrl(null); setCustomLinkText(''); setShowLinkPicker(false); } : undefined}
-              colors={colors}
-              styles={styles}
-            />
-            {showLinkPicker && (
-              <>
-                <View style={styles.linkPickerRow}>
-                  {KNOWN_LINK_APPS.map(app => (
-                    <TouchableOpacity
-                      key={app.scheme}
-                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
-                      onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
-                    >
-                      <Ionicons
-                        name={app.icon as never}
-                        size={13}
-                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
-                      />
-                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
-                        {app.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.linkCustomRow}>
-                  <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-                  <TextInput
-                    style={styles.linkCustomInput}
-                    value={customLinkText}
-                    onChangeText={setCustomLinkText}
-                    onSubmitEditing={commitCustomLink}
-                    onBlur={commitCustomLink}
-                    placeholder="https://... or app://"
-                    placeholderTextColor={colors.textTertiary}
-                    keyboardType="url"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    returnKeyType="done"
-                  />
-                </View>
-              </>
-            )}
-            <View style={styles.sep} />
-            <OptionRow
+            <EditorRow
               icon="repeat"
               label="Repeat"
+              hint="Come back on a schedule after each completion"
               value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
               onPress={enableRecurrence}
               onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
-              colors={colors}
-              styles={styles}
             />
             {recurrenceType !== 'none' && (
               <>
@@ -1862,6 +1351,557 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             </View>
           </View>
 
+          {/* Organize — collapsed to the chosen value until you tap in */}
+          <Text style={styles.groupLabel}>Organize</Text>
+          <View style={styles.sectionCard}>
+            <CollapsibleField
+              label="Category"
+              summary={category ? categoryLabel(category, categories) : undefined}
+              hint="One home for the task — drives the Categories screen and its filters."
+              expanded={fieldOpen('category')}
+              onToggle={() => toggleField('category')}
+            >
+              <View style={styles.pillRow}>
+                <TouchableOpacity
+                  style={[styles.pill, !category && styles.pillActiveNeutral]}
+                  onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
+                >
+                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+                </TouchableOpacity>
+                {allCategories.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+                  >
+                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+                  </TouchableOpacity>
+                ))}
+                {addingCategory ? (
+                  <TextInput
+                    autoFocus
+                    style={styles.tagInput}
+                    value={newCategory}
+                    onChangeText={setNewCategory}
+                    onSubmitEditing={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); closeField('category'); }
+                      setNewCategory(''); setAddingCategory(false);
+                    }}
+                    onBlur={() => {
+                      const c = newCategory.trim();
+                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); closeField('category'); }
+                      setNewCategory(''); setAddingCategory(false);
+                    }}
+                    placeholder="category name"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    autoCapitalize="words"
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addTagText}>New</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </CollapsibleField>
+
+            {projects.length > 0 && (
+              <>
+                <View style={styles.cardSep} />
+                <CollapsibleField
+                  label="Project"
+                  summary={projects.find(p => p.id === project)?.title}
+                  hint="Files the task under a project so it counts toward that project's progress."
+                  expanded={fieldOpen('project')}
+                  onToggle={() => toggleField('project')}
+                >
+                  <View style={styles.pillRow}>
+                    <TouchableOpacity
+                      style={[styles.pill, !project && styles.pillActiveNeutral]}
+                      onPress={() => { haptics.tap(); setProject(null); closeField('project'); }}
+                    >
+                      <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
+                    </TouchableOpacity>
+                    {projects.map(p => (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
+                        onPress={() => { haptics.tap(); setProject(p.id); closeField('project'); }}
+                      >
+                        <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </CollapsibleField>
+              </>
+            )}
+
+            <View style={styles.cardSep} />
+
+            <CollapsibleField
+              label="Tags"
+              summary={tags.length > 0 ? tags.join(', ') : undefined}
+              hint="Free-form labels. A task can carry several, and you can filter or search by them."
+              expanded={fieldOpen('tags')}
+              onToggle={() => toggleField('tags')}
+              right={!!anthropicApiKey && (
+                <TouchableOpacity
+                  style={styles.suggestBtn}
+                  onPress={handleSuggest}
+                  disabled={aiLoading || !title.trim()}
+                  hitSlop={8}
+                >
+                  {aiLoading
+                    ? <ActivityIndicator size="small" color={colors.purple} />
+                    : (
+                      <>
+                        <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                        <Text style={styles.suggestBtnText}>Suggest</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+              )}
+            >
+              <View style={styles.tagRow}>
+                {tags.map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                    onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
+                  >
+                    <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                    <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                    <Ionicons name="close" size={12} color={tagColor(tag)} />
+                  </TouchableOpacity>
+                ))}
+                {addingTag ? (
+                  <TextInput
+                    autoFocus
+                    style={styles.tagInput}
+                    value={newTag}
+                    onChangeText={setNewTag}
+                    onSubmitEditing={addTagFromInput}
+                    onBlur={addTagFromInput}
+                    placeholder="tag name"
+                    placeholderTextColor={colors.textTertiary}
+                    returnKeyType="done"
+                    autoCapitalize="none"
+                  />
+                ) : (
+                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addTagText}>Add tag</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {allTags.filter(t => !tags.includes(t)).length > 0 && (
+                <View style={styles.tagSuggestions}>
+                  {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.tagSuggestion}
+                      onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                    >
+                      <Text style={styles.tagSuggestionText}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </CollapsibleField>
+          </View>
+
+          {/* Priority + Effort */}
+          <Text style={styles.groupLabel}>Priority & effort</Text>
+          <View style={styles.sectionCard}>
+            <CollapsibleField
+              label="Priority"
+              summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+              hint="Ranks the task against everything else on Today."
+              expanded={fieldOpen('priority')}
+              onToggle={() => toggleField('priority')}
+            >
+              <View style={styles.pillRow}>
+                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+                  <TouchableOpacity
+                    key={p}
+                    style={[
+                      styles.pill,
+                      priority === p && p === 0 && styles.pillActiveNeutral,
+                      priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
+                    ]}
+                    onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
+                  >
+                    <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
+                      {PRIORITY_LABELS[p]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </CollapsibleField>
+
+            <View style={styles.cardSep} />
+
+            <CollapsibleField
+              label="Effort"
+              summary={effortSummary}
+              emptySummary="Not set"
+              hint="Roughly how long this takes, so a day's list can be sized realistically."
+              expanded={fieldOpen('effort')}
+              onToggle={() => toggleField('effort')}
+              right={!!anthropicApiKey && (
+                <TouchableOpacity
+                  style={styles.suggestBtn}
+                  onPress={handleEstimateEffort}
+                  disabled={effortAiLoading || !title.trim()}
+                  hitSlop={8}
+                >
+                  {effortAiLoading
+                    ? <ActivityIndicator size="small" color={colors.purple} />
+                    : (
+                      <>
+                        <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                        <Text style={styles.suggestBtnText}>AI estimate</Text>
+                      </>
+                    )
+                  }
+                </TouchableOpacity>
+              )}
+            >
+              <View style={styles.pillRow}>
+                {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
+                  const active = !customEffortActive && effort === e;
+                  const presetMins = EFFORT_MINUTES[e];
+                  return (
+                    <TouchableOpacity
+                      key={e}
+                      style={[styles.pill, active && styles.pillActiveNeutral]}
+                      onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {e === 0 ? '—' : EFFORT_LABELS[e]}
+                      </Text>
+                      {presetMins != null ? (
+                        <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
+                      ) : null}
+                    </TouchableOpacity>
+                  );
+                })}
+                <TouchableOpacity
+                  style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
+                  onPress={openCustomEffort}
+                >
+                  <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
+                    {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
+                  </Text>
+                  <Text style={styles.pillHint}>exact</Text>
+                </TouchableOpacity>
+              </View>
+              {customEffortOpen && (
+                <View style={styles.customEffortRow}>
+                  <TextInput
+                    style={styles.customEffortInput}
+                    value={customEffortText}
+                    onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={colors.textTertiary}
+                    autoFocus
+                  />
+                  <View style={styles.unitToggle}>
+                    {(['min', 'hr'] as const).map(u => (
+                      <TouchableOpacity
+                        key={u}
+                        style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
+                        onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                      >
+                        <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+              {effortNote ? (
+                <Text style={styles.effortNote}>{effortNote}</Text>
+              ) : null}
+            </CollapsibleField>
+
+            <View style={styles.cardSep} />
+
+            <CollapsibleField
+              label="Time spent"
+              summary={actualMinutes != null ? formatDuration(actualMinutes) : undefined}
+              emptySummary="Not logged"
+              hint="How long it actually took. Time it with the stopwatch on the task's row, or log it here — either way it also sets the estimate."
+              expanded={fieldOpen('timeSpent')}
+              onToggle={toggleTimeSpent}
+            >
+              <View style={styles.customEffortRow}>
+                <TextInput
+                  style={styles.customEffortInput}
+                  value={logTimeText}
+                  onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textTertiary}
+                  autoFocus
+                />
+                <View style={styles.unitToggle}>
+                  {(['min', 'hr'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
+                      onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
+                    >
+                      <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </CollapsibleField>
+          </View>
+
+          {/* Subtasks — only shown when editing an existing task */}
+          {task && (
+            <View style={styles.sectionCard}>
+              <CollapsibleField
+                label="Subtasks"
+                summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+                emptySummary="None"
+                expanded={fieldOpen('subtasks', subtasks.length > 0)}
+                onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+              >
+                <SortableList
+                  data={subtasks}
+                  onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                  renderItem={(sub, _i, drag) => (
+                    <View style={styles.subtaskRow}>
+                      <TouchableOpacity
+                        onPress={() => toggleSubtask(sub.id)}
+                        hitSlop={6}
+                        style={styles.subtaskCheck}
+                      >
+                        <Ionicons
+                          name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
+                          size={20}
+                          color={sub.completed ? colors.green : colors.bgQuaternary}
+                        />
+                      </TouchableOpacity>
+                      <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                        {sub.title}
+                      </Text>
+                      <TouchableOpacity
+                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        delayLongPress={150}
+                        hitSlop={8}
+                        style={styles.dragHandle}
+                      >
+                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => deleteSubtask(sub.id)}
+                        hitSlop={8}
+                        style={styles.subtaskDelete}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                />
+                {addingSubtask ? (
+                  <View style={styles.subtaskInputRow}>
+                    <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
+                    <TextInput
+                      ref={subtaskInputRef}
+                      autoFocus
+                      style={styles.subtaskInput}
+                      value={newSubtaskTitle}
+                      onChangeText={setNewSubtaskTitle}
+                      placeholder="Subtask title"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      onSubmitEditing={() => {
+                        subtaskSavedRef.current = true;
+                        const t = newSubtaskTitle.trim();
+                        if (t) addSubtask(task.id, t);
+                        setNewSubtaskTitle('');
+                        setTimeout(() => {
+                          subtaskSavedRef.current = false;
+                          subtaskInputRef.current?.focus();
+                        }, 50);
+                      }}
+                      onBlur={() => {
+                        if (subtaskSavedRef.current) return;
+                        const t = newSubtaskTitle.trim();
+                        if (t) addSubtask(task.id, t);
+                        setNewSubtaskTitle('');
+                        setAddingSubtask(false);
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.addSubtaskBtn}
+                    onPress={() => setAddingSubtask(true)}
+                  >
+                    <Ionicons name="add" size={14} color={colors.accent} />
+                    <Text style={styles.addSubtaskText}>Add subtask</Text>
+                  </TouchableOpacity>
+                )}
+              </CollapsibleField>
+            </View>
+          )}
+
+          {/* Everything else — rarely changed, so it sits last */}
+          <Text style={styles.groupLabel}>More</Text>
+          <View style={styles.optionsCard}>
+            <EditorRow
+              icon="link-outline"
+              label="Link"
+              hint="Open an app or link from the task"
+              value={
+                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
+                  ?? (linkUrl ?? undefined)
+              }
+              expanded={showLinkPicker}
+              onPress={() => {
+                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+                  setCustomLinkText(linkUrl);
+                }
+                setShowLinkPicker(v => !v);
+              }}
+              onClear={linkUrl ? () => { setLinkUrl(null); setCustomLinkText(''); setShowLinkPicker(false); } : undefined}
+            />
+            {showLinkPicker && (
+              <>
+                <View style={styles.linkPickerRow}>
+                  {KNOWN_LINK_APPS.map(app => (
+                    <TouchableOpacity
+                      key={app.scheme}
+                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                      onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
+                    >
+                      <Ionicons
+                        name={app.icon as never}
+                        size={13}
+                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                      />
+                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                        {app.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.linkCustomRow}>
+                  <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.linkCustomInput}
+                    value={customLinkText}
+                    onChangeText={setCustomLinkText}
+                    onSubmitEditing={commitCustomLink}
+                    onBlur={commitCustomLink}
+                    placeholder="https://... or app://"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                  />
+                </View>
+              </>
+            )}
+            <View style={styles.sep} />
+            <TouchableOpacity style={styles.optionRow} onPress={() => { haptics.tap(); setVacationPause(v => !v); }} activeOpacity={interaction.activeOpacity}>
+              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Vacation pause</Text>
+                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
+              </View>
+              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            {task && task.recurrenceType !== 'none' && (
+              <>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    if (task.archived) {
+                      unarchiveTask(task.id);
+                    } else {
+                      haptics.success();
+                      archiveTask(task.id);
+                      onClose();
+                    }
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Archive</Text>
+                    <Text style={styles.optionHint}>
+                      {task.archived
+                        ? 'Hidden from every list — resuming resets your streak'
+                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    setStreakDraft(task.streakCount);
+                    setStreakEditorOpen(o => !o);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak</Text>
+                    <Text style={styles.optionHint}>
+                      {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
+                    </Text>
+                  </View>
+                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+                {streakEditorOpen && (
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{streakDraft}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => d + 1)}
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
+                    <TouchableOpacity
+                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
+                      onPress={() => applyStreakChange(streakDraft)}
+                      disabled={streakDraft === task.streakCount}
+                    >
+                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
+                        {streakDraft === 0 ? 'Reset' : 'Apply'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+
           {task && (
             <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
               <TouchableOpacity style={styles.optionRow} onPress={handleDelete} activeOpacity={interaction.activeOpacity}>
@@ -1945,36 +1985,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   );
 }
 
-function OptionRow({
-  icon, label, value, hint, onPress, onClear, colors, styles,
-}: {
-  icon: string; label: string; value?: string; hint?: string;
-  onPress: () => void; onClear?: () => void;
-  colors: Colors; styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <TouchableOpacity style={styles.optionRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
-      <Ionicons name={icon as never} size={18} color={value ? colors.accent : colors.textSecondary} />
-      <View style={styles.optionContent}>
-        <Text style={styles.optionLabel}>{label}</Text>
-        {hint && !value && <Text style={styles.optionHint}>{hint}</Text>}
-      </View>
-      {value ? (
-        <View style={styles.optionValueRow}>
-          <Text style={styles.optionValue}>{value}</Text>
-          {onClear && (
-            <TouchableOpacity onPress={onClear} hitSlop={8}>
-              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-            </TouchableOpacity>
-          )}
-          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-        </View>
-      ) : (
-        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-      )}
-    </TouchableOpacity>
-  );
-}
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
@@ -2010,10 +2020,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
-  },
-  sectionHeaderRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: spacing.sm,
   },
   suggestBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -2122,6 +2128,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pickerBtnPrimary: { backgroundColor: colors.accent },
   pickerBtnText: { fontSize: font.md, fontWeight: '600' },
+  groupLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8,
+    marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
+  },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
@@ -2133,8 +2144,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionContent: { flex: 1 },
   optionLabel: { color: colors.text, fontSize: font.md },
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
-  optionValueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  optionValue: { color: colors.accent, fontSize: font.sm },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md + 18 + spacing.md },
   intervalRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -2191,13 +2200,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
-  subtaskHeader: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginBottom: spacing.sm,
-  },
-  subtaskProgress: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
-  },
   subtaskRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

@@ -22,7 +22,12 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
+
+/** Editor sections that collapse to a one-line summary of their current value. */
+type FieldKey = 'category' | 'priority' | 'tags';
 
 interface Props {
   visible: boolean;
@@ -60,6 +65,8 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  // Pickers collapse to their current value, matching the task editor.
+  const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
 
   useEffect(() => {
     if (!group) return;
@@ -70,7 +77,15 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     setCategory(group.category);
     setShowExistingPicker(false);
     setExistingSearch('');
+    setOpenFields({});
   }, [group]);
+
+  const fieldOpen = (key: FieldKey) => openFields[key] ?? false;
+  const toggleField = (key: FieldKey) => setOpenFields(prev => ({ ...prev, [key]: !prev[key] }));
+  const closeField = (key: FieldKey) => {
+    animateLayout();
+    setOpenFields(prev => ({ ...prev, [key]: false }));
+  };
 
   const children = group ? groupChildrenOf(group.id) : [];
   const activeChildren = children.filter(c => !c.completed);
@@ -155,44 +170,62 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
           />
 
           <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Category</Text>
+            <CollapsibleField
+              label="Category"
+              summary={category ? categoryLabel(category, categories) : undefined}
+              hint="Applies to the stack itself — tasks inside keep their own."
+              expanded={fieldOpen('category')}
+              onToggle={() => toggleField('category')}
+            >
               <View style={styles.pillRow}>
-                <TouchableOpacity style={[styles.pill, !category && styles.pillActive]} onPress={() => setCategory(null)}>
+                <TouchableOpacity
+                  style={[styles.pill, !category && styles.pillActive]}
+                  onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
+                >
                   <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
                 </TouchableOpacity>
                 {allCategories.map(cat => (
                   <TouchableOpacity
                     key={cat}
                     style={[styles.pill, category === cat && styles.pillActive]}
-                    onPress={() => setCategory(cat)}
+                    onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                   >
                     <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </CollapsibleField>
             <View style={styles.cardSep} />
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Priority</Text>
+            <CollapsibleField
+              label="Priority"
+              summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+              hint="Ranks the stack against everything else on Today."
+              expanded={fieldOpen('priority')}
+              onToggle={() => toggleField('priority')}
+            >
               <View style={styles.pillRow}>
                 {([0, 1, 2, 3, 4] as Priority[]).map(p => (
                   <TouchableOpacity
                     key={p}
                     style={[styles.pill, priority === p && styles.pillActive, p > 0 && { borderColor: PRIORITY_COLORS[p], borderWidth: 1 }]}
-                    onPress={() => setPriority(p)}
+                    onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
                   >
                     <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>{PRIORITY_LABELS[p]}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </View>
+            </CollapsibleField>
             <View style={styles.cardSep} />
-            <View style={styles.cardSection}>
-              <Text style={styles.sectionLabel}>Tags</Text>
+            <CollapsibleField
+              label="Tags"
+              summary={tags.length > 0 ? tags.join(', ') : undefined}
+              hint="Free-form labels you can filter and search by."
+              expanded={fieldOpen('tags')}
+              onToggle={() => toggleField('tags')}
+            >
               <View style={styles.pillRow}>
                 {tags.map(tag => (
-                  <TouchableOpacity key={tag} style={styles.pill} onPress={() => setTags(prev => prev.filter(t => t !== tag))}>
+                  <TouchableOpacity key={tag} style={styles.pill} onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}>
                     <Text style={styles.pillText}>{tag} ✕</Text>
                   </TouchableOpacity>
                 ))}
@@ -216,7 +249,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+            </CollapsibleField>
           </View>
 
           <View style={styles.sectionCard}>
