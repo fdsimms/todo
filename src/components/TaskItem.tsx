@@ -1107,7 +1107,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.green,
   },
   circleLocked: {
-    borderColor: colors.textTertiary,
+    borderWidth: 0,
   },
   circleSelected: {
     backgroundColor: colors.accent,
