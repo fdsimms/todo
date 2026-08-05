@@ -50,6 +50,8 @@ interface Props {
   context?: 'today' | 'later' | 'inbox' | 'unscheduled';
   /** Called right after a new task is created (not on the "resume archived" path). */
   onCreated?: (task: Task) => void;
+  /** Called instead of onCreated when the user resumes an archived task rather than creating one. */
+  onResumed?: (task: Task) => void;
   /** Preselects a recurrence and opens the Repeat panel — used by the Recurring quick-add shortcut. */
   initialRecurrenceType?: RecurrenceType;
 }
@@ -72,7 +74,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 };
 
 
-export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated, initialRecurrenceType }: Props) {
+export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, initialRecurrenceType }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -325,6 +327,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
             onPress: () => {
               haptics.success();
               unarchiveTask(archivedMatch.id);
+              onResumed?.(archivedMatch);
               dismiss();
             },
           },
