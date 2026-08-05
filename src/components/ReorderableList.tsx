@@ -568,6 +568,17 @@ export function ReorderableList<T>({
         startPageYRef.current = e.nativeEvent.pageY;
         lastPageYRef.current = e.nativeEvent.pageY;
         startPageXRef.current = e.nativeEvent.pageX;
+        // startDrag pinned the card from layoutYRef, which is only as fresh as
+        // the last onLayout — a height animation still settling (or one whose
+        // frames never made it back to JS) leaves it describing a layout the
+        // user can't see any more, and startDrag's own measurement resolves a
+        // frame later, often into that same window. The finger has just moved,
+        // so measure again: the row is still resting in its own slot, which
+        // makes this the ground truth the base is supposed to describe.
+        const ai = activeIndexRef.current;
+        if (ai === null) return;
+        const activeKey = keyExtractor(dataRef.current[ai]!);
+        calibrateOverlayBase(activeKey, layoutYRef.current.get(activeKey) ?? 0);
       },
       onPanResponderMove: e => {
         if (activeIndexRef.current === null || committingRef.current) return;
@@ -658,6 +669,16 @@ export function ReorderableList<T>({
               onLayout={e => {
                 heightsRef.current.set(key, e.nativeEvent.layout.height);
                 layoutYRef.current.set(key, e.nativeEvent.layout.y);
+                // The dragged row moving in the list's own layout means the
+                // resting position the floating card was pinned to at drag
+                // start no longer exists — a row above it collapsed, say, which
+                // is now a 250ms animation rather than a single commit. Nothing
+                // else re-pins it: the drop gap re-reads these live values on
+                // every move, so it stays under the finger while the card keeps
+                // the stale offset for the rest of the drag. Re-measure against
+                // the fresh content-Y (calibrateOverlayBase ignores it unless
+                // the row is still resting in its own slot).
+                if (isPlaceholder) calibrateOverlayBase(key, e.nativeEvent.layout.y);
               }}
             >
               {/* The dragged row is hidden in place (the floating card stands in
