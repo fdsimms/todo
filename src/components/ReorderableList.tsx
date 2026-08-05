@@ -494,7 +494,14 @@ export function ReorderableList<T>({
    * is off by that inset while the drop targeting (a pure finger delta) is not,
    * so the card floats far from the gap it would drop into. Measuring the row
    * against the container recovers the offset and puts both back in the same
-   * space.
+   * space. It also re-reads the row's real content-Y, which is the point of
+   * measuring at all: layoutYRef is only as fresh as the last onLayout.
+   *
+   * **What comes back is a layout position, not an on-screen one** — see
+   * contentOriginOffset. It has to go back through the same
+   * `contentY - scrollOffset + origin` derivation as everything else rather
+   * than being used as the base directly; treating it as on-screen puts the
+   * card a whole scroll offset below the finger.
    *
    * measureLayout resolves a frame later, so startDrag seeds the derived value
    * first (using the previous drag's calibration) and this only nudges it. At
@@ -510,18 +517,23 @@ export function ReorderableList<T>({
         (_x: number, y: number, _w: number, h: number) => {
           // Bail if the drag ended (or is landing) before the measurement came
           // back — moving the base then would yank the card mid-flight. Bail
-          // too if the row has already been displaced by a hover change, since
-          // the measured frame would then include that transform rather than
-          // the resting position the base is meant to describe.
+          // too once a hover change has displaced the rows: the base describes
+          // where the row rested when the finger took hold of it, and re-pinning
+          // to anything else mid-drag would jump the card out from under it.
           if (activeIndexRef.current === null || committingRef.current) return;
           if (hoverIndexRef.current !== activeIndexRef.current) return;
-          // Same reasoning for the scroll position: `y` is only comparable to
-          // the content-Y the base was derived from while the list hasn't moved.
+          // Same reasoning for the scroll position: the base is anchored to the
+          // scroll offset the drag started at (autoscroll deliberately moves the
+          // list under a finger-anchored card), so only re-pin while that holds.
           if (scrollOffsetRef.current !== scrollOffsetAtStartRef.current) return;
           if (!Number.isFinite(y)) return;
-          contentOriginRef.current = contentOriginOffset(y, rowTop, scrollOffsetAtStartRef.current);
-          overlayBaseTopRef.current = y;
-          setOverlayBaseTop(y);
+          contentOriginRef.current = contentOriginOffset(y, rowTop);
+          // Derived, not assigned: `y` is where the row sits in the list's
+          // layout, which is only where it sits on screen when the list is
+          // scrolled to the top.
+          const base = rowTop - scrollOffsetAtStartRef.current + contentOriginRef.current;
+          overlayBaseTopRef.current = base;
+          setOverlayBaseTop(base);
           if (Number.isFinite(h) && h > 0) heightsRef.current.set(key, h);
         },
         () => {},

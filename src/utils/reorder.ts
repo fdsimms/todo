@@ -129,16 +129,27 @@ export function dragRange<T>(data: T[], activeIndex: number, isBoundary: (item: 
  * starts flush with the top of the overlay's container. A top content inset —
  * iOS keyboard-inset adjustment, safe-area inset adjustment, a scroll view that
  * doesn't start at the container's top edge — shifts everything down by a
- * constant the JS side never sees. Measuring one row's real on-screen position
+ * constant the JS side never sees. Measuring one row against the container
  * recovers that constant, so the floating drag card and the drop slot stay in
  * the same coordinate space instead of drifting apart by the inset.
+ *
+ * **`measuredTop` is a `measureLayout` result, which is NOT an on-screen
+ * position.** `measureLayout` walks layout frame origins up the tree to the
+ * ancestor, and a scroll view's content sits at origin 0 there however far the
+ * list is scrolled — the scroll offset lives in native view geometry, which the
+ * measurement never consults (`dom::measureLayout` asks for the relative layout
+ * metrics with `includeTransform: false`, and that flag is what gates the
+ * scroll view's content-origin offset; the old architecture's shadow-view walk
+ * has no notion of it at all). So the scroll offset cancels out of this
+ * entirely, and both inputs are plain layout coordinates: the gap is just the
+ * distance between the two layout spaces.
+ *
+ * Subtracting a scroll offset here instead — reading "measured 900, derived
+ * 520" as a 380px inset — is what put the floating drag card a full scroll
+ * offset *below* the finger, worse the further down the list the drag started.
  */
-export function contentOriginOffset(
-  measuredOnScreenTop: number,
-  rowContentY: number,
-  scrollOffset: number,
-): number {
-  return measuredOnScreenTop - (rowContentY - scrollOffset);
+export function contentOriginOffset(measuredTop: number, rowContentY: number): number {
+  return measuredTop - rowContentY;
 }
 
 
