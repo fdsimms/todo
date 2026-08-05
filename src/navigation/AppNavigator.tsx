@@ -213,7 +213,7 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="Settings"
             component={SettingsScreen}
-            options={{ presentation: 'modal' }}
+            options={{ presentation: 'card' }}
           />
           <RootStack.Screen
             name="Demo"

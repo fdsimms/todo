@@ -132,13 +132,13 @@ export function SettingsScreen() {
 
   return (
     <>
-      <View style={styles.root}>
+      <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
         <View style={styles.header}>
-          <View style={{ width: 44 }} />
-          <Text style={styles.title}>Settings</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={8} style={styles.doneBtn} accessibilityRole="button" accessibilityLabel="Done">
-            <Text style={styles.done}>Done</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
           </TouchableOpacity>
+          <Text style={styles.title}>Settings</Text>
+          <View style={{ width: 24 }} />
         </View>
 
         <KeyboardAvoidingView
@@ -505,12 +505,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  title: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  doneBtn: { width: 44, alignItems: 'flex-end' },
-  done: { color: colors.accent, fontSize: font.md, fontWeight: '600' },
+  title: { color: colors.text, fontSize: font.lg, fontWeight: '600' },
   section: { paddingHorizontal: spacing.md, marginTop: spacing.xl },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',
