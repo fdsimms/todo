@@ -2,7 +2,6 @@ import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
-import { PRIORITY_COLORS } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, animation, type Colors } from '../theme';
 import { isRelevantToGroupToday, isGroupHiddenToday } from '../utils/visibilityUtils';
@@ -105,10 +104,6 @@ export function TaskGroupHeader({
               }}
             >
               <View style={styles.row}>
-                {group.priority > 0 && (
-                  <View style={[styles.priorityBar, { backgroundColor: PRIORITY_COLORS[group.priority] }]} />
-                )}
-
                 <TouchableOpacity
                   onPress={() => {
                     if (dismissed || dismissing) return;
@@ -244,15 +239,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     minHeight: 52,
     backgroundColor: colors.bgSecondary,
-  },
-  priorityBar: {
-    position: 'absolute',
-    left: 0,
-    top: 4,
-    bottom: 4,
-    width: 3,
-    borderTopRightRadius: 2,
-    borderBottomRightRadius: 2,
   },
   circleWrapper: {
     marginLeft: spacing.md,

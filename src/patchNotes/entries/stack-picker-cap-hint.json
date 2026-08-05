@@ -1,0 +1,4 @@
+{
+  "message": "The \"add existing task\" picker in a stack now tells you when there are more matches than it's showing, instead of silently capping at 30",
+  "date": "2026-08-05"
+}

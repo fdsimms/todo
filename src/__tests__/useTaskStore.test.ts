@@ -169,7 +169,6 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   title: 'Test Group',
   notes: '',
   tags: [],
-  priority: 0,
   category: null,
   sortOrder: 1,
   collapsed: false,
