@@ -71,7 +71,22 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
-type ViewMode = 'today' | 'later' | 'unscheduled';
+// The four lenses of the pill switcher. They're disjoint by construction —
+// isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
+// so every uncompleted task shows in exactly one of them. All four are sub-views
+// of this screen rather than routes: the switcher is a segmented control, and a
+// segmented control that navigates would flash the previous view's content for a
+// frame on every tap.
+type ViewMode = 'today' | 'later' | 'unscheduled' | 'inbox';
+
+const VIEW_MODES: ViewMode[] = ['today', 'later', 'unscheduled', 'inbox'];
+
+const VIEW_TITLES: Record<ViewMode, string> = {
+  today: 'Today',
+  later: 'Later',
+  unscheduled: 'Unscheduled',
+  inbox: 'Inbox',
+};
 
 // Shared with the Later screen's own day/segment grouping (see laterGroupKeys
 // below) so "later today" sub-headers read the same way in both places.
@@ -283,7 +298,7 @@ export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<any>();
-  const inboxCount = useTaskStore(s => s.inboxTasks().length);
+  const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
@@ -387,40 +402,24 @@ export function TodayScreen() {
     return unsubscribe;
   }, [navigation]);
 
-  // Params that pick a sub-view are applied *during render*, not from an
-  // effect. This screen stays mounted in the tab navigator, so it re-renders
-  // with whatever sub-view it was left on the moment the tab becomes visible;
-  // an effect only runs after that frame is committed, so the user sees a
-  // flash of the old sub-view (e.g. Later) before it swaps to the requested
-  // one — very jarring coming from Inbox's pill switcher. Adjusting state
-  // during render makes React re-run this component before committing, so the
-  // stale sub-view is never painted. Both params are stamped fresh on every
-  // navigate, so comparing against the last handled value is what makes a
-  // repeat of the same destination fire again.
+  // Tapping the Today widget navigates here programmatically (resetToToday()
+  // in src/navigation/navigationRef.ts), which doesn't fire tabPress. The param
+  // is stamped fresh each time, so comparing against the last handled value is
+  // what makes a repeat of the same destination fire again.
+  //
+  // Applied *during render* rather than from an effect: this screen stays
+  // mounted in the tab navigator, so it re-renders with whatever sub-view it
+  // was left on the moment the tab becomes visible, and an effect only runs
+  // after that frame is committed — the user would see a flash of the old
+  // sub-view before it swapped to Today. Adjusting state during render makes
+  // React re-run this component before committing, so the stale sub-view is
+  // never painted.
   // https://react.dev/reference/react/useState#storing-information-from-previous-renders
   const [handledReset, setHandledReset] = useState<number | undefined>(undefined);
-  const [handledJump, setHandledJump] = useState<number | undefined>(undefined);
-
-  // Tapping the Today widget navigates here programmatically (resetToToday()
-  // in src/navigation/navigationRef.ts), which doesn't fire tabPress.
   if (route.params?.resetToToday !== undefined && route.params.resetToToday !== handledReset) {
     setHandledReset(route.params.resetToToday);
     setViewMode('today');
   }
-
-  // Jumps to whichever sub-view a task created elsewhere (e.g. Inbox's own
-  // quick-add) actually landed in, and drives Inbox's pill switcher.
-  if (route.params?.jump !== undefined && route.params.jump !== handledJump) {
-    setHandledJump(route.params.jump);
-    if (route.params?.targetViewMode) setViewMode(route.params.targetViewMode);
-  }
-
-  // The highlight itself is a timed side effect, so it stays in an effect —
-  // it has no bearing on what the first painted frame looks like.
-  useEffect(() => {
-    if (route.params?.jump === undefined) return;
-    if (route.params?.highlightTaskId) showJustCreated(route.params.highlightTaskId);
-  }, [route.params?.jump]);
 
   // Claims completions queued by the Today widget's checkbox (see
   // useWidgetCompletionStore / widgetSync.ts). Handing a pending id off to a
@@ -449,20 +448,15 @@ export function TodayScreen() {
     justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
   };
 
+  // Switch to whichever sub-view the new task actually landed in, so it's never
+  // created into a view that can't show it. A quick-add with no organizing
+  // metadata at all is an Inbox task, whichever view it was added from.
   const handleTaskCreated = (task: Task) => {
-    // A quick-add with no organizing metadata at all is an Inbox task,
-    // regardless of which tab it was created from — jump there and hand off
-    // the highlight instead of showing it (invisibly) on this screen.
-    if (isInboxTask(task)) {
-      navigation.navigate({
-        name: 'Inbox',
-        params: { highlightTaskId: task.id, jump: Date.now() },
-      } as never);
-      return;
-    }
-    const destination: ViewMode = isTaskVisible(task)
-      ? 'today'
-      : isUnscheduledTask(task) ? 'unscheduled' : 'later';
+    const destination: ViewMode = isInboxTask(task)
+      ? 'inbox'
+      : isTaskVisible(task) ? 'today'
+      : isUnscheduledTask(task) ? 'unscheduled'
+      : 'later';
     if (destination !== viewMode) setViewMode(destination);
     showJustCreated(task.id);
   };
@@ -676,6 +670,17 @@ export function TodayScreen() {
       default: return result;
     }
   }, [visibleTasks, sort, filterPriorities, filterEfforts]);
+
+  // The rows the current sub-view is actually showing — what "select all" and
+  // the bulk bar's tally operate on.
+  const visibleForMode = useMemo(() => {
+    switch (viewMode) {
+      case 'later': return deferredTasks;
+      case 'unscheduled': return unscheduledTasks;
+      case 'inbox': return inboxTasks;
+      default: return filtered;
+    }
+  }, [viewMode, deferredTasks, unscheduledTasks, inboxTasks, filtered]);
 
   type ListItem =
     | { type: 'pinned-header' }
@@ -1275,6 +1280,7 @@ export function TodayScreen() {
   };
 
   const today = format(new Date(), 'EEEE, MMMM d');
+  const inboxSubtitle = inboxTasks.length === 0 ? 'All sorted' : `${inboxTasks.length} to sort`;
 
   const laterGroupKeys = (task: Task): string[] => {
     const visibleAt = getVisibleAt(task);
@@ -1376,8 +1382,9 @@ export function TodayScreen() {
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader
-          title={viewMode === 'today' ? 'Today' : viewMode === 'later' ? 'Later' : 'Unscheduled'}
+          title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
+          subtitle={viewMode === 'inbox' ? inboxSubtitle : undefined}
           actions={headerActions}
         />
 
@@ -1388,43 +1395,37 @@ export function TodayScreen() {
           style={styles.viewModePillsScroll}
           contentContainerStyle={styles.viewModePills}
         >
-          {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
-            <TouchableOpacity
-              key={mode}
-              style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
-              onPress={() => {
-                haptics.tap();
-                setViewMode(mode);
-                setExpandedTaskId(null);
-                if (selectionMode) exitSelection();
-              }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: viewMode === mode }}
-              accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
-            >
-              <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
-                {mode.charAt(0).toUpperCase() + mode.slice(1)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-          <TouchableOpacity
-            style={styles.viewModePill}
-            onPress={() => {
-              haptics.tap();
-              navigation.navigate('Inbox' as never);
-            }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={inboxCount > 0 ? `Inbox, ${inboxCount} to sort` : 'Inbox'}
-          >
-            <Text style={styles.viewModePillText}>Inbox</Text>
-            {inboxCount > 0 && (
-              <View style={styles.viewModePillBadge}>
-                <Text style={styles.viewModePillBadgeText}>{inboxCount}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {VIEW_MODES.map(mode => {
+            const active = viewMode === mode;
+            const badge = mode === 'inbox' ? inboxTasks.length : 0;
+            return (
+              <TouchableOpacity
+                key={mode}
+                style={[styles.viewModePill, active && styles.viewModePillActive]}
+                onPress={() => {
+                  haptics.tap();
+                  setViewMode(mode);
+                  setExpandedTaskId(null);
+                  if (selectionMode) exitSelection();
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={
+                  badge > 0 ? `${VIEW_TITLES[mode]} view, ${badge} to sort` : `${VIEW_TITLES[mode]} view`
+                }
+              >
+                <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
+                  {VIEW_TITLES[mode]}
+                </Text>
+                {badge > 0 && (
+                  <View style={styles.viewModePillBadge}>
+                    <Text style={styles.viewModePillBadgeText}>{badge}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {viewMode === 'today' && newTaskIds.length > 0 && (
@@ -1781,9 +1782,64 @@ export function TodayScreen() {
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
           />
         )}
+
+        {/* Triage view of "loose" tasks — title only, no category, tag, date,
+            time window, recurrence, reminder or priority (see isInboxTask).
+            It's where voice-added ("Hey Siri") and quickly-jotted tasks surface
+            for sorting. A computed lens like the others, so a task leaves the
+            moment it's organized — no rows show their metadata because by
+            definition they have none. */}
+        {viewMode === 'inbox' && (
+          <FlatList
+            data={inboxTasks}
+            keyExtractor={t => t.id}
+            automaticallyAdjustKeyboardInsets
+            renderItem={({ item }) => {
+              const subs = subtasksByParent.get(item.id) ?? [];
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
+                  expanded={expandedTaskId === item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  justCreated={item.id === justCreatedId}
+                />
+              );
+            }}
+            contentContainerStyle={
+              inboxTasks.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon="file-tray-outline"
+                title="Inbox zero"
+                subtitle="Voice-added and quick tasks land here to be sorted."
+                bottomOffset={tabBarHeight}
+              />
+            }
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
+          />
+        )}
         </View>
 
-        {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
+        {!selectionMode && (
           <AddTaskFab
             bottom={insets.bottom + 64}
             disabled={spotlightActive}
@@ -1848,11 +1904,7 @@ export function TodayScreen() {
         {selectionMode && (
           <BulkActionBar
             selectedCount={selectedIds.size}
-            totalCount={
-              viewMode === 'later' ? deferredTasks.length
-              : viewMode === 'unscheduled' ? unscheduledTasks.length
-              : filtered.length
-            }
+            totalCount={visibleForMode.length}
             existingTags={allTags}
             existingCategories={allCategories}
             onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
@@ -1862,7 +1914,11 @@ export function TodayScreen() {
             onAddCategory={addCategory}
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-            onGroup={title => {
+            // No grouping from the Inbox: a stack is an organizing construct,
+            // but being in a stack isn't one of the things isInboxTask() counts
+            // as filed, so the tasks would stay here with nothing visibly
+            // changed (the Inbox list renders rows flat, without stack headers).
+            onGroup={viewMode === 'inbox' ? undefined : title => {
               const ids = Array.from(selectedIds);
               const selectedCategories = new Set(
                 ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
@@ -1871,11 +1927,7 @@ export function TodayScreen() {
               groupTasks(ids, title, category);
               exitSelection();
             }}
-            onSelectAll={() => selectAll(
-              viewMode === 'later' ? deferredTasks.map(t => t.id)
-              : viewMode === 'unscheduled' ? unscheduledTasks.map(t => t.id)
-              : filtered.map(t => t.id)
-            )}
+            onSelectAll={() => selectAll(visibleForMode.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}
             bottomInset={tabBarHeight}
