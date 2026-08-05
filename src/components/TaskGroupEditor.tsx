@@ -297,15 +297,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                   const subtitle = memberSchedule(child);
                   return (
                     <View style={styles.childRow}>
-                      <View style={styles.childText}>
-                        <Text
-                          style={[styles.childTitle, child.completed && styles.childTitleDone]}
-                          numberOfLines={1}
-                        >
-                          {child.title}
-                        </Text>
-                        {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
-                      </View>
                       <TouchableOpacity
                         onLongPress={e => drag(e.nativeEvent.pageY)}
                         delayLongPress={150}
@@ -316,6 +307,15 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                       >
                         <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                       </TouchableOpacity>
+                      <View style={styles.childText}>
+                        <Text
+                          style={[styles.childTitle, child.completed && styles.childTitleDone]}
+                          numberOfLines={1}
+                        >
+                          {child.title}
+                        </Text>
+                        {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
+                      </View>
                       <TouchableOpacity
                         onPress={() => removeFromGroup(child.id)}
                         hitSlop={8}
