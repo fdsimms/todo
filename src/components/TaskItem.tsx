@@ -20,7 +20,6 @@ import Reanimated, {
   Easing,
   Extrapolation,
 } from 'react-native-reanimated';
-import { Swipeable } from 'react-native-gesture-handler';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
@@ -38,6 +37,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
+import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 
@@ -200,7 +200,6 @@ export function TaskItem({
   // exemption the moment it collapses would flash a scrim over it at full
   // strength and fade *that* out instead.
   const isSpotlighted = useSpotlightLinger(expanded);
-  const swipeableRef = useRef<Swipeable>(null);
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
   // the floating copy of a row being dragged, which would otherwise take the
@@ -422,12 +421,6 @@ export function TaskItem({
     }
   };
 
-  const handleSwipeSelect = () => {
-    haptics.impactMedium();
-    swipeableRef.current?.close();
-    onSwipeSelect?.();
-  };
-
   const handleSubtaskTitleTap = (sub: Task) => {
     setSubtaskTitleEdit(sub.title);
     setEditingSubtaskId(sub.id);
@@ -441,32 +434,6 @@ export function TaskItem({
       updateTask(sub.id, { title: trimmed });
     }
   };
-
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.selectAction}
-      onPress={handleSwipeSelect}
-      accessibilityRole="button"
-      accessibilityLabel={`Select ${task.title}`}
-    >
-      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
-    </TouchableOpacity>
-  );
-
-  const renderLeftActions = () => (
-    <TouchableOpacity
-      style={styles.deferAction}
-      onPress={() => {
-        haptics.impactMedium();
-        swipeableRef.current?.close();
-        setShowWhenPicker(true);
-      }}
-      accessibilityRole="button"
-      accessibilityLabel={`Reschedule ${task.title}`}
-    >
-      <Ionicons name="time" size={iconSize.md} color={colors.text} />
-    </TouchableOpacity>
-  );
 
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
@@ -970,29 +937,25 @@ export function TaskItem({
               {rowBody}
             </View>
           ) : (
-            // Swipeable stays mounted regardless of spotlightDisabled — toggling
-            // between it and a plain View/Pressable here used to remount rowBody
-            // (a different element type at this tree position) every time any
-            // other task got tapped, which read as the whole row flashing.
-            // Disabling the gesture and overlaying a dismiss-tap Pressable keeps
-            // the same tree shape across that toggle.
-            <Swipeable
-              ref={swipeableRef}
-              renderRightActions={renderRightActions}
-              renderLeftActions={renderLeftActions}
-              overshootRight={false}
-              overshootLeft={false}
+            // SwipeableRow stays mounted regardless of spotlightDisabled —
+            // toggling between it and a plain View/Pressable here used to
+            // remount rowBody (a different element type at this tree position)
+            // every time any other task got tapped, which read as the whole row
+            // flashing. Disabling the gesture and overlaying a dismiss-tap
+            // Pressable keeps the same tree shape across that toggle.
+            //
+            // No select panel unless the screen can actually bulk-select: a
+            // list without a bulk bar (Demo, say) would otherwise reveal an
+            // accent panel whose handler is a no-op.
+            <SwipeableRow
               enabled={!spotlightDisabled}
-              onSwipeableWillOpen={() => {
-                haptics.impactMedium();
-              }}
-              onSwipeableOpen={(direction) => {
-                if (direction === 'right') {
-                  handleSwipeSelect();
-                } else {
-                  swipeableRef.current?.close();
-                  setShowWhenPicker(true);
-                }
+              selectAction={onSwipeSelect ? {
+                onSelect: onSwipeSelect,
+                accessibilityLabel: `Select ${task.title}`,
+              } : undefined}
+              whenAction={{
+                onAction: () => setShowWhenPicker(true),
+                accessibilityLabel: `Reschedule ${task.title}`,
               }}
             >
               <View style={styles.swipeContainer}>
@@ -1005,7 +968,7 @@ export function TaskItem({
                   <Pressable style={StyleSheet.absoluteFill} onPress={onPress} />
                 )}
               </View>
-            </Swipeable>
+            </SwipeableRow>
           )}
           {expandedPanel}
           {/* A scrim drawn on top of the row rather than fading the row's own
@@ -1247,24 +1210,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: 11,
     fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
-  },
-  selectAction: {
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
-  },
-  deferAction: {
-    backgroundColor: colors.orange,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopLeftRadius: radius.md,
-    borderBottomLeftRadius: radius.md,
   },
   expandedPanelClip: {
     overflow: 'hidden',

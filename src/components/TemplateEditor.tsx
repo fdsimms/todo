@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { TaskTemplate } from '../types';
@@ -20,6 +21,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { findTemplatesReferencing } from '../utils/templateUtils';
 import { CollapsibleField } from './CollapsibleField';
 
 interface Props {
@@ -34,6 +36,8 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
   const renameTemplate = useTemplateStore(s => s.renameTemplate);
   const setTemplateCategory = useTemplateStore(s => s.setTemplateCategory);
+  const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
+  const templates = useTemplateStore(useShallow(s => s.templates));
   const categories = useTemplateCategoryStore(useShallow(s => s.categories));
   const addCategory = useTemplateCategoryStore(s => s.addCategory);
 
@@ -61,6 +65,37 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     onClose();
   };
 
+  // Deleting lives here rather than on the row's swipe, so it takes a
+  // deliberate trip into the editor and can spell out what breaks — a template
+  // nested inside others leaves them showing a broken-reference warning.
+  const handleDelete = () => {
+    if (!template) return;
+    haptics.warning();
+    const referencing = findTemplatesReferencing(templates, template.id);
+    const base = `Delete "${template.name}"? Tasks already created from it are unaffected.`;
+    const message = referencing.length === 0
+      ? base
+      : referencing.length === 1
+        ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
+        : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
+    Alert.alert(
+      'Delete Template',
+      message,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            deleteTemplate(template.id);
+            onClose();
+          },
+        },
+      ]
+    );
+  };
+
   if (!template) return null;
 
   return (
@@ -71,7 +106,14 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Edit Template</Text>
-          <View style={{ width: 40 }} />
+          <TouchableOpacity
+            onPress={handleDelete}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Delete template ${template.name}`}
+          >
+            <Ionicons name="trash-outline" size={20} color={colors.red} />
+          </TouchableOpacity>
         </View>
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">

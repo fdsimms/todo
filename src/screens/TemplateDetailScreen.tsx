@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import { Swipeable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -21,6 +20,7 @@ import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
 import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useColors } from '../theme/ThemeContext';
@@ -428,17 +428,6 @@ function TemplateItemRow({
   onSwipeSelect: () => void;
   onReplace: () => void;
 }) {
-  const renderRightActions = () => (
-    <TouchableOpacity
-      style={styles.selectAction}
-      onPress={onSwipeSelect}
-      accessibilityRole="button"
-      accessibilityLabel={`Select ${item.title}`}
-    >
-      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
-    </TouchableOpacity>
-  );
-
   const isRef = resolvedRefTemplate !== null || broken;
   const refTitle = resolvedRefTemplate ? resolvedRefTemplate.name : item.refTemplateName || 'Nested template';
   const refCount = resolvedRefTemplate?.items.length ?? 0;
@@ -547,12 +536,20 @@ function TemplateItemRow({
     </TouchableOpacity>
   );
 
-  if (selectionMode) return rowBody;
+  // The card's margins live on the wrapper, not on itemRow — leaving them on
+  // the row rendered the revealed panel behind that margin, so its color ran
+  // to the screen edge with square corners while the card slid over it.
+  if (selectionMode) return <View style={styles.itemCard}>{rowBody}</View>;
 
+  // No whenAction: a template item has no schedule of its own — it only gets
+  // dates when the template is applied.
   return (
-    <Swipeable renderRightActions={renderRightActions}>
+    <SwipeableRow
+      style={styles.itemCard}
+      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${item.title}` }}
+    >
       {rowBody}
-    </Swipeable>
+    </SwipeableRow>
   );
 }
 
@@ -630,22 +627,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   listWithBulkBar: {
     paddingBottom: 200,
   },
-  selectAction: {
-    backgroundColor: colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-    borderTopRightRadius: radius.md,
-    borderBottomRightRadius: radius.md,
+  // The inset-grouped card: margins and the corner radius that clips the
+  // swipe panel. The row inside is flush to it.
+  itemCard: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     gap: spacing.sm,

@@ -335,7 +335,7 @@ export function TodayScreen() {
   const dismissGroup = useTaskStore(s => s.dismissGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
   const pinGroup = useTaskStore(s => s.pinGroup);
-  const deleteGroup = useTaskStore(s => s.deleteGroup);
+  const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
@@ -979,6 +979,22 @@ export function TodayScreen() {
     return map;
   }, [allTasks]);
 
+  // Swiping a stack header left drops into bulk editing with the whole stack
+  // already selected, so "reschedule these five things" is one gesture plus
+  // one picker rather than five swipes.
+  //
+  // Roster, not children: a completed occurrence keeps its groupId forever and
+  // so does the row that replaces it, so groupChildrenOf grows by one per
+  // completion. groupRosterOf collapses those back to one entry per series
+  // (see the Stacks note in CLAUDE.md). Live members only — selecting finished
+  // history would put it in reach of the bulk bar's delete.
+  const selectGroupRoster = (groupId: string) => {
+    const ids = groupRosterOf(groupId).filter(t => !t.completed).map(t => t.id);
+    if (ids.length === 0) return;
+    setExpandedTaskId(null);
+    enterSelectionMode(ids);
+  };
+
   // Shared by the plain 'task' row case and a group's expanded children —
   // group children are full TaskItem rows with every normal capability
   // (checkbox, swipe actions, timer, expand-for-notes, individual skip). A
@@ -1109,8 +1125,7 @@ export function TodayScreen() {
             onDismiss={() => { animateLayout(); dismissGroup(item.group.id); }}
             onDefer={date => deferGroup(item.group.id, date)}
             onPin={() => pinGroup(item.group.id)}
-            onDeleteGroupOnly={() => deleteGroup(item.group.id, { cascade: false })}
-            onDeleteWithTasks={() => deleteGroup(item.group.id, { cascade: true })}
+            onSwipeSelect={() => selectGroupRoster(item.group.id)}
             onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
             onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
           />
@@ -1198,8 +1213,7 @@ export function TodayScreen() {
           onDismiss={() => { animateLayout(); dismissGroup(group.id); }}
           onDefer={date => deferGroup(group.id, date)}
           onPin={() => pinGroup(group.id)}
-          onDeleteGroupOnly={() => deleteGroup(group.id, { cascade: false })}
-          onDeleteWithTasks={() => deleteGroup(group.id, { cascade: true })}
+          onSwipeSelect={() => selectGroupRoster(group.id)}
           onPressEdit={() => { setEditingGroup(group); setGroupEditorVisible(true); }}
         />
         <AnimatedCollapsible expanded={!group.collapsed}>
@@ -1517,7 +1531,7 @@ export function TodayScreen() {
               <EmptyState
                 icon="moon"
                 title="Nothing deferred"
-                subtitle="Swipe left on a task to defer it"
+                subtitle="Swipe a task right to defer it"
                 bottomOffset={tabBarHeight}
               />
             }
