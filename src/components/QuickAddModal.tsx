@@ -538,6 +538,11 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                 onSubmitEditing={handleAdd}
                 returnKeyType="done"
                 maxLength={TITLE_MAX_LENGTH}
+                // iOS's own inline predictive-text completion draws its candidate
+                // directly into the field, on top of (and misaligned with) the
+                // schedule-phrase overlay above — it reads as our highlight
+                // glitching. Autocorrect off suppresses that native suggestion.
+                autoCorrect={false}
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
               />
