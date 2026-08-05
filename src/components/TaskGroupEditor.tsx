@@ -67,6 +67,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const pinGroup = useTaskStore(s => s.pinGroup);
+  const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
+  const setLastAction = useTaskStore(s => s.setLastAction);
+  const updateTask = useTaskStore(s => s.updateTask);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
   const deleteGroup = useTaskStore(s => s.deleteGroup);
 
@@ -138,12 +141,27 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     // silently dropping notes/tags/category along with it meant
     // clearing the title threw away every other edit in the sheet.
     const trimmed = title.trim();
+    const categoryChanged = category !== group.category;
     updateGroup(group.id, {
       ...(trimmed ? { title: trimmed } : {}),
       notes,
       tags,
       category,
     });
+    // The stack owns its members' category, so changing it here re-files
+    // them. Deliberately on save rather than as the pills are tapped: the
+    // cascade can move tasks between category sections and, where a category
+    // carries a schedule or hides on vacation, change what's visible — not
+    // something to run three times while someone browses the options.
+    if (categoryChanged) {
+      const previous = applyGroupCategory(group.id, category);
+      if (previous.length > 0) {
+        setLastAction({
+          label: `${previous.length} task${previous.length === 1 ? '' : 's'} moved to ${category ? categoryLabel(category, categories) : 'no category'}`,
+          undo: () => previous.forEach(p => updateTask(p.id, { category: p.category })),
+        });
+      }
+    }
     onClose();
   };
 
@@ -209,7 +227,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
             <CollapsibleField
               label="Category"
               summary={category ? categoryLabel(category, categories) : undefined}
-              hint="Applies to the stack itself — tasks inside keep their own."
+              hint="Every task in this stack takes this category. Changing it moves them all."
               expanded={fieldOpen('category')}
               onToggle={() => toggleField('category')}
             >

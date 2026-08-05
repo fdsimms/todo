@@ -37,6 +37,7 @@ import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow } from '../utils/dateUtils';
@@ -177,7 +178,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const allCategories = categoryOptions ?? allCategoriesStore;
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
+  const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
+  const taskGroup = useTaskGroupStore(s => (task?.groupId ? s.groups.find(g => g.id === task.groupId) ?? null : null));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
@@ -1482,12 +1485,40 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
           {/* Organize — collapsed to the chosen value until you tap in */}
           <Text style={styles.groupLabel}>Organize</Text>
           <View style={styles.sectionCard}>
+            {/* Until this row existed the editor never mentioned stacks at
+                all: a task couldn't tell you it was in one, and the only ways
+                out were the stack editor's ✕ and dragging the row out of the
+                group on Today. It leads the section because it's what the
+                locked Category row below points at. */}
+            {taskGroup && (
+              <>
+                <View style={styles.stackRow}>
+                  <Ionicons name="layers-outline" size={16} color={colors.textTertiary} />
+                  <Text style={styles.stackTitle} numberOfLines={1}>{taskGroup.title}</Text>
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); removeFromGroup(task!.id); }}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove from the ${taskGroup.title} stack`}
+                  >
+                    <Text style={styles.stackRemove}>Remove</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.cardSep} />
+              </>
+            )}
             <CollapsibleField
               label="Category"
               summary={category ? categoryLabel(category, categories) : undefined}
               hint="One home for the task — drives the Categories screen and its filters."
               expanded={fieldOpen('category')}
               onToggle={() => toggleField('category')}
+              // A stack owns its members' category, so there's nothing to pick
+              // here while the task is in one — the value would be overwritten
+              // by the next cascade. Changing it means changing the stack's,
+              // or leaving the stack.
+              locked={taskGroup !== null}
+              lockedHint={taskGroup ? `From the ${taskGroup.title} stack.` : undefined}
             >
               <View style={styles.pillRow}>
                 <TouchableOpacity
@@ -2213,6 +2244,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
+  stackRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+  },
+  stackTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  stackRemove: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,

@@ -23,6 +23,15 @@ interface Props {
   onToggle: () => void;
   /** Extra header content (an AI suggest button, a progress count, …). */
   right?: React.ReactNode;
+  /**
+   * Renders the field as a read-only summary: no chevron, nothing to open,
+   * and `lockedHint` under it saying where the value comes from. For a value
+   * that's genuinely owned elsewhere — showing a picker that silently refuses
+   * to stick is worse than showing none.
+   */
+  locked?: boolean;
+  /** Required alongside `locked`: one line explaining what owns the value. */
+  lockedHint?: string;
   children: React.ReactNode;
 }
 
@@ -38,7 +47,7 @@ interface Props {
  * when someone has expressed interest by opening it.
  */
 export function CollapsibleField({
-  label, summary, emptySummary = 'None', hint, expanded, onToggle, right, children,
+  label, summary, emptySummary = 'None', hint, expanded, onToggle, right, locked, lockedHint, children,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -48,6 +57,21 @@ export function CollapsibleField({
     animateLayout();
     onToggle();
   };
+
+  if (locked) {
+    return (
+      <View style={styles.section}>
+        <View style={styles.header} accessibilityLabel={`${label}: ${summary || emptySummary}. ${lockedHint ?? ''}`}>
+          <Text style={styles.label}>{label}</Text>
+          <View style={styles.spacer} />
+          <Text style={[styles.summary, styles.summaryLocked, !summary && styles.summaryEmpty]} numberOfLines={1}>
+            {summary || emptySummary}
+          </Text>
+        </View>
+        {!!lockedHint && <Text style={styles.hint}>{lockedHint}</Text>}
+      </View>
+    );
+  }
 
   return (
     <View style={styles.section}>
@@ -98,6 +122,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent, fontSize: font.sm, fontWeight: '500',
   },
   summaryEmpty: { color: colors.textTertiary, fontWeight: '400' },
+  // Not accent: accent is what "you can change this" looks like everywhere
+  // else in these editors.
+  summaryLocked: { color: colors.textSecondary },
   hint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,

@@ -192,6 +192,8 @@ interface TaskStore {
   removeFromGroup: (taskId: string) => void;
   reorderGroupChildren: (groupId: string, orderedIds: string[]) => void;
   groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
+  /** Re-files the stack's live members under `category`; returns their prior values for undo. */
+  applyGroupCategory: (groupId: string, category: string | null) => Array<{ id: string; category: string | null }>;
   completeGroup: (groupId: string) => void;
   uncompleteGroup: (groupId: string) => void;
   dismissGroup: (groupId: string) => void;
@@ -1065,12 +1067,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return task;
   },
 
+  // Joining a stack adopts its category, and the move is undoable as one
+  // step. Worth being deliberate about, because a Category isn't only a
+  // label: it carries scheduleDays/scheduleStart/scheduleEnd and
+  // hideOnVacation, so this can change *when the task is visible*. That's the
+  // price of the stack owning the field — a member that renders under Home on
+  // Today and under Work everywhere else is the thing being fixed — but it's
+  // why the undo restores the category alongside the membership rather than
+  // just unfiling the task.
   addExistingToGroup(taskId, groupId) {
     const task = get().tasks.find(t => t.id === taskId);
     if (!task) return;
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
     const siblings = get().tasks.filter(t => t.groupId === groupId);
     const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    get().updateTask(taskId, { groupId, sortOrder: maxOrder + 1 });
+    const prevCategory = task.category;
+    const prevGroupId = task.groupId;
+    // No group row to read a category off (a stale id) means leave the task's
+    // own alone — inheriting `null` from a stack that isn't there would just
+    // be erasing the field.
+    get().updateTask(taskId, {
+      groupId,
+      sortOrder: maxOrder + 1,
+      ...(group ? { category: group.category } : {}),
+    });
+    get().setLastAction({
+      label: group ? `Added to ${group.title}` : 'Added to stack',
+      undo: () => get().updateTask(taskId, { groupId: prevGroupId, category: prevCategory }),
+    });
   },
 
   removeFromGroup(taskId) {
@@ -1084,12 +1108,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
+  // Members adopt the new stack's category as part of the same write that
+  // files them into it. Deliberately *not* wrapped in a dbTransaction:
+  // applyTemplate already calls this from inside one, and expo-sqlite's
+  // withTransactionSync can't nest — it would throw on device while the tests,
+  // which mock dbTransaction, stayed green.
   groupTasks(taskIds, title, category) {
     const group = useTaskGroupStore.getState().createGroup(title, category);
     taskIds.forEach((id, index) => {
-      get().updateTask(id, { groupId: group.id, sortOrder: index + 1 });
+      get().updateTask(id, { groupId: group.id, sortOrder: index + 1, category });
     });
     return group;
+  },
+
+  // Re-files every live member under the stack's category. Roster-scoped, so
+  // a recurring member's completed occurrences keep the category they were
+  // finished under — deleting or recategorizing a stack must not rewrite the
+  // Logbook or the by-category stats behind it.
+  //
+  // Returns the previous values so the caller can offer a single undo across
+  // the whole cascade; nothing here writes lastAction itself, since the
+  // interesting label depends on what prompted the change.
+  applyGroupCategory(groupId, category) {
+    const changed = get().groupRosterOf(groupId).filter(t => t.category !== category);
+    if (changed.length === 0) return [];
+    const previous = changed.map(t => ({ id: t.id, category: t.category }));
+    dbTransaction(() => {
+      changed.forEach(t => get().updateTask(t.id, { category }));
+    });
+    return previous;
   },
 
   // Cascades complete/uncomplete/defer/pin to every child, reusing each
