@@ -15,6 +15,7 @@ const BASE: Task = {
   completed: false,
   completedAt: null,
   createdAt: new Date().toISOString(),
+  seenAt: null,
   dueDate: null,
   deadline: null,
   deadlineOffsetDays: null,

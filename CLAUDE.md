@@ -8,17 +8,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm install          # dependencies; node_modules isn't checked in, so a fresh clone needs
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
-npx tsc --noEmit     # typecheck — a few seconds, catches most mistakes
-npx jest src/__tests__/dateUtils.test.ts  # run a single test file
-npm test             # run all 27 suites
+npx tsc --noEmit     # typecheck — ~10s
+npm test             # all 27 suites, 966 tests — ~4s, just run the whole thing
 npm run test:watch   # watch mode
+npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
 
-**The verification loop is `npx tsc --noEmit` plus the one test file covering what you
-touched**; run the full `npm test` once before pushing. Don't run `npx expo export` locally to
-check your work — it's the slowest thing CI does and only catches bundle-time breakage (a bad
-import path, a missing asset, a native config change), so run it only when you changed one of
-those. CI runs `npm test` and `npx expo export --platform ios` on every PR.
+**The verification loop is `npx tsc --noEmit && npm test`** — together they're under fifteen
+seconds, so there's no reason to skip either or to narrow to a single test file. Both are green
+on `main`; if either is red, it's you. Don't run `npx expo export` locally to check your work —
+it's the slowest thing CI does and only catches bundle-time breakage (a bad import path, a
+missing asset, a native config change), so run it only when you changed one of those. CI runs
+`npm test` and `npx expo export --platform ios` on every PR.
 
 There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
 untouched lines.
@@ -49,8 +50,8 @@ symbol and read the surrounding range; reading any of them end to end costs more
 the rest of the task will.
 
 **Tests mirror source 1:1** — `src/utils/foo.ts` → `src/__tests__/foo.test.ts`, same for
-stores. If the file you changed has a matching test file, that's the one to run. Only pure
-logic is tested (`src/utils`, `src/store`, `src/db`): Jest runs in the `node` environment with
+stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `src/store`,
+`src/db`): Jest runs in the `node` environment with
 no React renderer installed, so there are no component or screen tests. Don't add a renderer to
 cover a UI change — verify those by reasoning about the code, and say so plainly rather than
 implying you ran them.

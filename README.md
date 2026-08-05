@@ -4,25 +4,35 @@ A personal todo app built with Expo (React Native). Inspired by Things 3, with a
 
 ## Tech stack
 
-- **Expo SDK 56** / React Native 0.81
+- **Expo SDK 54** / React Native 0.81
 - **expo-sqlite** — local SQLite database (WAL mode), no backend
 - **Zustand** — in-memory store on top of SQLite
 - **React Native Reanimated + Gesture Handler** — swipe actions and drag-to-reorder
 - **expo-notifications** — scheduled local reminders
+- **WidgetKit** — a Today home-screen widget, injected at prebuild by the config plugins in `plugins/`
 - TypeScript throughout
 
 ## Screens
 
+Four tabs across the bottom:
+
 | Tab | What it shows |
 |-----|--------------|
-| Today | Tasks actionable right now (visibility rules applied) |
-| Focus | Starred/flagged tasks with badge count |
-| Later | Deferred and time-gated tasks, grouped by when they surface |
-| Projects | Tasks grouped by project |
-| Tags | All tags; tap to filter tasks by tag |
+| Today | The main list — see the sub-views below |
 | Search | Full-text + fuzzy search across all tasks |
-| Logbook | Completed tasks |
-| Stats | Completion streaks and activity |
+| Projects | Tasks grouped by project |
+| More | Opens the side menu (also reachable by edge-swipe from the left) |
+
+The Today tab is really four lenses over the same tasks, switched by the pill row under the header:
+
+| View | What it shows |
+|------|--------------|
+| Today | Tasks actionable right now (visibility rules applied) |
+| Later | Deferred and time-gated tasks, sorted by when they surface |
+| Unscheduled | Tasks with no date at all |
+| Inbox | Newly captured tasks not yet filed |
+
+The side menu reaches Categories, Tags, Templates, Logbook, Stats, Archived and Settings.
 
 ## Running locally
 
@@ -31,7 +41,16 @@ npm install
 npx expo start
 ```
 
-Scan the QR code with **Expo Go** (iOS/Android). All features work in Expo Go — the app only uses modules that ship with it.
+Scan the QR code with **Expo Go** (iOS/Android) — the app itself runs there, and the widget bridge is lazily required so its absence is a no-op. The **Today widget** is the exception: it's a separate native target, so seeing it needs a development or EAS build (see below).
+
+### Checks
+
+```bash
+npx tsc --noEmit   # typecheck
+npm test           # 27 suites, ~4s
+```
+
+CI runs both plus `npx expo export --platform ios` on every PR.
 
 ## EAS builds
 
@@ -84,22 +103,27 @@ Apple ID and ASC app ID are pre-configured in `eas.json`.
 
 ## Visibility model
 
-A task appears in **Today** if all hold:
+A task appears in **Today** only if none of its four hiding rules apply (`src/utils/visibilityUtils.ts`):
 
-1. Not completed
-2. `deferUntil` is null or in the past
-3. Current time ≥ `showAfterTime` (or no rule set)
-4. `dueDate` is today/overdue, or no due date
+1. `deferUntil` — hidden until a specific day
+2. `timeSegments` — hidden until a time of day (morning / afternoon / evening / night)
+3. `dueDate` — hidden while it's due on a future day
+4. `vacationPause` — hidden while vacation mode is on, without breaking the streak
 
-Everything else lands in **Later**, sorted by when it becomes visible.
+Everything hidden lands in **Later**, sorted by the earliest moment it surfaces. All of these compare against the configurable `dayResetTime` rather than midnight, so a 2 AM reset means "tomorrow" starts at 2 AM.
 
-Completing a recurring task creates the next instance with the same `showAfterTime` rule. The one-time `deferUntil` resets.
+Completing a recurring task creates the next instance carrying the same rules. The one-time `deferUntil` resets.
 
 ## Task model highlights
 
 - **Priority** — None / Low / Medium / High / Urgent
 - **Effort** — XS (~15 min) → XL (day+)
 - **Recurrence** — daily, weekly, monthly, yearly with custom interval; can recur from completion date
+- **Deadline** — a target date shown as a countdown, separate from `dueDate` and with no effect on visibility
 - **Subtasks** — tasks can have a `parentId`
 - **Chain** — a task can step through a list of sub-titles one at a time, completing one immediately reveals the next; pairing it with Recurrence makes the whole chain repeat instead of ending after the last item
+- **Stacks** — a label several independently-scheduled tasks hang off, with its own row and one-tap cascades
+- **Projects, categories, tags** — three independent ways to file a task; it can carry all three
+- **Templates** — a saved set of items you can stamp out as real tasks, anchored to a start or end date
 - **Streaks** — consecutive completion count tracked per recurring task
+- **Archive** — hides a task permanently without erasing its Logbook and Stats history
