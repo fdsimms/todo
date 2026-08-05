@@ -392,6 +392,8 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       recurrenceMonthDay,
       recurrenceWeekOrdinal,
       recurrenceFromCompletion,
+      recurrenceEndDate: recurrenceEndDate ? new Date(recurrenceEndDate) : null,
+      recurrenceCount,
     });
   };
 

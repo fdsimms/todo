@@ -67,6 +67,8 @@ export interface TaskDraft {
   recurrenceMonthDay: number | null;
   recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
+  recurrenceEndDate: Date | null;
+  recurrenceCount: number | null;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
@@ -296,8 +298,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
       setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
-      setRecurrenceEndDate(null);
-      setRecurrenceCount(null);
+      setRecurrenceEndDate(initialDraft?.recurrenceEndDate ?? null);
+      setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
@@ -343,8 +345,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
       recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
-      recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : null,
-      recurrenceCount: task ? (task.recurrenceCount ?? null) : null,
+      recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : (initialDraft?.recurrenceEndDate?.toISOString() ?? null),
+      recurrenceCount: task ? (task.recurrenceCount ?? null) : (initialDraft?.recurrenceCount ?? null),
       priority: task ? task.priority : (initialDraft?.priority ?? 0),
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
