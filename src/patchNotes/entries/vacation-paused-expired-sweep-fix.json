@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where the expired-task cleanup could delete vacation-paused tasks it was meant to protect, and made those deletions undoable",
+  "date": "2026-08-05"
+}

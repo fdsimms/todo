@@ -21,7 +21,6 @@ import {
   dbAddToTagRegistry,
   dbRemoveFromTagRegistry,
   dbRemoveTagFromAllTasks,
-  dbGetSetting,
   dbMarkTaskSeen,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
@@ -117,6 +116,7 @@ interface TaskStore {
   completionHoldIds: string[];
 
   initialize: () => void;
+  sweepExpiredTasks: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
   // scope 'occurrence' ("this task only") applies `updates` to this row but
@@ -228,22 +228,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
-    let tasks = dbGetAllTasks();
+    const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
-
-    // Read the setting straight from the DB rather than useSettingsStore —
-    // this runs before useSettingsStore.initialize() (see App.tsx), so the
-    // store would still be holding its default value at this point.
-    if (dbGetSetting('autoRemoveExpiredTasks') === 'true') {
-      const expiredIds = tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
-      if (expiredIds.length > 0) {
-        dbBulkDeleteTasks(expiredIds);
-        tasks = tasks.filter(t => !expiredIds.includes(t.id) && (t.parentId === null || !expiredIds.includes(t.parentId)));
-      }
-    }
 
     set({ tasks, tagRegistry, initialized: true });
     rescheduleAllReminders(tasks);
+  },
+
+  // Must run after useSettingsStore.initialize() so autoRemoveExpiredTasks,
+  // vacationMode and dayResetTime are the user's real values rather than
+  // defaults — see App.tsx call order.
+  sweepExpiredTasks() {
+    if (!useSettingsStore.getState().autoRemoveExpiredTasks) return;
+    const expiredIds = get().tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
+    if (expiredIds.length > 0) {
+      get().bulkDeleteTasks(expiredIds);
+    }
   },
 
   addTask(draft) {
