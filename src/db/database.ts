@@ -657,7 +657,6 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     title: row.title as string,
     notes: row.notes as string,
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
-    priority: ((row.priority as number) ?? 0) as TaskGroup['priority'],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
@@ -672,9 +671,9 @@ export function dbGetAllTaskGroups(): TaskGroup[] {
 
 export function dbInsertTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'INSERT INTO task_groups (id, title, notes, tags, priority, category, sort_order, collapsed, completed_at) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, completed_at) VALUES (?,?,?,?,?,?,?,?)',
     [
-      group.id, group.title, group.notes, JSON.stringify(group.tags), group.priority,
+      group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null,
     ]
   );
@@ -682,9 +681,9 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, priority=?, category=?, sort_order=?, collapsed=?, completed_at=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, completed_at=? WHERE id=?',
     [
-      group.title, group.notes, JSON.stringify(group.tags), group.priority,
+      group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null, group.id,
     ]
   );

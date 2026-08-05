@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { TaskGroup, Priority } from '../types';
+import type { TaskGroup } from '../types';
 import {
   dbGetAllTaskGroups,
   dbInsertTaskGroup,
@@ -13,7 +13,7 @@ interface TaskGroupStore {
   initialized: boolean;
   initialize: () => void;
   createGroup: (title: string, category: string | null) => TaskGroup;
-  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'priority' | 'category' | 'sortOrder'>>) => void;
+  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   setGroupCompletedAt: (id: string, completedAt: string | null) => void;
   getGroupById: (id: string) => TaskGroup | null;
@@ -39,7 +39,6 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
       title,
       notes: '',
       tags: [],
-      priority: 0 as Priority,
       category,
       sortOrder: maxOrder + 1,
       collapsed: true,

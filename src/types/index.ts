@@ -57,7 +57,6 @@ export interface TaskGroup {
   title: string;
   notes: string;
   tags: string[];
-  priority: Priority;
   category: string | null; // which category section it renders under
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state

@@ -12,8 +12,8 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Task, TaskGroup, Priority } from '../types';
-import { PRIORITY_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
+import type { Task, TaskGroup } from '../types';
+import { TITLE_MAX_LENGTH } from '../types';
 import { isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
 import { formatDueDate } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
@@ -29,7 +29,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'priority' | 'tags';
+type FieldKey = 'category' | 'tags';
 
 /**
  * One line answering "where does this member stand today?" — the question the
@@ -74,7 +74,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
-  const [priority, setPriority] = useState<Priority>(0);
   const [category, setCategory] = useState<string | null>(null);
 
   const [addingChild, setAddingChild] = useState(false);
@@ -89,7 +88,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     setTitle(group.title);
     setNotes(group.notes);
     setTags(group.tags);
-    setPriority(group.priority);
     setCategory(group.category);
     setShowExistingPicker(false);
     setExistingSearch('');
@@ -112,7 +110,11 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const dueToday = members.filter(isRelevantToGroupToday);
   const doneToday = dueToday.filter(c => c.completed).length;
 
-  const eligibleForAdd = useMemo(() => {
+  // Capped so a large task list doesn't render hundreds of rows into an
+  // unvirtualized ScrollView; matchCount (pre-slice) drives the "showing 30
+  // of N" hint below so a task missing from the list reads as "narrow your
+  // search" rather than "doesn't exist" (see #660).
+  const eligibleMatches = useMemo(() => {
     if (!group) return [];
     const q = existingSearch.trim().toLowerCase();
     return allTasks.filter(t =>
@@ -120,21 +122,25 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       !t.groupId &&
       !t.completed &&
       (q === '' || t.title.toLowerCase().includes(q))
-    ).slice(0, 30);
+    );
   }, [allTasks, existingSearch, group]);
+  const EXISTING_TASK_PICKER_LIMIT = 30;
+  const eligibleForAdd = useMemo(
+    () => eligibleMatches.slice(0, EXISTING_TASK_PICKER_LIMIT),
+    [eligibleMatches],
+  );
 
   const saveAndClose = () => {
     if (!group) { onClose(); return; }
     // A blank title only skips the *title* write — an untitled brand-new
     // stack is garbage-collected by the caller anyway (see TodayScreen), and
-    // silently dropping notes/tags/priority/category along with it meant
+    // silently dropping notes/tags/category along with it meant
     // clearing the title threw away every other edit in the sheet.
     const trimmed = title.trim();
     updateGroup(group.id, {
       ...(trimmed ? { title: trimmed } : {}),
       notes,
       tags,
-      priority,
       category,
     });
     onClose();
@@ -220,26 +226,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                     onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
                   >
                     <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </CollapsibleField>
-            <View style={styles.cardSep} />
-            <CollapsibleField
-              label="Priority"
-              summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-              hint="Ranks the stack against everything else on Today."
-              expanded={fieldOpen('priority')}
-              onToggle={() => toggleField('priority')}
-            >
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[styles.pill, priority === p && styles.pillActive, p > 0 && { borderColor: PRIORITY_COLORS[p], borderWidth: 1 }]}
-                    onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
-                  >
-                    <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>{PRIORITY_LABELS[p]}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -388,6 +374,11 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                   ))}
                   {eligibleForAdd.length === 0 && (
                     <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
+                  )}
+                  {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
+                    <Text style={styles.existingEmpty}>
+                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
+                    </Text>
                   )}
                 </View>
               )}
