@@ -17,7 +17,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { Task, TaskGroup, SortOption, Priority, Effort, RecurrenceType } from '../types';
+import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort } from '../types';
 import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
@@ -58,6 +58,8 @@ import { GroupDropTarget } from '../components/GroupDropTarget';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
+import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import {
@@ -378,6 +380,10 @@ export function TodayScreen() {
   // Set while editingGroup is a stack freshly created from the add menu —
   // discarded on close if it was never given a title.
   const newStackIdRef = useRef<string | null>(null);
+  // Two-step "add from a template" flow off the add menu: pick a template,
+  // then the apply sheet takes over for anchors and the item checklist.
+  const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -635,17 +641,13 @@ export function TodayScreen() {
     setEditorVisible(true);
   };
 
-  const [quickAddInitialRecurrence, setQuickAddInitialRecurrence] = useState<RecurrenceType | undefined>(undefined);
-
   const handleAddMenuSelect = (type: AddTaskType) => {
     switch (type) {
       case 'task':
-        setQuickAddInitialRecurrence(undefined);
         setQuickAddVisible(true);
         break;
-      case 'recurring':
-        setQuickAddInitialRecurrence('daily');
-        setQuickAddVisible(true);
+      case 'template':
+        setTemplatePickerVisible(true);
         break;
       case 'chain':
         setEditingTask(null);
@@ -1979,7 +1981,19 @@ export function TodayScreen() {
           onOpenFull={handleQuickAddOpenFull}
           context={viewMode}
           onCreated={handleTaskCreated}
-          initialRecurrenceType={quickAddInitialRecurrence}
+        />
+
+        {/* Add from a template: pick one here, then the apply sheet below. */}
+        <TemplatePickerSheet
+          visible={templatePickerVisible}
+          onClose={() => setTemplatePickerVisible(false)}
+          onSelect={setApplyTemplate}
+        />
+
+        <ApplyTemplateSheet
+          visible={applyTemplate !== null}
+          template={applyTemplate}
+          onClose={() => setApplyTemplate(null)}
         />
 
         <TaskEditor
