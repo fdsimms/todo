@@ -2,14 +2,16 @@ import React from 'react';
 import { Animated } from 'react-native';
 import { FabMenu, type FabMenuItem } from './Fab';
 
-export type AddTaskType = 'chain' | 'stack' | 'recurring' | 'task';
+export type AddTaskType = 'chain' | 'stack' | 'template' | 'task';
 
 // Bottom-up, so plain "Task" — far and away the most common — lands closest
-// to the button.
+// to the button. There's deliberately no "Recurring" entry: it created a plain
+// task with one picker pre-opened, which the Repeat row in quick add already
+// does in the same number of taps.
 const ITEMS: FabMenuItem[] = [
   { key: 'chain', label: 'Chain', icon: 'link' },
   { key: 'stack', label: 'Stack', icon: 'layers' },
-  { key: 'recurring', label: 'Recurring', icon: 'repeat' },
+  { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'task', label: 'Task', icon: 'checkmark-circle' },
 ];
 
@@ -22,7 +24,7 @@ interface Props {
   opacity?: Animated.AnimatedInterpolation<number> | Animated.Value;
 }
 
-/** Today's add button: the shared FabMenu, typed to the four kinds of task it creates. */
+/** Today's add button: the shared FabMenu, typed to the four ways it adds tasks. */
 export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
   return (
     <FabMenu
