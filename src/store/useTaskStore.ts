@@ -50,7 +50,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime',
+  'estimatedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
 ];
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
@@ -287,6 +287,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      linkUrl: draft.linkUrl ?? null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -875,6 +876,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      linkUrl: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -980,6 +982,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      linkUrl: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));

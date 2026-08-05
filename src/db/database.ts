@@ -150,6 +150,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN deadline_month_day INTEGER',
     'ALTER TABLE tasks ADD COLUMN recurrence_week_ordinal INTEGER',
+    'ALTER TABLE tasks ADD COLUMN link_url TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -299,6 +300,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
+    linkUrl: (row.link_url as string) ?? null,
   };
 }
 
@@ -317,8 +319,8 @@ export function dbInsertTask(task: Task): void {
       recurrence_type, recurrence_interval, recurrence_days, recurrence_month_day, recurrence_week_ordinal, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
-      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -337,6 +339,7 @@ export function dbInsertTask(task: Task): void {
       task.groupId ?? null,
       task.archived ? 1 : 0, task.archivedAt ?? null,
       task.projectId ?? null,
+      task.linkUrl ?? null,
     ]
   );
 }
@@ -351,7 +354,7 @@ export function dbUpdateTask(task: Task): void {
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
-      archived=?, archived_at=?, project_id=?
+      archived=?, archived_at=?, project_id=?, link_url=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -371,6 +374,7 @@ export function dbUpdateTask(task: Task): void {
       task.groupId ?? null,
       task.archived ? 1 : 0, task.archivedAt ?? null,
       task.projectId ?? null,
+      task.linkUrl ?? null,
       task.id,
     ]
   );

@@ -133,6 +133,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
   ...overrides,
 });
 
@@ -803,6 +804,8 @@ describe('Templates', () => {
     chainItems: [],
     subtasks: [],
     groupId: null,
+    refTemplateId: null,
+    refTemplateName: '',
     ...overrides,
   });
 

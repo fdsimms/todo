@@ -27,6 +27,8 @@ interface Props {
   onClose: () => void;
   /** Hand off to the full TemplateItemEditor pre-filled with what's entered so far. */
   onOpenFull: (draft: Partial<TemplateItem>) => void;
+  /** Close this sheet and open the nested-template picker instead of adding a plain item. */
+  onAddNested: () => void;
   onCreated?: (item: TemplateItem) => void;
 }
 
@@ -36,7 +38,7 @@ interface Props {
  * toggle since template items work in offsets, not absolute dates). Mirrors
  * QuickAddModal's "expand to full editor" affordance via onOpenFull.
  */
-export function TemplateItemQuickAdd({ visible, templateId, onClose, onOpenFull, onCreated }: Props) {
+export function TemplateItemQuickAdd({ visible, templateId, onClose, onOpenFull, onAddNested, onCreated }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -113,6 +115,9 @@ export function TemplateItemQuickAdd({ visible, templateId, onClose, onOpenFull,
               returnKeyType="done"
               onSubmitEditing={createItem}
             />
+            <TouchableOpacity onPress={onAddNested} hitSlop={8} accessibilityRole="button" accessibilityLabel="Add nested template">
+              <Ionicons name="git-branch-outline" size={18} color={colors.textTertiary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleOpenFull} hitSlop={8} accessibilityRole="button" accessibilityLabel="Open full editor">
               <Ionicons name="expand-outline" size={18} color={colors.textTertiary} />
             </TouchableOpacity>

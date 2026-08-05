@@ -107,6 +107,7 @@ const baseTask: Task = {
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
+  linkUrl: null,
 };
 
 // June 10, 2025 at 10:00 AM
@@ -225,6 +226,18 @@ describe('isTaskVisible', () => {
 
   it('hides tasks whose time window has already closed', () => {
     expect(isTaskVisible({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('keeps a windowed task due yesterday visible past midnight until dayResetTime', () => {
+    // A task due Jun 10 with an open-ended windowStart, checked at 12:30 AM
+    // Jun 11 with a 4 AM reset — still Jun 10's logical day, so the window
+    // should still be considered open, not compared against Jun 11's
+    // (not-yet-arrived) windowStart.
+    mockSettingsState.dayResetTime = '04:00';
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
+    const dueDate = new Date(2025, 5, 10, 12, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, dueDate, windowStart: '08:00' })).toBe(true);
+    mockSettingsState.dayResetTime = '00:00';
   });
 
   it('hides a project task with no due date, unlike an equivalent non-project task', () => {

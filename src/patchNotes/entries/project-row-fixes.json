@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the task count sometimes overlapping the arrow on project rows, and project start dates now just show the date instead of an \"overdue\" count",
+  "date": "2026-08-05"
+}

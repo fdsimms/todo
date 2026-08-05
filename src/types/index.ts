@@ -126,6 +126,8 @@ export interface Task {
 
   reminderTime: string | null; // ISO datetime for scheduled notification
 
+  linkUrl: string | null; // URL/deep-link opened by the link button on the task row
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
@@ -229,6 +231,14 @@ export interface TemplateItem {
 
   // Which of the template's itemGroups this item belongs to; null = ungrouped.
   groupId: string | null;
+
+  // When set, this item is a reference to another template rather than a
+  // real task — it expands into that template's own items at apply time.
+  // Every other task-shaped field above is ignored when this is set.
+  refTemplateId: string | null;
+  // Name captured when the reference was made; used only as a fallback
+  // label when refTemplateId no longer resolves (the target was deleted).
+  refTemplateName: string;
 }
 
 // A lightweight named group scoped to one template, mirroring TaskGroup's
