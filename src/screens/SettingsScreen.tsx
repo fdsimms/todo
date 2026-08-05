@@ -18,6 +18,7 @@ import Constants from 'expo-constants';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
@@ -47,7 +48,24 @@ function dateToHhmm(d: Date): string {
 export function SettingsScreen() {
   const navigation = useNavigation();
   const onClose = () => navigation.goBack();
-  const onOpenDemo = () => (navigation as any).navigate('Demo');
+
+  const demoActive = useDemoStore(s => s.active);
+  const enterDemoMode = useDemoStore(s => s.enterDemoMode);
+  const exitDemoMode = useDemoStore(s => s.exitDemoMode);
+  const onToggleDemo = () => {
+    if (demoActive) {
+      exitDemoMode();
+      return;
+    }
+    Alert.alert(
+      'Turn on demo mode?',
+      'Your tasks are hidden and replaced everywhere with a sample list. Nothing of yours is changed or deleted — turn it off to get it all back.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Turn on', onPress: enterDemoMode },
+      ]
+    );
+  };
 
   const {
     dayResetTime, setDayResetTime,
@@ -436,19 +454,35 @@ export function SettingsScreen() {
             <View style={styles.card}>
               <TouchableOpacity
                 style={styles.row}
-                onPress={onOpenDemo}
+                onPress={onToggleDemo}
                 activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel="View demo tasks"
+                accessibilityRole="switch"
+                accessibilityState={{ checked: demoActive }}
+                accessibilityLabel="Demo mode"
               >
-                <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+                <Ionicons
+                  name={demoActive ? 'sparkles' : 'sparkles-outline'}
+                  size={18}
+                  color={demoActive ? colors.accent : colors.textSecondary}
+                />
                 <View style={styles.rowContent}>
-                  <Text style={styles.rowLabel}>View demo tasks</Text>
-                  <Text style={styles.rowHint}>Sample tasks showcasing every feature — great for QA or showing a friend</Text>
+                  <Text style={styles.rowLabel}>Demo mode</Text>
+                  <Text style={styles.rowHint}>
+                    {demoActive
+                      ? 'On — you are looking at sample data; your own tasks are hidden'
+                      : 'Off — swap your whole list for sample data, so you can show the app to someone'}
+                  </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                <View style={[styles.toggle, demoActive && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, demoActive && styles.toggleKnobOn]} />
+                </View>
               </TouchableOpacity>
             </View>
+            <Text style={styles.sectionFooter}>
+              Every screen — Today, Search, Projects, Stats — switches to a sample list you can edit
+              freely. Nothing you do while it's on touches your real tasks, and turning it off
+              discards the sample list and brings yours back.
+            </Text>
           </View>
 
           {/* About */}

@@ -20,7 +20,7 @@ import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
-import { DemoScreen } from '../screens/DemoScreen';
+import { DemoBanner } from '../components/DemoBanner';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -163,7 +163,7 @@ export default function AppNavigator() {
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
     if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More'
-      && currentName !== 'Settings' && currentName !== 'Demo'
+      && currentName !== 'Settings'
       && currentName !== 'TemplateDetail' && currentName !== 'ProjectDetail' && currentName !== 'CategoryDetail') {
       setActiveTab(currentName);
     }
@@ -214,11 +214,6 @@ export default function AppNavigator() {
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
-            name="Demo"
-            component={DemoScreen}
-            options={{ presentation: 'fullScreenModal' }}
-          />
-          <RootStack.Screen
             name="TemplateDetail"
             component={TemplateDetailScreen}
             options={{ presentation: 'card' }}
@@ -249,6 +244,10 @@ export default function AppNavigator() {
           {...edgePanResponder.panHandlers}
         />
       )}
+      {/* Outside the NavigationContainer so it stays put across every screen
+          and modal — demo mode isn't a place you navigate to, it's a state
+          the whole app is in. */}
+      <DemoBanner />
     </>
   );
 }
