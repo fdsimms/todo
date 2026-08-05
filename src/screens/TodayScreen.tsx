@@ -415,13 +415,23 @@ export function TodayScreen() {
     setViewMode('today');
   }
 
-  // Claims completions queued by the Today widget's checkbox (see
-  // useWidgetCompletionStore / widgetSync.ts). Handing a pending id off to a
-  // TaskItem via autoComplete triggers the real tap-to-complete animation
-  // there — completeTask() itself is only called once that animation
-  // finishes, not here — so dequeue right away to avoid re-triggering it on
-  // a later render. A task that's already gone (completed/deleted elsewhere
-  // in the meantime) is just dropped.
+  // Claims completions queued by the Today widget's checkbox and by Live
+  // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
+  // Handing a pending id off to a TaskItem via autoComplete triggers the real
+  // tap-to-complete animation there — completeTask() itself is only called
+  // once that animation finishes, not here — so dequeue right away to avoid
+  // re-triggering it on a later render. A task that's already gone
+  // (completed/deleted elsewhere in the meantime) is just dropped.
+  //
+  // resetToToday() (widgetSync.ts) always switches this screen to the
+  // 'today' sub-view, so a TaskItem row only actually mounts here for tasks
+  // isTaskVisible() would place in Today — the Today widget only ever lists
+  // those, so its checkbox is always safe. A Live Activity, though, can be
+  // started from any task with a link regardless of where it's scheduled
+  // (Later, Unscheduled, Inbox); for those, no row is ever mounted to catch
+  // the autoComplete prop, so the animated path would silently drop the
+  // completion. Call completeTask() directly instead for anything that
+  // wouldn't land in Today.
   const widgetCompletionIds = useWidgetCompletionStore(useShallow(s => s.pendingIds));
   const dequeueWidgetCompletion = useWidgetCompletionStore(s => s.dequeue);
   useEffect(() => {
@@ -430,6 +440,10 @@ export function TodayScreen() {
       dequeueWidgetCompletion(id);
       const task = allTasks.find(t => t.id === id);
       if (!task || task.completed) return;
+      if (!isTaskVisible(task)) {
+        useTaskStore.getState().completeTask(id);
+        return;
+      }
       setAutoCompletingIds(prev => (prev.has(id) ? prev : new Set(prev).add(id)));
     });
   }, [widgetCompletionIds]);
