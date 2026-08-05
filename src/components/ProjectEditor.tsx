@@ -22,7 +22,7 @@ import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
 import { EditorRow } from './EditorRow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -274,7 +274,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
     paddingVertical: spacing.sm, minHeight: 44,
-    lineHeight: lineHeight.xl,
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,

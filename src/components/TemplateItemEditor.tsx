@@ -15,7 +15,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, RecurrenceType, ChainItem } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, lineHeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -1123,7 +1123,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 68,
-    lineHeight: lineHeight.xl,
     letterSpacing: -0.3,
     textAlignVertical: 'top',
   },
