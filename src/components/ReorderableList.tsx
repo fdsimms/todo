@@ -93,6 +93,12 @@ interface Props<T> {
   onEndReached?: () => void;
   /** Distance in px from the bottom at which onEndReached fires. Defaults to 300. */
   onEndReachedThreshold?: number;
+  /**
+   * Lets the caller suspend scrolling from the outside — e.g. while a
+   * paint-select gesture owns the touch. Purely ANDed with the drag's own
+   * suspension; it can't re-enable scrolling during a drag.
+   */
+  scrollEnabled?: boolean;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -135,6 +141,7 @@ export function ReorderableList<T>({
   onScrollBeginDrag,
   onEndReached,
   onEndReachedThreshold = 300,
+  scrollEnabled = true,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -593,7 +600,7 @@ export function ReorderableList<T>({
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        scrollEnabled={!isDragging}
+        scrollEnabled={scrollEnabled && !isDragging}
         onScroll={handleScroll}
         scrollEventThrottle={16}
         onLayout={(e: LayoutChangeEvent) => { viewportHeightRef.current = e.nativeEvent.layout.height; }}

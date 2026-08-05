@@ -47,6 +47,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -364,6 +365,8 @@ export function TodayScreen() {
     selectAll,
     deselectAll,
     handleBulkDelete,
+    painting,
+    paintProps,
   } = useTaskSelection(allTasks);
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
@@ -1445,8 +1448,10 @@ export function TodayScreen() {
           onTouchStart={spotlightActive ? handleListTouchStart : undefined}
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
+        <PaintSelectionProvider {...paintProps}>
         {viewMode === 'later' && (
           <ReorderableList
+            scrollEnabled={!painting}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             renderItem={({ item, drag, isActive }) => {
@@ -1527,6 +1532,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length > 0 && (
           <FlatList
+            scrollEnabled={!painting}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
@@ -1548,6 +1554,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length === 0 && (
           <ReorderableList
+            scrollEnabled={!painting}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -1733,6 +1740,7 @@ export function TodayScreen() {
 
         {viewMode === 'unscheduled' && (
           <FlatList
+            scrollEnabled={!painting}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
             automaticallyAdjustKeyboardInsets
@@ -1791,6 +1799,7 @@ export function TodayScreen() {
             definition they have none. */}
         {viewMode === 'inbox' && (
           <FlatList
+            scrollEnabled={!painting}
             data={inboxTasks}
             keyExtractor={t => t.id}
             automaticallyAdjustKeyboardInsets
@@ -1837,6 +1846,7 @@ export function TodayScreen() {
             ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
           />
         )}
+        </PaintSelectionProvider>
         </View>
 
         {!selectionMode && (

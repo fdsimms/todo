@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
@@ -70,6 +71,8 @@ export function TagsScreen() {
     selectAll,
     deselectAll,
     handleBulkDelete,
+    painting,
+    paintProps,
   } = useTaskSelection(allTasks);
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
@@ -276,7 +279,9 @@ export function TagsScreen() {
               onTouchStart={spotlightActive ? handleListTouchStart : undefined}
               onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
             >
+            <PaintSelectionProvider {...paintProps}>
               <FlatList
+                scrollEnabled={!painting}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 automaticallyAdjustKeyboardInsets
@@ -312,6 +317,7 @@ export function TagsScreen() {
                   <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="No active tasks with this tag" />
                 }
               />
+            </PaintSelectionProvider>
             </View>
 
             {selectionMode && (

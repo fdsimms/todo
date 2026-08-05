@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -64,6 +65,8 @@ export function CategoryDetailScreen() {
     selectAll,
     deselectAll,
     handleBulkDelete,
+    painting,
+    paintProps,
   } = useTaskSelection(allTasks);
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   // Every row's scrim shares this one animation, so the dim lands as a
@@ -152,7 +155,9 @@ export function CategoryDetailScreen() {
           onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
           onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
         >
+        <PaintSelectionProvider {...paintProps}>
           <FlatList
+            scrollEnabled={!painting}
             data={categoryTasks}
             keyExtractor={t => t.id}
             automaticallyAdjustKeyboardInsets
@@ -188,6 +193,7 @@ export function CategoryDetailScreen() {
               <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
             }
           />
+        </PaintSelectionProvider>
         </View>
 
         {selectionMode && (
