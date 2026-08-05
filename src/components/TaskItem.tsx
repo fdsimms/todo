@@ -34,6 +34,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
@@ -59,6 +60,7 @@ interface Props {
   hideTodayLabel?: boolean;
   showCategory?: boolean;
   showProject?: boolean;
+  showGroup?: boolean;
   showActions?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
@@ -118,6 +120,7 @@ export function TaskItem({
   hideTodayLabel = false,
   showCategory = false,
   showProject = false,
+  showGroup = false,
   showActions = true,
   indented = false,
   justCreated = false,
@@ -125,6 +128,7 @@ export function TaskItem({
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
+  const groupTitle = useTaskGroupStore(s => task.groupId ? s.getGroupById(task.groupId)?.title ?? null : null);
   const completeTask = useTaskStore(s => s.completeTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const setLastAction = useTaskStore(s => s.setLastAction);
@@ -571,6 +575,12 @@ export function TaskItem({
           <View style={styles.projectRow}>
             <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
             <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
+          </View>
+        )}
+        {showGroup && groupTitle && (
+          <View style={styles.groupRow}>
+            <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
+            <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
           </View>
         )}
         {windowActive && task.windowEnd && (
@@ -1165,6 +1175,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 4,
   },
   projectLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  groupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  groupLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },
