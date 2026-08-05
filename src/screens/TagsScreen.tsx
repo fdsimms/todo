@@ -271,6 +271,7 @@ export function TagsScreen() {
             <FlatList
               data={tagTasks}
               keyExtractor={t => t.id}
+              automaticallyAdjustKeyboardInsets
               contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
               renderItem={({ item }) => {
                 const subs = allTasks.filter(t => t.parentId === item.id);

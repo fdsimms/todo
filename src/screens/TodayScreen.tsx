@@ -1372,6 +1372,7 @@ export function TodayScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.viewModePillsScroll}
         contentContainerStyle={styles.viewModePills}
       >
         {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
@@ -1518,6 +1519,7 @@ export function TodayScreen() {
           keyExtractor={listItemKey}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => renderItem({ item })}
           contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
           refreshControl={
@@ -1695,6 +1697,7 @@ export function TodayScreen() {
         <FlatList
           data={unscheduledTasks}
           keyExtractor={t => t.id}
+          automaticallyAdjustKeyboardInsets
           renderItem={({ item }) => {
             const subs = subtasksByParent.get(item.id) ?? [];
             return (
@@ -1859,6 +1862,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.accent,
   },
   selectText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold },
+  // ScrollView defaults its outer container to flexGrow/flexShrink: 1, which
+  // let it balloon to fill the screen's remaining flex space (competing with
+  // listWrapper below) instead of sizing to its own (short, pill-height)
+  // content — this pins it back to its natural height.
+  viewModePillsScroll: { flexGrow: 0, flexShrink: 0 },
   viewModePills: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: 4,

@@ -1,4 +1,4 @@
 {
-  "message": "Fixed a large empty gap appearing above your tasks on Today and other lists, caused by the previous keyboard-overlap fix.",
-  "date": "2026-08-05"
+  "message": "Fixed the keyboard covering the title field when renaming a task near the bottom of a list — the list now scrolls to keep it in view.",
+  "date": "2026-08-04"
 }
