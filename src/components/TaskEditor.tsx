@@ -11,6 +11,7 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
 } from 'react-native';
 import { SortableList } from './SortableList';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -19,11 +20,12 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { WeekdaySelector } from './WeekdaySelector';
+import { PressableScale } from './PressableScale';
 import { format, addMonths, addDays, subDays, differenceInCalendarDays } from 'date-fns';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, type Colors } from '../theme';
+import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -33,9 +35,10 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
+import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { suggestTaskAttributes, suggestTaskEffort } from '../services/aiSuggestions';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
@@ -244,6 +247,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
 
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
+  const hadScheduleParse = useRef(false);
+
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
@@ -350,6 +357,44 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setDeadline(getDeadlineFromMonthDay(dueDate, deadlineMonthDay));
     }
   }, [dueDate, deadlineOffsetDays, deadlineMonthDay]);
+
+  // Natural-language scheduling: detect a trailing date/recurrence phrase in
+  // the title ("go running on wednesday", "water plants every 3 days") the
+  // same way the quick-add modal does. The phrase is highlighted and
+  // described in a banner below the title; nothing is applied until tapped.
+  const parsedSchedule = useMemo(
+    () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
+    [title, dayResetTime]
+  );
+  const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
+
+  // Pop the banner in when a phrase is first detected (not on every keystroke
+  // that merely extends it).
+  useEffect(() => {
+    if (parsedSchedule && !hadScheduleParse.current) {
+      scheduleTooltipAnim.setValue(0);
+      Animated.spring(scheduleTooltipAnim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    hadScheduleParse.current = parsedSchedule != null;
+  }, [parsedSchedule]);
+
+  // Apply the suggested schedule and strip the phrase from the title.
+  const applyParsedSchedule = () => {
+    if (!parsedSchedule) return;
+    haptics.success();
+    animateLayout();
+    setTitle(parsedSchedule.cleanTitle);
+    setDueDate(parsedSchedule.schedule.dueDate);
+    setTimeSegments(parsedSchedule.schedule.timeSegments);
+    setRecurrenceType(parsedSchedule.schedule.recurrenceType);
+    setRecurrenceInterval(parsedSchedule.schedule.recurrenceInterval);
+    setRecurrenceDays(parsedSchedule.schedule.recurrenceDays);
+    setRecurrenceMonthDay(parsedSchedule.schedule.recurrenceMonthDay ?? null);
+    setRecurrenceWeekOrdinal(parsedSchedule.schedule.recurrenceWeekOrdinal ?? null);
+    setRecurrenceEndDate(parsedSchedule.schedule.recurrenceEndDate ? new Date(parsedSchedule.schedule.recurrenceEndDate) : null);
+    setRecurrenceCount(parsedSchedule.schedule.recurrenceCount ?? null);
+    setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
+  };
 
   const save = () => {
     if (!title.trim()) return;
@@ -794,16 +839,51 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
         </View>
 
         <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
-          <TextInput
-            ref={titleRef}
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Task title"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={TITLE_MAX_LENGTH}
-            multiline blurOnSubmit
-          />
+          <View style={styles.titleWrap}>
+            {parsedSchedule && (
+              <Text style={[styles.titleInput, styles.titleOverlay]} pointerEvents="none">
+                {title.slice(0, parsedSchedule.matchStart)}
+                <Text style={styles.titleHighlight}>{title.slice(parsedSchedule.matchStart, scheduleMatchEnd)}</Text>
+                {title.slice(scheduleMatchEnd)}
+              </Text>
+            )}
+            <TextInput
+              ref={titleRef}
+              style={[styles.titleInput, parsedSchedule && styles.titleInputHidden]}
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Task title"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={TITLE_MAX_LENGTH}
+              multiline blurOnSubmit
+            />
+          </View>
+
+          {/* Schedule banner — detected date/recurrence phrase; tap to apply */}
+          {parsedSchedule && (
+            <Animated.View
+              style={[styles.scheduleBanner, {
+                opacity: scheduleTooltipAnim,
+                transform: [
+                  { translateY: scheduleTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [-6, 0] }) },
+                  { scale: scheduleTooltipAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1] }) },
+                ],
+              }]}
+            >
+              <PressableScale style={styles.scheduleBannerBtn} onPress={applyParsedSchedule}>
+                <Ionicons
+                  name={parsedSchedule.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+                  size={14}
+                  color={colors.onAccent}
+                />
+                <Text style={styles.scheduleBannerText} numberOfLines={1}>
+                  {describeSchedule(parsedSchedule.schedule, getLogicalNow(dayResetTime))}
+                </Text>
+                <View style={styles.scheduleBannerDot} />
+                <Text style={styles.scheduleBannerHint}>Tap to set</Text>
+              </PressableScale>
+            </Animated.View>
+          )}
           <TextInput
             style={styles.notesInput}
             value={notes}
@@ -2010,11 +2090,62 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
+  titleWrap: {
+    position: 'relative',
+  },
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 68,
     letterSpacing: -0.3,
     textAlignVertical: 'top',
+  },
+  // Positioned exactly over the real input; shows the highlighted phrase
+  // while the actual TextInput's own text is made transparent, so the
+  // native input stays purely controlled via `value` (no children).
+  titleOverlay: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+  },
+  titleInputHidden: {
+    color: 'transparent',
+  },
+  titleHighlight: {
+    color: colors.accent,
+    fontWeight: '700',
+    backgroundColor: colors.accent + '26',
+  },
+  scheduleBanner: {
+    marginHorizontal: spacing.md,
+    marginTop: -4,
+    marginBottom: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  scheduleBannerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  scheduleBannerText: {
+    color: colors.onAccent,
+    fontSize: font.sm,
+    fontWeight: '600',
+    flexShrink: 1,
+  },
+  scheduleBannerDot: {
+    width: 3, height: 3, borderRadius: 1.5,
+    backgroundColor: colors.onAccent,
+    opacity: 0.6,
+  },
+  scheduleBannerHint: {
+    color: colors.onAccent,
+    fontSize: font.xs,
+    fontWeight: '500',
+    opacity: 0.75,
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,
