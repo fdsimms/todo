@@ -10,6 +10,8 @@ import {
   startOfDay,
   startOfMonth,
   differenceInCalendarDays,
+  differenceInCalendarMonths,
+  differenceInCalendarYears,
   setDate,
   lastDayOfMonth,
 } from 'date-fns';
@@ -284,6 +286,64 @@ export function getDeadlineFromOffset(dueDate: Date, offsetDays: number): Date {
  */
 export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
   return day === -1 ? lastDayOfMonth(dueDate) : setDate(dueDate, Math.min(day, lastDayOfMonth(dueDate).getDate()));
+}
+
+/**
+ * How many days late a weekly completion can land and still count as "on
+ * schedule" (e.g. a Monday habit finished on Tuesday). Daily cadences stay
+ * exact — "every day" or "every N days" means what it says, with no slack —
+ * so this only widens the weekly window.
+ */
+const STREAK_LATE_TOLERANCE_DAYS = 1;
+
+/**
+ * The cadence-derived gap (in days) a daily/weekly task expects between
+ * consecutive completions, evaluated from `from` (the previous completion's
+ * logical day) — daily is just its interval, weekly is either the interval
+ * in weeks or, when specific weekdays are picked, the actual day-count to
+ * the next selected weekday (so e.g. Mon/Wed/Fri expects a 2-or-3-day gap,
+ * not a flat 7).
+ */
+function getExpectedStreakGapDays(task: Task, from: Date): number {
+  if (task.recurrenceType === 'daily') return task.recurrenceInterval;
+  if (task.recurrenceDays.length > 0) {
+    return Math.max(1, differenceInCalendarDays(getNextWeekdayOccurrence(task.recurrenceDays, from), from));
+  }
+  return 7 * task.recurrenceInterval;
+}
+
+/**
+ * Whether completing a recurring task today continues its streak, per #691:
+ * the daily-only `daysBetween === 1` check reset every non-daily habit's
+ * streak on its very first on-time completion. The expected gap is derived
+ * from the task's own cadence instead of assuming one day, with a small
+ * tolerance for lateness (e.g. a weekly Monday habit finished on Tuesday
+ * still continues). Monthly/yearly use calendar-unit differences rather than
+ * day counts, since month/year lengths vary — that unit itself supplies the
+ * tolerance, so no extra grace period is added on top.
+ */
+export function getStreakOutcome(
+  task: Task,
+  dayResetTime?: string
+): 'same-day' | 'continued' | 'reset' {
+  if (task.recurrenceType === 'none' || !task.streakDate) return 'reset';
+
+  const lastDay = getDayStart(new Date(task.streakDate), dayResetTime);
+  const todayDay = getDayStart(new Date(), dayResetTime);
+  const daysBetween = differenceInCalendarDays(todayDay, lastDay);
+  if (daysBetween <= 0) return 'same-day';
+
+  if (task.recurrenceType === 'monthly' || task.recurrenceType === 'yearly') {
+    const unitsBetween =
+      task.recurrenceType === 'monthly'
+        ? differenceInCalendarMonths(todayDay, lastDay)
+        : differenceInCalendarYears(todayDay, lastDay);
+    return unitsBetween >= 1 && unitsBetween <= task.recurrenceInterval ? 'continued' : 'reset';
+  }
+
+  const expectedGapDays = getExpectedStreakGapDays(task, lastDay);
+  const tolerance = task.recurrenceType === 'weekly' ? STREAK_LATE_TOLERANCE_DAYS : 0;
+  return daysBetween <= expectedGapDays + tolerance ? 'continued' : 'reset';
 }
 
 /**
