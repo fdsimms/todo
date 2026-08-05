@@ -10,7 +10,6 @@ import {
   type GestureResponderEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -44,7 +43,6 @@ export function ProjectDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const tabBarHeight = useBottomTabBarHeight();
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
   const allTags = useTaskStore(useShallow(s => s.allTags()));
@@ -79,7 +77,10 @@ export function ProjectDetailScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
-  const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
+  // This screen is a RootStack card, not a tab screen — it covers the tab bar
+  // entirely, so the bulk bar sits above the home indicator, not above a tab
+  // bar. (Asking for useBottomTabBarHeight() here throws outright.)
+  const selectionListPadding = selectionMode ? insets.bottom + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   // Every row's scrim shares this one animation, so the dim lands as a
   // single motion — see SpotlightOverlay.
   const spotlightProgress = useSpotlightProgress(expandedTaskId !== null && !selectionMode);
@@ -296,7 +297,7 @@ export function ProjectDetailScreen() {
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}
-            bottomInset={tabBarHeight}
+            bottomInset={insets.bottom}
             onHeightChange={setBulkBarHeight}
           />
         )}
