@@ -116,7 +116,6 @@ export function ProjectDetailScreen() {
         <FlatList
           data={incompleteProjectTasks}
           keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
           contentContainerStyle={{ flexGrow: 1 }}
           renderItem={({ item }) => {
             const subs = allTasks.filter(t => t.parentId === item.id);
