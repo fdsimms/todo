@@ -1,11 +1,11 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, Animated, StyleSheet, Alert } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { PRIORITY_COLORS } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, iconSize, interaction, animation, type Colors } from '../theme';
 import { isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
@@ -58,6 +58,12 @@ export function TaskGroupHeader({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showDefer, setShowDefer] = useState(false);
   const swipeableRef = useRef<Swipeable>(null);
+  // Mirrors TaskItem's completion animation so dismissing a fully-done stack
+  // shows the same pop-checkmark beat as completing an individual task,
+  // instead of the row just vanishing the instant it's tapped.
+  const [dismissing, setDismissing] = useState(false);
+  const circleScale = useRef(new Animated.Value(1)).current;
+  const checkScale = useRef(new Animated.Value(0)).current;
 
   const dueToday = useMemo(
     () => dueTodayOverride ?? allChildren.filter(isRelevantToGroupToday),
@@ -131,9 +137,23 @@ export function TaskGroupHeader({
 
                 <TouchableOpacity
                   onPress={() => {
-                    haptics.tap();
-                    if (dismissed) return;
-                    allDone ? onDismiss() : onComplete();
+                    if (dismissed || dismissing) return;
+                    if (!allDone) {
+                      haptics.tap();
+                      onComplete();
+                      return;
+                    }
+                    haptics.success();
+                    setDismissing(true);
+                    checkScale.setValue(0);
+                    Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+                    Animated.sequence([
+                      Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
+                      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+                      Animated.delay(120),
+                    ]).start(({ finished }) => {
+                      if (finished) onDismiss();
+                    });
                   }}
                   hitSlop={10}
                   style={styles.circleWrapper}
@@ -145,9 +165,18 @@ export function TaskGroupHeader({
                     : `Complete all of ${group.title}`
                   }
                 >
-                  <View style={[styles.circle, dismissed && styles.circleDone]}>
+                  <Animated.View style={[
+                    styles.circle,
+                    (dismissed || dismissing) && styles.circleDone,
+                    { transform: [{ scale: circleScale }] },
+                  ]}>
                     {dismissed && <Ionicons name="checkmark" size={14} color={colors.onAccent} />}
-                  </View>
+                    {dismissing && (
+                      <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+                        <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+                      </Animated.View>
+                    )}
+                  </Animated.View>
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -166,7 +195,6 @@ export function TaskGroupHeader({
                   }
                 >
                   <View style={styles.titleRow}>
-                    {onDrag && <Ionicons name="reorder-three" size={14} color={colors.textTertiary} />}
                     <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                     <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
                     {totalToday > 0 && (
