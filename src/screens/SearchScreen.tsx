@@ -39,6 +39,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 
   const a11yLabel = [
     task.title,
+    task.archived ? 'archived' : null,
     isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
   ].filter(Boolean).join(', ');
@@ -69,6 +70,9 @@ function SearchResultItem({ result, onPress, styles, colors }: {
         />
 
         <View style={styles.resultMeta}>
+          {task.archived && (
+            <Text style={styles.archivedLabel}>Archived</Text>
+          )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
           ))}
@@ -288,6 +292,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   tagDot: { width: 7, height: 7, borderRadius: 4 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },
   completedLabel: { color: colors.green, fontSize: font.xs },
+  archivedLabel: { color: colors.orange, fontSize: font.xs, fontWeight: fontWeight.semibold },
   notesPreview: {
     color: colors.textTertiary,
     fontSize: font.xs,
