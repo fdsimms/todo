@@ -387,19 +387,38 @@ export function TodayScreen() {
     return unsubscribe;
   }, [navigation]);
 
-  // Tapping the Today widget navigates here programmatically (resetToToday()
-  // in src/navigation/navigationRef.ts), which doesn't fire tabPress. It
-  // stamps a fresh `resetToToday` param each time, so react to it changing.
-  useEffect(() => {
-    if (route.params?.resetToToday !== undefined) setViewMode('today');
-  }, [route.params?.resetToToday]);
+  // Params that pick a sub-view are applied *during render*, not from an
+  // effect. This screen stays mounted in the tab navigator, so it re-renders
+  // with whatever sub-view it was left on the moment the tab becomes visible;
+  // an effect only runs after that frame is committed, so the user sees a
+  // flash of the old sub-view (e.g. Later) before it swaps to the requested
+  // one — very jarring coming from Inbox's pill switcher. Adjusting state
+  // during render makes React re-run this component before committing, so the
+  // stale sub-view is never painted. Both params are stamped fresh on every
+  // navigate, so comparing against the last handled value is what makes a
+  // repeat of the same destination fire again.
+  // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [handledReset, setHandledReset] = useState<number | undefined>(undefined);
+  const [handledJump, setHandledJump] = useState<number | undefined>(undefined);
 
-  // Highlights a task created elsewhere (e.g. Inbox's own quick-add) and jumps
-  // to whichever sub-view it actually landed in. `jump` is stamped fresh on
-  // every navigate so this fires even if the same task id is highlighted twice.
+  // Tapping the Today widget navigates here programmatically (resetToToday()
+  // in src/navigation/navigationRef.ts), which doesn't fire tabPress.
+  if (route.params?.resetToToday !== undefined && route.params.resetToToday !== handledReset) {
+    setHandledReset(route.params.resetToToday);
+    setViewMode('today');
+  }
+
+  // Jumps to whichever sub-view a task created elsewhere (e.g. Inbox's own
+  // quick-add) actually landed in, and drives Inbox's pill switcher.
+  if (route.params?.jump !== undefined && route.params.jump !== handledJump) {
+    setHandledJump(route.params.jump);
+    if (route.params?.targetViewMode) setViewMode(route.params.targetViewMode);
+  }
+
+  // The highlight itself is a timed side effect, so it stays in an effect —
+  // it has no bearing on what the first painted frame looks like.
   useEffect(() => {
     if (route.params?.jump === undefined) return;
-    if (route.params?.targetViewMode) setViewMode(route.params.targetViewMode);
     if (route.params?.highlightTaskId) showJustCreated(route.params.highlightTaskId);
   }, [route.params?.jump]);
 
