@@ -471,28 +471,26 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
+              {parsed && (
+                <Text style={[styles.input, styles.inputOverlay]} pointerEvents="none">
+                  {title.slice(0, parsed.matchStart)}
+                  <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
+                  {title.slice(matchEnd)}
+                </Text>
+              )}
               <TextInput
                 ref={inputRef}
-                style={styles.input}
+                style={[styles.input, parsed && styles.inputHidden]}
                 placeholder="New task…"
                 placeholderTextColor={colors.textTertiary}
+                value={title}
                 onChangeText={setTitle}
                 onSubmitEditing={handleAdd}
                 returnKeyType="done"
                 maxLength={TITLE_MAX_LENGTH}
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
-              >
-                {parsed ? (
-                  <Text>
-                    {title.slice(0, parsed.matchStart)}
-                    <Text style={styles.inputHighlight}>{title.slice(parsed.matchStart, matchEnd)}</Text>
-                    {title.slice(matchEnd)}
-                  </Text>
-                ) : (
-                  title
-                )}
-              </TextInput>
+              />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
               {parsed && (
@@ -1158,11 +1156,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   inputWrap: {
     flex: 1,
+    position: 'relative',
   },
   input: {
     fontSize: font.md,
     color: colors.text,
     paddingVertical: spacing.sm,
+  },
+  // Positioned exactly over the real input; shows the highlighted phrase
+  // while the actual TextInput's own text is made transparent, so the
+  // native input stays purely controlled via `value` (no children).
+  inputOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+  },
+  inputHidden: {
+    color: 'transparent',
   },
   inputHighlight: {
     color: colors.accent,
