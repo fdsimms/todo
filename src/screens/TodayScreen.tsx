@@ -77,6 +77,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
 // isUnscheduledTask() excludes inbox tasks, and isTaskVisible() excludes both —
@@ -1431,6 +1432,12 @@ export function TodayScreen() {
     setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
   }, []);
 
+  const workloadSubtitle = useMemo(() => {
+    if (viewMode !== 'today' || visibleTasks.length === 0) return undefined;
+    const minutes = sumEstimatedMinutes(visibleTasks);
+    return minutes > 0 ? `${formatDuration(minutes)} planned today` : undefined;
+  }, [viewMode, visibleTasks]);
+
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
       ? [{
@@ -1468,6 +1475,7 @@ export function TodayScreen() {
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
+          subtitle={workloadSubtitle}
           actions={headerActions}
         />
 

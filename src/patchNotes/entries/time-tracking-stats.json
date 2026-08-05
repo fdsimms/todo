@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the timer overwriting a typed estimate, and added time-tracked/on-time stats plus a workload subtitle on Today",
+  "date": "2026-08-05"
+}

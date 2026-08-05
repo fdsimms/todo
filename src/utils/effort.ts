@@ -2,16 +2,22 @@ import type { Effort } from '../types';
 
 /**
  * Field updates to apply when a task's actual duration is measured (via the
- * stopwatch or a manual log). The measured time becomes the task's estimate and
- * re-derives the coarse effort bucket, so a timed task immediately powers the
- * existing effort-based sort and AI scheduling. A later timing simply overwrites.
+ * stopwatch or a manual log). `actualMinutes` is always set. The estimate/effort
+ * bucket is only backfilled when the task has no estimate of its own — so a
+ * timed task with no typed estimate still powers effort-based sort and AI
+ * scheduling, but a typed estimate is never silently overwritten by a
+ * measurement. (The consumers that read estimatedMinutes already fall back to
+ * actualMinutes-derived data at read time where it matters.)
  */
-export function applyMeasuredTime(minutes: number): {
+export function applyMeasuredTime(minutes: number, existingEstimatedMinutes: number | null): {
   actualMinutes: number;
-  estimatedMinutes: number;
-  effort: Effort;
+  estimatedMinutes?: number;
+  effort?: Effort;
 } {
   const rounded = Math.max(1, Math.round(minutes));
+  if (existingEstimatedMinutes != null) {
+    return { actualMinutes: rounded };
+  }
   return {
     actualMinutes: rounded,
     estimatedMinutes: rounded,

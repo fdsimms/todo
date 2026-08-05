@@ -2608,6 +2608,25 @@ describe('timers', () => {
     expect(task.effort).toBe(4); // ≤150min → M
   });
 
+  it('stopTimer records actual minutes but leaves a typed estimate untouched', () => {
+    const started = new Date(Date.now() - 10 * 60000).toISOString(); // 10 minutes ago
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started, estimatedMinutes: 30, effort: 3 })] });
+    useTaskStore.getState().stopTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(10);
+    expect(task.estimatedMinutes).toBe(30);
+    expect(task.effort).toBe(3);
+  });
+
+  it('logManualTime records actual minutes but leaves a typed estimate untouched', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', estimatedMinutes: 60, effort: 4 })] });
+    useTaskStore.getState().logManualTime('a', 90);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(90);
+    expect(task.estimatedMinutes).toBe(60);
+    expect(task.effort).toBe(4);
+  });
+
   it('completing a task with a running timer saves the elapsed time first', () => {
     const started = new Date(Date.now() - 5 * 60000).toISOString();
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', timerStartedAt: started })] });
