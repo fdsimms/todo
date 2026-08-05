@@ -1154,7 +1154,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleInput: {
     color: colors.text,
     fontSize: font.md,
-    lineHeight: lineHeight.md,
+    // Height, not lineHeight — iOS lays a TextInput's glyphs out one full
+    // line height below the top of the line box, so any lineHeight here
+    // drops the text off-centre. minHeight keeps the row from resizing when
+    // the title swaps between `title` (a Text with lineHeight.md) and edit mode.
+    minHeight: lineHeight.md,
     padding: 0,
     margin: 0,
     includeFontPadding: false,

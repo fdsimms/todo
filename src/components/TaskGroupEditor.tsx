@@ -20,7 +20,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SortableList } from './SortableList';
 
@@ -354,7 +354,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: '500',
     paddingHorizontal: spacing.md, paddingTop: spacing.lg, paddingBottom: spacing.md, minHeight: 60,
-    lineHeight: lineHeight.xl,
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,

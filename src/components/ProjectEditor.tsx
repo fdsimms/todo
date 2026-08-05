@@ -20,7 +20,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 
@@ -293,7 +293,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   titleInput: {
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
     paddingVertical: spacing.sm, minHeight: 44,
-    lineHeight: lineHeight.xl,
   },
   notesInput: {
     color: colors.textSecondary, fontSize: font.md,

@@ -71,6 +71,8 @@ Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with 
 - `animation.spring.snappy/smooth/bouncy` and `animation.duration.*` — every Animated call
 - `getShadows(isDark)` via `useTheme().shadows` (`card`, `fab`, `sheet`) — every shadow
 
+**Never put `lineHeight` on a `TextInput` style.** RN maps it straight onto the iOS paragraph style's `minimumLineHeight`/`maximumLineHeight` with no compensating baseline offset (`RCTTextAttributes.mm`), so the glyphs are drawn a full line height below the top of the line box instead of one ascent below it — the text sits low in the field while the caret stays centered, and the placeholder inherits the same attributes so it looks wrong even when empty. `lineHeight` is fine (and wanted) on `Text`. When an input needs a specific box height to keep a row from resizing between display and edit mode, set `height`/`minHeight` instead.
+
 **Shared primitives** (use these instead of hand-rolling):
 
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
