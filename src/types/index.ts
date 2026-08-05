@@ -25,6 +25,17 @@ export interface ProjectCategory {
   sortOrder: number;
 }
 
+// A category for grouping TEMPLATES on the Templates page (e.g. "Trips",
+// "Recurring chores"). Deliberately its own pool, independent of both
+// Category (tasks) and ProjectCategory (projects) — creating one here never
+// affects the others. Unrelated to TemplateItem.category, which tags the
+// tasks an item creates from the existing task-Category pool.
+export interface TemplateCategory {
+  id: string;
+  name: string;
+  sortOrder: number;
+}
+
 export interface ChainItem {
   id: string;
   title: string;
@@ -243,6 +254,9 @@ export interface TaskTemplate {
   itemGroups: TemplateItemGroup[];
   createdAt: string;
   sortOrder: number;
+  // Name of a TemplateCategory, purely for grouping templates on the
+  // Templates page. Independent of task Category and ProjectCategory.
+  category: string | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

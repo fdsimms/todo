@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -99,6 +99,12 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS template_categories (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL UNIQUE,
+      sort_order REAL NOT NULL DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS templates (
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
@@ -149,6 +155,7 @@ export function initDatabase(): void {
     "ALTER TABLE templates ADD COLUMN item_groups TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE tasks ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN deadline_month_day INTEGER',
+    'ALTER TABLE templates ADD COLUMN category TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -753,6 +760,7 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     itemGroups: parseItemGroups(row.item_groups),
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
+    category: (row.category as string) ?? null,
   };
 }
 
@@ -765,18 +773,41 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order) VALUES (?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder]
+    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category) VALUES (?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.id]
   );
 }
 
 export function dbDeleteTemplate(id: string): void {
   db.runSync('DELETE FROM templates WHERE id = ?', [id]);
+}
+
+// ─── Template Categories ────────────────────────────────────────────────────
+
+function rowToTemplateCategory(row: Record<string, unknown>): TemplateCategory {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+  };
+}
+
+export function dbGetAllTemplateCategories(): TemplateCategory[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM template_categories ORDER BY sort_order ASC, name ASC');
+  return rows.map(rowToTemplateCategory);
+}
+
+export function dbInsertTemplateCategory(name: string): TemplateCategory {
+  const id = generateId();
+  const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM template_categories')?.m ?? 0;
+  const sortOrder = maxOrder + 1;
+  db.runSync('INSERT INTO template_categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
+  return { id, name, sortOrder };
 }

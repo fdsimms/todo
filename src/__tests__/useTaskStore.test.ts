@@ -47,6 +47,8 @@ jest.mock('../db/database', () => ({
   dbBatchUpdateProjectSortOrders: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
+  dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
+  dbInsertTemplateCategory: jest.fn(),
   dbInsertTask: jest.fn(),
   dbUpdateTask: jest.fn(),
   dbDeleteTask: jest.fn(),

@@ -13,14 +13,18 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { ReorderableList } from '../components/ReorderableList';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { TemplateEditor } from '../components/TemplateEditor';
+import { groupTemplatesByCategory, isTemplateHeader, templateOrderFromItems } from '../utils/templateGrouping';
+import { dragRange } from '../utils/reorder';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { TaskTemplate } from '../types';
@@ -37,12 +41,23 @@ export function TemplatesScreen() {
   const addTemplate = useTemplateStore(s => s.addTemplate);
   const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
   const reorderTemplates = useTemplateStore(s => s.reorderTemplates);
+  const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
 
   const [addingTemplate, setAddingTemplate] = useState(false);
   const [newTemplateText, setNewTemplateText] = useState('');
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
+  const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
 
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
+
+  const templateCategoryOrder = useMemo(
+    () => [...templateCategories].sort((a, b) => a.sortOrder - b.sortOrder).map(c => c.name),
+    [templateCategories]
+  );
+  const templateListItems = useMemo(
+    () => groupTemplatesByCategory(templates, templateCategoryOrder),
+    [templates, templateCategoryOrder]
+  );
 
   const handleStartAdding = () => {
     haptics.impactLight();
@@ -122,9 +137,10 @@ export function TemplatesScreen() {
       )}
 
       <ReorderableList
-        data={templates}
-        keyExtractor={t => t.id}
-        onReorder={data => reorderTemplates(data.map(t => t.id))}
+        data={templateListItems}
+        keyExtractor={item => item.key}
+        dragRange={(data, idx) => dragRange(data, idx, isTemplateHeader)}
+        onReorder={data => reorderTemplates(templateOrderFromItems(data))}
         contentContainerStyle={styles.list}
         ListEmptyComponent={
           !addingTemplate ? (
@@ -138,24 +154,35 @@ export function TemplatesScreen() {
             />
           ) : null
         }
-        renderItem={({ item: tpl, drag }) => (
-          <TemplateRow
-            template={tpl}
-            colors={colors}
-            styles={styles}
-            drag={drag}
-            onPress={() => (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })}
-            onApply={() => {
-              if (tpl.items.length === 0) {
-                (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
-                return;
-              }
-              haptics.tap();
-              setApplyTemplateId(tpl.id);
-            }}
-            onDelete={() => handleDeleteTemplate(tpl.id, tpl.name)}
-          />
-        )}
+        renderItem={({ item, drag }) => {
+          if (item.type === 'header') {
+            return (
+              <View style={styles.categorySectionHeader}>
+                <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
+              </View>
+            );
+          }
+          const tpl = item.template;
+          return (
+            <TemplateRow
+              template={tpl}
+              colors={colors}
+              styles={styles}
+              drag={drag}
+              onPress={() => (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })}
+              onEdit={() => setEditingTemplate(tpl)}
+              onApply={() => {
+                if (tpl.items.length === 0) {
+                  (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
+                  return;
+                }
+                haptics.tap();
+                setApplyTemplateId(tpl.id);
+              }}
+              onDelete={() => handleDeleteTemplate(tpl.id, tpl.name)}
+            />
+          );
+        }}
       />
 
       <View style={[styles.fabContainer, { bottom: insets.bottom + tabBarHeight + spacing.md }]}>
@@ -175,19 +202,26 @@ export function TemplatesScreen() {
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
       />
+
+      <TemplateEditor
+        visible={editingTemplate !== null}
+        template={editingTemplate}
+        onClose={() => setEditingTemplate(null)}
+      />
     </View>
   );
 }
 
 /** Template list row: swipe left to reveal Delete. */
 function TemplateRow({
-  template, colors, styles, drag, onPress, onApply, onDelete,
+  template, colors, styles, drag, onPress, onEdit, onApply, onDelete,
 }: {
   template: TaskTemplate;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   drag: () => void;
   onPress: () => void;
+  onEdit: () => void;
   onApply: () => void;
   onDelete: () => void;
 }) {
@@ -225,6 +259,16 @@ function TemplateRow({
               : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}
           </Text>
         </View>
+        <TouchableOpacity
+          onPress={onEdit}
+          style={styles.rowButton}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${template.name}`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={onApply}
           style={styles.rowButton}
@@ -274,6 +318,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
     paddingBottom: 120,
+  },
+  categorySectionHeader: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+    backgroundColor: colors.bg,
+  },
+  categorySectionHeaderText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
   // Same inset-grouped card footprint as TaskItem rows.
   tplRow: {
