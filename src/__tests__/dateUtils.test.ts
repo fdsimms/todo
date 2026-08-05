@@ -598,6 +598,62 @@ describe('getNextDueDate', () => {
     expect(result.getDay()).toBe(1);
   });
 
+  it('weekly with days and interval=2 does not add extra days within the same week', () => {
+    // NOW is Tuesday (2). recurrenceDays=[4] (Thursday) is still upcoming this
+    // week, so "every 2 weeks" should still land this Thursday, not skip a week.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 2,
+      recurrenceDays: [4],
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getDate()).toBe(12); // Thursday June 12
+    expect(result.getDay()).toBe(4);
+  });
+
+  it('weekly with days and interval=2 skips a week once wrapping past the last selected day', () => {
+    // NOW is Tuesday (2). recurrenceDays=[1] (Monday) has already passed this
+    // week, so "every 2 weeks" should wrap an extra 7 days past the normal wrap.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 2,
+      recurrenceDays: [1],
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(23); // Monday June 23, not June 16
+    expect(result.getDay()).toBe(1);
+  });
+
+  it('monthly with recurrenceMonthDay and interval=2 skips 2 months once past this month', () => {
+    // NOW is June 10. recurrenceMonthDay=5 has already passed this month.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 2,
+      recurrenceMonthDay: 5,
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(7); // August, not July
+    expect(result.getDate()).toBe(5);
+  });
+
+  it('monthly with recurrenceWeekOrdinal and interval=2 skips 2 months once past this month', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 2,
+      recurrenceWeekOrdinal: 2,
+      recurrenceDays: [2], // Tuesday
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(), // 2nd Tuesday of June
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(7); // August, not July
+    expect(result.getDate()).toBe(12); // 2nd Tuesday of August 2025
+  });
+
   it('weekly with multiple days picks the nearest upcoming day', () => {
     // NOW is Tuesday (2). recurrenceDays=[2, 5] means Tuesday and Friday.
     // Next day > 2 is 5 (Friday) → June 13
