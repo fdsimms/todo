@@ -10,6 +10,7 @@ import { isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
+import { SpotlightScrim } from './SpotlightOverlay';
 
 interface Props {
   group: TaskGroup;
@@ -34,7 +35,6 @@ interface Props {
   onDeleteGroupOnly: () => void;
   onDeleteWithTasks: () => void;
   onPressEdit: () => void;
-  dimmed?: boolean;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
 }
@@ -51,7 +51,6 @@ export function TaskGroupHeader({
   onDeleteGroupOnly,
   onDeleteWithTasks,
   onPressEdit,
-  dimmed = false,
   onDrag,
 }: Props) {
   const colors = useColors();
@@ -236,9 +235,7 @@ export function TaskGroupHeader({
                 </TouchableOpacity>
               </View>
             </Swipeable>
-            {dimmed && (
-              <View style={styles.scrim} pointerEvents="none" />
-            )}
+            <SpotlightScrim />
           </View>
         </View>
       </View>
@@ -344,10 +341,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   iconBtn: {
     padding: spacing.sm,
-  },
-  scrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.backdrop,
   },
   deleteAction: {
     width: 72,

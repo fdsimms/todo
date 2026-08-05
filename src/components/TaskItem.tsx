@@ -38,6 +38,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { SortableList } from './SortableList';
+import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 
 interface Props {
   task: Task;
@@ -179,12 +180,6 @@ export function TaskItem({
   const collapseProgress = useSharedValue(1);
   const collapseStartedRef = useRef(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
-  // Opacity of a scrim drawn on top of the row (not the row's own opacity) —
-  // fading the whole card instead washes out low-contrast text (e.g. category
-  // labels) far less than high-contrast text, since both just blend toward
-  // the same light background in light mode. A flat scrim darkens every
-  // pixel underneath by the same fixed amount regardless of its original color.
-  const spotlightScrimOpacity = useRef(new Animated.Value(spotlightDisabled ? 1 : 0)).current;
   // Tints the row briefly right after it mounts as the result of task
   // creation, so the user can tell which row is the one that just appeared.
   const highlightOpacity = useRef(new Animated.Value(justCreated && !reduceMotion ? 0.35 : 0)).current;
@@ -195,6 +190,11 @@ export function TaskItem({
   // two discrete steps. Running it on the UI thread keeps it smooth regardless
   // of how many tasks sit below.
   const expansionProgress = useSharedValue(expanded ? 1 : 0);
+  // The spotlighted row stays bright while the rest of the screen dims, and
+  // has to keep doing so until the mask has faded back out — dropping the
+  // exemption the moment it collapses would flash a scrim over it at full
+  // strength and fade *that* out instead.
+  const isSpotlighted = useSpotlightLinger(expanded);
   const swipeableRef = useRef<Swipeable>(null);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
@@ -233,14 +233,6 @@ export function TaskItem({
   const handleItemLayout = (e: LayoutChangeEvent) => {
     if (!collapseStartedRef.current) setRowHeight(e.nativeEvent.layout.height);
   };
-
-  useEffect(() => {
-    Animated.timing(spotlightScrimOpacity, {
-      toValue: spotlightDisabled ? 1 : 0,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [spotlightDisabled]);
 
   useEffect(() => {
     if (isActive) {
@@ -1002,10 +994,14 @@ export function TaskItem({
             </Swipeable>
           )}
           {expandedPanel}
-          <Animated.View
-            style={[styles.spotlightScrim, { opacity: spotlightScrimOpacity }]}
-            pointerEvents="none"
-          />
+          {/* A scrim drawn on top of the row rather than fading the row's own
+              opacity — fading the whole card washes out low-contrast text
+              (e.g. category labels) far less than high-contrast text, since
+              both just blend toward the same light background in light mode.
+              A flat scrim darkens every pixel underneath by the same amount
+              regardless of its original color. The spotlighted card is the one
+              row that skips it. */}
+          {!isSpotlighted && <SpotlightScrim />}
           {justCreated && !reduceMotion && (
             <Animated.View
               style={[styles.highlightScrim, { opacity: highlightOpacity }]}
@@ -1080,10 +1076,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cardClip: {
     borderRadius: radius.md,
     overflow: 'hidden',
-  },
-  spotlightScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: colors.backdrop,
   },
   highlightScrim: {
     ...StyleSheet.absoluteFillObject,

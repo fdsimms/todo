@@ -14,7 +14,12 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { PressableScale } from '../components/PressableScale';
-import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
+import {
+  SpotlightOverlay,
+  SpotlightProvider,
+  useSpotlightElevation,
+  useSpotlightProgress,
+} from '../components/SpotlightOverlay';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -80,6 +85,8 @@ export function InboxScreen() {
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
+  // Every scrim on the screen shares this one animation — see SpotlightOverlay.
+  const spotlightProgress = useSpotlightProgress(spotlightActive);
 
   const openEditor = (task: Task) => {
     setEditingTask(task);
@@ -124,171 +131,173 @@ export function InboxScreen() {
   }, [route.params?.jump]);
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title="Inbox"
-        subtitle={inboxTasks.length === 0 ? 'All sorted' : `${inboxTasks.length} to sort`}
-      />
+    <SpotlightProvider progress={spotlightProgress}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <ScreenHeader
+          title="Inbox"
+          subtitle={inboxTasks.length === 0 ? 'All sorted' : `${inboxTasks.length} to sort`}
+        />
 
-      {/* View mode switcher, mirroring the one on Today so Later/Unscheduled/Inbox are reachable from any of the four. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.viewModePillsScroll}
-        contentContainerStyle={styles.viewModePills}
-      >
-        {(['today', 'later', 'unscheduled'] as NavViewMode[]).map(mode => (
+        {/* View mode switcher, mirroring the one on Today so Later/Unscheduled/Inbox are reachable from any of the four. */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.viewModePillsScroll}
+          contentContainerStyle={styles.viewModePills}
+        >
+          {(['today', 'later', 'unscheduled'] as NavViewMode[]).map(mode => (
+            <TouchableOpacity
+              key={mode}
+              style={styles.viewModePill}
+              onPress={() => {
+                haptics.tap();
+                navigation.navigate({
+                  name: 'Today',
+                  params: { targetViewMode: mode, jump: Date.now() },
+                } as never);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="tab"
+              accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+            >
+              <Text style={styles.viewModePillText}>
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
           <TouchableOpacity
-            key={mode}
-            style={styles.viewModePill}
-            onPress={() => {
-              haptics.tap();
-              navigation.navigate({
-                name: 'Today',
-                params: { targetViewMode: mode, jump: Date.now() },
-              } as never);
-            }}
+            style={[styles.viewModePill, styles.viewModePillActive]}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="tab"
-            accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+            accessibilityState={{ selected: true }}
+            accessibilityLabel="Inbox view"
           >
-            <Text style={styles.viewModePillText}>
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </Text>
+            <Text style={[styles.viewModePillText, styles.viewModePillTextActive]}>Inbox</Text>
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity
-          style={[styles.viewModePill, styles.viewModePillActive]}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: true }}
-          accessibilityLabel="Inbox view"
+        </ScrollView>
+
+        <SpotlightOverlay
+          visible={spotlightActive}
+          onPress={() => setExpandedTaskId(null)}
+        />
+
+        <View
+          style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+          // The list sits above the spotlight overlay, so the overlay can't see
+          // taps here — catch any touch in the list area instead. The expanded
+          // card stops propagation so its own controls keep working.
+          onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
         >
-          <Text style={[styles.viewModePillText, styles.viewModePillTextActive]}>Inbox</Text>
-        </TouchableOpacity>
-      </ScrollView>
-
-      <SpotlightOverlay
-        visible={spotlightActive}
-        onPress={() => setExpandedTaskId(null)}
-      />
-
-      <View
-        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
-        // The list sits above the spotlight overlay, so the overlay can't see
-        // taps here — catch any touch in the list area instead. The expanded
-        // card stops propagation so its own controls keep working.
-        onTouchEnd={spotlightActive ? () => setExpandedTaskId(null) : undefined}
-      >
-        <FlatList
-          data={inboxTasks}
-          keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          contentContainerStyle={
-            inboxTasks.length === 0
-              ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
-          renderItem={({ item }) => {
-            const subs = allTasks.filter(t => t.parentId === item.id);
-            return (
-              <TaskItem
-                task={item}
-                onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                    setExpandedTaskId(null);
-                    return;
-                  }
-                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                }}
-                expanded={expandedTaskId === item.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                onEdit={() => openEditor(item)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-                selectionMode={selectionMode}
-                selected={selectedIds.has(item.id)}
-                onSelect={() => toggleSelection(item.id)}
-                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
-                justCreated={item.id === justCreatedId}
-              />
-            );
-          }}
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
-          ListEmptyComponent={
-            <EmptyState
-              icon="file-tray-outline"
-              title="Inbox zero"
-              subtitle="Voice-added and quick tasks land here to be sorted."
-              bottomOffset={tabBarHeight}
-            />
-          }
-        />
-      </View>
-
-      {!selectionMode && (
-        <View style={[styles.fabContainer, { bottom: insets.bottom + tabBarHeight + spacing.lg }]}>
-          <PressableScale
-            style={styles.fab}
-            pressScale={0.9}
-            onPress={() => {
-              haptics.impactLight();
-              setQuickAddVisible(true);
+          <FlatList
+            data={inboxTasks}
+            keyExtractor={t => t.id}
+            automaticallyAdjustKeyboardInsets
+            contentContainerStyle={
+              inboxTasks.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+            }
+            renderItem={({ item }) => {
+              const subs = allTasks.filter(t => t.parentId === item.id);
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
+                  expanded={expandedTaskId === item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  justCreated={item.id === justCreatedId}
+                />
+              );
             }}
-            accessibilityLabel="Add task"
-          >
-            <Ionicons name="add" size={28} color={colors.onAccent} />
-          </PressableScale>
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
+            ListEmptyComponent={
+              <EmptyState
+                icon="file-tray-outline"
+                title="Inbox zero"
+                subtitle="Voice-added and quick tasks land here to be sorted."
+                bottomOffset={tabBarHeight}
+              />
+            }
+          />
         </View>
-      )}
 
-      <QuickAddModal
-        visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={draft => {
-          setQuickAddVisible(false);
-          setEditingTask(null);
-          setEditorVisible(true);
-          setEditorInitialDraft(draft);
-        }}
-        context="inbox"
-        onCreated={handleTaskCreated}
-      />
+        {!selectionMode && (
+          <View style={[styles.fabContainer, { bottom: insets.bottom + tabBarHeight + spacing.lg }]}>
+            <PressableScale
+              style={styles.fab}
+              pressScale={0.9}
+              onPress={() => {
+                haptics.impactLight();
+                setQuickAddVisible(true);
+              }}
+              accessibilityLabel="Add task"
+            >
+              <Ionicons name="add" size={28} color={colors.onAccent} />
+            </PressableScale>
+          </View>
+        )}
 
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        initialDraft={editorInitialDraft}
-        onClose={() => {
-          setEditorVisible(false);
-          setEditorInitialDraft(null);
-          setExpandedTaskId(null);
-        }}
-      />
-
-      {selectionMode && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          totalCount={inboxTasks.length}
-          existingTags={allTags}
-          existingCategories={allCategories}
-          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
-          onDelete={handleBulkDelete}
-          onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
-          onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
-          onAddCategory={addCategory}
-          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
-          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-          onSelectAll={() => selectAll(inboxTasks.map(t => t.id))}
-          onDeselectAll={deselectAll}
-          onCancel={exitSelection}
-          bottomInset={tabBarHeight}
-          onHeightChange={setBulkBarHeight}
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={() => setQuickAddVisible(false)}
+          onOpenFull={draft => {
+            setQuickAddVisible(false);
+            setEditingTask(null);
+            setEditorVisible(true);
+            setEditorInitialDraft(draft);
+          }}
+          context="inbox"
+          onCreated={handleTaskCreated}
         />
-      )}
-    </View>
+
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          initialDraft={editorInitialDraft}
+          onClose={() => {
+            setEditorVisible(false);
+            setEditorInitialDraft(null);
+            setExpandedTaskId(null);
+          }}
+        />
+
+        {selectionMode && (
+          <BulkActionBar
+            selectedCount={selectedIds.size}
+            totalCount={inboxTasks.length}
+            existingTags={allTags}
+            existingCategories={allCategories}
+            onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+            onDelete={handleBulkDelete}
+            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+            onAddCategory={addCategory}
+            onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+            onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onSelectAll={() => selectAll(inboxTasks.map(t => t.id))}
+            onDeselectAll={deselectAll}
+            onCancel={exitSelection}
+            bottomInset={tabBarHeight}
+            onHeightChange={setBulkBarHeight}
+          />
+        )}
+      </View>
+    </SpotlightProvider>
   );
 }
 

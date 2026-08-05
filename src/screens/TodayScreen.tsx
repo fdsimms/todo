@@ -9,7 +9,6 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
-  Animated,
   AppState,
   type GestureResponderEvent,
 } from 'react-native';
@@ -54,7 +53,13 @@ import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
-import { SpotlightOverlay, useSpotlightElevation } from '../components/SpotlightOverlay';
+import {
+  SpotlightOverlay,
+  SpotlightProvider,
+  SpotlightScrim,
+  useSpotlightElevation,
+  useSpotlightProgress,
+} from '../components/SpotlightOverlay';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -62,7 +67,7 @@ import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -78,11 +83,10 @@ const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
 // `collapsed`); otherwise it renders as static text (used for the
 // non-category "Later Today" header).
 //
-// `dimmed` mirrors TaskItem's spotlight scrim: while another task is
-// spotlighted, this header needs the same fixed-alpha backdrop drawn over
-// it so it visually recedes with the rest of the list instead of sitting
-// undimmed above the spotlight overlay (the list itself is elevated above
-// that overlay, so headers must dim themselves).
+// The SpotlightScrim mirrors TaskItem's: while a task is spotlighted, this
+// header needs the same backdrop drawn over it so it recedes with the rest of
+// the list instead of sitting bright above the spotlight overlay (the list is
+// elevated above that overlay, so headers must dim themselves).
 function SectionHeader({
   label,
   styles,
@@ -90,7 +94,6 @@ function SectionHeader({
   collapsed,
   onToggle,
   onDrag,
-  dimmed = false,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
@@ -98,24 +101,8 @@ function SectionHeader({
   collapsed?: boolean;
   onToggle?: () => void;
   onDrag?: () => void;
-  dimmed?: boolean;
 }) {
-  const scrimOpacity = useRef(new Animated.Value(dimmed ? 1 : 0)).current;
-
-  useEffect(() => {
-    Animated.timing(scrimOpacity, {
-      toValue: dimmed ? 1 : 0,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [dimmed]);
-
-  const scrim = (
-    <Animated.View
-      style={[styles.sectionHeaderScrim, { opacity: scrimOpacity, backgroundColor: colors.backdrop }]}
-      pointerEvents="none"
-    />
-  );
+  const scrim = <SpotlightScrim />;
 
   if (!onToggle) {
     return (
@@ -493,18 +480,18 @@ export function TodayScreen() {
 
   const spotlightActive = expandedTaskId !== null && !selectionMode;
   const listElevated = useSpotlightElevation(spotlightActive);
+  // One animation for the whole mask: the backdrop, every row's scrim, every
+  // header's scrim and the FAB below all read this value, so they can't drift
+  // apart no matter how much work the expanding row's own render costs.
+  const spotlightProgress = useSpotlightProgress(spotlightActive);
 
   // Fade the FAB out while a task is spotlighted. The elevated list (zIndex 10)
   // otherwise renders rows on top of the FAB, which looks broken; hiding it
   // also makes it non-interactive in this state, matching the dimmed list.
-  const fabOpacity = useRef(new Animated.Value(1)).current;
-  useEffect(() => {
-    Animated.timing(fabOpacity, {
-      toValue: spotlightActive ? 0 : 1,
-      duration: animation.duration.fast,
-      useNativeDriver: true,
-    }).start();
-  }, [spotlightActive, fabOpacity]);
+  const fabOpacity = useMemo(
+    () => spotlightProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+    [spotlightProgress],
+  );
 
   // The spotlight overlay sits behind the elevated list (zIndex 10), so it
   // never sees taps over the list; the wrapper's onTouchEnd below catches
@@ -1019,7 +1006,6 @@ export function TodayScreen() {
     }
     // Headers sit in the same elevated list as task rows, above the spotlight
     // overlay, so each one draws its own scrim to dim in step with the rows.
-    const headerDimmed = expandedTaskId !== null && !selectionMode;
     if (item.type === 'pinned-header') {
       return (
         <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
@@ -1032,9 +1018,7 @@ export function TodayScreen() {
               <Text style={styles.clearText}>Clear</Text>
             </TouchableOpacity>
           </View>
-          {headerDimmed && (
-            <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
-          )}
+          <SpotlightScrim />
         </Pressable>
       );
     }
@@ -1058,9 +1042,7 @@ export function TodayScreen() {
         >
           <Text style={styles.sectionHeaderText}>Everything else</Text>
           <Ionicons name={restExpanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
-          {headerDimmed && (
-            <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
-          )}
+          <SpotlightScrim />
         </TouchableOpacity>
       );
     }
@@ -1076,7 +1058,6 @@ export function TodayScreen() {
           collapsed={isCategory ? (autoCollapseForDrag || collapsedCategories.has(item.label)) : undefined}
           onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
           onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
-          dimmed={headerDimmed}
         />
       );
     }
@@ -1100,7 +1081,6 @@ export function TodayScreen() {
             onDeleteGroupOnly={() => deleteGroup(item.group.id, { cascade: false })}
             onDeleteWithTasks={() => deleteGroup(item.group.id, { cascade: true })}
             onPressEdit={() => { setEditingGroup(item.group); setGroupEditorVisible(true); }}
-            dimmed={headerDimmed}
             onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
           />
           <AnimatedCollapsible expanded={!item.group.collapsed && draggingGroupId !== item.group.id}>
@@ -1374,517 +1354,517 @@ export function TodayScreen() {
   ];
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader
-        title={viewMode === 'today' ? 'Today' : viewMode === 'later' ? 'Later' : 'Unscheduled'}
-        overline={viewMode === 'today' ? today : undefined}
-        actions={headerActions}
-      />
+    <SpotlightProvider progress={spotlightProgress}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <ScreenHeader
+          title={viewMode === 'today' ? 'Today' : viewMode === 'later' ? 'Later' : 'Unscheduled'}
+          overline={viewMode === 'today' ? today : undefined}
+          actions={headerActions}
+        />
 
-      {/* View mode switcher */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.viewModePillsScroll}
-        contentContainerStyle={styles.viewModePills}
-      >
-        {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
+        {/* View mode switcher */}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.viewModePillsScroll}
+          contentContainerStyle={styles.viewModePills}
+        >
+          {(['today', 'later', 'unscheduled'] as ViewMode[]).map(mode => (
+            <TouchableOpacity
+              key={mode}
+              style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
+              onPress={() => {
+                haptics.tap();
+                setViewMode(mode);
+                setExpandedTaskId(null);
+                if (selectionMode) exitSelection();
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: viewMode === mode }}
+              accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+            >
+              <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
+                {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              </Text>
+            </TouchableOpacity>
+          ))}
           <TouchableOpacity
-            key={mode}
-            style={[styles.viewModePill, viewMode === mode && styles.viewModePillActive]}
+            style={styles.viewModePill}
             onPress={() => {
               haptics.tap();
-              setViewMode(mode);
-              setExpandedTaskId(null);
-              if (selectionMode) exitSelection();
+              navigation.navigate('Inbox' as never);
             }}
             activeOpacity={interaction.activeOpacity}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: viewMode === mode }}
-            accessibilityLabel={`${mode.charAt(0).toUpperCase() + mode.slice(1)} view`}
+            accessibilityRole="button"
+            accessibilityLabel={inboxCount > 0 ? `Inbox, ${inboxCount} to sort` : 'Inbox'}
           >
-            <Text style={[styles.viewModePillText, viewMode === mode && styles.viewModePillTextActive]}>
-              {mode.charAt(0).toUpperCase() + mode.slice(1)}
-            </Text>
+            <Text style={styles.viewModePillText}>Inbox</Text>
+            {inboxCount > 0 && (
+              <View style={styles.viewModePillBadge}>
+                <Text style={styles.viewModePillBadgeText}>{inboxCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
-        ))}
-        <TouchableOpacity
-          style={styles.viewModePill}
-          onPress={() => {
-            haptics.tap();
-            navigation.navigate('Inbox' as never);
-          }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={inboxCount > 0 ? `Inbox, ${inboxCount} to sort` : 'Inbox'}
+        </ScrollView>
+
+        {viewMode === 'today' && newTaskIds.length > 0 && (
+          <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
+        )}
+
+        <SpotlightOverlay
+          visible={spotlightActive}
+          onPress={() => setExpandedTaskId(null)}
+        />
+
+        <View
+          style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
+          // The list sits above the spotlight overlay, so the overlay can't see
+          // taps here — catch any touch in the list area instead. The expanded
+          // card stops propagation so its own controls keep working.
+          onTouchStart={spotlightActive ? handleListTouchStart : undefined}
+          onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
-          <Text style={styles.viewModePillText}>Inbox</Text>
-          {inboxCount > 0 && (
-            <View style={styles.viewModePillBadge}>
-              <Text style={styles.viewModePillBadgeText}>{inboxCount}</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-      </ScrollView>
-
-      {viewMode === 'today' && newTaskIds.length > 0 && (
-        <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
-      )}
-
-      <SpotlightOverlay
-        visible={spotlightActive}
-        onPress={() => setExpandedTaskId(null)}
-      />
-
-      <View
-        style={[styles.listWrapper, listElevated && styles.listWrapperElevated]}
-        // The list sits above the spotlight overlay, so the overlay can't see
-        // taps here — catch any touch in the list area instead. The expanded
-        // card stops propagation so its own controls keep working.
-        onTouchStart={spotlightActive ? handleListTouchStart : undefined}
-        onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
-      >
-      {viewMode === 'later' && (
-        <ReorderableList
-          data={laterDraggableData}
-          keyExtractor={item => item.key}
-          renderItem={({ item, drag, isActive }) => {
-            if (item.type === 'header') {
+        {viewMode === 'later' && (
+          <ReorderableList
+            data={laterDraggableData}
+            keyExtractor={item => item.key}
+            renderItem={({ item, drag, isActive }) => {
+              if (item.type === 'header') {
+                return (
+                  <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
+                    <Text style={styles.sectionHeaderText}>{item.label}</Text>
+                    <SpotlightScrim />
+                  </Pressable>
+                );
+              }
+              const subs = subtasksByParent.get(item.task.id) ?? [];
               return (
-                <Pressable style={styles.sectionHeader} onPress={() => setExpandedTaskId(null)}>
-                  <Text style={styles.sectionHeaderText}>{item.label}</Text>
-                  {expandedTaskId !== null && !selectionMode && (
-                    <View style={[styles.sectionHeaderScrim, { backgroundColor: colors.backdrop }]} pointerEvents="none" />
-                  )}
-                </Pressable>
+                <TaskItem
+                  task={item.task}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
+                  }}
+                  expanded={expandedTaskId === item.task.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
+                  onEdit={() => openEditor(item.task)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  drag={selectionMode || !drag ? undefined : drag}
+                  isActive={isActive}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.task.id)}
+                  onSelect={() => toggleSelection(item.task.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
+                  hideTodayLabel
+                  showCategory
+                  showProject
+                  showActions={false}
+                  justCreated={item.task.id === justCreatedId}
+                />
               );
+            }}
+            onDragBegin={() => setExpandedTaskId(null)}
+            onHoverChange={dragHaptic}
+            dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
+            placeholderStyle={styles.dropSlot}
+            onReorder={reordered => {
+              setLaterDraggableData(reordered);
+              reorderTasks(laterTaskOrder(reordered));
+            }}
+            onEndReached={handleLaterEndReached}
+            onEndReachedThreshold={400}
+            contentContainerStyle={
+              laterSections.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
-            const subs = subtasksByParent.get(item.task.id) ?? [];
-            return (
-              <TaskItem
-                task={item.task}
-                onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
-                    setExpandedTaskId(null);
-                    return;
-                  }
-                  setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
-                }}
-                expanded={expandedTaskId === item.task.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
-                onEdit={() => openEditor(item.task)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-                drag={selectionMode || !drag ? undefined : drag}
-                isActive={isActive}
-                selectionMode={selectionMode}
-                selected={selectedIds.has(item.task.id)}
-                onSelect={() => toggleSelection(item.task.id)}
-                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
-                hideTodayLabel
-                showCategory
-                showProject
-                showActions={false}
-                justCreated={item.task.id === justCreatedId}
+            ListEmptyComponent={
+              <EmptyState
+                icon="moon"
+                title="Nothing deferred"
+                subtitle="Swipe left on a task to defer it"
+                bottomOffset={tabBarHeight}
               />
-            );
-          }}
-          onDragBegin={() => setExpandedTaskId(null)}
-          onHoverChange={dragHaptic}
-          dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
-          placeholderStyle={styles.dropSlot}
-          onReorder={reordered => {
-            setLaterDraggableData(reordered);
-            reorderTasks(laterTaskOrder(reordered));
-          }}
-          onEndReached={handleLaterEndReached}
-          onEndReachedThreshold={400}
-          contentContainerStyle={
-            laterSections.length === 0
-              ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
-          ListEmptyComponent={
-            <EmptyState
-              icon="moon"
-              title="Nothing deferred"
-              subtitle="Swipe left on a task to defer it"
-              bottomOffset={tabBarHeight}
-            />
-          }
-          ListFooterComponent={
-            <>
-              {hasMoreLaterSections && (
-                <View style={styles.laterLoadingMore}>
-                  <Text style={styles.laterLoadingMoreText}>Loading more…</Text>
-                </View>
-              )}
-              {listFooter(laterSections.length === 0)}
-            </>
-          }
-        />
-      )}
-
-      {viewMode === 'today' && pinnedTasks.length > 0 && (
-        <FlatList
-          data={data}
-          keyExtractor={listItemKey}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          automaticallyAdjustKeyboardInsets
-          renderItem={({ item }) => renderItem({ item })}
-          contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
-          refreshControl={
-            <RefreshControl
-              refreshing={pullingToAdd}
-              onRefresh={handlePullToAdd}
-              tintColor={colors.textSecondary}
-            />
-          }
-          ListFooterComponent={listFooter()}
-          ListFooterComponentStyle={styles.listFooterCell}
-        />
-      )}
-
-      {viewMode === 'today' && pinnedTasks.length === 0 && (
-        <ReorderableList
-          data={draggableData}
-          keyExtractor={listItemKey}
-          renderItem={renderItem}
-          onDragBegin={() => {
-            setExpandedTaskId(null);
-            joinedTaskIdRef.current = null;
-          }}
-          onDragEnd={({ committed }) => {
-            const joinGroupId = joinGroupIntentRef.current;
-            joinGroupIntentRef.current = null;
-            setJoinGroupIntentId(null);
-            // The join lands here rather than in onReorder: a drop onto a
-            // group leaves the list order untouched (the list stops
-            // reordering once it's aimed at a group), and onReorder stays
-            // silent when nothing moved. `committed` keeps a cancelled drag —
-            // touch loss, app switch — from quietly stacking the task.
-            const dragged = draggableData[activeDragIndexRef.current ?? -1];
-            if (committed && joinGroupId !== null && dragged?.type === 'task') {
-              joinedTaskIdRef.current = dragged.task.id;
-              addExistingToGroup(dragged.task.id, joinGroupId);
-              haptics.success();
             }
-            if (draggingGroupId !== null) setDraggingGroupId(null);
-            if (!autoCollapseForDrag) return;
-            // Deferred a tick so this LayoutAnimation lands in its own
-            // commit, after ReorderableList's own drop-settle render (rows
-            // snapping from their transform back to plain layout) — firing
-            // it in the same commit as that snap fights it (see
-            // layoutAnimation.ts).
-            setTimeout(() => {
-              animateLayout();
-              setAutoCollapseForDrag(false);
-            }, 0);
-          }}
-          onHoverChange={dragHaptic}
-          onDragMove={({ dx, overIndex }) => {
-            // Only a plain loose task can be dragged right to join a group —
-            // headers and groups themselves use the same horizontal offset
-            // purely as drag-overlay cosmetics (see ReorderableList).
-            const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
-            if (draggedItem?.type !== 'task') return;
-            // The target is the group the card is physically over, anywhere
-            // from the top of its header to the bottom of its last child —
-            // not the reorder gap next to it. hoverIndex describes a gap
-            // between rows, and the rows sliding to open that gap are exactly
-            // what used to move the group out from under the card, leaving a
-            // sliver at the group's top edge as the only place a drop
-            // registered.
-            const over = overIndex !== null ? draggableData[overIndex] : null;
-            const target = over?.type === 'group' ? over.group : null;
-            // The rightward offset stays the deliberate part of the gesture —
-            // without it there'd be no way to drag a task past a group without
-            // falling into it — but disarming now needs a real move back, not
-            // just dropping under the arming threshold.
-            const armed = joinGroupIntentRef.current !== null;
-            const threshold = armed ? JOIN_GROUP_RELEASE_THRESHOLD : JOIN_GROUP_INDENT_THRESHOLD;
-            const nextId = target && dx > threshold ? target.id : null;
-            if (nextId !== joinGroupIntentRef.current) {
-              joinGroupIntentRef.current = nextId;
-              setJoinGroupIntentId(nextId);
-              if (nextId) haptics.impactLight();
+            ListFooterComponent={
+              <>
+                {hasMoreLaterSections && (
+                  <View style={styles.laterLoadingMore}>
+                    <Text style={styles.laterLoadingMoreText}>Loading more…</Text>
+                  </View>
+                )}
+                {listFooter(laterSections.length === 0)}
+              </>
             }
-          }}
-          // Aiming at a group takes the drag over: the list stops opening a
-          // reorder gap, so the group stays put under the card instead of
-          // sliding away from the finger chasing it.
-          dropDisabled={joinGroupIntentId !== null}
-          dropIntoIndex={
-            joinGroupIntentId === null
-              ? null
-              : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
-          }
-          dragRange={(rangeData, activeIndex) => {
-            activeDragIndexRef.current = activeIndex;
-            const activeItem = rangeData[activeIndex];
-            if (activeItem?.type === 'header' && activeItem.label !== LATER_TODAY_LABEL) {
-              const range = categoryHeaderRange(rangeData);
-              if (range) return range;
+          />
+        )}
+
+        {viewMode === 'today' && pinnedTasks.length > 0 && (
+          <FlatList
+            data={data}
+            keyExtractor={listItemKey}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
+            renderItem={({ item }) => renderItem({ item })}
+            contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            refreshControl={
+              <RefreshControl
+                refreshing={pullingToAdd}
+                onRefresh={handlePullToAdd}
+                tintColor={colors.textSecondary}
+              />
             }
-            return [0, rangeData.length - 1];
-          }}
-          placeholderStyle={styles.dropSlot}
-          onReorder={reordered => {
-            // The draggable list only ever contains header/task/group items.
-            const dropped = reordered.filter(
-              (item): item is CategoryListItem =>
-                item.type === 'header' || item.type === 'task' || item.type === 'group',
-            );
+            ListFooterComponent={listFooter()}
+            ListFooterComponentStyle={styles.listFooterCell}
+          />
+        )}
 
-            const joinedTaskId = joinedTaskIdRef.current;
-            joinedTaskIdRef.current = null;
-
-            if (draggingCategoryRef.current !== null) {
-              draggingCategoryRef.current = null;
-              const { categoryOrder, settled } = resolveCategoryReorder(dropped, {
-                isUpcoming: id => upcomingTaskIds.has(id),
-                showUpcoming,
-                fullCategoryOrder: allCategories,
-              });
-              setDraggableData(settled);
-              reorderCategories(categoryOrder);
-              return;
+        {viewMode === 'today' && pinnedTasks.length === 0 && (
+          <ReorderableList
+            data={draggableData}
+            keyExtractor={listItemKey}
+            renderItem={renderItem}
+            onDragBegin={() => {
+              setExpandedTaskId(null);
+              joinedTaskIdRef.current = null;
+            }}
+            onDragEnd={({ committed }) => {
+              const joinGroupId = joinGroupIntentRef.current;
+              joinGroupIntentRef.current = null;
+              setJoinGroupIntentId(null);
+              // The join lands here rather than in onReorder: a drop onto a
+              // group leaves the list order untouched (the list stops
+              // reordering once it's aimed at a group), and onReorder stays
+              // silent when nothing moved. `committed` keeps a cancelled drag —
+              // touch loss, app switch — from quietly stacking the task.
+              const dragged = draggableData[activeDragIndexRef.current ?? -1];
+              if (committed && joinGroupId !== null && dragged?.type === 'task') {
+                joinedTaskIdRef.current = dragged.task.id;
+                addExistingToGroup(dragged.task.id, joinGroupId);
+                haptics.success();
+              }
+              if (draggingGroupId !== null) setDraggingGroupId(null);
+              if (!autoCollapseForDrag) return;
+              // Deferred a tick so this LayoutAnimation lands in its own
+              // commit, after ReorderableList's own drop-settle render (rows
+              // snapping from their transform back to plain layout) — firing
+              // it in the same commit as that snap fights it (see
+              // layoutAnimation.ts).
+              setTimeout(() => {
+                animateLayout();
+                setAutoCollapseForDrag(false);
+              }, 0);
+            }}
+            onHoverChange={dragHaptic}
+            onDragMove={({ dx, overIndex }) => {
+              // Only a plain loose task can be dragged right to join a group —
+              // headers and groups themselves use the same horizontal offset
+              // purely as drag-overlay cosmetics (see ReorderableList).
+              const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
+              if (draggedItem?.type !== 'task') return;
+              // The target is the group the card is physically over, anywhere
+              // from the top of its header to the bottom of its last child —
+              // not the reorder gap next to it. hoverIndex describes a gap
+              // between rows, and the rows sliding to open that gap are exactly
+              // what used to move the group out from under the card, leaving a
+              // sliver at the group's top edge as the only place a drop
+              // registered.
+              const over = overIndex !== null ? draggableData[overIndex] : null;
+              const target = over?.type === 'group' ? over.group : null;
+              // The rightward offset stays the deliberate part of the gesture —
+              // without it there'd be no way to drag a task past a group without
+              // falling into it — but disarming now needs a real move back, not
+              // just dropping under the arming threshold.
+              const armed = joinGroupIntentRef.current !== null;
+              const threshold = armed ? JOIN_GROUP_RELEASE_THRESHOLD : JOIN_GROUP_INDENT_THRESHOLD;
+              const nextId = target && dx > threshold ? target.id : null;
+              if (nextId !== joinGroupIntentRef.current) {
+                joinGroupIntentRef.current = nextId;
+                setJoinGroupIntentId(nextId);
+                if (nextId) haptics.impactLight();
+              }
+            }}
+            // Aiming at a group takes the drag over: the list stops opening a
+            // reorder gap, so the group stays put under the card instead of
+            // sliding away from the finger chasing it.
+            dropDisabled={joinGroupIntentId !== null}
+            dropIntoIndex={
+              joinGroupIntentId === null
+                ? null
+                : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
             }
-
-            // A task dragged onto a group (see onDragMove) has already joined
-            // it in onDragEnd — drop it from the normal placement pass so
-            // resolveDrop never assigns it a category/order of its own.
-            if (joinedTaskId !== null) {
-              const withoutJoined = dropped.filter(
-                item => !(item.type === 'task' && item.task.id === joinedTaskId),
+            dragRange={(rangeData, activeIndex) => {
+              activeDragIndexRef.current = activeIndex;
+              const activeItem = rangeData[activeIndex];
+              if (activeItem?.type === 'header' && activeItem.label !== LATER_TODAY_LABEL) {
+                const range = categoryHeaderRange(rangeData);
+                if (range) return range;
+              }
+              return [0, rangeData.length - 1];
+            }}
+            placeholderStyle={styles.dropSlot}
+            onReorder={reordered => {
+              // The draggable list only ever contains header/task/group items.
+              const dropped = reordered.filter(
+                (item): item is CategoryListItem =>
+                  item.type === 'header' || item.type === 'task' || item.type === 'group',
               );
-              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
+
+              const joinedTaskId = joinedTaskIdRef.current;
+              joinedTaskIdRef.current = null;
+
+              if (draggingCategoryRef.current !== null) {
+                draggingCategoryRef.current = null;
+                const { categoryOrder, settled } = resolveCategoryReorder(dropped, {
+                  isUpcoming: id => upcomingTaskIds.has(id),
+                  showUpcoming,
+                  fullCategoryOrder: allCategories,
+                });
+                setDraggableData(settled);
+                reorderCategories(categoryOrder);
+                return;
+              }
+
+              // A task dragged onto a group (see onDragMove) has already joined
+              // it in onDragEnd — drop it from the normal placement pass so
+              // resolveDrop never assigns it a category/order of its own.
+              if (joinedTaskId !== null) {
+                const withoutJoined = dropped.filter(
+                  item => !(item.type === 'task' && item.task.id === joinedTaskId),
+                );
+                const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
+                  isUpcoming: id => upcomingTaskIds.has(id),
+                  showUpcoming,
+                  categoryOrder: allCategories,
+                });
+                groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+                setDraggableData(settled);
+                reorderWithCategoryUpdates(taskIds, categoryUpdates);
+                return;
+              }
+
+              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
                 isUpcoming: id => upcomingTaskIds.has(id),
                 showUpcoming,
                 categoryOrder: allCategories,
               });
-              groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-              setDraggableData(settled);
-              reorderWithCategoryUpdates(taskIds, categoryUpdates);
-              return;
+
+              const commitDrop = (scope?: 'occurrence' | 'series') => {
+                // Show the final grouped layout immediately to avoid a flash; the
+                // effect then reconciles to the store-derived `data` (structurally
+                // identical) once the store write lands.
+                setDraggableData(settled);
+                groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+                reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
+              };
+
+              // Dragging a recurring task into a new category is a content-field
+              // edit like any other (category is a CONTENT_FIELD) and needs the
+              // same "just this task or this and future occurrences" choice as
+              // editing it through the editor. Leaving draggableData untouched on
+              // Cancel lets the list settle back to its pre-drag order.
+              const recategorizedRecurring = categoryUpdates.some(u => {
+                const task = allTasks.find(t => t.id === u.id);
+                return task && task.recurrenceType !== 'none';
+              });
+              if (recategorizedRecurring) {
+                Alert.alert(
+                  'Update recurring task',
+                  'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'This Task', onPress: () => commitDrop('occurrence') },
+                    { text: 'This and Future Tasks', onPress: () => commitDrop('series') },
+                  ],
+                );
+                return;
+              }
+
+              commitDrop();
+            }}
+            contentContainerStyle={
+              filtered.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
             }
-
-            const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
-              isUpcoming: id => upcomingTaskIds.has(id),
-              showUpcoming,
-              categoryOrder: allCategories,
-            });
-
-            const commitDrop = (scope?: 'occurrence' | 'series') => {
-              // Show the final grouped layout immediately to avoid a flash; the
-              // effect then reconciles to the store-derived `data` (structurally
-              // identical) once the store write lands.
-              setDraggableData(settled);
-              groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-              reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
-            };
-
-            // Dragging a recurring task into a new category is a content-field
-            // edit like any other (category is a CONTENT_FIELD) and needs the
-            // same "just this task or this and future occurrences" choice as
-            // editing it through the editor. Leaving draggableData untouched on
-            // Cancel lets the list settle back to its pre-drag order.
-            const recategorizedRecurring = categoryUpdates.some(u => {
-              const task = allTasks.find(t => t.id === u.id);
-              return task && task.recurrenceType !== 'none';
-            });
-            if (recategorizedRecurring) {
-              Alert.alert(
-                'Update recurring task',
-                'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
-                [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'This Task', onPress: () => commitDrop('occurrence') },
-                  { text: 'This and Future Tasks', onPress: () => commitDrop('series') },
-                ],
-              );
-              return;
-            }
-
-            commitDrop();
-          }}
-          contentContainerStyle={
-            filtered.length === 0
-              ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
-          refreshControl={
-            <RefreshControl
-              refreshing={pullingToAdd}
-              onRefresh={handlePullToAdd}
-              tintColor={colors.textSecondary}
-            />
-          }
-          ListEmptyComponent={emptyComponent}
-          ListFooterComponent={
-            // Direct child of the scroll content (no cell wrapper), so the
-            // spacer's own flexGrow stretches it; pinned when empty so the
-            // empty state stays centered.
-            listFooter(filtered.length === 0)
-          }
-        />
-      )}
-
-      {viewMode === 'unscheduled' && (
-        <FlatList
-          data={unscheduledTasks}
-          keyExtractor={t => t.id}
-          automaticallyAdjustKeyboardInsets
-          renderItem={({ item }) => {
-            const subs = subtasksByParent.get(item.id) ?? [];
-            return (
-              <TaskItem
-                task={item}
-                onPress={() => {
-                  if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                    setExpandedTaskId(null);
-                    return;
-                  }
-                  setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                }}
-                expanded={expandedTaskId === item.id}
-                spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                onEdit={() => openEditor(item)}
-                subtaskCount={subs.length}
-                subtaskDoneCount={subs.filter(t => t.completed).length}
-                subtasks={subs}
-                selectionMode={selectionMode}
-                selected={selectedIds.has(item.id)}
-                onSelect={() => toggleSelection(item.id)}
-                onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
-                hideTodayLabel
-                showCategory
-                showProject
-                justCreated={item.id === justCreatedId}
+            refreshControl={
+              <RefreshControl
+                refreshing={pullingToAdd}
+                onRefresh={handlePullToAdd}
+                tintColor={colors.textSecondary}
               />
-            );
-          }}
-          contentContainerStyle={
-            unscheduledTasks.length === 0
-              ? styles.emptyContainer
-              : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
-          }
-          ListEmptyComponent={
-            <EmptyState
-              icon="layers-outline"
-              title="Nothing unscheduled"
-              subtitle="Tasks with no due date land here once they're organized"
-              bottomOffset={tabBarHeight}
-            />
-          }
-          ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
-          ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+            }
+            ListEmptyComponent={emptyComponent}
+            ListFooterComponent={
+              // Direct child of the scroll content (no cell wrapper), so the
+              // spacer's own flexGrow stretches it; pinned when empty so the
+              // empty state stays centered.
+              listFooter(filtered.length === 0)
+            }
+          />
+        )}
+
+        {viewMode === 'unscheduled' && (
+          <FlatList
+            data={unscheduledTasks}
+            keyExtractor={t => t.id}
+            automaticallyAdjustKeyboardInsets
+            renderItem={({ item }) => {
+              const subs = subtasksByParent.get(item.id) ?? [];
+              return (
+                <TaskItem
+                  task={item}
+                  onPress={() => {
+                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
+                      setExpandedTaskId(null);
+                      return;
+                    }
+                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
+                  }}
+                  expanded={expandedTaskId === item.id}
+                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
+                  onEdit={() => openEditor(item)}
+                  subtaskCount={subs.length}
+                  subtaskDoneCount={subs.filter(t => t.completed).length}
+                  subtasks={subs}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.has(item.id)}
+                  onSelect={() => toggleSelection(item.id)}
+                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  hideTodayLabel
+                  showCategory
+                  showProject
+                  justCreated={item.id === justCreatedId}
+                />
+              );
+            }}
+            contentContainerStyle={
+              unscheduledTasks.length === 0
+                ? styles.emptyContainer
+                : [styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]
+            }
+            ListEmptyComponent={
+              <EmptyState
+                icon="layers-outline"
+                title="Nothing unscheduled"
+                subtitle="Tasks with no due date land here once they're organized"
+                bottomOffset={tabBarHeight}
+              />
+            }
+            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
+          />
+        )}
+        </View>
+
+        {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
+          <AddTaskFab
+            bottom={insets.bottom + 64}
+            disabled={spotlightActive}
+            opacity={fabOpacity}
+            onSelect={handleAddMenuSelect}
+          />
+        )}
+
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={() => setQuickAddVisible(false)}
+          onOpenFull={handleQuickAddOpenFull}
+          context={viewMode}
+          onCreated={handleTaskCreated}
+          initialRecurrenceType={quickAddInitialRecurrence}
         />
-      )}
+
+        <TaskEditor
+          visible={editorVisible}
+          task={editingTask}
+          initialDraft={editorInitialDraft}
+          onClose={() => {
+            setEditorVisible(false);
+            setExpandedTaskId(null);
+          }}
+        />
+
+        <SortFilterSheet
+          visible={filterVisible}
+          onClose={() => setFilterVisible(false)}
+          sort={sort}
+          onSortChange={setSort}
+          priorities={filterPriorities}
+          onPrioritiesChange={setFilterPriorities}
+          efforts={filterEfforts}
+          onEffortsChange={setFilterEfforts}
+        />
+
+        <TodayOptionsMenu
+          visible={optionsMenuVisible}
+          onClose={() => setOptionsMenuVisible(false)}
+          hideCategories={hideCategories}
+          onHideCategoriesChange={setHideCategories}
+        />
+
+        <TaskGroupEditor
+          visible={groupEditorVisible}
+          group={editingGroup}
+          isNew={newStackIdRef.current !== null}
+          onClose={() => {
+            setGroupEditorVisible(false);
+            if (newStackIdRef.current) {
+              const id = newStackIdRef.current;
+              newStackIdRef.current = null;
+              const current = useTaskGroupStore.getState().getGroupById(id);
+              if (current && current.title.trim() === '') removeGroupRow(id);
+            }
+            setEditingGroup(null);
+          }}
+        />
+
+        {selectionMode && (
+          <BulkActionBar
+            selectedCount={selectedIds.size}
+            totalCount={
+              viewMode === 'later' ? deferredTasks.length
+              : viewMode === 'unscheduled' ? unscheduledTasks.length
+              : filtered.length
+            }
+            existingTags={allTags}
+            existingCategories={allCategories}
+            onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+            onDelete={handleBulkDelete}
+            onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
+            onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
+            onAddCategory={addCategory}
+            onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
+            onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
+            onGroup={title => {
+              const ids = Array.from(selectedIds);
+              const selectedCategories = new Set(
+                ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
+              );
+              const category = selectedCategories.size === 1 ? [...selectedCategories][0] : null;
+              groupTasks(ids, title, category);
+              exitSelection();
+            }}
+            onSelectAll={() => selectAll(
+              viewMode === 'later' ? deferredTasks.map(t => t.id)
+              : viewMode === 'unscheduled' ? unscheduledTasks.map(t => t.id)
+              : filtered.map(t => t.id)
+            )}
+            onDeselectAll={deselectAll}
+            onCancel={exitSelection}
+            bottomInset={tabBarHeight}
+            onHeightChange={setBulkBarHeight}
+          />
+        )}
       </View>
-
-      {(viewMode === 'today' || viewMode === 'later' || viewMode === 'unscheduled') && !selectionMode && (
-        <AddTaskFab
-          bottom={insets.bottom + 64}
-          disabled={spotlightActive}
-          opacity={fabOpacity}
-          onSelect={handleAddMenuSelect}
-        />
-      )}
-
-      <QuickAddModal
-        visible={quickAddVisible}
-        onClose={() => setQuickAddVisible(false)}
-        onOpenFull={handleQuickAddOpenFull}
-        context={viewMode}
-        onCreated={handleTaskCreated}
-        initialRecurrenceType={quickAddInitialRecurrence}
-      />
-
-      <TaskEditor
-        visible={editorVisible}
-        task={editingTask}
-        initialDraft={editorInitialDraft}
-        onClose={() => {
-          setEditorVisible(false);
-          setExpandedTaskId(null);
-        }}
-      />
-
-      <SortFilterSheet
-        visible={filterVisible}
-        onClose={() => setFilterVisible(false)}
-        sort={sort}
-        onSortChange={setSort}
-        priorities={filterPriorities}
-        onPrioritiesChange={setFilterPriorities}
-        efforts={filterEfforts}
-        onEffortsChange={setFilterEfforts}
-      />
-
-      <TodayOptionsMenu
-        visible={optionsMenuVisible}
-        onClose={() => setOptionsMenuVisible(false)}
-        hideCategories={hideCategories}
-        onHideCategoriesChange={setHideCategories}
-      />
-
-      <TaskGroupEditor
-        visible={groupEditorVisible}
-        group={editingGroup}
-        isNew={newStackIdRef.current !== null}
-        onClose={() => {
-          setGroupEditorVisible(false);
-          if (newStackIdRef.current) {
-            const id = newStackIdRef.current;
-            newStackIdRef.current = null;
-            const current = useTaskGroupStore.getState().getGroupById(id);
-            if (current && current.title.trim() === '') removeGroupRow(id);
-          }
-          setEditingGroup(null);
-        }}
-      />
-
-      {selectionMode && (
-        <BulkActionBar
-          selectedCount={selectedIds.size}
-          totalCount={
-            viewMode === 'later' ? deferredTasks.length
-            : viewMode === 'unscheduled' ? unscheduledTasks.length
-            : filtered.length
-          }
-          existingTags={allTags}
-          existingCategories={allCategories}
-          onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
-          onDelete={handleBulkDelete}
-          onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
-          onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
-          onAddCategory={addCategory}
-          onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
-          onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
-          onGroup={title => {
-            const ids = Array.from(selectedIds);
-            const selectedCategories = new Set(
-              ids.map(id => allTasks.find(t => t.id === id)?.category ?? null)
-            );
-            const category = selectedCategories.size === 1 ? [...selectedCategories][0] : null;
-            groupTasks(ids, title, category);
-            exitSelection();
-          }}
-          onSelectAll={() => selectAll(
-            viewMode === 'later' ? deferredTasks.map(t => t.id)
-            : viewMode === 'unscheduled' ? unscheduledTasks.map(t => t.id)
-            : filtered.map(t => t.id)
-          )}
-          onDeselectAll={deselectAll}
-          onCancel={exitSelection}
-          bottomInset={tabBarHeight}
-          onHeightChange={setBulkBarHeight}
-        />
-      )}
-    </View>
+    </SpotlightProvider>
   );
 }
 
@@ -1938,9 +1918,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   categorySectionHeaderLeft: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
-  },
-  sectionHeaderScrim: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
   },
   focusSectionHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
