@@ -18,6 +18,7 @@ interface SettingsStore {
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  linkLiveActivity: boolean; // start a Live Activity when a task's link button is tapped (default on)
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   initialized: boolean;
   initialize: () => void;
@@ -33,6 +34,7 @@ interface SettingsStore {
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
+  setLinkLiveActivity: (on: boolean) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
 }
 
@@ -50,6 +52,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  linkLiveActivity: true,
   patchNotesQaStatus: {},
   initialized: false,
 
@@ -67,6 +70,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    // Defaults ON, unlike every other boolean here — an absent row (never
+    // set) must read true, so 'unset' and stored 'false' can't collapse to
+    // the same `=== 'true'` check the others use.
+    const storedLinkLiveActivity = dbGetSetting('linkLiveActivity');
+    const linkLiveActivity = storedLinkLiveActivity === null ? true : storedLinkLiveActivity === 'true';
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -76,7 +84,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, linkLiveActivity, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -148,6 +156,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setHideCategories(on: boolean) {
     dbSetSetting('hideCategories', on ? 'true' : 'false');
     set({ hideCategories: on });
+  },
+
+  setLinkLiveActivity(on: boolean) {
+    dbSetSetting('linkLiveActivity', on ? 'true' : 'false');
+    set({ linkLiveActivity: on });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {

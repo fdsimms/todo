@@ -197,3 +197,41 @@ describe('setVacationEnd', () => {
     expect(useSettingsStore.getState().vacationEnd).toBeNull();
   });
 });
+
+// ─── linkLiveActivity ────────────────────────────────────────────────────────
+
+describe('linkLiveActivity', () => {
+  it('defaults to true when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().linkLiveActivity).toBe(true);
+  });
+
+  it('respects a stored false value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'linkLiveActivity' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().linkLiveActivity).toBe(false);
+  });
+
+  it('respects a stored true value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'linkLiveActivity' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().linkLiveActivity).toBe(true);
+  });
+
+  it('setLinkLiveActivity(false) updates state and persists', () => {
+    useSettingsStore.getState().setLinkLiveActivity(false);
+    expect(useSettingsStore.getState().linkLiveActivity).toBe(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('linkLiveActivity', 'false');
+  });
+
+  it('setLinkLiveActivity(true) updates state and persists', () => {
+    useSettingsStore.getState().setLinkLiveActivity(false);
+    useSettingsStore.getState().setLinkLiveActivity(true);
+    expect(useSettingsStore.getState().linkLiveActivity).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('linkLiveActivity', 'true');
+  });
+});

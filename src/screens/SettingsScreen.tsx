@@ -60,6 +60,7 @@ export function SettingsScreen() {
     vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
+    linkLiveActivity, setLinkLiveActivity,
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
@@ -362,6 +363,43 @@ export function SettingsScreen() {
               A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.
             </Text>
           </View>
+
+          {/* Live Activities — iOS only, mirrors the widget's device reach */}
+          {Platform.OS === 'ios' && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Live Activities</Text>
+              <View style={styles.card}>
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => setLinkLiveActivity(!linkLiveActivity)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: linkLiveActivity }}
+                  accessibilityLabel="Live Activity on link tap"
+                >
+                  <Ionicons
+                    name="phone-portrait-outline"
+                    size={18}
+                    color={linkLiveActivity ? colors.accent : colors.textSecondary}
+                  />
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowLabel}>Live Activity on link tap</Text>
+                    <Text style={styles.rowHint}>
+                      {linkLiveActivity
+                        ? 'On — the task follows you to the Lock Screen with a Done button'
+                        : 'Off — the link button just opens the app'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, linkLiveActivity && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, linkLiveActivity && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.sectionFooter}>
+                Tapping a task's link button puts that task on your Lock Screen and in the Dynamic Island while you're in the other app, so you can tick it off without coming back here. It goes away the next time you open the app. Requires iOS 17.
+              </Text>
+            </View>
+          )}
 
           {/* Projects */}
           <View style={styles.section}>

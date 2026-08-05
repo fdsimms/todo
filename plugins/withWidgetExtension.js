@@ -29,6 +29,22 @@ const SWIFT_FILES = [
   'TodoWidgetData.swift',
   'TodoTodayWidget.swift',
   'CompleteTaskIntent.swift',
+  'TaskLinkLiveActivity.swift',
+];
+// Files that must compile into BOTH this extension and the app. The
+// canonical copy lives with the bridge module, where TodoWidgetBridge.podspec's
+// `**/*.{h,m,swift}` glob already compiles it into the app; it's copied in
+// here so both processes get the identical declaration. ActivityKit pairs an
+// Activity started by the app with the ActivityConfiguration that renders it
+// by the attributes type's *name* and a Codable round-trip of its properties,
+// so any drift between two hand-maintained copies would show up only as a
+// Live Activity that starts and then never appears. One file, copied.
+const BRIDGE_SOURCE_DIR = path.join(__dirname, '..', 'modules', 'todo-widget-bridge', 'ios');
+const SHARED_SWIFT_FILES = ['TaskLinkActivityAttributes.swift'];
+
+const ALL_SWIFT_FILES = [
+  ...SWIFT_FILES.map(name => ({ dir: SOURCE_DIR, name })),
+  ...SHARED_SWIFT_FILES.map(name => ({ dir: BRIDGE_SOURCE_DIR, name })),
 ];
 const INFO_PLIST_NAME = `${TARGET_NAME}-Info.plist`;
 const ENTITLEMENTS_NAME = `${TARGET_NAME}.entitlements`;
@@ -114,8 +130,8 @@ const withWidgetExtension = config => {
     const targetDir = path.join(platformProjectRoot, TARGET_NAME);
     fs.mkdirSync(targetDir, { recursive: true });
 
-    for (const file of SWIFT_FILES) {
-      fs.copyFileSync(path.join(SOURCE_DIR, file), path.join(targetDir, file));
+    for (const { dir, name } of ALL_SWIFT_FILES) {
+      fs.copyFileSync(path.join(dir, name), path.join(targetDir, name));
     }
     fs.writeFileSync(path.join(targetDir, INFO_PLIST_NAME), widgetInfoPlist());
     fs.writeFileSync(path.join(targetDir, ENTITLEMENTS_NAME), widgetEntitlements());
@@ -189,11 +205,11 @@ const withWidgetExtension = config => {
     const mainGroupKey = project.getFirstProject().firstProject.mainGroup;
     project.getPBXGroupByKey(mainGroupKey).children.push({ value: group.uuid, comment: TARGET_NAME });
 
-    for (const file of SWIFT_FILES) {
+    for (const { name } of ALL_SWIFT_FILES) {
       // Passing the group key (not just opt.target) both compiles the file
       // for this target and files it under the same navigator group as the
       // plist/entitlements above, instead of creating a duplicate reference.
-      project.addSourceFile(`${TARGET_NAME}/${file}`, { target: target.uuid }, group.uuid);
+      project.addSourceFile(`${TARGET_NAME}/${name}`, { target: target.uuid }, group.uuid);
     }
 
     project.addFramework('WidgetKit.framework', { target: target.uuid });
@@ -202,6 +218,11 @@ const withWidgetExtension = config => {
     // checkbox needs this — App Intents-based widget interactivity is
     // iOS 17+, matching DEPLOYMENT_TARGET below.
     project.addFramework('AppIntents.framework', { target: target.uuid });
+    // TaskLinkLiveActivity.swift's `import ActivityKit`. Not weak-linked here
+    // the way the app-side podspec does it — this target's deployment target
+    // is 17.0, above ActivityKit's 16.1 floor. ActivityConfiguration and
+    // DynamicIsland themselves live in WidgetKit, already added above.
+    project.addFramework('ActivityKit.framework', { target: target.uuid });
 
     const configListUuid = target.pbxNativeTarget.buildConfigurationList;
     const configList = project.pbxXCConfigurationList()[configListUuid];
