@@ -21,6 +21,7 @@ interface TemplateStore {
   initialize: () => void;
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
+  setTemplateCategory: (id: string, category: string | null) => void;
   deleteTemplate: (id: string) => void;
   reorderTemplates: (orderedIds: string[]) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
@@ -53,6 +54,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       itemGroups: [],
       createdAt: new Date().toISOString(),
       sortOrder: maxOrder + 1,
+      category: null,
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
@@ -63,6 +65,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const template = get().templates.find(t => t.id === id);
     if (!template) return;
     const updated = { ...template, name };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  setTemplateCategory(id, category) {
+    const template = get().templates.find(t => t.id === id);
+    if (!template) return;
+    const updated = { ...template, category };
     dbUpdateTemplate(updated);
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
   },

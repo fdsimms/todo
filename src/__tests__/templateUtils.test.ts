@@ -243,6 +243,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   itemGroups: [],
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
+  category: null,
   ...overrides,
 });
 

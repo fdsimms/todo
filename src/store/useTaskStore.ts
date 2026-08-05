@@ -30,6 +30,7 @@ import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
+import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
@@ -217,6 +218,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
+    useTemplateCategoryStore.getState().initialize();
     let tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 
