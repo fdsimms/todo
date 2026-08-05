@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Modal,
   View,
@@ -16,6 +16,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { EditorRow } from './EditorRow';
+import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -73,6 +74,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [hideOnVacation, setHideOnVacation] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [pickerDate, setPickerDate] = useState(() => new Date());
+  const emojiInputRef = useRef<TextInput>(null);
 
   // Reload from the store each time the sheet opens on a category, so a
   // half-finished edit from last time never leaks into the next one.
@@ -199,17 +201,32 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
           <View style={styles.identityRow}>
-            <View style={styles.emojiWell}>
+            <PressableScale
+              style={styles.emojiWell}
+              onPress={() => emojiInputRef.current?.focus()}
+              haptic
+              accessibilityLabel="Category emoji"
+              accessibilityHint="Opens the emoji keyboard"
+            >
+              {emoji ? (
+                <Text style={styles.emojiDisplay}>{emoji}</Text>
+              ) : (
+                <Ionicons name="happy-outline" size={26} color={colors.textTertiary} />
+              )}
               <TextInput
-                style={styles.emojiInput}
+                ref={emojiInputRef}
+                style={styles.emojiHiddenInput}
                 value={emoji}
                 onChangeText={setEmoji}
-                placeholder="🙂"
-                placeholderTextColor={colors.textTertiary}
                 maxLength={4}
-                accessibilityLabel="Category emoji"
+                caretHidden
+                contextMenuHidden
+                returnKeyType="done"
+                onSubmitEditing={() => emojiInputRef.current?.blur()}
+                pointerEvents="none"
+                importantForAccessibility="no-hide-descendants"
               />
-            </View>
+            </PressableScale>
             <TextInput
               style={styles.nameInput}
               value={name}
@@ -223,7 +240,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             />
           </View>
           <Text style={styles.identityHint}>
-            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. The emoji stands in for it everywhere the category is shown.
+            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the emoji to change it — it stands in for the category everywhere it's shown.
           </Text>
 
           <Text style={styles.groupLabel}>VISIBILITY</Text>
@@ -345,12 +362,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accentSubtle,
     alignItems: 'center', justifyContent: 'center',
   },
-  // No lineHeight on any TextInput here — RN maps it onto the iOS paragraph
-  // style and drops the glyphs below the caret. Height keeps the box steady.
-  emojiInput: {
-    width: 56, height: 56,
-    color: colors.text, fontSize: font.xxl, textAlign: 'center',
-    paddingVertical: 0,
+  emojiDisplay: { fontSize: font.xxl, textAlign: 'center' },
+  // Invisible and untouchable — the well's PressableScale owns the tap and
+  // just calls .focus() on this to raise the keyboard, so the well reads as
+  // a button rather than a text field with a cursor sitting in it.
+  emojiHiddenInput: {
+    position: 'absolute', width: 56, height: 56, opacity: 0,
   },
   nameInput: {
     flex: 1, minHeight: 44,
