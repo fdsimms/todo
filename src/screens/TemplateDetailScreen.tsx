@@ -408,7 +408,7 @@ export function TemplateDetailScreen() {
   );
 }
 
-/** Item row: swipe left reveals both Delete and Select (enters bulk mode). */
+/** Item row: swipe left reveals Select (enters bulk mode). */
 function TemplateItemRow({
   item, hint, categoryEmoji, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
 }: {
@@ -430,25 +430,15 @@ function TemplateItemRow({
   onSwipeSelect: () => void;
   onReplace: () => void;
 }) {
-  const renderLeftActions = () => (
-    <View style={styles.leftActionsRow}>
-      <TouchableOpacity
-        style={styles.deleteAction}
-        onPress={onDelete}
-        accessibilityRole="button"
-        accessibilityLabel={`Delete item ${item.title}`}
-      >
-        <Ionicons name="trash" size={iconSize.md} color={colors.text} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.selectAction}
-        onPress={onSwipeSelect}
-        accessibilityRole="button"
-        accessibilityLabel={`Select ${item.title}`}
-      >
-        <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
-      </TouchableOpacity>
-    </View>
+  const renderRightActions = () => (
+    <TouchableOpacity
+      style={styles.selectAction}
+      onPress={onSwipeSelect}
+      accessibilityRole="button"
+      accessibilityLabel={`Select ${item.title}`}
+    >
+      <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
+    </TouchableOpacity>
   );
 
   const isRef = resolvedRefTemplate !== null || broken;
@@ -561,7 +551,7 @@ function TemplateItemRow({
   if (selectionMode) return rowBody;
 
   return (
-    <Swipeable renderLeftActions={renderLeftActions} overshootLeft={false}>
+    <Swipeable renderRightActions={renderRightActions}>
       {rowBody}
     </Swipeable>
   );
@@ -651,22 +641,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 48, height: 48, borderRadius: 24,
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
-  deleteAction: {
-    backgroundColor: colors.red,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 80,
-    gap: 5,
-  },
   selectAction: {
     backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     width: 80,
     gap: 5,
-  },
-  leftActionsRow: {
-    flexDirection: 'row',
+    borderTopRightRadius: radius.md,
+    borderBottomRightRadius: radius.md,
   },
   itemRow: {
     flexDirection: 'row',
