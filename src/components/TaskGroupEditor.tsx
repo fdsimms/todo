@@ -174,7 +174,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8}>
+          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
         </View>
@@ -311,10 +311,18 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                         delayLongPress={150}
                         hitSlop={8}
                         style={styles.dragHandle}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder ${child.title}`}
                       >
                         <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                       </TouchableOpacity>
-                      <TouchableOpacity onPress={() => removeFromGroup(child.id)} hitSlop={8} style={styles.childRemove}>
+                      <TouchableOpacity
+                        onPress={() => removeFromGroup(child.id)}
+                        hitSlop={8}
+                        style={styles.childRemove}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove ${child.title} from stack`}
+                      >
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>

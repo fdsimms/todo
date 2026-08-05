@@ -112,7 +112,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={8}>
+          <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
         </View>
@@ -225,6 +225,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 }
               }}
               activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Archive"
+              accessibilityState={{ checked: project.archived }}
             >
               <Ionicons name="archive-outline" size={18} color={project.archived ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
