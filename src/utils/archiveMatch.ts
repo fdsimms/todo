@@ -1,25 +1,25 @@
-import type { Task } from '../types';
 import { scoreSubstring } from './fuzzySearch';
 
 // High bar (near-exact title match, not just "shares some letters") — this
 // only fires to catch "I'm re-adding the thing I archived months ago", not
-// to flag every task that vaguely resembles an old one.
+// to flag every item that vaguely resembles an old one.
 const MATCH_THRESHOLD = 70;
 
-export function findArchivedMatch(archivedTasks: Task[], title: string): Task | null {
+// Titled enough to match on — tasks and projects both qualify.
+export function findArchivedMatch<T extends { title: string }>(archived: T[], title: string): T | null {
   const q = title.trim();
   if (!q) return null;
   const qLower = q.toLowerCase();
 
-  let best: { task: Task; score: number } | null = null;
-  for (const task of archivedTasks) {
-    const t = task.title.trim();
+  let best: { item: T; score: number } | null = null;
+  for (const item of archived) {
+    const t = item.title.trim();
     if (!t) continue;
-    if (t.toLowerCase() === qLower) return task;
+    if (t.toLowerCase() === qLower) return item;
     const { score } = scoreSubstring(t, q);
     if (score >= MATCH_THRESHOLD && (!best || score > best.score)) {
-      best = { task, score };
+      best = { item, score };
     }
   }
-  return best?.task ?? null;
+  return best?.item ?? null;
 }
