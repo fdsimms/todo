@@ -87,7 +87,7 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
           accessibilityRole="button"
           accessibilityLabel={selectAction.accessibilityLabel}
         >
-          <Ionicons name="checkbox-outline" size={iconSize.md} color={colors.onAccent} />
+          <Ionicons name="ellipsis-horizontal-circle-outline" size={iconSize.md} color={colors.onAccent} />
         </TouchableOpacity>
       )
     : undefined;
