@@ -1,0 +1,4 @@
+{
+  "message": "A stack now counts the tasks that are actually in it. Finishing a repeating task no longer leaves a copy behind in the stack, so \"Evening Tasks\" stays 8 tasks instead of climbing forever",
+  "date": "2026-08-05"
+}

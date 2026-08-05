@@ -24,6 +24,7 @@ import {
   cancelTaskReminder,
   rescheduleAllReminders,
 } from '../utils/notifications';
+import { isGroupHiddenToday, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -1563,6 +1564,92 @@ describe('groupChildrenOf', () => {
   });
 });
 
+describe('groupRosterOf', () => {
+  const today = () => new Date().toISOString();
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86400000).toISOString();
+  const daysAhead = (n: number) => new Date(Date.now() + n * 86400000).toISOString();
+
+  it('drops the completion tombstones a recurring member leaves behind', () => {
+    // The reported bug: 8 nightly habits reading as 22 tasks in the stack.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'floss-live', groupId: 'g1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'floss-1', groupId: 'g1', completed: true, completedAt: daysAgo(1), sortOrder: 1 }),
+        makeTask({ id: 'floss-2', groupId: 'g1', completed: true, completedAt: daysAgo(2), sortOrder: 1 }),
+        makeTask({ id: 'floss-3', groupId: 'g1', completed: true, completedAt: daysAgo(3), sortOrder: 1 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['floss-live']);
+  });
+
+  it('counts a member completed today, not the occurrence it just spawned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'done', groupId: 'g1', completed: true, completedAt: today(), sortOrder: 1 }),
+        makeTask({ id: 'tomorrow', groupId: 'g1', dueDate: daysAhead(1), previousOccurrenceId: 'done', sortOrder: 1 }),
+      ],
+    });
+    // One member, shown as done — not two, and not zero.
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['done']);
+  });
+
+  it('keeps a member that is not due today (iron every other day)', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'daily', groupId: 'g1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'iron', groupId: 'g1', dueDate: daysAhead(1), sortOrder: 2 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['daily', 'iron']);
+  });
+
+  it('keeps a chain step that spawned undated and is due right now', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'step-1', groupId: 'g1', completed: true, completedAt: today(), sortOrder: 1 }),
+        makeTask({
+          id: 'step-2', groupId: 'g1', previousOccurrenceId: 'step-1',
+          dueDate: today(), chainEnabled: true, chainIndex: 1, sortOrder: 2,
+        }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['step-1', 'step-2']);
+  });
+
+  it('drops a one-off member once the day it was completed has passed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', groupId: 'g1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'old-oneoff', groupId: 'g1', completed: true, completedAt: daysAgo(3), sortOrder: 2 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['live']);
+  });
+
+  it('drops archived members', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', groupId: 'g1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'gone', groupId: 'g1', archived: true, archivedAt: daysAgo(1), sortOrder: 2 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['live']);
+  });
+
+  it('stays flat as a recurring member is completed day after day', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', dueDate: today(), recurrenceType: 'daily', recurrenceInterval: 1 })],
+    });
+    for (let day = 0; day < 5; day++) {
+      const live = useTaskStore.getState().groupRosterOf('g1').find(t => !t.completed);
+      if (live) useTaskStore.getState().completeTask(live.id);
+      expect(useTaskStore.getState().groupRosterOf('g1')).toHaveLength(1);
+    }
+    // The occurrences themselves are still on disk for the Logbook.
+    expect(useTaskStore.getState().groupChildrenOf('g1').length).toBeGreaterThan(1);
+  });
+});
+
 describe('addNewGroupedTask', () => {
   it('creates a real top-level task with groupId set and no parentId', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', category: 'health' })] });
@@ -1718,38 +1805,85 @@ describe('dismissGroup', () => {
     expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
   });
 
-  it('does nothing if the group is already dismissed', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: '2026-01-01T00:00:00.000Z' })] });
+  it('does nothing if the group is already dismissed today', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
     useTaskStore.getState().dismissGroup('g1');
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
 
-  it('clears automatically once a completed recurring child respawns an incomplete occurrence', () => {
+  it('re-stamps a group left dismissed on an earlier day', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: '2026-01-01T00:00:00.000Z' })] });
+    useTaskStore.getState().dismissGroup('g1');
+    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).not.toBe('2026-01-01T00:00:00.000Z');
+    expect(useTaskStore.getState().lastAction).not.toBeNull();
+  });
+
+  // The stamp is deliberately NOT cleared when a stack gains live work again
+  // — isGroupHiddenToday requires everything due today to still be done, so
+  // the stack un-hides itself and no event has to be intercepted. These cover
+  // the ways that used to need an explicit clearGroupDismissal call.
+  it('stays hidden when a completed daily child spawns tomorrow\'s occurrence', () => {
+    // The spawn isn't today's work, so it must not drag the stack back onto
+    // Today — the old design cleared the stamp here and it reappeared,
+    // unchecked, seconds after the user dismissed it.
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
     useTaskStore.setState({
       tasks: [makeTask({
-        id: 'a', groupId: 'g1', completed: false,
+        id: 'a', groupId: 'g1', completed: false, dueDate: new Date().toISOString(),
         recurrenceType: 'daily', recurrenceInterval: 1,
       })],
     });
     useTaskStore.getState().completeTask('a');
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+    const group = useTaskGroupStore.getState().getGroupById('g1')!;
+    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
+    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(true);
   });
 
-  it('clears automatically when an incomplete task is added to a dismissed group', () => {
+  it('stops hiding the stack when a member becomes due again today', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'done', groupId: 'g1', completed: true, completedAt: new Date().toISOString() }),
+        makeTask({ id: 'now-due', groupId: 'g1', dueDate: new Date().toISOString() }),
+      ],
+    });
+    const group = useTaskGroupStore.getState().getGroupById('g1')!;
+    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
+    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
+  });
+
+  it('stops hiding the stack when an incomplete task is added to it', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: null, completed: false })] });
     useTaskStore.getState().addExistingToGroup('a', 'g1');
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+    const group = useTaskGroupStore.getState().getGroupById('g1')!;
+    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
+    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
   });
 
-  it('leaves a dismissed group cleared when uncompleting one of its children', () => {
+  it('stops hiding the stack when one of its children is uncompleted', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: new Date().toISOString() })],
     });
     useTaskStore.getState().uncompleteTask('a');
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
+    const group = useTaskGroupStore.getState().getGroupById('g1')!;
+    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
+    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
+  });
+
+  it('hides a fully-done stack for today, then lets it back tomorrow', () => {
+    const now = new Date().toISOString();
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: now })],
+    });
+    useTaskStore.getState().dismissGroup('g1');
+    const stamp = useTaskGroupStore.getState().getGroupById('g1')!.completedAt;
+    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
+    expect(isGroupHiddenToday(stamp, dueToday)).toBe(true);
+    // Same stamp, read on a later day: the dismissal has expired on its own.
+    expect(isGroupHiddenToday('2026-01-01T00:00:00.000Z', dueToday)).toBe(false);
   });
 });
 
@@ -1793,6 +1927,22 @@ describe('pinGroup', () => {
     useTaskStore.getState().pinGroup('g1');
     expect(useTaskStore.getState().tasks.every(t => !t.pinned)).toBe(true);
   });
+
+  it('leaves past completed occurrences alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false }),
+        makeTask({
+          id: 'old', groupId: 'g1', pinned: false,
+          completed: true, completedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+        }),
+      ],
+    });
+    useTaskStore.getState().pinGroup('g1');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'live')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'old')?.pinned).toBe(false);
+  });
 });
 
 describe('deleteGroup', () => {
@@ -1833,6 +1983,26 @@ describe('deleteGroup', () => {
     useTaskStore.getState().lastAction?.undo();
     expect(useTaskGroupStore.getState().groups.map(g => g.id)).toEqual(['g1']);
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['a']);
+  });
+
+  it('cascade-deletes the live members but keeps completed occurrences as history', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', groupId: 'g1', dueDate: new Date().toISOString() }),
+        makeTask({
+          id: 'old', groupId: 'g1', title: 'Floss',
+          completed: true, completedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+        }),
+      ],
+    });
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    const { tasks } = useTaskStore.getState();
+    // Deleting a stack you've run nightly for a year must not erase a year of
+    // Logbook entries — the past occurrences are only unfiled.
+    expect(tasks.map(t => t.id)).toEqual(['old']);
+    expect(tasks[0].groupId).toBeNull();
+    expect(tasks[0].completed).toBe(true);
   });
 });
 

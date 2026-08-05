@@ -12,8 +12,10 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { TaskGroup, Priority } from '../types';
+import type { Task, TaskGroup, Priority } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
+import { isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
+import { formatDueDate } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -28,6 +30,21 @@ import { SortableList } from './SortableList';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'priority' | 'tags';
+
+/**
+ * One line answering "where does this member stand today?" — the question the
+ * list otherwise leaves open, since a stack's members run on their own
+ * schedules and only some of them are due on any given day. Without it, a
+ * roster showing iron alongside seven daily supplements looks like the stack
+ * is wrong rather than like iron isn't due until Thursday.
+ */
+function memberSchedule(task: Task): string {
+  if (task.completed) return 'Done today';
+  if (isTaskVisible(task)) return 'Due today';
+  if (task.dueDate) return formatDueDate(task.dueDate);
+  if (task.deferUntil) return formatDueDate(task.deferUntil);
+  return '';
+}
 
 interface Props {
   visible: boolean;
@@ -44,7 +61,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
-  const groupChildrenOf = useTaskStore(s => s.groupChildrenOf);
+  const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
@@ -64,7 +81,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
-  const [showCompleted, setShowCompleted] = useState(false);
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
 
@@ -87,9 +103,14 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     setOpenFields(prev => ({ ...prev, [key]: false }));
   };
 
-  const children = group ? groupChildrenOf(group.id) : [];
-  const activeChildren = children.filter(c => !c.completed);
-  const completedChildren = children.filter(c => c.completed);
+  // The roster, never the raw child rows: a recurring member leaves a
+  // completed row behind on every completion and they all keep the stack's
+  // groupId, so counting rows made an 8-task stack read "14/22" and climbing
+  // (see groupRoster). Members are what the user put in the stack; the
+  // occurrences they've generated are Logbook history.
+  const members = group ? groupRosterOf(group.id) : [];
+  const dueToday = members.filter(isRelevantToGroupToday);
+  const doneToday = dueToday.filter(c => c.completed).length;
 
   const eligibleForAdd = useMemo(() => {
     if (!group) return [];
@@ -104,10 +125,18 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
 
   const saveAndClose = () => {
     if (!group) { onClose(); return; }
+    // A blank title only skips the *title* write — an untitled brand-new
+    // stack is garbage-collected by the caller anyway (see TodayScreen), and
+    // silently dropping notes/tags/priority/category along with it meant
+    // clearing the title threw away every other edit in the sheet.
     const trimmed = title.trim();
-    if (trimmed) {
-      updateGroup(group.id, { title: trimmed, notes, tags, priority, category });
-    }
+    updateGroup(group.id, {
+      ...(trimmed ? { title: trimmed } : {}),
+      notes,
+      tags,
+      priority,
+      category,
+    });
     onClose();
   };
 
@@ -256,53 +285,42 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
             <View style={styles.cardSection}>
               <View style={styles.subtaskHeader}>
                 <Text style={styles.sectionLabel}>Tasks in this stack</Text>
-                <Text style={styles.subtaskProgress}>{completedChildren.length}/{children.length}</Text>
+                <Text style={styles.subtaskProgress}>
+                  {members.length}
+                  {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
+                </Text>
               </View>
               <SortableList
-                data={activeChildren}
-                onReorder={newData => reorderGroupChildren(group.id, [...newData.map(c => c.id), ...completedChildren.map(c => c.id)])}
-                renderItem={(child, _i, drag) => (
-                  <View style={styles.childRow}>
-                    <Text style={styles.childTitle} numberOfLines={1}>
-                      {child.title}
-                    </Text>
-                    <TouchableOpacity
-                      onLongPress={e => drag(e.nativeEvent.pageY)}
-                      delayLongPress={150}
-                      hitSlop={8}
-                      style={styles.dragHandle}
-                    >
-                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => removeFromGroup(child.id)} hitSlop={8} style={styles.childRemove}>
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              />
-
-              {completedChildren.length > 0 && (
-                <View style={styles.completedSection}>
-                  <TouchableOpacity
-                    style={styles.completedHeader}
-                    onPress={() => setShowCompleted(v => !v)}
-                    hitSlop={8}
-                  >
-                    <Ionicons name={showCompleted ? 'chevron-up' : 'chevron-down'} size={14} color={colors.textTertiary} />
-                    <Text style={styles.completedHeaderText}>Completed ({completedChildren.length})</Text>
-                  </TouchableOpacity>
-                  {showCompleted && completedChildren.map(child => (
-                    <View key={child.id} style={styles.childRow}>
-                      <Text style={[styles.childTitle, styles.childTitleDone]} numberOfLines={1}>
-                        {child.title}
-                      </Text>
+                data={members}
+                onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
+                renderItem={(child, _i, drag) => {
+                  const subtitle = memberSchedule(child);
+                  return (
+                    <View style={styles.childRow}>
+                      <View style={styles.childText}>
+                        <Text
+                          style={[styles.childTitle, child.completed && styles.childTitleDone]}
+                          numberOfLines={1}
+                        >
+                          {child.title}
+                        </Text>
+                        {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
+                      </View>
+                      <TouchableOpacity
+                        onLongPress={e => drag(e.nativeEvent.pageY)}
+                        delayLongPress={150}
+                        hitSlop={8}
+                        style={styles.dragHandle}
+                      >
+                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                      </TouchableOpacity>
                       <TouchableOpacity onPress={() => removeFromGroup(child.id)} hitSlop={8} style={styles.childRemove}>
                         <Ionicons name="close" size={14} color={colors.textTertiary} />
                       </TouchableOpacity>
                     </View>
-                  ))}
-                </View>
-              )}
+                  );
+                }}
+              />
 
               {addingChild ? (
                 <View style={styles.subtaskInputRow}>
@@ -428,15 +446,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: spacing.sm,
   },
-  completedSection: {
-    marginTop: spacing.xs, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
-  },
-  completedHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingTop: spacing.sm,
-  },
-  completedHeaderText: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  childTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  childText: { flex: 1, gap: 1 },
+  childTitle: { color: colors.text, fontSize: font.md },
+  childSubtitle: { color: colors.textTertiary, fontSize: font.xs },
   childTitleDone: { color: colors.textTertiary, textDecorationLine: 'line-through' },
   dragHandle: { padding: 4 },
   childRemove: { padding: 4 },

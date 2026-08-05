@@ -1,0 +1,4 @@
+{
+  "message": "Deleting a stack and its tasks no longer erases that stack's past completions from the Logbook and Stats",
+  "date": "2026-08-05"
+}

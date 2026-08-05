@@ -20,7 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task, TaskGroup, SortOption, Priority, Effort, RecurrenceType } from '../types';
 import { formatGroupHeader, formatHHMM } from '../utils/dateUtils';
-import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
+import { getVisibleAt, isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -706,10 +706,15 @@ export function TodayScreen() {
   // last child doesn't make the whole stack silently vanish out from under
   // the user — it stays put, checked off, until they explicitly tap it to
   // dismiss (TaskGroupHeader's circle, dismissGroup in useTaskStore), at
-  // which point it drops out here via the group.completedAt check. Only the
+  // which point it drops out here via the dismissal check. Only the
   // default (non-pinned) Today view groups/collapses; pinned mode and the
   // "Everything else" reveal intentionally stay flat so pinning a task
   // always pulls it out for individual attention.
+  //
+  // A dismissal only hides the stack for the logical day it was made, and
+  // only while every member due today is still done — so a stack that gains
+  // live work again reappears on its own, and tomorrow's occurrences always
+  // come back (see isGroupHiddenToday).
   const visibleGroupItems = useMemo(() => {
     const filteredIds = new Set(filtered.map(t => t.id));
     return taskGroups
@@ -717,12 +722,11 @@ export function TodayScreen() {
         group,
         children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
       }))
-      .filter(g =>
-        !g.group.completedAt && (
-          g.children.length > 0 ||
-          (childrenByGroupId.get(g.group.id) ?? []).some(isRelevantToGroupToday)
-        ),
-      );
+      .filter(g => {
+        const dueToday = (childrenByGroupId.get(g.group.id) ?? []).filter(isRelevantToGroupToday);
+        if (isGroupHiddenToday(g.group.completedAt, dueToday)) return false;
+        return g.children.length > 0 || dueToday.length > 0;
+      });
   }, [taskGroups, childrenByGroupId, filtered]);
 
   // Same pairing as visibleGroupItems, but for tasks deferred to later today

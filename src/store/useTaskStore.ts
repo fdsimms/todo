@@ -35,7 +35,7 @@ import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getDayStart, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
 
 interface UndoableAction {
@@ -56,17 +56,6 @@ export const CONTENT_FIELDS: (keyof Task)[] = [
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
   target[key] = source[key];
-}
-
-// A dismissed stack (TaskGroup.completedAt set — see TaskGroupHeader) is only
-// ever hidden while every child is actually done. Anything that hands the
-// group a new incomplete child — a recurring/chained spawn, an undo, or
-// adding an existing task to it — must un-dismiss it here, otherwise it
-// would keep hiding live work on Today.
-function clearGroupDismissal(groupId: string | null): void {
-  if (!groupId) return;
-  const group = useTaskGroupStore.getState().getGroupById(groupId);
-  if (group?.completedAt) useTaskGroupStore.getState().setGroupCompletedAt(groupId, null);
 }
 
 // A completed task keeps appearing wherever it would if it were still
@@ -166,6 +155,7 @@ interface TaskStore {
   reorderSubtasks: (parentId: string, orderedIds: string[]) => void;
 
   groupChildrenOf: (groupId: string) => Task[];
+  groupRosterOf: (groupId: string) => Task[];
   addNewGroupedTask: (groupId: string, title: string) => Task;
   addExistingToGroup: (taskId: string, groupId: string) => void;
   removeFromGroup: (taskId: string) => void;
@@ -577,7 +567,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ],
       completionHoldIds: [...s.completionHoldIds, id],
     }));
-    if (nextTask) clearGroupDismissal(nextTask.groupId);
 
     // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
     // finishing a project never happens automatically otherwise; the user
@@ -660,7 +649,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
     }));
-    clearGroupDismissal(task.groupId);
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
     // shake-to-undo — this restores the exact prior completed state rather
@@ -938,10 +926,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }));
   },
 
+  // Every row ever assigned to the stack, completed occurrences included.
+  // Almost nothing wants this — see groupRosterOf for what the user thinks of
+  // as "the tasks in this stack". Kept for the few places that genuinely mean
+  // "all history too", like re-filing rows when the stack is deleted.
   groupChildrenOf(groupId) {
     return get().tasks
       .filter(t => t.groupId === groupId)
       .sort((a, b) => a.sortOrder - b.sortOrder);
+  },
+
+  // The stack's membership as the user understands it: one entry per task
+  // series, no completion tombstones. This is what every count, cascade and
+  // list should be built on (see groupRoster).
+  groupRosterOf(groupId) {
+    return groupRoster(get().groupChildrenOf(groupId));
   },
 
   addNewGroupedTask(groupId, title) {
@@ -1002,7 +1001,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
-    clearGroupDismissal(groupId);
     return task;
   },
 
@@ -1012,7 +1010,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const siblings = get().tasks.filter(t => t.groupId === groupId);
     const maxOrder = siblings.reduce((m, t) => Math.max(m, t.sortOrder), 0);
     get().updateTask(taskId, { groupId, sortOrder: maxOrder + 1 });
-    if (!task.completed) clearGroupDismissal(groupId);
   },
 
   removeFromGroup(taskId) {
@@ -1048,7 +1045,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // per-child (see skipNextRecurrence), and cascading it across children on
   // different cadences would desync them unpredictably.
   completeGroup(groupId) {
-    const children = get().groupChildrenOf(groupId);
+    const children = get().groupRosterOf(groupId);
     const completedIds: string[] = [];
     children.forEach(child => {
       if (child.completed) return;
@@ -1071,12 +1068,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // occurrence — see uncompleteTask) as get().lastAction; capture each one
     // immediately so this can compose them into a single combined undo
     // instead of just the last child's.
-    // Only children completed as part of *today's* tally (isRelevantToGroupToday) —
-    // a recurring task's groupId is shared by every past completed occurrence
-    // forever (see Recurrence in CLAUDE.md), so without this filter unchecking
-    // the stack would resurrect every historical completion as incomplete,
-    // not just what the checkbox currently represents.
-    const children = get().groupChildrenOf(groupId).filter(c => c.completed && isRelevantToGroupToday(c));
+    // Roster-scoped, so this can only ever touch what the checkbox currently
+    // represents — the stack's past occurrences aren't members and can't be
+    // resurrected here (see groupRoster).
+    const children = get().groupRosterOf(groupId).filter(c => c.completed && isRelevantToGroupToday(c));
     if (children.length === 0) return;
     const undos: Array<() => void> = [];
     children.forEach(child => {
@@ -1090,27 +1085,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  // Marks a fully-done stack as explicitly dismissed so it drops off Today
+  // Marks a fully-done stack as dismissed for today so it drops off Today
   // (see TaskGroupHeader/visibleGroupItems) instead of sitting there checked
   // off forever. Distinct from uncompleteGroup: this doesn't touch any
-  // child's completed state at all, it only stamps the group itself.
+  // child's completed state at all, it only stamps the group itself. The
+  // stamp is read as "dismissed *today*" (isGroupDismissedToday), so it
+  // expires on its own overnight and a daily stack comes back by itself.
   dismissGroup(groupId) {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
-    if (!group || group.completedAt) return;
+    if (!group || isGroupDismissedToday(group.completedAt)) return;
+    const previous = group.completedAt;
     useTaskGroupStore.getState().setGroupCompletedAt(groupId, new Date().toISOString());
     get().setLastAction({
       label: 'Stack completed',
-      undo: () => useTaskGroupStore.getState().setGroupCompletedAt(groupId, null),
+      undo: () => useTaskGroupStore.getState().setGroupCompletedAt(groupId, previous),
     });
   },
 
+  // Roster-scoped: deferring or pinning a stack must not write to the
+  // completed occurrences left behind by its recurring members, which aren't
+  // part of the stack any more and would just be silently mutated history.
   deferGroup(groupId, until) {
-    const ids = get().groupChildrenOf(groupId).map(c => c.id);
+    const ids = get().groupRosterOf(groupId).filter(c => !c.completed).map(c => c.id);
+    if (ids.length === 0) return;
     get().bulkDefer(ids, until);
   },
 
   pinGroup(groupId) {
-    const ids = get().groupChildrenOf(groupId).map(c => c.id);
+    const ids = get().groupRosterOf(groupId).filter(c => !c.completed).map(c => c.id);
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;
@@ -1124,26 +1126,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const children = get().groupChildrenOf(groupId);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     const undos: Array<() => void> = [];
-    if (opts.cascade) {
-      children.forEach(child => {
+    // "Delete stack and all its tasks" means the live tasks — the roster.
+    // The completed occurrences its recurring members left behind are
+    // Logbook and Stats history, not stack membership, so they're only
+    // unfiled (group_id cleared), never destroyed. Deleting a stack the
+    // user has run nightly for a year shouldn't erase a year of completions.
+    const doomed = opts.cascade ? new Set(get().groupRosterOf(groupId).map(c => c.id)) : new Set<string>();
+    children.forEach(child => {
+      if (doomed.has(child.id)) {
         get().deleteTask(child.id);
         const action = get().lastAction;
         if (action) undos.push(action.undo);
-      });
-    } else {
-      children.forEach(child => get().removeFromGroup(child.id));
-    }
+      } else {
+        get().removeFromGroup(child.id);
+      }
+    });
     useTaskGroupStore.getState().removeGroupRow(groupId);
     if (!group) return;
     get().setLastAction({
       label: opts.cascade ? 'Group and its tasks deleted' : 'Group deleted',
       undo: () => {
         useTaskGroupStore.getState().restoreGroup(group);
-        if (opts.cascade) {
-          undos.forEach(fn => fn());
-        } else {
-          children.forEach(child => get().addExistingToGroup(child.id, groupId));
-        }
+        undos.forEach(fn => fn());
+        children.forEach(child => {
+          if (!doomed.has(child.id)) get().addExistingToGroup(child.id, groupId);
+        });
       },
     });
   },
