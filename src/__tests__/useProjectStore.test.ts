@@ -234,6 +234,26 @@ describe('reorderProjects', () => {
   });
 });
 
+describe('reorderProjectsWithCategoryUpdates', () => {
+  it('reorders and applies category changes together', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'a', sortOrder: 1, category: 'Work' }),
+        makeProject({ id: 'b', sortOrder: 2, category: null }),
+      ],
+    });
+    useProjectStore.getState().reorderProjectsWithCategoryUpdates(
+      ['b', 'a'],
+      [{ id: 'b', category: 'Work' }],
+    );
+    const projects = useProjectStore.getState().projects;
+    expect(projects.map(p => p.id)).toEqual(['b', 'a']);
+    expect(useProjectStore.getState().getProjectById('b')?.category).toBe('Work');
+    expect(dbBatchUpdateProjectSortOrders).toHaveBeenCalled();
+    expect(dbUpdateProject).toHaveBeenCalled();
+  });
+});
+
 describe('removeProjectRow / restoreProject', () => {
   it('deletes the row and removes it from state', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });

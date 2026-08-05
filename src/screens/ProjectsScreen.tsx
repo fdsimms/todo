@@ -14,8 +14,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress, isProjectPastWindow } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
-import { groupProjectsByCategory, isProjectHeader, projectOrderFromItems } from '../utils/projectGrouping';
-import { dragRange } from '../utils/reorder';
+import { groupProjectsByCategory, resolveProjectDrop } from '../utils/projectGrouping';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -46,7 +45,7 @@ export function ProjectsScreen() {
   const navigation = useNavigation();
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
-  const reorderProjects = useProjectStore(s => s.reorderProjects);
+  const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
   const allTasks = useTaskStore(useShallow(s => s.tasks));
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
 
@@ -142,8 +141,10 @@ export function ProjectsScreen() {
           contentContainerStyle={styles.list}
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.tap}
-          dragRange={(data, idx) => dragRange(data, idx, isProjectHeader)}
-          onReorder={reordered => reorderProjects(projectOrderFromItems(reordered))}
+          onReorder={reordered => {
+            const { projectIds, categoryUpdates } = resolveProjectDrop(reordered, projectCategoryOrder);
+            reorderProjectsWithCategoryUpdates(projectIds, categoryUpdates);
+          }}
           renderItem={({ item, drag, isActive }) => {
             if (item.type === 'header') {
               return (
