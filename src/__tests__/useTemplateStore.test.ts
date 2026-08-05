@@ -105,11 +105,19 @@ describe('template CRUD', () => {
     expect(dbUpdateTemplate).toHaveBeenCalledWith(expect.objectContaining({ name: 'Renamed' }));
   });
 
-  it('deleteTemplate removes from state and persists', () => {
+  it('removeTemplateRow removes from state and persists', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    useTemplateStore.getState().deleteTemplate(tpl.id);
+    useTemplateStore.getState().removeTemplateRow(tpl.id);
     expect(useTemplateStore.getState().templates).toHaveLength(0);
     expect(dbDeleteTemplate).toHaveBeenCalledWith(tpl.id);
+  });
+
+  it('restoreTemplate re-inserts a template snapshot', () => {
+    const tpl = useTemplateStore.getState().addTemplate('A');
+    useTemplateStore.getState().removeTemplateRow(tpl.id);
+    useTemplateStore.getState().restoreTemplate(tpl);
+    expect(useTemplateStore.getState().templates.map(t => t.id)).toEqual([tpl.id]);
+    expect(dbInsertTemplate).toHaveBeenCalledWith(tpl);
   });
 });
 

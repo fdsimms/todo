@@ -3,6 +3,7 @@ import type { Category } from '../types';
 import {
   dbGetAllCategories,
   dbInsertCategory,
+  dbInsertCategoryRow,
   dbUpdateCategory,
   dbDeleteCategory,
   dbRenameCategory,
@@ -17,6 +18,10 @@ interface CategoryStore {
   initialize: () => void;
   addCategory: (name: string) => Category;
   deleteCategory: (name: string) => void;
+  // Undo lives in useTaskStore since deleting a category also touches tasks
+  // and stacks; this is the low-level row restore it calls once it's undone
+  // those side effects.
+  restoreCategory: (category: Category) => void;
   renameCategory: (name: string, newName: string) => boolean;
   setCategorySchedule: (name: string, scheduleDays: number[], scheduleStart: string, scheduleEnd: string) => void;
   removeCategorySchedule: (name: string) => void;
@@ -46,6 +51,11 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
   deleteCategory(name) {
     dbDeleteCategory(name);
     set(s => ({ categories: s.categories.filter(c => c.name !== name) }));
+  },
+
+  restoreCategory(category) {
+    dbInsertCategoryRow(category);
+    set(s => ({ categories: [...s.categories, category] }));
   },
 
   renameCategory(name, newName) {

@@ -16,6 +16,7 @@ import type { TaskTemplate } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
@@ -36,7 +37,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
   const renameTemplate = useTemplateStore(s => s.renameTemplate);
   const setTemplateCategory = useTemplateStore(s => s.setTemplateCategory);
-  const deleteTemplate = useTemplateStore(s => s.deleteTemplate);
+  const deleteTemplate = useTaskStore(s => s.deleteTemplate);
   const templates = useTemplateStore(useShallow(s => s.templates));
   const categories = useTemplateCategoryStore(useShallow(s => s.categories));
   const addCategory = useTemplateCategoryStore(s => s.addCategory);
@@ -72,7 +73,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     if (!template) return;
     haptics.warning();
     const referencing = findTemplatesReferencing(templates, template.id);
-    const base = `Delete "${template.name}"? Tasks already created from it are unaffected.`;
+    const base = `Delete "${template.name}"? Tasks already created from it are unaffected. This can be undone with shake-to-undo.`;
     const message = referencing.length === 0
       ? base
       : referencing.length === 1
