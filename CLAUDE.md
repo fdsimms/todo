@@ -5,14 +5,75 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm install          # install dependencies
+npm install          # dependencies; node_modules isn't checked in, so a fresh clone needs
+                     # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
-npm test             # run all tests
-npm run test:watch   # watch mode
+npx tsc --noEmit     # typecheck — a few seconds, catches most mistakes
 npx jest src/__tests__/dateUtils.test.ts  # run a single test file
+npm test             # run all 27 suites
+npm run test:watch   # watch mode
 ```
 
-CI also runs `npx expo export --platform ios` to verify the build compiles.
+**The verification loop is `npx tsc --noEmit` plus the one test file covering what you
+touched**; run the full `npm test` once before pushing. Don't run `npx expo export` locally to
+check your work — it's the slowest thing CI does and only catches bundle-time breakage (a bad
+import path, a missing asset, a native config change), so run it only when you changed one of
+those. CI runs `npm test` and `npx expo export --platform ios` on every PR.
+
+There is no ESLint or Prettier config. Match the style of the file you're in; don't reformat
+untouched lines.
+
+## Finding your way around
+
+Start from this table instead of searching. Most work lands in one of these files:
+
+| Changing… | Start at |
+|---|---|
+| what appears on Today / Later / Unscheduled / Inbox | `src/utils/visibilityUtils.ts` + the selectors in `useTaskStore` |
+| any task create/complete/defer/delete | `src/store/useTaskStore.ts` |
+| the task edit sheet | `src/components/TaskEditor.tsx` |
+| a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
+| quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
+| date math, recurrence | `src/utils/dateUtils.ts` |
+| a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
+| any model's shape | `src/types/index.ts` — one file, every type |
+| colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
+| bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
+| reminders | `src/utils/notifications.ts` |
+| what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
+
+**Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
+`TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
+`useTaskStore.ts` (1.5k), `TaskItem.tsx` (1.5k), `TemplateItemEditor.tsx` (1.3k). Grep for the
+symbol and read the surrounding range; reading any of them end to end costs more context than
+the rest of the task will.
+
+**Tests mirror source 1:1** — `src/utils/foo.ts` → `src/__tests__/foo.test.ts`, same for
+stores. If the file you changed has a matching test file, that's the one to run. Only pure
+logic is tested (`src/utils`, `src/store`, `src/db`): Jest runs in the `node` environment with
+no React renderer installed, so there are no component or screen tests. Don't add a renderer to
+cover a UI change — verify those by reasoning about the code, and say so plainly rather than
+implying you ran them.
+
+## Working style
+
+**Delegate a search, not an edit.** A subagent earns its round trip when the question is a wide
+sweep and you only want the conclusion — "every call site of `groupRosterOf`", "which screens
+mount `PaintSelectionProvider`", "where does `dayResetTime` get read". When you already know the
+file from the table above, just grep. Never hand off the writing: one agent making the whole
+diff is what keeps it coherent.
+
+**Say the sequence before a change that spans layers.** Anything touching db + store + UI
+should be planned in a sentence or two first, because the constraint almost always lives
+downstream: the schema and the visibility rules decide what the UI is allowed to do, not the
+other way round.
+
+**Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
+Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
+
+**This file is the answer.** The conventions below are settled decisions with the reasoning
+attached — the "don't do X" notes exist because X was tried. Don't re-derive them from the
+code, and don't re-open them without a reason the note doesn't already cover.
 
 ## Architecture
 
@@ -104,7 +165,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 ### Drag and drop — handle with care
 
-`src/components/ReorderableList.tsx` (+ math in `src/utils/reorder.ts`, tests in `reorder.test.ts`) uses JS-driven row animations and a floating drag overlay by deliberate design — see the comments in that file before changing render order, the animation driver, or the PanResponder lifecycle. Safe to touch: overlay styling, autoscroll params, durations, and haptics via `onHoverChange`. FocusScreen (`react-native-draggable-flatlist`) and TaskEditor (`SortableList`) follow the same rule: styling only.
+`src/components/ReorderableList.tsx` (+ math in `src/utils/reorder.ts`, tests in `reorder.test.ts`) uses JS-driven row animations and a floating drag overlay by deliberate design — see the comments in that file before changing render order, the animation driver, or the PanResponder lifecycle. Safe to touch: overlay styling, autoscroll params, durations, and haptics via `onHoverChange`. The subtask lists in `TaskEditor` and `TaskItem` (`src/components/SortableList.tsx`) follow the same rule: styling only.
 
 ### Database schema / migrations
 
@@ -114,14 +175,9 @@ Tags and categories are stored as JSON arrays in each task row (`tags TEXT`, `ca
 
 ### iOS native extension targets (widgets, and future Watch/Live Activity targets)
 
-The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config plugins rather than a checked-in `ios/` folder — see `plugins/withAppGroup.js` (adds the App Group entitlement to the main app) and `plugins/withWidgetExtension.js` (adds the WidgetKit extension as a whole new Xcode target via the raw `xcode` npm package). Any future target that needs to share data with the app — a Watch app, a Live Activity, a share extension — will hit the same handful of sharp edges this one did. Before adding one:
+The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config plugins rather than a checked-in `ios/` folder — `plugins/withAppGroup.js` (App Group entitlement on the main app) and `plugins/withWidgetExtension.js` (the WidgetKit extension as a whole new Xcode target, built via the raw `xcode` npm package).
 
-- **A new target must be declared in `app.json`'s `extra.eas.build.experimental.ios.appExtensions`** (name, bundle id, entitlements), or EAS Build's non-interactive credential resolution never discovers it and can't provision it — the archive step fails with an opaque signing error.
-- **Signing needs `PBXProject.attributes.TargetAttributes`, not just `buildSettings`.** `project.addTargetAttribute('DevelopmentTeam', ...)` / `('ProvisioningStyle', 'Automatic', ...)` — Xcode's own "requires a development team" validation reads the former; setting `DEVELOPMENT_TEAM` in buildSettings alone isn't enough.
-- **The `xcode` package's `addTarget()` and `addPbxGroup()` have real bugs**, not just missing convenience: `addTarget()` pre-wraps `name`/`productName` in literal quote characters (breaks any later string match, including EAS's own target lookup) — overwrite `target.pbxNativeTarget.name`/`.productName` right after calling it. `addPbxGroup()` with no `path` argument writes a literal `path = undefined;` into the pbxproj — `delete group.pbxGroup.path` immediately after.
-- **Every `$(BUILD_SETTING)` placeholder used in the target's Info.plist must have a real key in the source plist**, even ones Xcode's "New Target" template fills in for you normally (e.g. `CFBundleIdentifier`). A key that's just absent doesn't get a value substituted in — it silently compiles to `(null)`, which then fails Apple's "embedded binary must be prefixed with the parent bundle id" validation at submission, not at build time.
-- **A local `expo-modules-core` bridge module needs an actual podspec** to get linked into a second target's Pod install, even though autolinking usually infers one from `expo-module.config.json` alone for the main app target.
-- **The App Group container path convention already in use**: `<container>/Library/Application Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed. Reuse this path shape for anything new sharing the group rather than inventing another location.
+**Before adding or changing a native target — Watch app, Live Activity, share extension — read `docs/native-targets.md`.** It lists the six non-obvious requirements this one cost a build cycle each to discover (the EAS `appExtensions` declaration, `TargetAttributes` signing, two outright bugs in the `xcode` package, Info.plist placeholder keys, the bridge module's podspec, the App Group path convention). Nothing else in the repo will tell you about them, and each one fails late — at archive or at submission, not at build.
 
 Two fixes that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
 - `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
