@@ -128,7 +128,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
             <View style={styles.header}>
               <View style={styles.headerSpacer} />
               <Text style={styles.headerTitle}>Remind Me</Text>
-              <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn}>
+              <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -158,6 +158,8 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
                   onPress={() => setDisplayMonth(m => subMonths(m, 1))}
                   hitSlop={8}
                   style={styles.navBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous month"
                 >
                   <Ionicons name="chevron-back" size={16} color={colors.accent} />
                 </TouchableOpacity>
@@ -166,6 +168,8 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
                   onPress={() => setDisplayMonth(m => addMonths(m, 1))}
                   hitSlop={8}
                   style={styles.navBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next month"
                 >
                   <Ionicons name="chevron-forward" size={16} color={colors.accent} />
                 </TouchableOpacity>
@@ -191,6 +195,9 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
                       style={styles.dayCell}
                       onPress={() => onDayPress(day)}
                       activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')}
+                      accessibilityState={{ selected: isSelected }}
                     >
                       <View style={[
                         styles.dayCircle,

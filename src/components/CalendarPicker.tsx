@@ -155,6 +155,8 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
             style={styles.navBtn}
             onPress={() => setDisplayMonth(m => subMonths(m, 1))}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
           >
             <Ionicons name="chevron-back" size={20} color={colors.accent} />
           </TouchableOpacity>
@@ -165,6 +167,8 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
             style={styles.navBtn}
             onPress={() => setDisplayMonth(m => addMonths(m, 1))}
             hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
           >
             <Ionicons name="chevron-forward" size={20} color={colors.accent} />
           </TouchableOpacity>
@@ -192,6 +196,9 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
                 style={styles.dayCell}
                 onPress={() => onDayPress(day)}
                 activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={todayDay ? `Today, ${format(day, 'EEEE, MMMM d')}` : format(day, 'EEEE, MMMM d')}
+                accessibilityState={{ selected: isSelected }}
               >
                 <View style={[
                   styles.dayCircle,
