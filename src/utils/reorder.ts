@@ -90,6 +90,24 @@ export function rowDragOffset(
 }
 
 /**
+ * Index of the row whose resting bounds contain `y` (content coordinates),
+ * or null if `y` falls outside every row.
+ *
+ * Unlike dropIndexFromTranslation — which answers "which slot would this drop
+ * into", walking midpoints — this answers "which row is the floating card
+ * physically on top of right now". Callers use it for drop targets that are a
+ * whole row rather than a gap between rows (e.g. dropping a task onto a group
+ * to join it), where the natural hit area is the row itself.
+ */
+export function rowIndexAtContentY(tops: number[], heights: number[], y: number): number | null {
+  for (let i = 0; i < tops.length; i++) {
+    const top = tops[i] ?? 0;
+    if (y >= top && y < top + (heights[i] ?? 0)) return i;
+  }
+  return null;
+}
+
+/**
  * Inclusive [min, max] index range the row at `activeIndex` may move to
  * without crossing a "boundary" row (e.g. a section header) on either side.
  * Used to keep drags confined to their own section.

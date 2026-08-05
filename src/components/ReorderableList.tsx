@@ -12,7 +12,7 @@ import {
   type NativeScrollEvent,
   type RefreshControlProps,
 } from 'react-native';
-import { moveItem, dropIndexFromTranslation, rowDragOffset } from '../utils/reorder';
+import { moveItem, dropIndexFromTranslation, rowDragOffset, rowIndexAtContentY } from '../utils/reorder';
 import { useTheme } from '../theme/ThemeContext';
 
 const ROW_SHIFT_DURATION = 180;
@@ -33,19 +33,47 @@ interface Props<T> {
   onDragBegin?: () => void;
   /** Called once whenever an active drag ends, whether committed, dropped
    * with no change, or cancelled — always after resetDrag's own state
-   * clears, so a listener that starts a fresh drag from here is safe. */
-  onDragEnd?: () => void;
+   * clears, so a listener that starts a fresh drag from here is safe.
+   * `committed` distinguishes a real drop (the user lifted their finger) from
+   * a cancellation (touch loss, app switch, data changing underneath), so a
+   * caller acting on its own drop target can tell the two apart — onReorder
+   * can't stand in for that, since it stays silent when the drop leaves the
+   * order unchanged. */
+  onDragEnd?: (info: { committed: boolean }) => void;
   /** Called each time the dragged item shifts to a new slot (e.g. haptics). */
   onHoverChange?: () => void;
   /**
    * Fired on every raw pointer move during a drag with the current
-   * horizontal offset from the drag's start (dx) and the row index currently
-   * hovered (or null before the first move). Purely additive to the existing
-   * vertical reorder machinery — e.g. lets a caller detect "dragged right,
-   * like an indent" to offer joining the row above into a group, without
-   * this component needing to know anything about that meaning.
+   * horizontal offset from the drag's start (dx), the row index currently
+   * hovered (the gap the drop would land in, or null before the first move),
+   * and `overIndex` — the row the floating card is physically sitting on top
+   * of, measured against the list's resting layout. Purely additive to the
+   * existing vertical reorder machinery — e.g. lets a caller detect "dragged
+   * right, like an indent" to offer joining the row under the card into a
+   * group, without this component needing to know anything about that
+   * meaning.
+   *
+   * `overIndex` is the right input for a whole-row drop target: `hoverIndex`
+   * describes a gap, and while rows are displaced to open that gap the row
+   * it names is no longer where the user sees it. `dropDisabled` freezes the
+   * displacement so the two agree again.
    */
-  onDragMove?: (info: { dx: number; hoverIndex: number | null }) => void;
+  onDragMove?: (info: { dx: number; hoverIndex: number | null; overIndex: number | null }) => void;
+  /**
+   * Suspends reordering for the rest of the drag while true: the list settles
+   * back to its resting layout (no gap opens, no rows shift) and a drop
+   * commits no reorder. For callers whose drag has been "captured" by another
+   * drop target — dropping onto a row rather than between rows — so the list
+   * stops moving underneath the card the user is aiming.
+   */
+  dropDisabled?: boolean;
+  /**
+   * Row the drag will be absorbed into on release (paired with
+   * `dropDisabled`). The floating card settles onto that row and dissolves
+   * instead of gliding back to the slot it came from, so the drop reads as
+   * "it went in there" rather than "it snapped back and then vanished".
+   */
+  dropIntoIndex?: number | null;
   /** Restricts how far the active row may move, e.g. to keep it within its own section. */
   dragRange?: (data: T[], activeIndex: number) => [number, number];
   /** Style for the slot shown where the dragged item will land. */
@@ -90,6 +118,8 @@ export function ReorderableList<T>({
   onDragEnd,
   onHoverChange,
   onDragMove,
+  dropDisabled = false,
+  dropIntoIndex = null,
   dragRange,
   placeholderStyle,
   contentContainerStyle,
@@ -117,6 +147,7 @@ export function ReorderableList<T>({
   const overlayY = useRef(new Animated.Value(0)).current;
   const overlayX = useRef(new Animated.Value(0)).current;
   const overlayScale = useRef(new Animated.Value(1.03)).current;
+  const overlayOpacity = useRef(new Animated.Value(1)).current;
 
   const scrollRef = useRef<ScrollView>(null);
   const dataRef = useRef(data);
@@ -129,6 +160,9 @@ export function ReorderableList<T>({
   const startPageXRef = useRef(0);
   const onHoverChangeRef = useRef(onHoverChange);
   const onDragMoveRef = useRef(onDragMove);
+  const dropDisabledRef = useRef(dropDisabled);
+  const dropIntoIndexRef = useRef(dropIntoIndex);
+  dropIntoIndexRef.current = dropIntoIndex;
   const dragRangeRef = useRef(dragRange);
   const onEndReachedRef = useRef(onEndReached);
   const onEndReachedThresholdRef = useRef(onEndReachedThreshold);
@@ -192,13 +226,13 @@ export function ReorderableList<T>({
     }
   };
 
-  const resetDrag = useCallback(() => {
+  const resetDrag = useCallback((committed = false) => {
     stopAutoscroll();
     committingRef.current = false;
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
     setActiveIndex(null);
-    onDragEndRef.current?.();
+    onDragEndRef.current?.({ committed });
     // Do NOT reset the overlay's animated values here: the native view obeys
     // setValue immediately, while React unmounts the overlay a frame later —
     // zeroing the translates snapped the card back to its drag-start position
@@ -270,8 +304,40 @@ export function ReorderableList<T>({
     });
   };
 
+  // Content-Y of the middle of the floating card, i.e. where it actually sits
+  // over the list right now. overlayBaseTop is viewport-relative, so the
+  // scroll offset converts back to content coordinates.
+  const cardCenterContentY = (): number | null => {
+    const ai = activeIndexRef.current;
+    if (ai === null) return null;
+    const activeKey = keyExtractor(dataRef.current[ai]!);
+    const activeHeight = heightsRef.current.get(activeKey) ?? DEFAULT_ROW_HEIGHT;
+    const cardTop = overlayBaseTopRef.current + (lastPageYRef.current - startPageYRef.current);
+    return cardTop + scrollOffsetRef.current + activeHeight / 2;
+  };
+
+  // The row the card is on top of, measured against resting layout (see the
+  // onDragMove docs for why resting rather than displaced).
+  const rowUnderCard = (): number | null => {
+    const y = cardCenterContentY();
+    if (y === null) return null;
+    // One pass over the rows (this runs on every pointer move, so it stays as
+    // cheap as the hover math next to it).
+    const tops: number[] = [];
+    const heights: number[] = [];
+    for (const item of dataRef.current) {
+      const key = keyExtractor(item);
+      tops.push(layoutYRef.current.get(key) ?? 0);
+      heights.push(heightsRef.current.get(key) ?? DEFAULT_ROW_HEIGHT);
+    }
+    return rowIndexAtContentY(tops, heights, y);
+  };
+
   const updateHover = () => {
     const ai = activeIndexRef.current;
+    // Frozen: leave hoverIndex wherever the caller's capture left it (its own
+    // slot, per the effect below) so nothing shifts under the card.
+    if (dropDisabledRef.current) return;
     if (ai === null) return;
     const fingerDelta = lastPageYRef.current - startPageYRef.current;
     const scrollDelta = scrollOffsetRef.current - scrollOffsetAtStartRef.current;
@@ -284,6 +350,24 @@ export function ReorderableList<T>({
       onHoverChangeRef.current?.();
     }
   };
+
+  // Entering the frozen state closes any gap that was open (rows animate back
+  // to rest and the drop slot returns to the dragged row's own position);
+  // leaving it re-targets from wherever the finger currently is.
+  useEffect(() => {
+    dropDisabledRef.current = dropDisabled;
+    const ai = activeIndexRef.current;
+    if (ai === null) return;
+    if (dropDisabled) {
+      if (hoverIndexRef.current !== ai) {
+        hoverIndexRef.current = ai;
+        animateRowsForHover(ai);
+      }
+    } else {
+      updateHover();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropDisabled]);
 
   const maybeAutoscroll = () => {
     const ai = activeIndexRef.current;
@@ -323,10 +407,15 @@ export function ReorderableList<T>({
     const hi = hoverIndexRef.current;
     const result = hi !== null && hi !== ai ? moveItem(dataRef.current, ai, hi) : null;
 
-    // Glide the floating card into the open gap (the same content position the
-    // displaced rows opened up), then commit underneath it. Committing only
-    // after the card covers the destination masks the overlay→row swap.
-    const slotTop = gapContentY(ai, hi ?? ai) - scrollOffsetRef.current;
+    // Where the card finishes: onto the row that's absorbing it if the caller
+    // claimed the drop, otherwise into the open gap (the same content position
+    // the displaced rows opened up). Committing only after the card covers the
+    // destination masks the overlay→row swap.
+    const into = dropIntoIndexRef.current;
+    const intoItem = into !== null && into >= 0 && into !== ai ? dataRef.current[into] : undefined;
+    const slotTop = intoItem !== undefined
+      ? (layoutYRef.current.get(keyExtractor(intoItem)) ?? 0) - scrollOffsetRef.current
+      : gapContentY(ai, hi ?? ai) - scrollOffsetRef.current;
     Animated.parallel([
       Animated.timing(overlayY, {
         toValue: slotTop - overlayBaseTopRef.current,
@@ -334,7 +423,18 @@ export function ReorderableList<T>({
         useNativeDriver: true,
       }),
       Animated.timing(overlayX, { toValue: 0, duration: 160, useNativeDriver: true }),
-      Animated.timing(overlayScale, { toValue: 1, duration: 160, useNativeDriver: true }),
+      // Absorbed drops shrink and fade into the target row; ordinary drops
+      // just settle back to their resting size.
+      Animated.timing(overlayScale, {
+        toValue: intoItem !== undefined ? 0.88 : 1,
+        duration: 160,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: intoItem !== undefined ? 0 : 1,
+        duration: 160,
+        useNativeDriver: true,
+      }),
     ]).start(() => {
       // Commit in one atomic React render: new order (committedData) AND
       // isDragging false, which switches rows from their animated transform to
@@ -343,10 +443,10 @@ export function ReorderableList<T>({
       // where the last drag frame left them. committedData also makes that
       // first frame show the new order regardless of parent/store timing.
       if (result) setCommittedData(result);
-      resetDrag();
+      resetDrag(true);
       if (result) onReorderRef.current(result);
     });
-  }, [resetDrag, keyExtractor, overlayY, overlayX, overlayScale]);
+  }, [resetDrag, keyExtractor, overlayY, overlayX, overlayScale, overlayOpacity]);
 
   const startDrag = (index: number, key: string) => {
     if (activeIndexRef.current !== null) return;
@@ -368,6 +468,7 @@ export function ReorderableList<T>({
     overlayY.setValue(0);
     overlayX.setValue(0);
     overlayScale.setValue(1.03);
+    overlayOpacity.setValue(1);
     setActiveIndex(index);
     onDragBegin?.();
   };
@@ -391,7 +492,7 @@ export function ReorderableList<T>({
         overlayX.setValue(dx);
         updateHover();
         maybeAutoscroll();
-        onDragMoveRef.current?.({ dx, hoverIndex: hoverIndexRef.current });
+        onDragMoveRef.current?.({ dx, hoverIndex: hoverIndexRef.current, overIndex: rowUnderCard() });
       },
       onPanResponderRelease: () => commitDrag(),
       onPanResponderTerminate: () => {
@@ -484,6 +585,7 @@ export function ReorderableList<T>({
             shadows.fab,
             {
               top: overlayBaseTop,
+              opacity: overlayOpacity,
               transform: [{ translateY: overlayY }, { translateX: overlayX }, { scale: overlayScale }],
             },
           ]}

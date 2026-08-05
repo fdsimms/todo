@@ -48,6 +48,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { AnimatedCollapsible } from '../components/AnimatedCollapsible';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
+import { GroupDropTarget } from '../components/GroupDropTarget';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -61,7 +62,7 @@ import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, interaction, animation, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -915,12 +916,20 @@ export function TodayScreen() {
 
   // Tracks a "drag right to join a group" gesture while a plain loose task is
   // being dragged: set from onDragMove below whenever the finger is offset
-  // rightward (like a subtask indent) while hovering just below a group's
-  // header/last child, cleared once the offset drops back under the
-  // threshold. Read once at drop time in onReorder, then cleared.
+  // rightward (like a subtask indent) while the dragged card sits anywhere
+  // over a group — header or children — and cleared once the offset falls
+  // back under the release threshold. Read once at drop time in onDragEnd.
   const joinGroupIntentRef = useRef<string | null>(null);
   const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  // Task the drop just handed to a group (set in onDragEnd, which runs before
+  // onReorder), so the placement pass below leaves it alone — it belongs to
+  // the group now, not to whatever slot it was let go over.
+  const joinedTaskIdRef = useRef<string | null>(null);
   const JOIN_GROUP_INDENT_THRESHOLD = spacing.md + spacing.lg; // matches TaskItem's subtask indent
+  // Once armed it takes a much bigger leftward move to disarm than it took to
+  // arm. Without that gap, the small horizontal wobble of a finger dragging
+  // vertically flickered the highlight (and its haptic) on and off.
+  const JOIN_GROUP_RELEASE_THRESHOLD = spacing.md;
   // Index (within draggableData) of the row currently being dragged in the
   // main list — kept up to date from dragRange (called every hover update)
   // so onDragMove can tell which row is in flight without ReorderableList
@@ -1070,7 +1079,7 @@ export function TodayScreen() {
     if (item.type === 'group') {
       const allChildren = childrenByGroupId.get(item.group.id) ?? [];
       return (
-        <View style={joinGroupIntentId === item.group.id && styles.groupJoinTarget}>
+        <GroupDropTarget active={joinGroupIntentId === item.group.id}>
           <TaskGroupHeader
             group={item.group}
             allChildren={allChildren}
@@ -1111,7 +1120,7 @@ export function TodayScreen() {
               )}
             />
           </AnimatedCollapsible>
-        </View>
+        </GroupDropTarget>
       );
     }
 
@@ -1541,10 +1550,23 @@ export function TodayScreen() {
           renderItem={renderItem}
           onDragBegin={() => {
             setExpandedTaskId(null);
+            joinedTaskIdRef.current = null;
           }}
-          onDragEnd={() => {
+          onDragEnd={({ committed }) => {
+            const joinGroupId = joinGroupIntentRef.current;
             joinGroupIntentRef.current = null;
             setJoinGroupIntentId(null);
+            // The join lands here rather than in onReorder: a drop onto a
+            // group leaves the list order untouched (the list stops
+            // reordering once it's aimed at a group), and onReorder stays
+            // silent when nothing moved. `committed` keeps a cancelled drag —
+            // touch loss, app switch — from quietly stacking the task.
+            const dragged = draggableData[activeDragIndexRef.current ?? -1];
+            if (committed && joinGroupId !== null && dragged?.type === 'task') {
+              joinedTaskIdRef.current = dragged.task.id;
+              addExistingToGroup(dragged.task.id, joinGroupId);
+              haptics.success();
+            }
             if (draggingGroupId !== null) setDraggingGroupId(null);
             if (!autoCollapseForDrag) return;
             // Deferred a tick so this LayoutAnimation lands in its own
@@ -1558,26 +1580,43 @@ export function TodayScreen() {
             }, 0);
           }}
           onHoverChange={dragHaptic}
-          onDragMove={({ dx, hoverIndex }) => {
+          onDragMove={({ dx, overIndex }) => {
             // Only a plain loose task can be dragged right to join a group —
             // headers and groups themselves use the same horizontal offset
             // purely as drag-overlay cosmetics (see ReorderableList).
-            if (hoverIndex === null) return;
             const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
             if (draggedItem?.type !== 'task') return;
-            const rowAtHover = draggableData[hoverIndex];
-            const rowBeforeHover = draggableData[hoverIndex - 1];
-            const target =
-              rowAtHover?.type === 'group' ? rowAtHover.group
-                : rowBeforeHover?.type === 'group' ? rowBeforeHover.group
-                : null;
-            const nextId = dx > JOIN_GROUP_INDENT_THRESHOLD && target ? target.id : null;
+            // The target is the group the card is physically over, anywhere
+            // from the top of its header to the bottom of its last child —
+            // not the reorder gap next to it. hoverIndex describes a gap
+            // between rows, and the rows sliding to open that gap are exactly
+            // what used to move the group out from under the card, leaving a
+            // sliver at the group's top edge as the only place a drop
+            // registered.
+            const over = overIndex !== null ? draggableData[overIndex] : null;
+            const target = over?.type === 'group' ? over.group : null;
+            // The rightward offset stays the deliberate part of the gesture —
+            // without it there'd be no way to drag a task past a group without
+            // falling into it — but disarming now needs a real move back, not
+            // just dropping under the arming threshold.
+            const armed = joinGroupIntentRef.current !== null;
+            const threshold = armed ? JOIN_GROUP_RELEASE_THRESHOLD : JOIN_GROUP_INDENT_THRESHOLD;
+            const nextId = target && dx > threshold ? target.id : null;
             if (nextId !== joinGroupIntentRef.current) {
               joinGroupIntentRef.current = nextId;
               setJoinGroupIntentId(nextId);
-              if (nextId) haptics.tap();
+              if (nextId) haptics.impactLight();
             }
           }}
+          // Aiming at a group takes the drag over: the list stops opening a
+          // reorder gap, so the group stays put under the card instead of
+          // sliding away from the finger chasing it.
+          dropDisabled={joinGroupIntentId !== null}
+          dropIntoIndex={
+            joinGroupIntentId === null
+              ? null
+              : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
+          }
           dragRange={(rangeData, activeIndex) => {
             activeDragIndexRef.current = activeIndex;
             const activeItem = rangeData[activeIndex];
@@ -1595,9 +1634,8 @@ export function TodayScreen() {
                 item.type === 'header' || item.type === 'task' || item.type === 'group',
             );
 
-            const joinGroupId = joinGroupIntentRef.current;
-            joinGroupIntentRef.current = null;
-            setJoinGroupIntentId(null);
+            const joinedTaskId = joinedTaskIdRef.current;
+            joinedTaskIdRef.current = null;
 
             if (draggingCategoryRef.current !== null) {
               draggingCategoryRef.current = null;
@@ -1611,22 +1649,19 @@ export function TodayScreen() {
               return;
             }
 
-            // A plain task dragged right onto a group (see onDragMove) joins
-            // that group instead of landing at its dropped position — drop it
-            // from the normal placement pass so resolveDrop never assigns it
-            // a category/order of its own.
-            const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
-            if (joinGroupId !== null && draggedItem?.type === 'task') {
-              const withoutDragged = dropped.filter(
-                item => !(item.type === 'task' && item.task.id === draggedItem.task.id),
+            // A task dragged onto a group (see onDragMove) has already joined
+            // it in onDragEnd — drop it from the normal placement pass so
+            // resolveDrop never assigns it a category/order of its own.
+            if (joinedTaskId !== null) {
+              const withoutJoined = dropped.filter(
+                item => !(item.type === 'task' && item.task.id === joinedTaskId),
               );
-              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutDragged, {
+              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
                 isUpcoming: id => upcomingTaskIds.has(id),
                 showUpcoming,
                 categoryOrder: allCategories,
               });
               groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-              addExistingToGroup(draggedItem.task.id, joinGroupId);
               setDraggableData(settled);
               reorderWithCategoryUpdates(taskIds, categoryUpdates);
               return;
@@ -1947,14 +1982,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     opacity: 0.55,
-  },
-  // Highlights a group while a dragged task is offset right over it (see
-  // JOIN_GROUP_INDENT_THRESHOLD), signalling "release to add to this group".
-  groupJoinTarget: {
-    marginHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: border.sm * 2,
-    borderColor: colors.accent,
   },
   // The footer stretches to fill any space left below the last task so a tap
   // anywhere under the list dismisses the expanded-task spotlight.

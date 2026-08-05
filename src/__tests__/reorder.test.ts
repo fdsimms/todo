@@ -5,6 +5,7 @@ import {
   rowDragOffset,
   dropSlotY,
   dragRange,
+  rowIndexAtContentY,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -160,5 +161,32 @@ describe('dropSlotY', () => {
   it('tracks the gap above when dragging up', () => {
     // Active 4, hover 1: offsets[1] = 36.
     expect(dropSlotY(heights, 4, 1)).toBe(36);
+  });
+});
+
+describe('rowIndexAtContentY', () => {
+  // A short header, two task rows, then a tall group row (header + children).
+  const tops = [0, 36, 88, 140];
+  const heights = [36, 52, 52, 220];
+
+  it('finds the row containing the point', () => {
+    expect(rowIndexAtContentY(tops, heights, 10)).toBe(0);
+    expect(rowIndexAtContentY(tops, heights, 100)).toBe(2);
+  });
+
+  it('treats a row top as inside that row and its bottom as outside', () => {
+    expect(rowIndexAtContentY(tops, heights, 36)).toBe(1);
+    expect(rowIndexAtContentY(tops, heights, 88)).toBe(2);
+  });
+
+  it('hits a tall row anywhere down its height, not just its top edge', () => {
+    expect(rowIndexAtContentY(tops, heights, 145)).toBe(3);
+    expect(rowIndexAtContentY(tops, heights, 250)).toBe(3);
+    expect(rowIndexAtContentY(tops, heights, 359)).toBe(3);
+  });
+
+  it('is null past either end of the list', () => {
+    expect(rowIndexAtContentY(tops, heights, -20)).toBeNull();
+    expect(rowIndexAtContentY(tops, heights, 360)).toBeNull();
   });
 });
