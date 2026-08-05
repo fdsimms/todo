@@ -3,7 +3,6 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import {
   initDatabase,
-  dbGetSetting,
   dbGetAllTasks,
   dbGetTagRegistry,
   dbInsertTask,
@@ -2324,7 +2323,7 @@ describe('expiredTasks', () => {
   });
 });
 
-describe('initialize — auto-remove expired tasks', () => {
+describe('sweepExpiredTasks', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0)); // 2:00 PM
@@ -2334,25 +2333,55 @@ describe('initialize — auto-remove expired tasks', () => {
     jest.useRealTimers();
   });
 
+  const settingsStoreMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
   it('leaves expired tasks in place when the setting is off', () => {
-    (dbGetSetting as jest.Mock).mockReturnValue(null);
-    (dbGetAllTasks as jest.Mock).mockReturnValue([makeTask({ id: 'expired', windowEnd: '13:00' })]);
-    useTaskStore.getState().initialize();
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: false,
+      vacationMode: false,
+    });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowEnd: '13:00' })] });
+    useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
   });
 
-  it('deletes expired tasks on load when the setting is on, leaving active ones', () => {
-    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
-      key === 'autoRemoveExpiredTasks' ? 'true' : null,
-    );
-    (dbGetAllTasks as jest.Mock).mockReturnValue([
-      makeTask({ id: 'expired', windowEnd: '13:00' }),
-      makeTask({ id: 'active', windowEnd: '18:00' }),
-    ]);
-    useTaskStore.getState().initialize();
+  it('deletes expired tasks when the setting is on, leaving active ones', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'expired', windowEnd: '13:00' }),
+        makeTask({ id: 'active', windowEnd: '18:00' }),
+      ],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['active']);
     expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['expired']);
+  });
+
+  it('spares a vacation-paused expired task while vacation mode is on', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: true,
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'paused', windowEnd: '13:00', vacationPause: true })],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['paused']);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
   });
 });
 
