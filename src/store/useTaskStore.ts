@@ -386,8 +386,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
       const updated = { ...t, ...updates, seriesDefaults };
       dbUpdateTask(updated);
-      cancelTaskReminder(id);
-      scheduleTaskReminder(updated);
+      if (
+        'reminderTime' in updates ||
+        'completed' in updates ||
+        'archived' in updates ||
+        'title' in updates ||
+        'notes' in updates
+      ) {
+        cancelTaskReminder(id);
+        scheduleTaskReminder(updated);
+      }
       return updated;
     });
     set({ tasks });
