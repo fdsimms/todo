@@ -2065,8 +2065,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
           visible={showWhenPicker}
           value={dueDate}
           timeSegments={timeSegments}
+          taskId={task?.id}
           taskTitle={title}
           taskNotes={notes}
+          taskTags={tags}
+          taskCategory={category}
+          taskPriority={priority}
           taskEffort={effort}
           taskEstimatedMinutes={estimatedMinutes}
           onConfirm={(date, segs) => {

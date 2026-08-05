@@ -4,13 +4,21 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isThisWeek } from 'date-fns/isThisWeek';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
-import { getNextDueDate } from './dateUtils';
-import { minutesToEffort } from './effort';
+import { getDayStart, getNextDueDate } from './dateUtils';
+import { effortToMinutes } from './effort';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 
-// Effort on the coarse 0–5 scale, derived from a precise time estimate when the
-// task has one so workload balancing reflects the real estimate.
+// Effort in "S-task" units (1 unit = the canonical 30min "S" bucket), derived
+// from a precise time estimate when the task has one, else its coarse effort
+// bucket, else a modest default so unestimated tasks still count toward load.
 function effortUnits(t: Task): number {
-  return t.estimatedMinutes != null ? minutesToEffort(t.estimatedMinutes) : t.effort;
+  return (t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 30) / 30;
+}
+
+// True when two dates fall on the same *logical* day under dayResetTime.
+function sameLogicalDay(a: Date, b: Date, dayResetTime: string): boolean {
+  return isSameDay(getDayStart(a, dayResetTime), getDayStart(b, dayResetTime));
 }
 
 export interface SnoozeSuggestion {
@@ -53,6 +61,7 @@ export function computeSnoozeSuggestion(
   allTasks: Task[],
 ): SnoozeSuggestion {
   const today = new Date();
+  const dayResetTime = useSettingsStore.getState().dayResetTime;
 
   const completed = allTasks.filter(t => !t.parentId && t.completed && t.completedAt != null);
   const pending = allTasks.filter(t => !t.parentId && !t.completed && t.id !== task.id);
@@ -64,6 +73,18 @@ export function computeSnoozeSuggestion(
   });
 
   const windowEnd = candidates[candidates.length - 1];
+
+  // Category schedule — only constrain the candidate window when at least one
+  // of the 7 candidates actually falls on a day the category is scheduled for;
+  // otherwise the restriction would rule out every option, which is worse than
+  // ignoring it.
+  const categoryScheduleDays = task.category
+    ? useCategoryStore.getState().getCategoryByName(task.category)?.scheduleDays ?? null
+    : null;
+  const activeScheduleDays = categoryScheduleDays && categoryScheduleDays.length > 0
+    && candidates.some(d => categoryScheduleDays.includes(d.getDay()))
+    ? categoryScheduleDays
+    : null;
 
   // Pre-compute projected recurring occurrences for all pending recurring tasks.
   // Maps ISO date string → { count, effort } from recurrence projections.
@@ -96,8 +117,8 @@ export function computeSnoozeSuggestion(
     // plus projected occurrences of recurring tasks that will land here.
     const recurringDay = recurringByDay.get(dayKey) ?? { count: 0, effort: 0 };
     const explicitLoad = pending.filter(t =>
-      (t.dueDate != null && isSameDay(new Date(t.dueDate), d)) ||
-      (t.deferUntil != null && isSameDay(new Date(t.deferUntil), d))
+      (t.dueDate != null && sameLogicalDay(new Date(t.dueDate), d, dayResetTime)) ||
+      (t.deferUntil != null && sameLogicalDay(new Date(t.deferUntil), d, dayResetTime))
     ).length;
     const loadCount = explicitLoad + recurringDay.count;
     const loadPenalty = loadCount * 2.0;
@@ -126,8 +147,8 @@ export function computeSnoozeSuggestion(
     // Signal 4: effort already on this day (explicit + projected recurring)
     const explicitEffort = pending
       .filter(t =>
-        (t.dueDate != null && isSameDay(new Date(t.dueDate), d)) ||
-        (t.deferUntil != null && isSameDay(new Date(t.deferUntil), d))
+        (t.dueDate != null && sameLogicalDay(new Date(t.dueDate), d, dayResetTime)) ||
+        (t.deferUntil != null && sameLogicalDay(new Date(t.deferUntil), d, dayResetTime))
       )
       .reduce((sum, t) => sum + effortUnits(t), 0);
     const effortOnDay = explicitEffort + recurringDay.effort;
@@ -142,7 +163,11 @@ export function computeSnoozeSuggestion(
       : task.priority === 3 ? dOut * 0.7
       : 0;
 
-    const score = loadPenalty + tagBonus + dowBonus + effortPenalty + recencyPenalty + priorityPenalty;
+    // Signal 7: category schedule — rule out days the task's category isn't
+    // scheduled for, when the constraint leaves at least one day standing.
+    const categoryPenalty = activeScheduleDays && !activeScheduleDays.includes(dow) ? 1000 : 0;
+
+    const score = loadPenalty + tagBonus + dowBonus + effortPenalty + recencyPenalty + priorityPenalty + categoryPenalty;
     return { date: d, score, loadCount, tagRate, dowRate };
   });
 
