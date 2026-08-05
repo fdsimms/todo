@@ -160,6 +160,7 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN link_url TEXT',
     'ALTER TABLE templates ADD COLUMN category TEXT',
     'ALTER TABLE task_groups ADD COLUMN completed_at TEXT',
+    'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -413,12 +414,16 @@ export function dbClearAllPins(): void {
   db.runSync('UPDATE tasks SET pinned = 0 WHERE pinned = 1');
 }
 
+const BULK_DELETE_CHUNK_SIZE = 500;
+
 export function dbBulkDeleteTasks(ids: string[]): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
-    for (const id of ids) {
-      db.runSync('DELETE FROM tasks WHERE parent_id = ?', [id]);
-      db.runSync('DELETE FROM tasks WHERE id = ?', [id]);
+    for (let i = 0; i < ids.length; i += BULK_DELETE_CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + BULK_DELETE_CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(', ');
+      db.runSync(`DELETE FROM tasks WHERE parent_id IN (${placeholders})`, chunk);
+      db.runSync(`DELETE FROM tasks WHERE id IN (${placeholders})`, chunk);
     }
   });
 }

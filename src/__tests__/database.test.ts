@@ -187,6 +187,13 @@ describe('initDatabase', () => {
     expect(() => initDatabase()).not.toThrow();
   });
 
+  it('creates an index on tasks(parent_id)', () => {
+    const row = mockRawDb
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_tasks_parent_id'")
+      .get() as { name: string } | undefined;
+    expect(row?.name).toBe('idx_tasks_parent_id');
+  });
+
   it('backfills seen_at from created_at for legacy rows so they are not treated as new', () => {
     mockRawDb
       .prepare(
@@ -611,6 +618,17 @@ describe('dbBulkDeleteTasks', () => {
     dbInsertTask(makeTask({ id: 'a' }));
     dbBulkDeleteTasks([]);
     expect(dbGetAllTasks()).toHaveLength(1);
+  });
+
+  it('chunks past the 500-id batch size, deleting parents and subtasks across chunks', () => {
+    const ids = Array.from({ length: 600 }, (_, i) => `p${i}`);
+    for (const id of ids) {
+      dbInsertTask(makeTask({ id }));
+      dbInsertTask(makeTask({ id: `${id}-child`, parentId: id }));
+    }
+    dbInsertTask(makeTask({ id: 'survivor' }));
+    dbBulkDeleteTasks(ids);
+    expect(dbGetAllTasks().map((t) => t.id)).toEqual(['survivor']);
   });
 });
 
