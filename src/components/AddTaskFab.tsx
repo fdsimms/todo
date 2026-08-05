@@ -39,15 +39,17 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
     Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
   };
 
-  const close = () => {
+  const close = (onDismissed?: () => void) => {
     Animated.timing(anim, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true })
-      .start(() => setMenuVisible(false));
+      .start(() => {
+        setMenuVisible(false);
+        onDismissed?.();
+      });
   };
 
   const handleSelect = (type: AddTaskType) => {
     haptics.tap();
-    close();
-    onSelect(type);
+    close(() => onSelect(type));
   };
 
   return (
@@ -66,8 +68,8 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
         </PressableScale>
       </Animated.View>
 
-      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={close}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={close}>
+      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={() => close()}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => close()}>
           <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: anim }]} />
         </TouchableOpacity>
         <View style={[styles.menuContainer, { bottom }]} pointerEvents="box-none">
@@ -98,7 +100,7 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
           <PressableScale
             style={[styles.fab, shadows.fab]}
             pressScale={0.9}
-            onPress={close}
+            onPress={() => close()}
             accessibilityLabel="Close"
           >
             <Ionicons name="close" size={28} color={colors.onAccent} />
