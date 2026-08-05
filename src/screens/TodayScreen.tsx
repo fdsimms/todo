@@ -891,7 +891,16 @@ export function TodayScreen() {
   const startCategoryDrag = (label: string, drag: () => void) => {
     draggingCategoryRef.current = label;
     haptics.tap();
-    animateLayout();
+    // No animateLayout() here, on purpose — same rule layoutAnimation.ts
+    // states for the drop-settle commit applies just as much to drag start.
+    // The dragged header's own calibration (ReorderableList.calibrateOverlayBase)
+    // measures this row's real on-screen position once the auto-collapse
+    // commits; a native LayoutAnimation would still be tweening every other
+    // header's frame toward that position for 220ms after the measurement,
+    // so the floating card would pin to a spot the layout hasn't reached yet.
+    // An instant collapse gives it settled ground truth immediately. (The
+    // matching drag-end collapse below already avoids this collision by
+    // deferring animateLayout() to its own commit — same conflict, other end.)
     setAutoCollapseForDrag(true);
     drag();
   };
