@@ -12,7 +12,71 @@ function parseTimeSegments(raw: unknown): TimeOfDay[] {
   return [s as TimeOfDay];
 }
 
-const db = SQLite.openDatabaseSync('todo.db');
+const REAL_DB_NAME = 'todo.db';
+const DEMO_DB_NAME = 'demo.db';
+
+const realDb = SQLite.openDatabaseSync(REAL_DB_NAME);
+
+// Every db* function below reads this binding at call time rather than
+// capturing a handle, which is what lets demo mode swap the whole data
+// source out from under the stores (see useDemoStore): point `db` at a
+// throwaway file, re-run initDatabase() + each store's initialize(), and
+// the entire app is reading demo data with no other code involved. The real
+// handle is never closed, so switching back is just a reassignment.
+let db = realDb;
+
+// Opens a blank demo database, deleting any file left behind by a previous
+// session that was killed mid-demo (the active-demo flag lives in memory
+// only, so a crash always lands back on real data — at worst with a stale
+// file that this call clears). Caller is responsible for running
+// initDatabase() afterwards to create the tables.
+export function switchToDemoDatabase(): void {
+  if (db !== realDb) return;
+  try {
+    SQLite.deleteDatabaseSync(DEMO_DB_NAME);
+  } catch {
+    // No such file — the normal case.
+  }
+
+  const demo = SQLite.openDatabaseSync(DEMO_DB_NAME);
+  // Wipe whatever the file still holds, rather than trusting the delete
+  // above to have emptied it: deleteDatabaseSync removes only the main file
+  // and leaves any -wal/-shm sidecar behind, and it throws outright if the
+  // database is still open — both of which fail silently here and would
+  // otherwise show up as one demo's leftovers appearing in the next. Written
+  // against `demo` and not `db` so it can't reach real data even by mistake.
+  const tables = demo.getAllSync<{ name: string }>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+  );
+  for (const { name } of tables) {
+    demo.execSync(`DROP TABLE IF EXISTS "${name}"`);
+  }
+
+  db = demo;
+}
+
+// Points every db* function back at the user's real data and destroys the
+// demo file, so nothing written during a demo survives it.
+export function switchToRealDatabase(): void {
+  if (db === realDb) return;
+  const demo = db;
+  db = realDb;
+  try {
+    demo.closeSync();
+  } catch {
+    // Already closed — nothing to do, the swap above is what matters.
+  }
+  try {
+    SQLite.deleteDatabaseSync(DEMO_DB_NAME);
+  } catch {
+    // Best effort: a file we failed to delete is inert (it's only ever read
+    // while demo mode is on, and entering demo mode deletes it first).
+  }
+}
+
+export function isUsingDemoDatabase(): boolean {
+  return db !== realDb;
+}
 
 export function initDatabase(): void {
   db.execSync(`

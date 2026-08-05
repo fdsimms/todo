@@ -81,18 +81,6 @@ interface Props {
   task?: Task | null;
   initialDraft?: Partial<TaskDraft> | null;
   onClose: () => void;
-  // Overrides for the category/tag pickers' autocomplete lists. Used by
-  // DemoScreen so editing a sample task can't leak real category/tag names
-  // (e.g. a "Supplements" category) into the suggestion pills — omit to use
-  // every real category/tag, as every other call site does.
-  categoryOptions?: string[];
-  tagOptions?: string[];
-  // Fired right after a brand-new category is registered (via the "New"
-  // field or the AI suggestion sheet) — categories are a permanent registry
-  // entry (unlike tags, which vanish with the last task using them), so a
-  // restricted editor (e.g. DemoScreen) needs this to know what to clean up
-  // afterward rather than blocking creation outright.
-  onCategoryCreated?: (name: string) => void;
 }
 
 type PickerMode = 'none' | 'reminder';
@@ -158,7 +146,7 @@ function formatRecurrenceSummary(type: RecurrenceType, interval: number): string
   return `Every ${interval} ${recurrenceUnitLabel(type, interval)}`;
 }
 
-export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptions, tagOptions, onCategoryCreated }: Props) {
+export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
@@ -173,8 +161,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
   const allTagsStore = useTaskStore(useShallow(s => s.allTags()));
   const allCategoriesStore = useTaskStore(useShallow(s => s.allCategories()));
-  const allTags = tagOptions ?? allTagsStore;
-  const allCategories = categoryOptions ?? allCategoriesStore;
+  const allTags = allTagsStore;
+  const allCategories = allCategoriesStore;
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
@@ -1518,12 +1506,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     onChangeText={setNewCategory}
                     onSubmitEditing={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); closeField('category'); }
+                      if (c) { addCategory(c); setCategory(c); closeField('category'); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     onBlur={() => {
                       const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); onCategoryCreated?.(c); closeField('category'); }
+                      if (c) { addCategory(c); setCategory(c); closeField('category'); }
                       setNewCategory(''); setAddingCategory(false);
                     }}
                     placeholder="category name"
@@ -2123,7 +2111,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
             if (pendingCategory) {
               addCategory(pendingCategory);
               setCategory(pendingCategory);
-              onCategoryCreated?.(pendingCategory);
               haptics.success();
             }
             setPendingCategory(null);
