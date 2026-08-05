@@ -1,0 +1,4 @@
+{
+  "message": "Removed the \"Focused\" toggle from template items — it hadn't done anything since Focus was renamed to Pin",
+  "date": "2026-08-05"
+}

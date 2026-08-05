@@ -44,7 +44,6 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
     estimatedMinutes: raw.estimatedMinutes ?? null,
-    focused: raw.focused ?? false,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: raw.chainItems ?? [],
     subtasks: raw.subtasks ?? [],
@@ -106,7 +105,6 @@ export function buildDraftsFromTemplate(
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
       estimatedMinutes: item.estimatedMinutes,
-      focused: item.focused,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
     };
