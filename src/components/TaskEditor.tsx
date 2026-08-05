@@ -55,6 +55,7 @@ export interface TaskDraft {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null;
+  recurrenceWeekOrdinal: number | null;
   recurrenceFromCompletion: boolean;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
@@ -98,6 +99,27 @@ export function ordinal(n: number): string {
     case 3: return `${n}rd`;
     default: return `${n}th`;
   }
+}
+
+// Nth-weekday-of-month picker options ("every 2nd Tuesday", "every last Friday").
+export const ORDINAL_OPTIONS: { value: number; label: string }[] = [
+  { value: 1, label: '1st' },
+  { value: 2, label: '2nd' },
+  { value: 3, label: '3rd' },
+  { value: 4, label: '4th' },
+  { value: -1, label: 'Last' },
+];
+
+// WeekdaySelector toggles a day in/out of an array; the Nth-weekday-of-month
+// picker needs exactly one day selected at a time, so this wraps its
+// onChange to always keep the most recently tapped day (ignoring a tap that
+// would deselect the only day, since a weekday must stay chosen).
+export function onlyNewestWeekday(current: number[], setDays: (days: number[]) => void): (days: number[]) => void {
+  return (days: number[]) => {
+    if (days.length === 0) return;
+    const added = days.find(d => !current.includes(d));
+    setDays(added !== undefined ? [added] : [days[days.length - 1]]);
+  };
 }
 
 const RECURRENCE_UNIT_SINGULAR: Record<Exclude<RecurrenceType, 'none'>, string> = {
@@ -168,6 +190,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
   const [recurrenceMonthDay, setRecurrenceMonthDay] = useState<number | null>(null);
+  const [recurrenceWeekOrdinal, setRecurrenceWeekOrdinal] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<Date | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
@@ -231,6 +254,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceMonthDay(task.recurrenceMonthDay ?? null);
+      setRecurrenceWeekOrdinal(task.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(task.recurrenceFromCompletion);
       setRecurrenceEndDate(task.recurrenceEndDate ? new Date(task.recurrenceEndDate) : null);
       setRecurrenceCount(task.recurrenceCount ?? null);
@@ -246,6 +270,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
+      setRecurrenceWeekOrdinal(initialDraft?.recurrenceWeekOrdinal ?? null);
       setRecurrenceFromCompletion(initialDraft?.recurrenceFromCompletion ?? false);
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
@@ -284,6 +309,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
       recurrenceMonthDay: task ? (task.recurrenceMonthDay ?? null) : (initialDraft?.recurrenceMonthDay ?? null),
+      recurrenceWeekOrdinal: task ? (task.recurrenceWeekOrdinal ?? null) : (initialDraft?.recurrenceWeekOrdinal ?? null),
       recurrenceFromCompletion: task ? task.recurrenceFromCompletion : (initialDraft?.recurrenceFromCompletion ?? false),
       recurrenceEndDate: task ? (task.recurrenceEndDate ?? null) : null,
       recurrenceCount: task ? (task.recurrenceCount ?? null) : null,
@@ -349,8 +375,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
       timeSegments, windowStart, windowEnd, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
-      recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
-      recurrenceMonthDay: recurrenceType === 'monthly' ? recurrenceMonthDay : null,
+      recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
+      recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
+      recurrenceWeekOrdinal: recurrenceType === 'monthly' ? recurrenceWeekOrdinal : null,
       recurrenceEndDate: recurrenceType !== 'none' ? (recurrenceEndDate?.toISOString() ?? null) : null,
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
@@ -1557,16 +1584,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                 {recurrenceType === 'monthly' && (
                   <View style={styles.scheduleRow}>
                     <TouchableOpacity
-                      style={[styles.schedulePill, recurrenceMonthDay === null && styles.schedulePillActive]}
-                      onPress={() => setRecurrenceMonthDay(null)}
+                      style={[styles.schedulePill, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillActive]}
+                      onPress={() => { setRecurrenceMonthDay(null); setRecurrenceWeekOrdinal(null); }}
                     >
-                      <Text style={[styles.schedulePillText, recurrenceMonthDay === null && styles.schedulePillTextActive]}>
+                      <Text style={[styles.schedulePillText, recurrenceMonthDay === null && recurrenceWeekOrdinal === null && styles.schedulePillTextActive]}>
                         Same day as due date
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.schedulePill, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillActive]}
-                      onPress={() => setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate())}
+                      onPress={() => { setRecurrenceWeekOrdinal(null); setRecurrenceMonthDay(recurrenceMonthDay && recurrenceMonthDay > 0 ? recurrenceMonthDay : (dueDate ?? new Date()).getDate()); }}
                     >
                       <Text style={[styles.schedulePillText, recurrenceMonthDay !== null && recurrenceMonthDay > 0 && styles.schedulePillTextActive]}>
                         On a day
@@ -1574,10 +1601,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.schedulePill, recurrenceMonthDay === -1 && styles.schedulePillActive]}
-                      onPress={() => setRecurrenceMonthDay(-1)}
+                      onPress={() => { setRecurrenceWeekOrdinal(null); setRecurrenceMonthDay(-1); }}
                     >
                       <Text style={[styles.schedulePillText, recurrenceMonthDay === -1 && styles.schedulePillTextActive]}>
                         Last day
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.schedulePill, recurrenceWeekOrdinal !== null && styles.schedulePillActive]}
+                      onPress={() => {
+                        setRecurrenceMonthDay(null);
+                        setRecurrenceWeekOrdinal(recurrenceWeekOrdinal ?? 1);
+                        if (recurrenceDays.length === 0) setRecurrenceDays([(dueDate ?? new Date()).getDay()]);
+                      }}
+                    >
+                      <Text style={[styles.schedulePillText, recurrenceWeekOrdinal !== null && styles.schedulePillTextActive]}>
+                        On a weekday
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -1599,6 +1638,26 @@ export function TaskEditor({ visible, task, initialDraft, onClose, categoryOptio
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>
                   </View>
+                )}
+                {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
+                  <>
+                    <View style={styles.scheduleRow}>
+                      {ORDINAL_OPTIONS.map(({ value, label }) => (
+                        <TouchableOpacity
+                          key={value}
+                          style={[styles.schedulePill, recurrenceWeekOrdinal === value && styles.schedulePillActive]}
+                          onPress={() => setRecurrenceWeekOrdinal(value)}
+                        >
+                          <Text style={[styles.schedulePillText, recurrenceWeekOrdinal === value && styles.schedulePillTextActive]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                    <View style={styles.weekdayRow}>
+                      <WeekdaySelector value={recurrenceDays} onChange={onlyNewestWeekday(recurrenceDays, setRecurrenceDays)} />
+                    </View>
+                  </>
                 )}
                 <View style={styles.scheduleRow}>
                   <TouchableOpacity

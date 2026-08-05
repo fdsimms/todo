@@ -43,6 +43,7 @@ const baseTask: Task = {
   recurrenceInterval: 1,
   recurrenceDays: [],
   recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],
@@ -503,6 +504,61 @@ describe('getNextDueDate', () => {
     const result = getNextDueDate(task, '00:00')!;
     expect(result.getMonth()).toBe(1); // February
     expect(result.getDate()).toBe(28);
+  });
+
+  it('monthly with recurrenceWeekOrdinal picks the Nth weekday next month when already past it', () => {
+    // NOW is June 10 (Tuesday). The 2nd Tuesday of June (the 10th) is today's
+    // due date, so the next occurrence is the 2nd Tuesday of July.
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceWeekOrdinal: 2,
+      recurrenceDays: [2], // Tuesday
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(6); // July
+    expect(result.getDate()).toBe(8); // 2nd Tuesday of July 2025
+  });
+
+  it('monthly with recurrenceWeekOrdinal picks this month\'s Nth weekday when still upcoming', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceWeekOrdinal: 4,
+      recurrenceDays: [2], // Tuesday
+      dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(24); // 4th Tuesday of June 2025
+  });
+
+  it('monthly with recurrenceWeekOrdinal=-1 (last) picks the last weekday of the month', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceWeekOrdinal: -1,
+      recurrenceDays: [5], // Friday
+      dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(27); // last Friday of June 2025
+  });
+
+  it('monthly recurrenceWeekOrdinal takes precedence over recurrenceMonthDay when both are set', () => {
+    const task: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceWeekOrdinal: 1,
+      recurrenceDays: [1], // Monday
+      recurrenceMonthDay: 15,
+      dueDate: new Date(2025, 5, 1, 0, 0, 0).toISOString(), // June 1
+    };
+    const result = getNextDueDate(task, '00:00')!;
+    expect(result.getMonth()).toBe(5); // June
+    expect(result.getDate()).toBe(2); // 1st Monday of June 2025, not the 15th
   });
 
   it('yearly interval=1 adds 1 year', () => {

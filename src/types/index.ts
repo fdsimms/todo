@@ -106,6 +106,11 @@ export interface Task {
   recurrenceInterval: number;
   recurrenceDays: number[];
   recurrenceMonthDay: number | null; // day of month (1-31) for monthly recurrence on a fixed schedule, -1 = last day of the month; null = same day as dueDate
+  // Nth weekday-of-month for monthly recurrence, e.g. "every 2nd Tuesday" (recurrenceWeekOrdinal=2,
+  // recurrenceDays=[2]); 1-4 = 1st..4th occurrence, -1 = last occurrence in the month. Mutually
+  // exclusive with recurrenceMonthDay; null = not using this mode. Only the first entry of
+  // recurrenceDays is used when this is set.
+  recurrenceWeekOrdinal: number | null;
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
