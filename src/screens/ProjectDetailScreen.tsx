@@ -141,6 +141,7 @@ export function ProjectDetailScreen() {
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id}
+                  showActions={false}
                 />
               );
             }}
@@ -185,6 +186,7 @@ export function ProjectDetailScreen() {
                           subtaskDoneCount={subs.filter(t => t.completed).length}
                           subtasks={subs}
                           spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id}
+                          showActions={false}
                         />
                       );
                     })}
