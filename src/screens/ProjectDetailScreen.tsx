@@ -17,14 +17,15 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
-import { TaskEditor } from '../components/TaskEditor';
+import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
+import { QuickAddModal } from '../components/QuickAddModal';
 import { EmptyState } from '../components/EmptyState';
+import { FabMenu, type FabMenuItem } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { TITLE_MAX_LENGTH } from '../types';
 import type { Task, Project } from '../types';
 
 type RootStackParamList = {
@@ -41,15 +42,14 @@ export function ProjectDetailScreen() {
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(useShallow(s => s.tasks));
-  const addTask = useTaskStore(s => s.addTask);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const [addingTask, setAddingTask] = useState(false);
-  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
@@ -83,6 +83,35 @@ export function ProjectDetailScreen() {
     const touch = e.nativeEvent.changedTouches[0];
     const moved = start && touch ? Math.hypot(touch.pageX - start.x, touch.pageY - start.y) : 0;
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
+  };
+
+  // Bottom-up: "New task" ends up closest to the button.
+  const addMenuItems: FabMenuItem[] = [
+    { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+    { key: 'new', label: 'New task', icon: 'checkmark-circle' },
+  ];
+
+  const handleAddMenuSelect = (key: string) => {
+    if (key === 'new') {
+      setQuickAddVisible(true);
+      return;
+    }
+    setExistingSearch('');
+    setShowExistingPicker(true);
+  };
+
+  // Quick add doesn't know about projects, so the task lands here right after
+  // it's created — or resumed from the archive, which is just as much an "add"
+  // from this screen. "More details" carries the project into the editor instead.
+  const attachToProject = (task: Task) => {
+    if (project) addExistingToProject(task.id, project.id);
+  };
+
+  const handleQuickAddOpenFull = (draft: TaskDraft) => {
+    setQuickAddVisible(false);
+    setEditingTask(null);
+    setEditorInitialDraft({ ...draft, projectId: project?.id ?? null });
+    setEditorVisible(true);
   };
 
   const eligibleForAdd = useMemo(() => {
@@ -147,7 +176,13 @@ export function ProjectDetailScreen() {
             }}
             ListEmptyComponent={
               completedProjectTasks.length === 0 ? (
-                <EmptyState icon="briefcase-outline" title="No tasks yet" subtitle="Add tasks below to start tracking this project" />
+                <EmptyState
+                  icon="briefcase-outline"
+                  title="No tasks yet"
+                  subtitle="Add a new task, or pull in one you've already written down"
+                  actionLabel="New task"
+                  onAction={() => setQuickAddVisible(true)}
+                />
               ) : null
             }
             ListFooterComponent={
@@ -192,45 +227,6 @@ export function ProjectDetailScreen() {
                     })}
                   </View>
                 )}
-                {addingTask ? (
-                  <View style={styles.addRow}>
-                    <TextInput
-                      autoFocus
-                      style={styles.addInput}
-                      value={newTaskTitle}
-                      onChangeText={setNewTaskTitle}
-                      placeholder="New task title"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={TITLE_MAX_LENGTH}
-                      returnKeyType="done"
-                      onSubmitEditing={() => {
-                        const t = newTaskTitle.trim();
-                        if (t && project) addTask({ title: t, projectId: project.id });
-                        setNewTaskTitle('');
-                        haptics.tap();
-                      }}
-                      onBlur={() => {
-                        const t = newTaskTitle.trim();
-                        if (t && project) addTask({ title: t, projectId: project.id });
-                        setNewTaskTitle('');
-                        setAddingTask(false);
-                      }}
-                    />
-                  </View>
-                ) : (
-                  <TouchableOpacity style={styles.footerBtn} onPress={() => setAddingTask(true)} activeOpacity={interaction.activeOpacity}>
-                    <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                    <Text style={styles.footerBtnText}>New task</Text>
-                  </TouchableOpacity>
-                )}
-                <TouchableOpacity
-                  style={styles.footerBtn}
-                  onPress={() => { setExistingSearch(''); setShowExistingPicker(true); }}
-                  activeOpacity={interaction.activeOpacity}
-                >
-                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                  <Text style={styles.footerBtnText}>Add existing task</Text>
-                </TouchableOpacity>
               </View>
             }
           />
@@ -287,6 +283,25 @@ export function ProjectDetailScreen() {
           </View>
         </Modal>
 
+        <FabMenu
+          items={addMenuItems}
+          onSelect={handleAddMenuSelect}
+          bottom={spacing.xl}
+          size={48}
+          accessibilityLabel="Add task to project"
+        />
+
+        <QuickAddModal
+          visible={quickAddVisible}
+          onClose={() => setQuickAddVisible(false)}
+          onOpenFull={handleQuickAddOpenFull}
+          // Project tasks are picked off over time rather than scheduled for
+          // today, so the quick add opens with no due date.
+          context="unscheduled"
+          onCreated={attachToProject}
+          onResumed={attachToProject}
+        />
+
         <ProjectEditor
           visible={editingProject !== null}
           project={editingProject}
@@ -296,8 +311,10 @@ export function ProjectDetailScreen() {
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
+          initialDraft={editorInitialDraft}
           onClose={() => {
             setEditorVisible(false);
+            setEditorInitialDraft(null);
             setExpandedTaskId(null);
           }}
         />
@@ -337,7 +354,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   detailFooter: {
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
+    // Clears the floating add button so the last row is never under it.
+    paddingBottom: spacing.xl * 2 + spacing.lg,
   },
   completedSection: {
     paddingBottom: spacing.sm,
@@ -354,36 +372,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-  },
-  addRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    gap: spacing.md,
-  },
-  addInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.medium,
-    paddingVertical: 0,
-  },
-  footerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    paddingVertical: 10,
-  },
-  footerBtnText: {
-    color: colors.accent,
-    fontSize: font.md,
   },
   searchRow: {
     flexDirection: 'row',
