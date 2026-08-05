@@ -929,11 +929,25 @@ export function TodayScreen() {
   // duration of the drag (rendered check further down) without touching the
   // rest of the category. Cleared in the outer ReorderableList's onDragEnd.
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
+  // The group whose long-press is currently calling drag(), handed to
+  // onDragBegin so the state above is only ever set once the list has
+  // actually taken the drag.
+  //
+  // Setting it here directly (as this used to) strands it: startDrag no-ops
+  // when a drag is already active — most easily hit by long-pressing a stack
+  // during the ~160ms drop animation of the previous drag — and then neither
+  // onDragBegin nor onDragEnd ever fires, so nothing clears it. A stranded id
+  // hides that stack's children for the rest of the session while the header
+  // keeps reading expanded (the chevron follows group.collapsed, which is
+  // still false), so collapsing and expanding again appears to lose the
+  // tasks.
+  const pendingGroupDragRef = useRef<string | null>(null);
   const startGroupDrag = (groupId: string, drag: () => void) => {
     draggingCategoryRef.current = null;
     haptics.tap();
-    setDraggingGroupId(groupId);
+    pendingGroupDragRef.current = groupId;
     drag();
+    pendingGroupDragRef.current = null;
   };
 
   // Tracks a "drag right to join a group" gesture while a plain loose task is
@@ -1119,6 +1133,11 @@ export function TodayScreen() {
               if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
               haptics.tap();
               animateLayout();
+              // A tap landing here means no drag is in flight, so this
+              // doubles as the recovery path if one ever ends without
+              // onDragEnd — otherwise the stack would stay bodiless no
+              // matter how many times it's collapsed and expanded.
+              setDraggingGroupId(null);
               setGroupCollapsed(item.group.id, !item.group.collapsed);
             }}
             onComplete={() => completeGroup(item.group.id)}
@@ -1577,6 +1596,11 @@ export function TodayScreen() {
             onDragBegin={() => {
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
+              // Fires synchronously inside drag(), so this is the group whose
+              // header started this drag — or null for any other row, which
+              // also clears a previous group drag that somehow outlived its
+              // own onDragEnd.
+              setDraggingGroupId(pendingGroupDragRef.current);
             }}
             onDragEnd={({ committed }) => {
               const joinGroupId = joinGroupIntentRef.current;
@@ -1593,7 +1617,10 @@ export function TodayScreen() {
                 addExistingToGroup(dragged.task.id, joinGroupId);
                 haptics.success();
               }
-              if (draggingGroupId !== null) setDraggingGroupId(null);
+              // Unconditional: the guard this used to carry read a
+              // render-stale draggingGroupId, so a drag that began and ended
+              // before the state update committed left it set.
+              setDraggingGroupId(null);
               if (!autoCollapseForDrag) return;
               // Deferred a tick so this LayoutAnimation lands in its own
               // commit, after ReorderableList's own drop-settle render (rows
