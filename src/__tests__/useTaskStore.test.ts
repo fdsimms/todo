@@ -509,6 +509,23 @@ describe('duplicateTask', () => {
     expect(copy.pinned).toBe(false);
   });
 
+  it('resets chainIndex to 0 instead of copying the mid-chain position', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        chainEnabled: true,
+        chainItems: [
+          { id: 'a', title: 'Step A', notes: '' },
+          { id: 'b', title: 'Step B', notes: '' },
+          { id: 'c', title: 'Step C', notes: '' },
+        ],
+        chainIndex: 2,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.chainIndex).toBe(0);
+  });
+
   it('sets sortOrder to maxExisting + 1', () => {
     useTaskStore.setState({
       tasks: [
@@ -868,6 +885,34 @@ describe('completeTask', () => {
     expect(completed.streakCount).toBe(task.streakCount);
   });
 
+  it('carries subtasks onto the spawned chain step, reset to unchecked', () => {
+    const task = makeTask({
+      id: 'chained-with-subtasks',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    const sub1 = makeTask({ id: 'sub-1', parentId: 'chained-with-subtasks', title: 'Sub A', sortOrder: 1 });
+    const sub2 = makeTask({
+      id: 'sub-2', parentId: 'chained-with-subtasks', title: 'Sub B', sortOrder: 2, completed: true,
+    });
+    useTaskStore.setState({ tasks: [task, sub1, sub2] });
+    useTaskStore.getState().completeTask('chained-with-subtasks');
+
+    const { tasks } = useTaskStore.getState();
+    const next = tasks.find(t => t.chainIndex === 1 && !t.parentId)!;
+    expect(next).toBeDefined();
+    const nextSubtasks = tasks.filter(t => t.parentId === next.id);
+    expect(nextSubtasks).toHaveLength(2);
+    expect(nextSubtasks.map(s => s.title).sort()).toEqual(['Sub A', 'Sub B']);
+    expect(nextSubtasks.every(s => !s.completed)).toBe(true);
+    // Original subtasks are untouched, still attached to the now-completed step.
+    expect(tasks.filter(t => t.parentId === 'chained-with-subtasks')).toHaveLength(2);
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -1170,6 +1215,34 @@ describe('uncompleteTask', () => {
     expect(dbDeleteTask).not.toHaveBeenCalled();
   });
 
+  it('restores the pre-completion chainIndex when undoing a mid-chain step, and removes the spawned next step', () => {
+    const task = makeTask({
+      id: 't1',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+
+    let tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    const spawned = tasks.find(t => t.id !== 't1')!;
+    expect(spawned.chainIndex).toBe(1);
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    tasks = useTaskStore.getState().tasks;
+    expect(tasks.map(t => t.id)).toEqual(['t1']);
+    const restored = tasks[0];
+    expect(restored.completed).toBe(false);
+    expect(restored.chainIndex).toBe(0);
+  });
+
   it('restores streakCount/streakDate to their pre-completion values', () => {
     const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
     const task = makeTask({
@@ -1299,6 +1372,54 @@ describe('skipNextRecurrence', () => {
     const updated = useTaskStore.getState().tasks[0];
     expect(updated.dueDate).toBe(task.dueDate);
     expect(updated.recurrenceCount).toBe(1);
+  });
+
+  it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(1);
+    // A mid-chain step never consults the recurrence schedule — skipping it
+    // shouldn't burn a cycle of the recurrence the way completing it wouldn't either.
+    expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 2, // last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(0);
+    expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+    expect(updated.recurrenceCount).toBe(4);
   });
 });
 

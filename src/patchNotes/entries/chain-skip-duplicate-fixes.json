@@ -1,0 +1,4 @@
+{
+  "message": "Fixed chains: skipping a mid-chain step no longer burns a day off the recurrence, duplicating a chained task now starts it over from step one, subtasks now carry onto the next chain step, and a couple of display glitches (doubled arrow, wrong \"next up\" step) are fixed",
+  "date": "2026-08-06"
+}

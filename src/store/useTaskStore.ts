@@ -361,6 +361,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      chainIndex: 0, // a duplicate starts a chain fresh, not mid-way through the original
     };
     const copy: Task = {
       ...original,
@@ -557,6 +558,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     cancelTaskReminder(id);
 
     let nextTask: Task | null = null;
+    let nextSubtasks: Task[] = [];
     const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
     if (spawnsNext) {
       // The recurrence's schedule only decides the date at the point it
@@ -642,6 +644,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
+
+        // Subtasks belong to the series, not a single occurrence — carry them
+        // onto the fresh occurrence the same way duplicateTask does, reset to
+        // unchecked (a subtask always starts unchecked — see TemplateItem.subtasks).
+        // Chains spawn a new row on every step, so without this a chained
+        // task's subtasks would vanish after the first step.
+        nextSubtasks = get().subtasksOf(task.id).map(sub => ({
+          ...sub,
+          id: generateId(),
+          parentId: nextTask!.id,
+          completed: false,
+          completedAt: null,
+          createdAt: now.toISOString(),
+          seenAt: now.toISOString(),
+        }));
+        nextSubtasks.forEach(sub => {
+          dbInsertTask(sub);
+          scheduleTaskReminder(sub);
+        });
       }
     }
 
@@ -649,6 +670,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: [
         ...s.tasks.map(t => (t.id === id ? completed : t)),
         ...(nextTask ? [nextTask] : []),
+        ...nextSubtasks,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
     }));
@@ -890,6 +912,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
+    // Mirror completeTask's advancesBySchedule split: a mid-chain step never
+    // consults the recurrence schedule, so skipping one should only move the
+    // chain position — pushing dueDate/recurrenceCount here would burn a full
+    // cycle of the recurrence on a step that isn't scheduled at all.
+    const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
+    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+    if (chainAdvances && !atChainEnd) {
+      get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+      return;
+    }
     const { dayResetTime } = useSettingsStore.getState();
     const nextDue = getNextDueDate(task, dayResetTime);
     if (!nextDue) return;
@@ -900,10 +932,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
-    const nextChainIndex =
-      task.chainEnabled && task.chainItems.length > 0
-        ? (task.chainIndex + 1) % task.chainItems.length
-        : task.chainIndex;
+    const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
       dueDate: nextDue.toISOString(),
       deferUntil: null,
