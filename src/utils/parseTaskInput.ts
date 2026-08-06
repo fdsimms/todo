@@ -525,6 +525,53 @@ export function parseLinkInput(input: string): ParsedLink | null {
   return { url, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedDuration {
+  /** The countdown target in whole minutes. */
+  minutes: number;
+  /** Input minus the matched phrase, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "for 15 minutes", "for 1.5 hours", "for 45m", "for 2 hrs".
+//
+// The leading "for" is doing real work and isn't optional: without it, "in 1
+// hour" and "15 min" would collide head-on with the relative-date grammar
+// above, where those already mean *when* the task is due rather than how long
+// it should run. "for" is unambiguous — nobody writes "pay rent for 2 hours"
+// meaning a due date.
+const DURATION_PATTERN = /\bfor\s+(\d+(?:\.\d+)?)\s*(minutes|minute|mins|min|m|hours|hour|hrs|hr|h)\b/i;
+
+/**
+ * Pulls a duration phrase out of a quick-add title, so "play violin for 15
+ * minutes" becomes a 15-minute timed task titled "play violin". Follows
+ * parseLinkInput's shape rather than the suffix-anchored schedule parse — the
+ * phrase can sit anywhere in the input, and it's a separate concern from *when*
+ * the task is due.
+ */
+export function parseDurationInput(input: string): ParsedDuration | null {
+  const match = input.match(DURATION_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const value = parseFloat(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const isHours = /^h/i.test(match[2]);
+  const minutes = Math.round(isHours ? value * 60 : value);
+  // A rounded-to-nothing duration ("for 0.2 min") isn't a timer.
+  if (minutes < 1) return null;
+  // Guard against a fat-fingered "for 9999 hours" becoming a real countdown.
+  if (minutes > 24 * 60) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null; // "for 15 minutes" alone is a literal title, not a timer
+
+  return { minutes, cleanTitle, matchStart, matchEnd };
+}
+
 function joinDayNames(days: number[]): string {
   if (days.length === 1) return DAY_NAMES_FULL[days[0]];
   const names = days.map(d => DAY_NAMES_SHORT[d]);

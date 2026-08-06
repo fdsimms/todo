@@ -29,6 +29,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
 import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -42,6 +43,7 @@ import { usePaintSelectionRow } from './PaintSelection';
 import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
+import { ProgressBar } from './ProgressBar';
 
 interface Props {
   task: Task;
@@ -160,6 +162,8 @@ export function TaskItem({
     startTimer,
     stopTimer,
     discardTimer,
+    pauseTimer,
+    resetTimer,
     toggleSubtask,
     deleteSubtask,
     reorderSubtasks,
@@ -326,14 +330,50 @@ export function TaskItem({
     ? Math.max(0, (nowTick - new Date(task.timerStartedAt as string).getTime()) / 1000)
     : 0;
 
+  // Countdown state for timed tasks ("play violin for 15 minutes"). Everything
+  // is recomputed from the stored fields against nowTick rather than counted
+  // down in state, so a row that mounts after the app was backgrounded — or
+  // killed — shows the truth rather than a stale number.
+  const timed = isTimedTask(task);
+  const remainingSeconds = timed ? timerRemaining(task, nowTick) : 0;
+  const countdownProgress = timed ? timerProgress(task, nowTick) : 0;
+  const timerReady = timed && remainingSeconds <= 0;
+  // Part-way through but not running. The chip shows what's left rather than the
+  // full target, so a task paused at 5 of 15 minutes doesn't read as untouched.
+  const timerPaused = timed && !timerRunning && task.timerElapsedSeconds > 0;
+
+  // Announce the finish once per run while the row is on screen. The scheduled
+  // notification covers the backgrounded case; this is just the in-app nudge.
+  const announcedReadyRef = useRef(false);
+  useEffect(() => {
+    if (!timed || task.completed) return;
+    if (remainingSeconds > 0) {
+      announcedReadyRef.current = false;
+      return;
+    }
+    if (announcedReadyRef.current) return;
+    announcedReadyRef.current = true;
+    // Only celebrate a finish we actually watched happen — not every mount of
+    // a row whose timer ran out at some point in the past.
+    if (timerRunning) haptics.success();
+  }, [timed, timerRunning, remainingSeconds > 0, task.completed]);
+
   const handleTimerToggle = async () => {
     if (timerRunning) {
       await haptics.success();
-      stopTimer(task.id);
+      // A countdown pauses (banking its progress) rather than finishing and
+      // logging — that only happens when the task is completed.
+      if (timed) pauseTimer(task.id);
+      else stopTimer(task.id);
     } else {
       await haptics.impactMedium();
       startTimer(task.id);
     }
+  };
+
+  const handleResetTimer = async () => {
+    await haptics.warning();
+    resetTimer(task.id);
   };
 
   const handleDiscardTimer = () => {
@@ -565,7 +605,11 @@ export function TaskItem({
               ? `${task.title}, not due yet`
               : showQuotaMeter
                 ? `Log one of ${task.targetCount}, ${quotaProgress} done, ${task.title}`
-                : (completing ? `Undo complete ${task.title}` : `Complete ${task.title}`)
+                : completing
+                  ? `Undo complete ${task.title}`
+                  : timerReady
+                    ? `${task.title}, timer done, complete`
+                    : `Complete ${task.title}`
         }
         accessibilityHint={showQuotaMeter && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
       >
@@ -573,6 +617,8 @@ export function TaskItem({
           styles.circle,
           !selectionMode && completing && styles.circleCompleting,
           !selectionMode && recurrenceNotYetDue && styles.circleLocked,
+          // Ready is a nudge, not a lock — the checkbox stays tappable either way.
+          !selectionMode && !completing && !recurrenceNotYetDue && timerReady && styles.circleReady,
           selectionMode && selected && styles.circleSelected,
           showQuotaMeter && styles.circleQuota,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
@@ -668,12 +714,46 @@ export function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>{quotaProgress}</Text>
+              </View>
+            )}
+            {timed && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  timerReady
+                    ? 'Timer done, ready to complete'
+                    : timerRunning
+                      ? `${formatStopwatch(remainingSeconds)} left`
+                      : timerPaused
+                        ? `Timer paused, ${formatStopwatch(remainingSeconds)} left`
+                        : `Timed, ${formatDuration(task.timedMinutes!)}`
+                }
+              >
+                <Ionicons
+                  name={timerReady ? 'checkmark-circle' : timerPaused ? 'pause' : timerRunning ? 'timer' : 'timer-outline'}
+                  size={iconSize.xs}
+                  color={timerReady ? colors.green : timerRunning ? colors.accent : colors.textTertiary}
+                />
+                <Text
+                  style={[
+                    styles.countdownLabel,
+                    timerReady && styles.countdownLabelReady,
+                    !timerReady && timerRunning && styles.countdownLabelRunning,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {timerReady
+                    ? 'Ready'
+                    : timerRunning || timerPaused
+                      ? formatStopwatch(remainingSeconds)
+                      : formatDuration(task.timedMinutes!)}
+                </Text>
               </View>
             )}
             {windowActive && task.windowEnd && (
@@ -916,7 +996,7 @@ export function TaskItem({
                           key={item.id}
                           style={actualIdx === currentIdx && styles.expandMetaActive}
                         >
-                          {actualIdx > 0 ? ' → ' : ' '}{item.title}
+                          {i > 0 ? ' → ' : ' '}{item.title}
                         </Text>
                       );
                     })}
@@ -926,10 +1006,31 @@ export function TaskItem({
               );
             })()}
 
+            {timed && (
+              <View style={[
+                styles.countdownRow,
+                hasExpandContent && styles.sectionDivider,
+              ]}>
+                <View style={styles.countdownHeader}>
+                  <Ionicons
+                    name={timerReady ? 'checkmark-circle' : 'timer-outline'}
+                    size={12}
+                    color={timerReady ? colors.green : colors.textTertiary}
+                  />
+                  <Text style={styles.expandMeta}>
+                    {timerReady
+                      ? `Ready to complete · ${formatDuration(task.timedMinutes!)} done`
+                      : `${formatStopwatch(remainingSeconds)} left of ${formatDuration(task.timedMinutes!)}`}
+                  </Text>
+                </View>
+                <ProgressBar progress={countdownProgress} height={4} />
+              </View>
+            )}
+
             {task.actualMinutes != null && (
               <View style={[
                 styles.recurrenceRow,
-                hasExpandContent && styles.sectionDivider,
+                (hasExpandContent || timed) && styles.sectionDivider,
               ]}>
                 <Ionicons name="stopwatch-outline" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>Timed · {formatDuration(task.actualMinutes)}</Text>
@@ -939,10 +1040,44 @@ export function TaskItem({
             {onEdit && (
               <View style={[
                 styles.editSection,
-                (hasExpandContent || task.actualMinutes != null) && styles.sectionDivider,
+                (hasExpandContent || timed || task.actualMinutes != null) && styles.sectionDivider,
               ]}>
                 <View style={styles.editSectionLeft}>
-                  {showActions && (
+                  {showActions && timed && (
+                    <View style={styles.timerRunningGroup}>
+                      <TouchableOpacity
+                        onPress={handleTimerToggle}
+                        hitSlop={8}
+                        style={[styles.timerPill, timerReady && styles.timerPillReady]}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={
+                          timerRunning ? `Pause timer for ${task.title}` : `Start timer for ${task.title}`
+                        }
+                        accessibilityValue={{ text: formatStopwatch(remainingSeconds) }}
+                      >
+                        <Ionicons
+                          name={timerRunning ? 'pause' : 'play'}
+                          size={10}
+                          color={colors.onAccent}
+                        />
+                        <Text style={styles.timerPillText}>{formatStopwatch(remainingSeconds)}</Text>
+                      </TouchableOpacity>
+                      {(timerRunning || task.timerElapsedSeconds > 0) && (
+                        <TouchableOpacity
+                          onPress={handleResetTimer}
+                          hitSlop={8}
+                          style={styles.timerDeleteBtn}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reset timer for ${task.title}`}
+                        >
+                          <Ionicons name="refresh" size={iconSize.xs} color={colors.textTertiary} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
+                  {showActions && !timed && (
                     timerRunning ? (
                     <View style={styles.timerRunningGroup}>
                       <TouchableOpacity
@@ -1253,6 +1388,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleLocked: {
     borderWidth: 0,
   },
+  // A timed task whose countdown has run out. Tinted to pull the eye to the tap
+  // that completes it, without filling the circle — it isn't done yet.
+  circleReady: {
+    borderColor: colors.green,
+    backgroundColor: colors.bgTertiary,
+  },
   circleSelected: {
     backgroundColor: colors.accent,
     borderColor: colors.accent,
@@ -1366,6 +1507,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     paddingHorizontal: 6,
     paddingVertical: 3,
+  },
+  timerPillReady: {
+    backgroundColor: colors.green,
+  },
+  countdownRow: {
+    gap: 5,
+    paddingVertical: spacing.xs,
+  },
+  countdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   timerPillText: {
     color: colors.onAccent,
@@ -1499,6 +1652,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
+  },
+  countdownLabel: {
+    color: colors.textTertiary,
+    fontSize: 11,
+    fontWeight: fontWeight.semibold,
+    // The digits change every second — without tabular figures the chip's
+    // width twitches on each tick.
+    fontVariant: ['tabular-nums'],
+  },
+  countdownLabelRunning: {
+    color: colors.accent,
+  },
+  countdownLabelReady: {
+    color: colors.green,
   },
   deadlineBadge: {
     flexDirection: 'row',

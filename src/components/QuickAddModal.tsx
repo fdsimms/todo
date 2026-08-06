@@ -33,7 +33,7 @@ import { PressableScale } from './PressableScale';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -148,6 +148,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customLinkText, setCustomLinkText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
@@ -189,6 +190,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       setTags([]);
       setCategory(null);
       setLinkUrl(null);
+      setTimedMinutes(null);
       setCustomLinkText('');
       setTagInput('');
       setActivePanel(null);
@@ -240,11 +242,22 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     () => (!parsed && title.trim() ? parseLinkInput(title) : null),
     [title, parsed]
   );
+  // "play violin for 15 minutes" — a duration, not a schedule. Same single
+  // tooltip slot, checked last, so a schedule or link phrase always wins.
+  const durationParsed = useMemo(
+    () => (!parsed && !linkParsed && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, linkParsed]
+  );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : linkParsed
       ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
-      : null;
+      : durationParsed
+        ? {
+            matchStart: durationParsed.matchStart,
+            matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
+          }
+        : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -313,6 +326,15 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setLinkUrl(linkParsed.url);
   };
 
+  // Apply the detected duration and strip the phrase from the title.
+  const applyDuration = () => {
+    if (!durationParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(durationParsed.cleanTitle);
+    setTimedMinutes(durationParsed.minutes);
+  };
+
   const commitCustomLink = () => {
     const t = customLinkText.trim();
     setLinkUrl(t || null);
@@ -327,6 +349,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       priority,
       effort,
       estimatedMinutes,
+      timedMinutes,
       dueDate: dueDate?.toISOString() ?? null,
       timeSegments,
       tags,
@@ -380,6 +403,7 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       priority,
       effort,
       estimatedMinutes,
+      timedMinutes,
       dueDate,
       timeSegments,
       tags,
@@ -609,16 +633,26 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : applyLink}
+                  onPress={parsed ? applyParse : linkParsed ? applyLink : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
-                    name={parsed ? (parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline') : 'link-outline'}
+                    name={
+                      parsed
+                        ? (parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline')
+                        : linkParsed
+                          ? 'link-outline'
+                          : 'timer-outline'
+                    }
                     size={14}
                     color={colors.onAccent}
                   />
                   <Text style={styles.tooltipText}>
-                    {parsed ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime)) : linkLabel(linkParsed!.url)}
+                    {parsed
+                      ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
+                      : linkParsed
+                        ? linkLabel(linkParsed.url)
+                        : `Timer · ${formatDuration(durationParsed!.minutes)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>

@@ -98,6 +98,9 @@ jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
+  scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('react-native', () => ({
@@ -157,6 +160,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -510,6 +515,23 @@ describe('duplicateTask', () => {
     expect(copy.actualMinutes).toBeNull();
     expect(copy.previousOccurrenceId).toBeNull();
     expect(copy.pinned).toBe(false);
+  });
+
+  it('resets chainIndex to 0 instead of copying the mid-chain position', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        chainEnabled: true,
+        chainItems: [
+          { id: 'a', title: 'Step A', notes: '' },
+          { id: 'b', title: 'Step B', notes: '' },
+          { id: 'c', title: 'Step C', notes: '' },
+        ],
+        chainIndex: 2,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.chainIndex).toBe(0);
   });
 
   it('sets sortOrder to maxExisting + 1', () => {
@@ -871,6 +893,34 @@ describe('completeTask', () => {
     expect(completed.streakCount).toBe(task.streakCount);
   });
 
+  it('carries subtasks onto the spawned chain step, reset to unchecked', () => {
+    const task = makeTask({
+      id: 'chained-with-subtasks',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    const sub1 = makeTask({ id: 'sub-1', parentId: 'chained-with-subtasks', title: 'Sub A', sortOrder: 1 });
+    const sub2 = makeTask({
+      id: 'sub-2', parentId: 'chained-with-subtasks', title: 'Sub B', sortOrder: 2, completed: true,
+    });
+    useTaskStore.setState({ tasks: [task, sub1, sub2] });
+    useTaskStore.getState().completeTask('chained-with-subtasks');
+
+    const { tasks } = useTaskStore.getState();
+    const next = tasks.find(t => t.chainIndex === 1 && !t.parentId)!;
+    expect(next).toBeDefined();
+    const nextSubtasks = tasks.filter(t => t.parentId === next.id);
+    expect(nextSubtasks).toHaveLength(2);
+    expect(nextSubtasks.map(s => s.title).sort()).toEqual(['Sub A', 'Sub B']);
+    expect(nextSubtasks.every(s => !s.completed)).toBe(true);
+    // Original subtasks are untouched, still attached to the now-completed step.
+    expect(tasks.filter(t => t.parentId === 'chained-with-subtasks')).toHaveLength(2);
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -1173,6 +1223,34 @@ describe('uncompleteTask', () => {
     expect(dbDeleteTask).not.toHaveBeenCalled();
   });
 
+  it('restores the pre-completion chainIndex when undoing a mid-chain step, and removes the spawned next step', () => {
+    const task = makeTask({
+      id: 't1',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+
+    let tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    const spawned = tasks.find(t => t.id !== 't1')!;
+    expect(spawned.chainIndex).toBe(1);
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    tasks = useTaskStore.getState().tasks;
+    expect(tasks.map(t => t.id)).toEqual(['t1']);
+    const restored = tasks[0];
+    expect(restored.completed).toBe(false);
+    expect(restored.chainIndex).toBe(0);
+  });
+
   it('restores streakCount/streakDate to their pre-completion values', () => {
     const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
     const task = makeTask({
@@ -1302,6 +1380,54 @@ describe('skipNextRecurrence', () => {
     const updated = useTaskStore.getState().tasks[0];
     expect(updated.dueDate).toBe(task.dueDate);
     expect(updated.recurrenceCount).toBe(1);
+  });
+
+  it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(1);
+    // A mid-chain step never consults the recurrence schedule — skipping it
+    // shouldn't burn a cycle of the recurrence the way completing it wouldn't either.
+    expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 2, // last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(0);
+    expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+    expect(updated.recurrenceCount).toBe(4);
   });
 });
 
@@ -2782,6 +2908,101 @@ describe('timers', () => {
     expect(next).toBeDefined();
     expect(next.actualMinutes).toBe(10);
     expect(next.estimatedMinutes).toBe(10);
+    expect(next.timerStartedAt).toBeNull();
+  });
+});
+
+// ─── countdowns on timed tasks ───────────────────────────────────────────────
+
+describe('timed tasks', () => {
+  it('pauseTimer banks the elapsed time without logging it as measured', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started })] });
+    useTaskStore.getState().pauseTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('resuming after a pause continues from the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().startTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).not.toBeNull();
+    expect(task.timerElapsedSeconds).toBe(300); // untouched — the new segment runs on top
+  });
+
+  it('resetTimer throws away the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().resetTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerElapsedSeconds).toBe(0);
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('starting one timer pauses a running countdown rather than logging it', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started }),
+        makeTask({ id: 'b' }),
+      ],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.timerStartedAt).toBeNull();
+    expect(displaced.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(displaced.actualMinutes).toBeNull(); // banked, not measured
+  });
+
+  it('starting one timer still stops (and logs) a plain stopwatch', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timerStartedAt: started }), makeTask({ id: 'b' })],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.actualMinutes).toBe(5);
+  });
+
+  it('completing a task logs time banked by a paused countdown', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 8 * 60 })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completed).toBe(true);
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('stopTimer sums banked time and the live segment', () => {
+    const started = new Date(Date.now() - 3 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 5 * 60, timerStartedAt: started })],
+    });
+    useTaskStore.getState().stopTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('the next occurrence keeps the duration but restarts its countdown', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', recurrenceType: 'daily', timedMinutes: 15, timerElapsedSeconds: 9 * 60 }),
+      ],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next.timedMinutes).toBe(15);
+    expect(next.timerElapsedSeconds).toBe(0);
     expect(next.timerStartedAt).toBeNull();
   });
 });

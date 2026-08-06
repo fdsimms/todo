@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -440,5 +440,65 @@ describe('parseLinkInput', () => {
 
   it('returns null for empty input', () => {
     expect(parseLinkInput('')).toBeNull();
+  });
+});
+
+// ─── parseDurationInput ───
+
+describe('parseDurationInput', () => {
+  it('extracts the example case', () => {
+    const result = parseDurationInput('play violin for 15 minutes');
+    expect(result?.minutes).toBe(15);
+    expect(result?.cleanTitle).toBe('play violin');
+  });
+
+  it('accepts the short unit forms', () => {
+    expect(parseDurationInput('stretch for 10 min')?.minutes).toBe(10);
+    expect(parseDurationInput('stretch for 10min')?.minutes).toBe(10);
+    expect(parseDurationInput('stretch for 45m')?.minutes).toBe(45);
+    expect(parseDurationInput('read for 1 hour')?.minutes).toBe(60);
+    expect(parseDurationInput('read for 2 hrs')?.minutes).toBe(120);
+    expect(parseDurationInput('read for 2h')?.minutes).toBe(120);
+  });
+
+  it('converts fractional hours to minutes', () => {
+    expect(parseDurationInput('practice for 1.5 hours')?.minutes).toBe(90);
+  });
+
+  it('strips a phrase from the middle of the title', () => {
+    const result = parseDurationInput('run for 20 minutes outside');
+    expect(result?.minutes).toBe(20);
+    expect(result?.cleanTitle).toBe('run outside');
+  });
+
+  it('reports the matched span so the tooltip can be positioned', () => {
+    const input = 'play violin for 15 minutes';
+    const result = parseDurationInput(input)!;
+    expect(input.slice(result.matchStart, result.matchEnd)).toBe('for 15 minutes');
+  });
+
+  it('leaves relative-date phrasing to the schedule parser', () => {
+    // "in 1 hour" already means a due time — it must not become a duration.
+    expect(parseDurationInput('call mum in 1 hour')).toBeNull();
+    expect(parseDurationInput('call mum 15 min')).toBeNull();
+  });
+
+  it('does not fire without a title left over', () => {
+    expect(parseDurationInput('for 15 minutes')).toBeNull();
+  });
+
+  it('rejects a zero, sub-minute, or absurd duration', () => {
+    expect(parseDurationInput('nap for 0 minutes')).toBeNull();
+    expect(parseDurationInput('blink for 0.2 min')).toBeNull();
+    expect(parseDurationInput('wait for 9999 hours')).toBeNull();
+  });
+
+  it('returns null when there is no duration phrase', () => {
+    expect(parseDurationInput('buy milk')).toBeNull();
+    expect(parseDurationInput('')).toBeNull();
+  });
+
+  it('is case insensitive', () => {
+    expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
   });
 });

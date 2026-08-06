@@ -59,6 +59,8 @@ export interface TaskDraft {
   priority: Priority;
   effort: Effort;
   estimatedMinutes: number | null;
+  /** Countdown target, carried over when quick add parses "for 15 minutes". */
+  timedMinutes?: number | null;
   dueDate: Date | null;
   timeSegments: TimeOfDay[];
   tags: string[];
@@ -93,7 +95,11 @@ interface Props {
 type PickerMode = 'none' | 'reminder';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'timeSpent' | 'subtasks';
+type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks';
+
+// Presets for the Duration field, in minutes — the common "do this for a bit"
+// spans, including the 25-minute pomodoro.
+const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
 
 function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
   if (type === 'none') return '';
@@ -179,6 +185,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [logTimeText, setLogTimeText] = useState('');
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
+  const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
+  const [durationText, setDurationText] = useState('');
+  const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
@@ -256,6 +265,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceCount(task.recurrenceCount ?? null);
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned);
       setActualMinutes(task.actualMinutes ?? null);
+      setTimedMinutes(task.timedMinutes ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
@@ -272,6 +282,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setRecurrenceCount(initialDraft?.recurrenceCount ?? null);
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
+      setTimedMinutes(initialDraft?.timedMinutes ?? null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
       setVacationPause(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
@@ -284,6 +295,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
     setCustomEffortOpen(false); setCustomEffortText(''); setCustomEffortUnit('min');
     setLogTimeText(''); setLogTimeUnit('min');
+    setDurationText(''); setDurationUnit('min');
     setEffortNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
@@ -322,6 +334,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       effort: task ? task.effort : (initialDraft?.effort ?? 0),
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       actualMinutes: task?.actualMinutes ?? null,
+      timedMinutes: task ? (task.timedMinutes ?? null) : (initialDraft?.timedMinutes ?? null),
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task?.chainItems ?? [],
@@ -425,7 +438,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
-      pinned, priority, effort, estimatedMinutes, actualMinutes,
+      pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
       chainEnabled: chainEnabled && chainItems.length > 0,
       chainItems,
       chainIndex,
@@ -568,6 +581,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     toggleField('timeSpent');
   };
 
+  // Same prefill dance for Duration — open it and the current target is already
+  // in the input, ready to be edited rather than retyped.
+  const toggleDuration = () => {
+    if (!fieldOpen('duration')) {
+      if (timedMinutes != null && timedMinutes % 60 === 0) {
+        setDurationUnit('hr');
+        setDurationText(String(timedMinutes / 60));
+      } else {
+        setDurationUnit('min');
+        setDurationText(timedMinutes != null ? String(timedMinutes) : '');
+      }
+    }
+    toggleField('duration');
+  };
+
   const openPicker = (mode: PickerMode) => {
     if (mode === 'reminder') {
       const defaultDate = dueDate ?? new Date();
@@ -655,7 +683,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
       linkUrl,
     });
     if (current !== initialStateRef.current) {
@@ -821,6 +849,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setActualMinutes(minutes);
     setEstimatedMinutes(minutes);
     setEffort(minutesToEffort(minutes));
+  };
+
+  // The countdown target. Unlike logged time this deliberately leaves the
+  // estimate alone — how long you mean to sit with a task and how long the task
+  // is reckoned to take aren't always the same number.
+  const applyDuration = (text: string, unit: 'min' | 'hr') => {
+    const n = parseFloat(text);
+    if (!Number.isFinite(n) || n <= 0) {
+      setTimedMinutes(null);
+      return;
+    }
+    setTimedMinutes(Math.max(1, Math.round(unit === 'hr' ? n * 60 : n)));
   };
 
   const handleEstimateEffort = () => {
@@ -1281,7 +1321,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
                 <TouchableOpacity
                   style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-                  onPress={() => setChainEnabled(v => !v)}
+                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
                   accessibilityRole="switch"
                   accessibilityLabel="Chain"
                   accessibilityState={{ checked: chainEnabled }}
@@ -1338,9 +1378,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
+                              // Track the active step by id (like onReorder above) rather
+                              // than by index — deleting an earlier step shifts every later
+                              // index down, so re-clamping the old chainIndex against the
+                              // new length silently lands on the wrong step.
+                              const activeItemId = chainItems[chainIndex]?.id;
                               const next = chainItems.filter((_, j) => j !== actualIdx);
                               setChainItems(next);
-                              if (chainIndex >= next.length) setChainIndex(Math.max(0, next.length - 1));
+                              if (activeItemId === item.id) {
+                                // The active step itself was deleted — land on whatever now
+                                // occupies its old slot (i.e. the step after it).
+                                setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                              } else {
+                                const newIdx = next.findIndex(c => c.id === activeItemId);
+                                setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                              }
                             }}
                             hitSlop={8}
                             style={styles.chainItemDelete}
@@ -1398,7 +1450,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   )}
                   {chainIndex < chainItems.length && chainItems.length > 1 && (
                     <Text style={styles.chainCurrentHint}>
-                      Tap a number to set the current position. Next up: {chainItems[(chainIndex + 1) % chainItems.length]?.title}
+                      {chainIndex === chainItems.length - 1 && recurrenceType === 'none'
+                        ? 'Tap a number to set the current position. This is the last step — the chain ends here.'
+                        : `Tap a number to set the current position. Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`}
                     </Text>
                   )}
                 </>
@@ -1702,6 +1756,60 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               {effortNote ? (
                 <Text style={styles.effortNote}>{effortNote}</Text>
               ) : null}
+            </CollapsibleField>
+
+            <View style={styles.cardSep} />
+
+            <CollapsibleField
+              label="Duration"
+              summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
+              emptySummary="Untimed"
+              hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+              expanded={fieldOpen('duration')}
+              onToggle={toggleDuration}
+            >
+              <View style={styles.pillRow}>
+                {DURATION_PRESETS.map(m => (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      // Tapping the active preset clears it — the only way back
+                      // to untimed without emptying the input by hand.
+                      const next = timedMinutes === m ? null : m;
+                      setTimedMinutes(next);
+                      setDurationUnit('min');
+                      setDurationText(next != null ? String(next) : '');
+                    }}
+                  >
+                    <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
+                      {formatDuration(m)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.customEffortRow}>
+                <TextInput
+                  style={styles.customEffortInput}
+                  value={durationText}
+                  onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textTertiary}
+                />
+                <View style={styles.unitToggle}>
+                  {(['min', 'hr'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
+                      onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
+                    >
+                      <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
             </CollapsibleField>
 
             <View style={styles.cardSep} />
