@@ -1882,7 +1882,10 @@ describe('reorderWithCategoryUpdates', () => {
         makeTask({ id: 'b', sortOrder: 2, category: null }),
       ],
     });
-    useTaskStore.getState().reorderWithCategoryUpdates(['b', 'a'], [{ id: 'b', category: 'Work' }]);
+    useTaskStore.getState().reorderWithCategoryUpdates(
+      [{ id: 'b', sortOrder: 1 }, { id: 'a', sortOrder: 2 }],
+      [{ id: 'b', category: 'Work' }],
+    );
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'b')).toMatchObject({ sortOrder: 1, category: 'Work' });
     expect(tasks.find(t => t.id === 'a')).toMatchObject({ sortOrder: 2, category: 'Work' });
@@ -1893,7 +1896,7 @@ describe('reorderWithCategoryUpdates', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', sortOrder: 1, category: null })],
     });
-    useTaskStore.getState().reorderWithCategoryUpdates(['a'], [{ id: 'a', category: 'Errands' }]);
+    useTaskStore.getState().reorderWithCategoryUpdates([{ id: 'a', sortOrder: 1 }], [{ id: 'a', category: 'Errands' }]);
     expect(useTaskStore.getState().tasks[0].category).toBe('Errands');
 
     useTaskStore.getState().undoLastAction();
@@ -1905,7 +1908,7 @@ describe('reorderWithCategoryUpdates', () => {
       tasks: [makeTask({ id: 'a', sortOrder: 1 }), makeTask({ id: 'b', sortOrder: 2 })],
       lastAction: null,
     });
-    useTaskStore.getState().reorderWithCategoryUpdates(['b', 'a'], []);
+    useTaskStore.getState().reorderWithCategoryUpdates([{ id: 'b', sortOrder: 1 }, { id: 'a', sortOrder: 2 }], []);
     expect(useTaskStore.getState().lastAction).toBe(null);
   });
 
@@ -1913,7 +1916,7 @@ describe('reorderWithCategoryUpdates', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', sortOrder: 1, category: 'Work', recurrenceType: 'daily' })],
     });
-    useTaskStore.getState().reorderWithCategoryUpdates(['a'], [{ id: 'a', category: 'Home' }], { scope: 'occurrence' });
+    useTaskStore.getState().reorderWithCategoryUpdates([{ id: 'a', sortOrder: 1 }], [{ id: 'a', category: 'Home' }], { scope: 'occurrence' });
     const task = useTaskStore.getState().tasks[0];
     expect(task.category).toBe('Home');
     expect(task.seriesDefaults).toMatchObject({ category: 'Work' });

@@ -347,8 +347,11 @@ interface TaskStore {
   resetTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
+  // Explicit sortOrders rather than ids-in-order: the Today list's ranks are
+  // shared with the stacks sitting in it (see resolveDrop), so the gaps a
+  // stack leaves in the task numbering are load-bearing.
   reorderWithCategoryUpdates: (
-    orderedIds: string[],
+    orders: Array<{ id: string; sortOrder: number }>,
     categoryUpdates: Array<{ id: string; category: string | null }>,
     options?: { scope?: 'occurrence' | 'series' },
   ) => void;
@@ -1545,11 +1548,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
-  reorderWithCategoryUpdates(orderedIds, categoryUpdates, options) {
+  reorderWithCategoryUpdates(orders, categoryUpdates, options) {
     const scope = options?.scope ?? 'series';
-    const orderUpdates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
-    dbBatchUpdateSortOrders(orderUpdates);
-    const byId = new Map(orderUpdates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    dbBatchUpdateSortOrders(orders);
+    const byId = new Map(orders.map(u => [u.id, { sortOrder: u.sortOrder }]));
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
 
     // Snapshot full pre-drop tasks so a category move can be undone, and
@@ -1820,10 +1822,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // which mock dbTransaction, stayed green.
   groupTasks(taskIds, title, category) {
     const group = useTaskGroupStore.getState().createGroup(title, category);
+    // A stack holds a slot in the list order like a task does (see
+    // TaskGroup.sortOrder), so put the new one where its members already were
+    // — the members' own sortOrders are about to be overwritten with their
+    // within-stack order, and createGroup only counts other stacks, so
+    // without this, stacking two tasks from the middle of Today teleports
+    // them to the top of the section.
+    const anchors = taskIds
+      .map(id => get().tasks.find(t => t.id === id)?.sortOrder)
+      .filter((order): order is number => order !== undefined);
+    if (anchors.length > 0) {
+      useTaskGroupStore.getState().updateGroup(group.id, { sortOrder: Math.min(...anchors) });
+    }
     taskIds.forEach((id, index) => {
       get().updateTask(id, { groupId: group.id, sortOrder: index + 1, category });
     });
-    return group;
+    // The row as it now stands, not createGroup's pre-anchor copy.
+    return useTaskGroupStore.getState().getGroupById(group.id) ?? group;
   },
 
   // Re-files every live member under the stack's category. Roster-scoped, so

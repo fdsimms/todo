@@ -36,23 +36,34 @@ export const LATER_TODAY_LABEL = 'Later Today';
  * list from having a header a task can be stranded "above".
  */
 // Task groups (collapsible labels, see TaskGroup) are a third, optional
-// input: each group renders as a 'group' item at the START of its category
-// section, before that category's plain tasks. Passing groups here (rather
-// than as a separate post-processing pass over the header+task output) is
-// what lets a category made up ENTIRELY of a group with no loose tasks still
-// get a header — the header-selection logic below already needs to know
-// about every category's content once, so it might as well know about
-// groups too. resolveDrop/resolveCategoryReorder/categoryHeaderRange never
-// pass a `groups` argument (it defaults to none), so their own internal
-// makeCategoryGroups calls keep producing header+task-only output — groups
-// aren't draggable in v1 (see CLAUDE.md's ReorderableList fragility note),
-// and this keeps that whole call path exactly as ignorant of groups as
-// before.
+// input: each group renders as a 'group' item somewhere inside its category
+// section, MERGED into that category's plain tasks by sortOrder — group and
+// task sort orders are one number space (see TaskGroup.sortOrder), so a stack
+// holds a slot in the list the same way a loose task does. Groups used to be
+// emitted at the START of their section instead, which silently discarded
+// every drop that put a task above a stack: the drag animated, then the
+// rebuilt layout hoisted the stack back over it.
+//
+// Passing groups here (rather than as a separate post-processing pass over
+// the header+task output) is what lets a category made up ENTIRELY of a group
+// with no loose tasks still get a header — the header-selection logic below
+// already needs to know about every category's content once, so it might as
+// well know about groups too. resolveCategoryReorder/categoryHeaderRange
+// never pass a `groups` argument (it defaults to none), so their internal
+// makeCategoryGroups calls keep producing header+task-only output.
+//
+// `interleaveGroups` is the escape hatch for a non-manual sort (Today's
+// priority/effort/due-date/streak options): those reorder the tasks by
+// something other than sortOrder, so merging by it would scatter the stacks
+// arbitrarily. Passing false keeps the old groups-first layout, which at
+// least stays predictable while a sort is on.
 export function makeCategoryGroups(
   tasks: Task[],
   categoryOrder: string[] = [],
   groups: { group: TaskGroup; children: Task[] }[] = [],
+  opts: { interleaveGroups?: boolean } = {},
 ): CategoryListItem[] {
+  const interleaveGroups = opts.interleaveGroups ?? true;
   const byCategory = new Map<string, Task[]>();
   tasks.forEach(task => {
     const key = task.category ?? UNCATEGORIZED;
@@ -83,22 +94,47 @@ export function makeCategoryGroups(
   const items: CategoryListItem[] = [];
   order.forEach(key => {
     if (key !== UNCATEGORIZED) items.push({ type: 'header', label: key });
-    (groupsByCategory.get(key) ?? []).forEach(g => items.push({ type: 'group', group: g.group, children: g.children }));
-    (byCategory.get(key) ?? []).forEach(task => items.push({ type: 'task', task }));
+    const sectionGroups = groupsByCategory.get(key) ?? [];
+    const sectionTasks = byCategory.get(key) ?? [];
+    const pushGroup = (g: { group: TaskGroup; children: Task[] }) =>
+      items.push({ type: 'group', group: g.group, children: g.children });
+    // Merge, rather than sort the two together: the tasks arrive in the order
+    // the caller wants them (store order, already sortOrder-sorted) and that
+    // order is what a drop just committed — a stack only needs slotting in
+    // between them. Strictly-less so a stack whose sortOrder ties a task's
+    // (legacy rows carry the old per-category 1..M numbering until the first
+    // drag renumbers them) lands after it rather than jumping the task.
+    let next = 0;
+    if (interleaveGroups) {
+      sectionTasks.forEach(task => {
+        while (next < sectionGroups.length && sectionGroups[next].group.sortOrder < task.sortOrder) {
+          pushGroup(sectionGroups[next++]);
+        }
+        items.push({ type: 'task', task });
+      });
+    }
+    while (next < sectionGroups.length) pushGroup(sectionGroups[next++]);
+    if (!interleaveGroups) sectionTasks.forEach(task => items.push({ type: 'task', task }));
   });
   return items;
 }
 
 export interface DropResolution {
-  /** Task ids in their new top-to-bottom order (for sortOrder persistence). */
-  taskIds: string[];
+  /**
+   * Every task in the drop, with the sortOrder to persist. Explicit numbers
+   * rather than bare ids in order, because the ranks skip the slots the
+   * dropped stacks took (see groupUpdates) — renumbering the tasks 1..N at
+   * the store would close those gaps and put every stack back on top of its
+   * section.
+   */
+  taskOrders: Array<{ id: string; sortOrder: number }>;
   /** Tasks whose category changed because of where they were dropped. */
   categoryUpdates: Array<{ id: string; category: string | null }>;
   /**
    * Task groups dragged as a whole block (see TodayScreen's group `onDrag`):
    * their new category (nearest header above, same rule as tasks) and their
-   * new sortOrder relative to the other groups that ended up in that same
-   * category, renumbered from 1 in drop order.
+   * new sortOrder — a rank from the same running counter the tasks get, so a
+   * stack sits between the two tasks it was dropped between.
    */
   groupUpdates: Array<{ id: string; category: string | null; sortOrder: number }>;
   /** The final, regrouped layout to show immediately after the drop. */
@@ -108,9 +144,10 @@ export interface DropResolution {
 /**
  * Resolve a drag-and-drop drop on the Today list.
  *
- * Given the raw reordered list of headers + tasks that the drag gesture hands
- * back, work out (a) the new task order, (b) which tasks changed category, and
- * (c) the final grouped layout to render.
+ * Given the raw reordered list of headers + tasks + stacks that the drag
+ * gesture hands back, work out (a) the new order — one rank per row, stacks
+ * included — (b) which tasks/stacks changed category, and (c) the final
+ * grouped layout to render.
  *
  * Category rules — a task adopts the category of the nearest section header
  * above it:
@@ -131,17 +168,19 @@ export function resolveDrop(
     categoryOrder?: string[];
   },
 ): DropResolution {
-  const taskIds: string[] = [];
+  const taskOrders: Array<{ id: string; sortOrder: number }> = [];
   const categoryUpdates: Array<{ id: string; category: string | null }> = [];
   const groupUpdates: Array<{ id: string; category: string | null; sortOrder: number }> = [];
   const orderedTasks: Task[] = [];
   const upcomingOrdered: Task[] = [];
-  // Groups dropped, in order, paired with their (possibly updated) new
-  // category — used both to build groupUpdates (sortOrder renumbered per
-  // category below) and to rebuild `settled` with the same groups.
-  const orderedGroups: { group: TaskGroup; children: Task[]; category: string | null }[] = [];
+  const updatedGroups: { group: TaskGroup; children: Task[] }[] = [];
   let currentSection: string | null = null;
   let inLaterToday = false;
+  // One counter for tasks and groups alike: the drop order IS the new list
+  // order, and both kinds of row occupy a slot in it. Handing groups their
+  // own separate numbering (as this used to) is what made "task above stack"
+  // unrepresentable — the two orders had nothing to compare.
+  let rank = 0;
 
   for (const item of reordered) {
     if (item.type === 'header') {
@@ -152,39 +191,35 @@ export function resolveDrop(
       }
       continue;
     }
+    rank += 1;
     if (item.type === 'group') {
       // Groups never appear inside "Later Today" (that section is rendered
       // by a separate, non-draggable path — see TodayScreen), so they always
       // adopt the nearest real header above, same rule as a task.
       const target = currentSection;
-      orderedGroups.push({ group: item.group, children: item.children, category: target });
+      if (target !== item.group.category || rank !== item.group.sortOrder) {
+        groupUpdates.push({ id: item.group.id, category: target, sortOrder: rank });
+      }
+      updatedGroups.push({
+        group: { ...item.group, category: target, sortOrder: rank },
+        children: item.children,
+      });
       continue;
     }
-    taskIds.push(item.task.id);
+    taskOrders.push({ id: item.task.id, sortOrder: rank });
     const isUpcoming = opts.isUpcoming(item.task.id);
     // Upcoming/"Later Today" tasks keep their own category; everything else
     // adopts its section's (null above the first header = uncategorize).
     const target: string | null =
       inLaterToday || isUpcoming ? item.task.category : currentSection;
-    const task = target === item.task.category ? item.task : { ...item.task, category: target };
     if (target !== item.task.category) {
       categoryUpdates.push({ id: item.task.id, category: target });
     }
-    (isUpcoming ? upcomingOrdered : orderedTasks).push(task);
+    // Carrying the new sortOrder (not just the new category) is what keeps
+    // `settled` identical to the layout the store will recompute: it's the
+    // number makeCategoryGroups slots the stacks against.
+    (isUpcoming ? upcomingOrdered : orderedTasks).push({ ...item.task, category: target, sortOrder: rank });
   }
-
-  // Renumber sortOrder per resulting category, in drop order, so relative
-  // group order persists without colliding with another category's numbers
-  // (each category's groups are only ever compared against each other).
-  const perCategoryCount = new Map<string | null, number>();
-  const updatedGroups: { group: TaskGroup; children: Task[] }[] = orderedGroups.map(({ group, children, category }) => {
-    const nextOrder = (perCategoryCount.get(category) ?? 0) + 1;
-    perCategoryCount.set(category, nextOrder);
-    if (category !== group.category || nextOrder !== group.sortOrder) {
-      groupUpdates.push({ id: group.id, category, sortOrder: nextOrder });
-    }
-    return { group: { ...group, category, sortOrder: nextOrder }, children };
-  });
 
   const settled: CategoryListItem[] = makeCategoryGroups(orderedTasks, opts.categoryOrder, updatedGroups);
   if (opts.showUpcoming && upcomingOrdered.length > 0) {
@@ -192,7 +227,7 @@ export function resolveDrop(
     upcomingOrdered.forEach(task => settled.push({ type: 'task', task }));
   }
 
-  return { taskIds, categoryUpdates, groupUpdates, settled };
+  return { taskOrders, categoryUpdates, groupUpdates, settled };
 }
 
 /**

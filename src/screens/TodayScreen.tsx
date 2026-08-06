@@ -1026,10 +1026,16 @@ export function TodayScreen() {
     }
 
     const ungrouped = filtered.filter(t => !t.groupId);
-    const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems);
+    // Stacks slot into the task order by sortOrder (see makeCategoryGroups) —
+    // but only while the list is in its hand-ordered state. Any other sort
+    // reorders the tasks by something sortOrder says nothing about, so the
+    // stacks go back to heading their section.
+    const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
+      interleaveGroups: sort === 'default',
+    });
     return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pinnedTasks, pinViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories]);
+  }, [filtered, pinnedTasks, pinViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories, sort]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -1206,7 +1212,7 @@ export function TodayScreen() {
       (item): item is CategoryListItem =>
         item.type === 'header' || item.type === 'task' || item.type === 'group',
     );
-    const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
+    const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
       isUpcoming: id => upcomingTaskIds.has(id),
       showUpcoming,
       categoryOrder: allCategories,
@@ -1215,7 +1221,7 @@ export function TodayScreen() {
     groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
     // No "this task or this and future occurrences?" prompt, unlike the drag
     // path: a task created a moment ago has no other occurrences to apply to.
-    reorderWithCategoryUpdates(taskIds, categoryUpdates);
+    reorderWithCategoryUpdates(taskOrders, categoryUpdates);
   };
 
   const openQuickAddForDrop = (intent: FabDropIntent) => {
@@ -2222,18 +2228,18 @@ export function TodayScreen() {
                 const withoutJoined = dropped.filter(
                   item => !(item.type === 'task' && item.task.id === joinedTaskId),
                 );
-                const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
+                const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
                   isUpcoming: id => upcomingTaskIds.has(id),
                   showUpcoming,
                   categoryOrder: allCategories,
                 });
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
                 setDraggableData(settled);
-                reorderWithCategoryUpdates(taskIds, categoryUpdates);
+                reorderWithCategoryUpdates(taskOrders, categoryUpdates);
                 return;
               }
 
-              const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
+              const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
                 isUpcoming: id => upcomingTaskIds.has(id),
                 showUpcoming,
                 categoryOrder: allCategories,
@@ -2245,7 +2251,7 @@ export function TodayScreen() {
                 // identical) once the store write lands.
                 setDraggableData(settled);
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-                reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
+                reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
               };
 
               // Dragging a recurring task into a new category is a content-field

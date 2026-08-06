@@ -62,6 +62,12 @@ export interface TaskGroup {
   notes: string;
   tags: string[];
   category: string | null; // which category section it renders under
+  // Position within its category section, in the SAME number space as
+  // Task.sortOrder — a stack takes a slot in the list order exactly like a
+  // loose task does, so one can be dragged above or below the other (see
+  // makeCategoryGroups/resolveDrop in utils/taskGrouping.ts). It is not a
+  // per-category 1..M ranking of stacks alone; that's what it used to be, and
+  // it's why a stack could only ever render above every loose task.
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state
 }

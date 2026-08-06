@@ -186,13 +186,38 @@ const layoutSeq = (items: CategoryListItem[]) =>
   );
 
 describe('makeCategoryGroups — with task groups', () => {
-  it('renders each category’s groups before its plain tasks', () => {
+  it('slots each group into its category by sortOrder, among the plain tasks', () => {
     const items = makeCategoryGroups(
-      [makeTask({ id: 't-health-1', category: 'health' }), makeTask({ id: 't-work-1', category: 'work' })],
+      [
+        makeTask({ id: 't-health-1', category: 'health', sortOrder: 1 }),
+        makeTask({ id: 't-health-2', category: 'health', sortOrder: 3 }),
+        makeTask({ id: 't-work-1', category: 'work', sortOrder: 4 }),
+      ],
       ['health', 'work'],
-      [{ group: makeGroup({ id: 'g-health', category: 'health' }), children: [makeTask({ id: 'c1' })] }],
+      [{ group: makeGroup({ id: 'g-health', category: 'health', sortOrder: 2 }), children: [makeTask({ id: 'c1' })] }],
     );
-    expect(layoutSeq(items)).toEqual(['#health', 'g-g-health', 't-health-1', '#work', 't-work-1']);
+    expect(layoutSeq(items)).toEqual(['#health', 't-health-1', 'g-g-health', 't-health-2', '#work', 't-work-1']);
+  });
+
+  // The bug this whole number space exists for: a stack used to head its
+  // section no matter what, so a task dropped above one snapped back below it.
+  it('renders a task above a group when its sortOrder is lower', () => {
+    const items = makeCategoryGroups(
+      [makeTask({ id: 'make-bed', category: 'morning', sortOrder: 1 })],
+      ['morning'],
+      [{ group: makeGroup({ id: 'supplements', category: 'morning', sortOrder: 2 }), children: [makeTask()] }],
+    );
+    expect(layoutSeq(items)).toEqual(['#morning', 'make-bed', 'g-supplements']);
+  });
+
+  it('keeps groups ahead of the tasks when interleaving is off (a non-manual sort)', () => {
+    const items = makeCategoryGroups(
+      [makeTask({ id: 'make-bed', category: 'morning', sortOrder: 1 })],
+      ['morning'],
+      [{ group: makeGroup({ id: 'supplements', category: 'morning', sortOrder: 2 }), children: [makeTask()] }],
+      { interleaveGroups: false },
+    );
+    expect(layoutSeq(items)).toEqual(['#morning', 'g-supplements', 'make-bed']);
   });
 
   // Regression: a category made up ENTIRELY of a group with no loose tasks
@@ -219,13 +244,13 @@ describe('makeCategoryGroups — with task groups', () => {
     expect(layoutSeq(items)).toEqual(['#health', 'g-first', 'g-second']);
   });
 
-  it('places an uncategorized group above the header-less loose task group', () => {
+  it('keeps an uncategorized group in the header-less region at the top', () => {
     const items = makeCategoryGroups(
-      [makeTask({ id: 'loose', category: null })],
-      [],
-      [{ group: makeGroup({ id: 'g-loose', category: null }), children: [makeTask()] }],
+      [makeTask({ id: 'loose', category: null, sortOrder: 2 }), makeTask({ id: 'filed', category: 'health', sortOrder: 3 })],
+      ['health'],
+      [{ group: makeGroup({ id: 'g-loose', category: null, sortOrder: 1 }), children: [makeTask()] }],
     );
-    expect(layoutSeq(items)).toEqual(['g-g-loose', 'loose']);
+    expect(layoutSeq(items)).toEqual(['g-g-loose', 'loose', '#health', 'filed']);
   });
 
   it('behaves exactly like the two-argument call when there are no groups', () => {
@@ -243,8 +268,8 @@ describe('resolveDrop', () => {
       { type: 'task', task: makeTask({ id: 'workout', category: 'health' }) },
       { type: 'task', task: makeTask({ id: 'test', category: 'health' }) },
     ];
-    const { taskIds, categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
-    expect(taskIds).toEqual(['workout', 'test']);
+    const { taskOrders, categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(taskOrders).toEqual([{ id: 'workout', sortOrder: 1 }, { id: 'test', sortOrder: 2 }]);
     expect(categoryUpdates).toEqual([]);
     expect(layoutSeq(settled)).toEqual(['#health', 'workout', 'test']);
   });
@@ -321,7 +346,39 @@ describe('resolveDrop', () => {
     expect(layoutSeq(settled)).toEqual(['#work', 'g-g1']);
   });
 
-  it('renumbers group sortOrder within a category to match drop order', () => {
+  // The reported bug, end to end: "Make bed" dropped above the "Supplements"
+  // stack used to come back below it, because the stack's number space and
+  // the tasks' had nothing to compare and the layout put stacks first.
+  it('keeps a task dropped above a stack above it', () => {
+    const group = makeGroup({ id: 'supplements', category: 'morning', sortOrder: 1 });
+    const makeBed = makeTask({ id: 'make-bed', category: 'morning', sortOrder: 2 });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'morning' },
+      { type: 'task', task: makeBed },
+      { type: 'group', group, children: [] },
+    ];
+    const { taskOrders, groupUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(taskOrders).toEqual([{ id: 'make-bed', sortOrder: 1 }]);
+    expect(groupUpdates).toEqual([{ id: 'supplements', category: 'morning', sortOrder: 2 }]);
+    expect(layoutSeq(settled)).toEqual(['#morning', 'make-bed', 'g-supplements']);
+  });
+
+  // The ranks a drop hands out have to survive the round trip through the
+  // store, so the gaps left for the stacks are part of what's persisted.
+  it('leaves the stacks’ slots as gaps in the task numbering', () => {
+    const group = makeGroup({ id: 'supplements', category: 'morning', sortOrder: 9 });
+    const reordered: CategoryListItem[] = [
+      { type: 'header', label: 'morning' },
+      { type: 'task', task: makeTask({ id: 'make-bed', category: 'morning' }) },
+      { type: 'group', group, children: [] },
+      { type: 'task', task: makeTask({ id: 'shower', category: 'morning' }) },
+    ];
+    const { taskOrders, groupUpdates } = resolveDrop(reordered, noUpcoming);
+    expect(taskOrders).toEqual([{ id: 'make-bed', sortOrder: 1 }, { id: 'shower', sortOrder: 3 }]);
+    expect(groupUpdates).toEqual([{ id: 'supplements', category: 'morning', sortOrder: 2 }]);
+  });
+
+  it('renumbers group sortOrder to match drop order', () => {
     const first = makeGroup({ id: 'first', category: 'health', sortOrder: 2 });
     const second = makeGroup({ id: 'second', category: 'health', sortOrder: 1 });
     const reordered: CategoryListItem[] = [
