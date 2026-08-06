@@ -1,4 +1,5 @@
 import type { Task } from '../types';
+import { displayTitleFor } from './visibilityUtils';
 
 export interface SearchResult {
   task: Task;
@@ -59,12 +60,20 @@ export function fuzzySearch(
     let totalScore = 0;
     let titleMatches: [number, number][] = [];
 
+    // Mid-chain, the displayed title is the active step's — see displayTitleFor
+    // — so a title match (and its highlight range) has to be scored against
+    // that, not the parent's task.title, or the highlight would land on text
+    // the row isn't even showing.
+    const displayTitle = displayTitleFor(task);
+
     for (const word of words) {
-      const titleResult = scoreSubstring(task.title, word);
+      const titleResult = scoreSubstring(displayTitle, word);
       const notesResult = scoreSubstring(task.notes, word);
       const tagScore = task.tags.some(t => t.toLowerCase().includes(word.toLowerCase())) ? 30 : 0;
       const categoryResult = task.category ? scoreSubstring(task.category, word) : { score: 0, ranges: [] };
       const projectResult = projectName ? scoreSubstring(projectName, word) : { score: 0, ranges: [] };
+      // Weaker, unhighlighted fallback for a keyword that only matches a
+      // non-active step's text — the active step is already covered above.
       const chainScore = task.chainItems.reduce(
         (best, item) => Math.max(best, scoreSubstring(item.title, word).score),
         0

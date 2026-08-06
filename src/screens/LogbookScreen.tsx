@@ -31,7 +31,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
-import { isQuotaPartial } from '../utils/visibilityUtils';
+import { isQuotaPartial, displayTitleFor } from '../utils/visibilityUtils';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 
@@ -314,7 +314,7 @@ export function LogbookScreen() {
                 style={styles.rowContent}
                 accessible
                 accessibilityLabel={[
-                  item.title,
+                  displayTitleFor(item),
                   isQuotaPartial(item)
                     ? `fell short at ${item.progressCount} of ${item.targetCount}, ${formatTime(item.completedAt!)}`
                     : `completed ${formatTime(item.completedAt!)}`,
@@ -322,7 +322,7 @@ export function LogbookScreen() {
                   item.actualMinutes != null ? `timed ${formatDuration(item.actualMinutes)}` : null,
                 ].filter(Boolean).join(', ')}
               >
-                <Text style={styles.taskTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(item)}</Text>
                 <View style={styles.metaRow}>
                   <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
                   {item.targetCount !== null && (

@@ -18,6 +18,7 @@ import { TaskEditor } from '../components/TaskEditor';
 import type { Task } from '../types';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, interaction, checkboxRadius, type Colors } from '../theme';
@@ -41,8 +42,10 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     ? format(new Date(task.completedAt), 'MMM d')
     : null;
 
+  const displayTitle = displayTitleFor(task);
+
   const a11yLabel = [
-    task.title,
+    displayTitle,
     task.archived ? 'archived' : null,
     isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
@@ -65,7 +68,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 
       <View style={styles.resultContent}>
         <HighlightedText
-          text={task.title}
+          text={displayTitle}
           ranges={titleMatches}
           style={[styles.resultTitle, isCompleted && styles.resultTitleDone]}
           highlightStyle={styles.highlight}

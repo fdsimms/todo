@@ -16,6 +16,14 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
+}));
+
 import {
   requestNotificationPermissions,
   scheduleTaskReminder,

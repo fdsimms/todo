@@ -1,6 +1,14 @@
 import { fuzzySearch } from '../utils/fuzzySearch';
 import type { Task } from '../types';
 
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
+}));
+
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: '1',
   title: 'Buy groceries',
@@ -179,6 +187,38 @@ describe('fuzzySearch', () => {
       const categoryTask = makeTask({ id: '2', title: 'unrelated', category: 'important' });
       const results = fuzzySearch([titleTask, categoryTask], 'important');
       expect(results[0].task.id).toBe('1');
+    });
+
+    it('matches the active chain step as a title match, not a weaker chain-only match', () => {
+      const task = makeTask({
+        title: 'Morning routine',
+        chainEnabled: true,
+        chainIndex: 0,
+        chainItems: [
+          { id: 'c1', title: 'Stretch for five minutes', notes: '' },
+          { id: 'c2', title: 'Shower', notes: '' },
+        ],
+      });
+      const [result] = fuzzySearch([task], 'stretch');
+      expect(result.titleMatches).toEqual([[0, 7]]);
+    });
+
+    it('title match ranges land on the active step text, not the parent title, mid-chain', () => {
+      // "Stretch" only appears in the active step, not in "Morning routine" —
+      // a highlight range computed against task.title here would be wrong.
+      const task = makeTask({
+        title: 'Morning routine',
+        chainEnabled: true,
+        chainIndex: 0,
+        chainItems: [
+          { id: 'c1', title: 'Stretch for five minutes', notes: '' },
+          { id: 'c2', title: 'Shower', notes: '' },
+        ],
+      });
+      const withoutChain = makeTask({ id: '2', title: 'unrelated', category: 'stretch' });
+      const results = fuzzySearch([task, withoutChain], 'stretch');
+      // The chain task's title-weighted match outscores the category-only match.
+      expect(results[0].task.id).toBe(task.id);
     });
   });
 
