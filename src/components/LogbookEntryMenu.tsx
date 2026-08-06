@@ -19,14 +19,20 @@ interface Props {
   value: Date | null;
   onMarkIncomplete: () => void;
   onChangeDate: (date: Date) => void;
+  /** Deletes the entry outright. The caller confirms — see LogbookScreen. */
+  onDelete: () => void;
   onClose: () => void;
 }
 
 /**
- * Bottom action sheet for a Logbook entry: marking it incomplete, or editing
- * the completion date/time via CalendarPicker.
+ * Bottom action sheet for a Logbook entry: marking it incomplete, editing the
+ * completion date/time via CalendarPicker, or deleting it.
+ *
+ * Delete sits in its own card below the others, iOS-style: it's the one
+ * destructive option here, and grouping it with them would put it a stray tap
+ * away from "Mark Incomplete".
  */
-export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDate, onClose }: Props) {
+export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDate, onDelete, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showCalendar, setShowCalendar] = useState(false);
@@ -74,6 +80,11 @@ export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDat
     closeThen(onMarkIncomplete);
   };
 
+  const deleteEntry = () => {
+    haptics.warning();
+    closeThen(onDelete);
+  };
+
   const openCalendar = () => {
     haptics.tap();
     Animated.spring(translateY, { toValue: 500, ...animation.spring.bouncy, useNativeDriver: true }).start(() => {
@@ -96,6 +107,19 @@ export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDat
           <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
             <Text style={styles.optionLabel}>Change Completion Date</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.optionsCard}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={deleteEntry}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Delete entry"
+          >
+            <Ionicons name="trash-outline" size={18} color={colors.red} />
+            <Text style={[styles.optionLabel, styles.destructiveLabel]}>Delete Entry</Text>
           </TouchableOpacity>
         </View>
 
@@ -156,6 +180,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
+  },
+  destructiveLabel: {
+    color: colors.red,
   },
   inlineSep: {
     height: border.hairline,
