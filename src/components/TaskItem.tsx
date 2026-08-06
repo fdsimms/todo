@@ -28,10 +28,10 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -92,6 +92,8 @@ interface Props {
   justCreated?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
+  /** True where the list drops a row the moment it stops being visible — i.e. Today's own list, and only for rows it holds on visibility (a pinned row stays whether or not it's due). Logging a unit that puts a daily target back on pace does exactly that, so the row plays itself out before it goes instead of blinking away mid-tap. */
+  hidesWhenOnPace?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -163,6 +165,7 @@ export const TaskItem = React.memo(function TaskItem({
   indented = false,
   justCreated = false,
   autoComplete = false,
+  hidesWhenOnPace = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -229,6 +232,12 @@ export const TaskItem = React.memo(function TaskItem({
   // a checkmark, and `toppedOut` marks the moment the fill reaches the brim.
   const [quotaCompleting, setQuotaCompleting] = useState(false);
   const [quotaToppedOut, setQuotaToppedOut] = useState(false);
+  // The other way a daily target leaves Today: the logged unit didn't meet the
+  // target, it just put the task back on pace, so the row is about to stop
+  // being visible until the next unit falls due. Same send-off, minus the
+  // green — nothing was finished.
+  const [pacingOut, setPacingOut] = useState(false);
+  const pacingOutRef = useRef(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
@@ -487,10 +496,17 @@ export const TaskItem = React.memo(function TaskItem({
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
   const isQuota = isQuotaTask(task) && !task.completed;
-  // The count reads as met for the length of the completion animation, so the
-  // chip and the meter agree — the store only catches up when the row is gone.
-  const quotaProgress = isQuota
-    ? `${quotaCompleting ? task.targetCount : task.progressCount}/${task.targetCount}`
+  // Both send-offs hold the store back until the row is gone, so the count is
+  // read forward for the length of the animation — otherwise the chip still
+  // says 2/8 while the meter shows the third unit going in.
+  const quotaLogged = quotaCompleting
+    ? task.targetCount!
+    : task.progressCount + (pacingOut ? 1 : 0);
+  const quotaProgress = isQuota ? `${quotaLogged}/${task.targetCount}` : '';
+  // When it comes back. Shown for the moment the row is leaving, so a target
+  // that goes quiet at 2/8 reads as scheduled rather than as swallowed.
+  const quotaReturnAt = pacingOut
+    ? formatHHMM(dateToHHMM(quotaNextDueAt({ ...task, progressCount: task.progressCount + 1 })))
     : '';
   // Selection mode keeps the plain circle so the paint-select gutter behaves
   // exactly as it does for every other row. A completion that came from the
@@ -498,7 +514,7 @@ export const TaskItem = React.memo(function TaskItem({
   const showQuotaMeter = isQuota && !selectionMode && (!completing || quotaCompleting);
   // Shown but no longer a meter to tap: once the run-up starts, the control
   // does what a completing row's checkbox does — undo.
-  const meterInteractive = showQuotaMeter && !completing;
+  const meterInteractive = showQuotaMeter && !completing && !pacingOut;
 
   // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
   // a habit whose streak just broke doesn't silently lose a chip — the row
@@ -535,7 +551,7 @@ export const TaskItem = React.memo(function TaskItem({
     otherSeriesDates !== '';
 
   const handleComplete = async () => {
-    if (completingRef.current) return;
+    if (completingRef.current || pacingOutRef.current) return;
     if (recurrenceNotYetDue) {
       await haptics.error();
       return;
@@ -605,7 +621,7 @@ export const TaskItem = React.memo(function TaskItem({
   // this one place, so nothing has to remember to animate it. The completion
   // run-up owns the value while it's playing and is left alone.
   useEffect(() => {
-    if (!isQuota || completingRef.current) return;
+    if (!isQuota || completingRef.current || pacingOutRef.current) return;
     const level = quotaFraction(task);
     if (reduceMotion) { quotaFill.setValue(level); return; }
     Animated.timing(quotaFill, {
@@ -621,7 +637,7 @@ export const TaskItem = React.memo(function TaskItem({
   // up to the brim in place of the checkmark (and the store hands off to
   // completeTask for the recurrence/streak bookkeeping).
   const handleQuotaTap = async () => {
-    if (completingRef.current) return;
+    if (completingRef.current || pacingOutRef.current) return;
     if (recurrenceNotYetDue) {
       await haptics.error();
       return;
@@ -633,11 +649,63 @@ export const TaskItem = React.memo(function TaskItem({
     if (isNew) markTaskSeen(task.id);
     await haptics.impactLight();
     circleScale.setValue(1);
-    Animated.sequence([
+    const pop = Animated.sequence([
       Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]).start();
+    ]);
+    // Most units leave the row where it is (it was already behind pace, and one
+    // unit didn't catch it up), and those keep the plain pop — the effect above
+    // slides the fill as the count lands.
+    if (!hidesWhenOnPace || !quotaLeavesTodayAfterLog(task)) {
+      pop.start();
+      logQuotaUnit(task.id);
+      return;
+    }
+    // This one does put the task back on pace, so the row is leaving. It gets
+    // the same beats a completion gets — level up, pop, hold, fade, collapse —
+    // and only then is the unit logged: holding the store back is what keeps
+    // the row mounted long enough to play, exactly as completionHoldIds does
+    // for a completion. Nothing turns green, because nothing was finished.
+    pacingOutRef.current = true;
+    setPacingOut(true);
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(quotaFill, {
+          toValue: (task.progressCount + 1) / task.targetCount!,
+          duration: animation.duration.fast,
+          useNativeDriver: false,
+        }),
+        pop,
+      ]),
+      Animated.delay(90),
+      Animated.timing(rowOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      collapseStartedRef.current = true;
+      collapseProgress.value = withTiming(
+        0,
+        { duration: animation.duration.normal, easing: Easing.inOut(Easing.cubic) },
+        done => {
+          if (done) runOnJS(finishPacingOut)();
+        },
+      );
+    });
+  };
+
+  // Logs the held-back unit, then puts the row back on the next frame in case
+  // it's still here — the pace check ran ~700ms earlier, and a target whose
+  // next unit falls due inside that window stays on the list. The restore is a
+  // no-op when the row does leave (it's unmounted by then); without it, that
+  // one row would sit invisible and zero-height until the screen remounted.
+  const finishPacingOut = () => {
     logQuotaUnit(task.id);
+    requestAnimationFrame(() => {
+      pacingOutRef.current = false;
+      setPacingOut(false);
+      rowOpacity.setValue(1);
+      collapseStartedRef.current = false;
+      collapseProgress.value = 1;
+    });
   };
 
   // Long-press takes one back off, for the mis-tap — the shake-to-undo path
@@ -926,7 +994,9 @@ export const TaskItem = React.memo(function TaskItem({
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quotaLabel} numberOfLines={1}>{quotaProgress}</Text>
+                <Text style={styles.quotaLabel} numberOfLines={1}>
+                  {quotaProgress}{quotaReturnAt ? ` · back at ${quotaReturnAt}` : ''}
+                </Text>
               </View>
             )}
             {timed && (

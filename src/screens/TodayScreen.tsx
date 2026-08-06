@@ -1447,6 +1447,12 @@ export function TodayScreen() {
         hideTodayLabel
         justCreated={task.id === justCreatedId}
         autoComplete={autoCompletingIds.has(task.id)}
+        // This list is `filtered`, i.e. visibleTasks — a row leaves it the
+        // moment it stops being visible, which is what logging a unit does to
+        // a daily target that's back on pace. Not the pinned rows: pinnedTasks
+        // doesn't filter on visibility, so those stay whether or not they're
+        // due, and a row that isn't going anywhere shouldn't play itself out.
+        hidesWhenOnPace={!task.pinned}
       />
     );
   };
