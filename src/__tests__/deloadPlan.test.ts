@@ -60,8 +60,13 @@ const BASE: Task = {
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
@@ -177,6 +182,24 @@ describe('buildDeloadPlan', () => {
       expect(p.date).not.toBeNull();
     });
 
+    it('leaves a task with banked countdown time unchecked but movable', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, timedMinutes: 15, timerElapsedSeconds: 300 });
+      const plan = buildDeloadPlan([task], [task]);
+      const [p] = plan.proposals;
+
+      expect(p.blocker).toBe('started');
+      expect(p.blockerLabel).toBe('Already started');
+      expect(p.selected).toBe(false);
+      expect(p.date).not.toBeNull();
+    });
+
+    it('treats an untouched timed task as ordinary', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, timedMinutes: 15, timerElapsedSeconds: 0 });
+      const plan = buildDeloadPlan([task], [task]);
+      expect(plan.proposals[0].blocker).toBeNull();
+      expect(plan.proposals[0].selected).toBe(true);
+    });
+
     it('leaves a high-priority task unchecked but movable', () => {
       const task = makeTask({ id: 'a', estimatedMinutes: 30, priority: 3 });
       const plan = buildDeloadPlan([task], [task]);
@@ -231,6 +254,23 @@ describe('buildDeloadPlan', () => {
       const updates = deloadUpdates(p)!;
       expect(updates.deferUntil).toBe(p.date!.toISOString());
       expect(updates.dueDate).toBeUndefined();
+    });
+
+    it('defers a series member so its hand-picked date survives', () => {
+      const task = makeTask({
+        id: 'a',
+        estimatedMinutes: 30,
+        seriesId: 'series-1',
+        seriesMonthDays: [10, 15],
+        dueDate: today.toISOString(),
+      });
+      const plan = buildDeloadPlan([task], [task]);
+      const [p] = plan.proposals;
+
+      expect(p.mode).toBe('defer');
+      const updates = deloadUpdates(p)!;
+      expect(updates.dueDate).toBeUndefined();
+      expect(updates.deferUntil).toBe(p.date!.toISOString());
     });
 
     it('reschedules a one-off task so it does not arrive labelled overdue', () => {

@@ -98,6 +98,9 @@ jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
+  scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('react-native', () => ({
@@ -157,8 +160,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
@@ -507,6 +515,23 @@ describe('duplicateTask', () => {
     expect(copy.actualMinutes).toBeNull();
     expect(copy.previousOccurrenceId).toBeNull();
     expect(copy.pinned).toBe(false);
+  });
+
+  it('resets chainIndex to 0 instead of copying the mid-chain position', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        chainEnabled: true,
+        chainItems: [
+          { id: 'a', title: 'Step A', notes: '' },
+          { id: 'b', title: 'Step B', notes: '' },
+          { id: 'c', title: 'Step C', notes: '' },
+        ],
+        chainIndex: 2,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.chainIndex).toBe(0);
   });
 
   it('sets sortOrder to maxExisting + 1', () => {
@@ -868,6 +893,34 @@ describe('completeTask', () => {
     expect(completed.streakCount).toBe(task.streakCount);
   });
 
+  it('carries subtasks onto the spawned chain step, reset to unchecked', () => {
+    const task = makeTask({
+      id: 'chained-with-subtasks',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    const sub1 = makeTask({ id: 'sub-1', parentId: 'chained-with-subtasks', title: 'Sub A', sortOrder: 1 });
+    const sub2 = makeTask({
+      id: 'sub-2', parentId: 'chained-with-subtasks', title: 'Sub B', sortOrder: 2, completed: true,
+    });
+    useTaskStore.setState({ tasks: [task, sub1, sub2] });
+    useTaskStore.getState().completeTask('chained-with-subtasks');
+
+    const { tasks } = useTaskStore.getState();
+    const next = tasks.find(t => t.chainIndex === 1 && !t.parentId)!;
+    expect(next).toBeDefined();
+    const nextSubtasks = tasks.filter(t => t.parentId === next.id);
+    expect(nextSubtasks).toHaveLength(2);
+    expect(nextSubtasks.map(s => s.title).sort()).toEqual(['Sub A', 'Sub B']);
+    expect(nextSubtasks.every(s => !s.completed)).toBe(true);
+    // Original subtasks are untouched, still attached to the now-completed step.
+    expect(tasks.filter(t => t.parentId === 'chained-with-subtasks')).toHaveLength(2);
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -1170,6 +1223,34 @@ describe('uncompleteTask', () => {
     expect(dbDeleteTask).not.toHaveBeenCalled();
   });
 
+  it('restores the pre-completion chainIndex when undoing a mid-chain step, and removes the spawned next step', () => {
+    const task = makeTask({
+      id: 't1',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+
+    let tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    const spawned = tasks.find(t => t.id !== 't1')!;
+    expect(spawned.chainIndex).toBe(1);
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    tasks = useTaskStore.getState().tasks;
+    expect(tasks.map(t => t.id)).toEqual(['t1']);
+    const restored = tasks[0];
+    expect(restored.completed).toBe(false);
+    expect(restored.chainIndex).toBe(0);
+  });
+
   it('restores streakCount/streakDate to their pre-completion values', () => {
     const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
     const task = makeTask({
@@ -1371,6 +1452,54 @@ describe('skipNextRecurrence', () => {
     const updated = useTaskStore.getState().tasks[0];
     expect(updated.dueDate).toBe(task.dueDate);
     expect(updated.recurrenceCount).toBe(1);
+  });
+
+  it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(1);
+    // A mid-chain step never consults the recurrence schedule — skipping it
+    // shouldn't burn a cycle of the recurrence the way completing it wouldn't either.
+    expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 2, // last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(0);
+    expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+    expect(updated.recurrenceCount).toBe(4);
   });
 });
 
@@ -1781,6 +1910,27 @@ describe('groupRosterOf', () => {
       ],
     });
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['live']);
+  });
+
+  it('counts a dated series as one member, not one per date', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'dog-10', groupId: 'g1', seriesId: 'set-1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'dog-15', groupId: 'g1', seriesId: 'set-1', dueDate: daysAhead(5), sortOrder: 2 }),
+        makeTask({ id: 'other', groupId: 'g1', dueDate: today(), sortOrder: 3 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['dog-10', 'other']);
+  });
+
+  it("lets a series' date that is due today speak for it", () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'dog-past', groupId: 'g1', seriesId: 'set-1', dueDate: daysAhead(9), sortOrder: 1 }),
+        makeTask({ id: 'dog-today', groupId: 'g1', seriesId: 'set-1', dueDate: today(), sortOrder: 2 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['dog-today']);
   });
 
   it('stays flat as a recurring member is completed day after day', () => {
@@ -2834,6 +2984,101 @@ describe('timers', () => {
   });
 });
 
+// ─── countdowns on timed tasks ───────────────────────────────────────────────
+
+describe('timed tasks', () => {
+  it('pauseTimer banks the elapsed time without logging it as measured', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started })] });
+    useTaskStore.getState().pauseTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('resuming after a pause continues from the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().startTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).not.toBeNull();
+    expect(task.timerElapsedSeconds).toBe(300); // untouched — the new segment runs on top
+  });
+
+  it('resetTimer throws away the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().resetTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerElapsedSeconds).toBe(0);
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('starting one timer pauses a running countdown rather than logging it', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started }),
+        makeTask({ id: 'b' }),
+      ],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.timerStartedAt).toBeNull();
+    expect(displaced.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(displaced.actualMinutes).toBeNull(); // banked, not measured
+  });
+
+  it('starting one timer still stops (and logs) a plain stopwatch', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timerStartedAt: started }), makeTask({ id: 'b' })],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.actualMinutes).toBe(5);
+  });
+
+  it('completing a task logs time banked by a paused countdown', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 8 * 60 })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completed).toBe(true);
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('stopTimer sums banked time and the live segment', () => {
+    const started = new Date(Date.now() - 3 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 5 * 60, timerStartedAt: started })],
+    });
+    useTaskStore.getState().stopTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('the next occurrence keeps the duration but restarts its countdown', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', recurrenceType: 'daily', timedMinutes: 15, timerElapsedSeconds: 9 * 60 }),
+      ],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next.timedMinutes).toBe(15);
+    expect(next.timerElapsedSeconds).toBe(0);
+    expect(next.timerStartedAt).toBeNull();
+  });
+});
+
 // ─── deleteProject / addExistingToProject / removeFromProject ─────────────────
 
 describe('deleteProject', () => {
@@ -3195,5 +3440,270 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks).toHaveLength(1);
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
+  });
+});
+
+// ─── dated series ────────────────────────────────────────────────────────────
+
+describe('addTaskSeries', () => {
+  it('creates one row per date, sharing a series id', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog' },
+      [new Date(2025, 8, 15, 12, 0, 0), new Date(2025, 8, 10, 12, 0, 0)],
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].seriesId).toBe(rows[1].seriesId);
+    expect(rows[0].seriesId).toBeTruthy();
+    // Sorted, so the set reads earliest-first wherever it's listed.
+    expect(new Date(rows[0].dueDate!).getDate()).toBe(10);
+    expect(new Date(rows[1].dueDate!).getDate()).toBe(15);
+    expect(rows.every(r => r.title === 'Walk the dog')).toBe(true);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('gives every date its own row so each one is separately due', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    expect(new Set(rows.map(r => r.id)).size).toBe(2);
+    expect(rows.every(r => r.recurrenceType === 'none')).toBe(true);
+  });
+
+  it('re-anchors the reminder onto each date, keeping its time of day', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', reminderTime: new Date(2025, 8, 10, 8, 30, 0).toISOString() },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    const second = new Date(rows[1].reminderTime!);
+    expect(second.getDate()).toBe(15);
+    expect(second.getHours()).toBe(8);
+    expect(second.getMinutes()).toBe(30);
+  });
+
+  it('does nothing for an empty date list', () => {
+    expect(useTaskStore.getState().addTaskSeries({ title: 'x' }, [])).toEqual([]);
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+});
+
+describe('applyTaskDates', () => {
+  it('turns a plain dated task into a series when it gains a date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: new Date(2025, 8, 10, 12, 0, 0).toISOString() })],
+    });
+    useTaskStore.getState().applyTaskDates('a', [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].seriesId).toBeTruthy();
+    expect(tasks.every(t => t.seriesId === tasks[0].seriesId)).toBe(true);
+  });
+
+  it('keeps the edited row on its own date rather than repointing it', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: new Date(2025, 8, 15, 12, 0, 0).toISOString() })],
+    });
+    useTaskStore.getState().applyTaskDates('a', [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const edited = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(new Date(edited.dueDate!).getDate()).toBe(15);
+  });
+
+  it('drops the incomplete row for a date removed from the set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const days = useTaskStore.getState().tasks.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b);
+    expect(days).toEqual([10, 20]);
+  });
+
+  it('never deletes a completed date — it is history, not schedule', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+      ),
+    });
+    // Rewrite the set to a date that doesn't include the completed one.
+    useTaskStore.getState().applyTaskDates(rows[1].id, [
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const completed = useTaskStore.getState().tasks.find(t => t.id === rows[0].id);
+    expect(completed).toBeDefined();
+    expect(completed!.completed).toBe(true);
+  });
+
+  it('dissolves the series back to a plain task when the set drops to one date', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [new Date(2025, 8, 10, 12, 0, 0)]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].seriesId).toBeNull();
+    expect(tasks[0].seriesMonthDays).toEqual([]);
+  });
+
+  it('stores the repeat rule on every row of the set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(
+      rows[0].id,
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+
+    expect(useTaskStore.getState().tasks.every(t => t.seriesMonthDays.join() === '10,15')).toBe(true);
+  });
+});
+
+describe('updateTask series fan-out', () => {
+  it("applies content edits to the set's later dates", () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { title: 'Walk the neighbour dog' });
+
+    const later = useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!;
+    expect(later.title).toBe('Walk the neighbour dog');
+  });
+
+  it('leaves earlier dates alone — "this and later", not the whole set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[1].id, { title: 'Changed' });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[0].id)!.title).toBe('Dog');
+  });
+
+  it('does not fan out an occurrence-scoped edit', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { title: 'Just today' }, { scope: 'occurrence' });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.title).toBe('Dog');
+  });
+
+  it('does not fan out the due date, which is per-row', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { dueDate: new Date(2025, 8, 11, 12, 0, 0).toISOString() });
+
+    expect(new Date(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.dueDate!).getDate()).toBe(15);
+  });
+
+  it("re-anchors a fanned-out reminder onto each date's own day", () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, {
+      reminderTime: new Date(2025, 8, 10, 7, 15, 0).toISOString(),
+    });
+
+    const later = new Date(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.reminderTime!);
+    expect(later.getDate()).toBe(15);
+    expect(later.getHours()).toBe(7);
+    expect(later.getMinutes()).toBe(15);
+  });
+});
+
+describe('deleteSeries', () => {
+  it('deletes the incomplete dates and keeps completed ones in the Logbook', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+      ),
+    });
+    useTaskStore.getState().deleteSeries(rows[0].seriesId!);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe(rows[0].id);
+    expect(tasks[0].completed).toBe(true);
+  });
+});
+
+describe('completeTask — series rollover', () => {
+  const makeRepeatingSet = () =>
+    useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+
+  it('does not roll over while another date is still outstanding', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
+  });
+
+  it('inserts next month\'s set once every date is done', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+    expect(live).toHaveLength(2);
+    const next = live.map(t => new Date(t.dueDate!)).sort((a, b) => +a - +b);
+    expect(next.map(d => d.getMonth())).toEqual([9, 9]); // October
+    expect(next.map(d => d.getDate())).toEqual([10, 15]);
+    expect(live.every(t => t.seriesId === rows[0].seriesId)).toBe(true);
+  });
+
+  it('rolls over regardless of the order the dates are finished in', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[1].id);
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(2);
+  });
+
+  it('ends after one pass when the set does not repeat', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(0);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
   });
 });

@@ -1,13 +1,22 @@
-import React, { useEffect, useMemo, useRef } from 'react';
-import { Text, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Text, View, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
-import { animation, font, fontWeight, radius, spacing, type Colors } from '../theme';
+import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { useCategoryStore } from '../store/useCategoryStore';
+import type { Task } from '../types';
+
+/** How many titles the banner lists before it collapses the rest into "+N more". */
+const PREVIEW_LIMIT = 4;
 
 interface Props {
-  count: number;
+  tasks: Task[];
+  /** Open a new task — the banner marks it seen on the caller's side. */
+  onSelectTask: (task: Task) => void;
   onDismiss: () => void;
 }
 
@@ -15,12 +24,20 @@ interface Props {
  * Banner shown on the Today screen when tasks have newly become visible
  * since the user last saw them. Dismissing clears the "new" badge on every
  * one of those tasks (see isTaskNew / markTasksSeen).
+ *
+ * It names the tasks rather than only counting them: a new task sorts into
+ * its category like any other, so it can land at the bottom of a long list
+ * (or under a collapsed header) where a bare count tells you nothing about
+ * what showed up. Each title is tappable and carries its category, so the
+ * banner answers both "what's new" and "where is it".
  */
-export function NewTasksBanner({ count, onDismiss }: Props) {
+export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
   const progress = useRef(new Animated.Value(0)).current;
+  const [collapsed, setCollapsed] = useState(false);
+  const [showAll, setShowAll] = useState(false);
 
   useEffect(() => {
     if (reduceMotion) {
@@ -34,9 +51,25 @@ export function NewTasksBanner({ count, onDismiss }: Props) {
     }).start();
   }, [progress, reduceMotion]);
 
+  const count = tasks.length;
+  const shown = collapsed ? [] : showAll ? tasks : tasks.slice(0, PREVIEW_LIMIT);
+  const remaining = count - shown.length;
+
   const handleDismiss = () => {
     haptics.tap();
     onDismiss();
+  };
+
+  const toggleCollapsed = () => {
+    haptics.tap();
+    animateLayout();
+    setCollapsed(v => !v);
+  };
+
+  const handleShowAll = () => {
+    haptics.tap();
+    animateLayout();
+    setShowAll(true);
   };
 
   return (
@@ -49,21 +82,88 @@ export function NewTasksBanner({ count, onDismiss }: Props) {
         },
       ]}
     >
-      <Text style={styles.text} numberOfLines={1}>
-        You have <Text style={styles.count}>{count}</Text> new todo{count === 1 ? '' : 's'}
-      </Text>
-      <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new todos notice">
-        <Text style={styles.buttonText}>OK</Text>
-      </PressableScale>
+      <View style={styles.headerRow}>
+        <TouchableOpacity
+          style={styles.summary}
+          onPress={toggleCollapsed}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: !collapsed }}
+          accessibilityLabel={`You have ${count} new todo${count === 1 ? '' : 's'}`}
+          accessibilityHint={collapsed ? 'Show which todos are new' : 'Hide the list of new todos'}
+        >
+          <Text style={styles.text} numberOfLines={1}>
+            You have <Text style={styles.count}>{count}</Text> new todo{count === 1 ? '' : 's'}
+          </Text>
+          <Ionicons
+            name={collapsed ? 'chevron-down' : 'chevron-up'}
+            size={iconSize.sm}
+            color={colors.textSecondary}
+          />
+        </TouchableOpacity>
+        <PressableScale style={styles.button} onPress={handleDismiss} accessibilityLabel="Dismiss new todos notice">
+          <Text style={styles.buttonText}>OK</Text>
+        </PressableScale>
+      </View>
+
+      {shown.length > 0 && (
+        <View style={styles.list}>
+          {shown.map(task => (
+            <NewTaskRow key={task.id} task={task} styles={styles} colors={colors} onPress={() => onSelectTask(task)} />
+          ))}
+          {remaining > 0 && (
+            <TouchableOpacity
+              style={styles.moreRow}
+              onPress={handleShowAll}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Show ${remaining} more new todo${remaining === 1 ? '' : 's'}`}
+            >
+              <Text style={styles.moreText}>+{remaining} more</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </Animated.View>
+  );
+}
+
+function NewTaskRow({
+  task,
+  styles,
+  colors,
+  onPress,
+}: {
+  task: Task;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  onPress: () => void;
+}) {
+  const categoryEmoji = useCategoryStore(s => (task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null));
+  const categoryLabel = task.category
+    ? categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category
+    : null;
+
+  return (
+    <TouchableOpacity
+      style={styles.taskRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={categoryLabel ? `Open ${task.title}, in ${task.category}` : `Open ${task.title}`}
+    >
+      <View style={styles.dot} />
+      <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+      {categoryLabel && (
+        <Text style={styles.taskCategory} numberOfLines={1}>{categoryLabel}</Text>
+      )}
+      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+    </TouchableOpacity>
   );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     backgroundColor: colors.warningBg,
     marginHorizontal: spacing.md,
     marginTop: spacing.md,
@@ -72,7 +172,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,
     borderRadius: radius.lg,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  summary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
   count: { fontWeight: fontWeight.bold },
@@ -83,4 +194,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
   },
   buttonText: { color: colors.onWarning, fontSize: font.sm, fontWeight: fontWeight.bold },
+  list: {
+    marginTop: spacing.xs,
+    paddingRight: spacing.xs,
+  },
+  taskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  dot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.warning,
+  },
+  taskTitle: { flexShrink: 1, color: colors.text, fontSize: font.sm },
+  taskCategory: {
+    flexShrink: 0,
+    marginLeft: 'auto',
+    color: colors.textSecondary,
+    fontSize: font.xs,
+  },
+  moreRow: { paddingVertical: spacing.xs },
+  moreText: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold },
 });

@@ -16,7 +16,7 @@ import { haptics } from '../utils/haptics';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { EmptyState } from './EmptyState';
-import { suggestTemplateItems, type TemplateItemSuggestion } from '../services/aiSuggestions';
+import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { minutesToEffort } from '../utils/effort';
 
@@ -64,7 +64,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
     } catch (e) {
       setSuggestions([]);
       setAccepted(new Set());
-      setError(e instanceof Error ? e.message : 'Could not generate suggestions.');
+      setError(describeAIError(e));
     } finally {
       setLoading(false);
     }

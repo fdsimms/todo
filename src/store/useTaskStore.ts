@@ -33,9 +33,10 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
-import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
+import { isTimedTask, timerElapsed } from '../utils/timer';
 
 interface UndoableAction {
   label: string;
@@ -57,11 +58,125 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
 ];
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
   target[key] = source[key];
+}
+
+// The one place a Task's defaults are spelled out. Shared by addTask and the
+// dated-series builder below so a new field can't end up defaulted in one
+// path and undefined in the other.
+function newTaskFromDraft(draft: Partial<TaskDraft>, now: string, sortOrder: number): Task {
+  return {
+    id: generateId(),
+    title: draft.title ?? '',
+    notes: draft.notes ?? '',
+    completed: false,
+    completedAt: null,
+    createdAt: now,
+    seenAt: now,
+    dueDate: draft.dueDate ?? null,
+    deadline: draft.deadline ?? null,
+    deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
+    deadlineMonthDay: draft.deadlineMonthDay ?? null,
+    deferUntil: draft.deferUntil ?? null,
+    timeSegments: draft.timeSegments ?? [],
+    windowStart: draft.windowStart ?? null,
+    windowEnd: draft.windowEnd ?? null,
+    recurrenceType: draft.recurrenceType ?? 'none',
+    recurrenceInterval: draft.recurrenceInterval ?? 1,
+    recurrenceDays: draft.recurrenceDays ?? [],
+    recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
+    recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
+    recurrenceEndDate: draft.recurrenceEndDate ?? null,
+    recurrenceCount: draft.recurrenceCount ?? null,
+    recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
+    targetCount: draft.targetCount ?? null,
+    progressCount: draft.progressCount ?? 0,
+    tags: draft.tags ?? [],
+    category: draft.category ?? null,
+    sortOrder,
+    pinned: draft.pinned ?? false,
+    priority: draft.priority ?? 0,
+    effort: draft.effort ?? 0,
+    estimatedMinutes: draft.estimatedMinutes ?? null,
+    streakCount: 0,
+    streakDate: null,
+    previousStreakCount: 0,
+    previousStreakDate: null,
+    parentId: draft.parentId ?? null,
+    groupId: draft.groupId ?? null,
+    projectId: draft.projectId ?? null,
+    reminderTime: draft.reminderTime ?? null,
+    chainEnabled: draft.chainEnabled ?? false,
+    chainIndex: draft.chainIndex ?? 0,
+    chainItems: draft.chainItems ?? [],
+    vacationPause: draft.vacationPause ?? false,
+    timerStartedAt: draft.timerStartedAt ?? null,
+    actualMinutes: draft.actualMinutes ?? null,
+    timedMinutes: draft.timedMinutes ?? null,
+    timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
+    previousOccurrenceId: draft.previousOccurrenceId ?? null,
+    seriesId: draft.seriesId ?? null,
+    seriesMonthDays: draft.seriesMonthDays ?? [],
+    seriesRepeatMonths: draft.seriesRepeatMonths ?? 1,
+    seriesDefaults: null,
+    archived: false,
+    archivedAt: null,
+    linkUrl: draft.linkUrl ?? null,
+  };
+}
+
+// Identity of a date as the user picked it off a calendar — deliberately the
+// literal Y/M/D rather than getDayStart, since reconciling a series matches
+// rows against dates chosen in a date picker, where dayResetTime plays no part.
+function calendarDayKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+// Moves an absolute reminder instant onto `date`, keeping its time of day.
+// A set of dates shares an hour, not a moment — copying the source row's
+// reminderTime verbatim would fire every date's notification on the first one.
+function reanchorReminder(reminderTime: string | null, date: Date): string | null {
+  if (!reminderTime) return null;
+  const original = new Date(reminderTime);
+  const next = new Date(date);
+  next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+  return next.toISOString();
+}
+
+// One row of a dated series (Task.seriesId). Every field but the date comes
+// from the source row/draft; a relative deadline recomputes against this row's
+// own date the same way it does for a new recurrence occurrence, while a fixed
+// one is a single absolute target and carries over untouched.
+function buildSeriesRow(
+  source: Partial<TaskDraft>,
+  date: Date,
+  seriesId: string,
+  repeat?: { monthDays: number[]; repeatMonths: number },
+): Task {
+  const now = new Date().toISOString();
+  const base = newTaskFromDraft(source, now, 0);
+  return {
+    ...base,
+    dueDate: date.toISOString(),
+    // Each date stands on its own; a defer set on the row this was cloned
+    // from would otherwise hide every date behind that one day.
+    deferUntil: null,
+    pinned: false,
+    seriesId,
+    seriesMonthDays: repeat?.monthDays ?? [],
+    seriesRepeatMonths: repeat?.repeatMonths ?? 1,
+    deadline:
+      base.deadlineOffsetDays !== null
+        ? getDeadlineFromOffset(date, base.deadlineOffsetDays).toISOString()
+        : base.deadlineMonthDay !== null
+          ? getDeadlineFromMonthDay(date, base.deadlineMonthDay).toISOString()
+          : base.deadline,
+    reminderTime: reanchorReminder(base.reminderTime, date),
+  };
 }
 
 // A completed task keeps appearing wherever it would if it were still
@@ -148,7 +263,34 @@ interface TaskStore {
   // seriesDefaults, so the next occurrence (see completeTask) reverts to
   // them instead of carrying the one-off edit forward. Default ('series' /
   // omitted, "this and future tasks") is a plain patch, same as always.
+  // With scope 'series' on a task that belongs to a dated series (see
+  // Task.seriesId), content-field updates also fan out to the set's later
+  // still-incomplete dates — "this and future tasks" means the same thing for
+  // a series as it does for a recurrence, it just has real rows to write to.
   updateTask: (id: string, updates: Partial<Task>, options?: { scope?: 'occurrence' | 'series' }) => void;
+  // Creates one row per date, all sharing a new seriesId. `monthDays`
+  // non-empty makes the set repeat that many months later (see
+  // Task.seriesMonthDays); pass [] for a set that happens once.
+  addTaskSeries: (
+    draft: Partial<TaskDraft>,
+    dates: Date[],
+    repeat?: { monthDays: number[]; repeatMonths: number },
+  ) => Task[];
+  // The editor's one entry point for a task's set of dates, whatever it is
+  // now and whatever it's becoming: it creates a series around `taskId`,
+  // reconciles an existing one, or dissolves it back to a plain single-date
+  // task when the set drops to one. Reconciling adds rows for dates that
+  // gained one and drops the still-incomplete rows for dates that lost one;
+  // completed rows are never touched, since a date that already happened is
+  // history rather than schedule.
+  applyTaskDates: (
+    taskId: string,
+    dates: Date[],
+    repeat?: { monthDays: number[]; repeatMonths: number },
+  ) => void;
+  /** Deletes the series' incomplete rows, leaving its completed history in the Logbook. */
+  deleteSeries: (seriesId: string) => void;
+  seriesRowsOf: (seriesId: string) => Task[];
   markTaskSeen: (id: string) => void;
   markTasksSeen: (ids: string[]) => void;
   setLastAction: (action: UndoableAction | null) => void;
@@ -179,6 +321,10 @@ interface TaskStore {
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
+  // Timed tasks only: pause banks the running segment without logging it, so
+  // the countdown can be resumed later; reset throws the banked time away.
+  pauseTimer: (id: string) => void;
+  resetTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   reorderWithCategoryUpdates: (
@@ -284,63 +430,192 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addTask(draft) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const task: Task = {
-      id: generateId(),
-      title: draft.title ?? '',
-      notes: draft.notes ?? '',
-      completed: false,
-      completedAt: null,
-      createdAt: now,
-      seenAt: now,
-      dueDate: draft.dueDate ?? null,
-      deadline: draft.deadline ?? null,
-      deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
-      deadlineMonthDay: draft.deadlineMonthDay ?? null,
-      deferUntil: draft.deferUntil ?? null,
-      timeSegments: draft.timeSegments ?? [],
-      windowStart: draft.windowStart ?? null,
-      windowEnd: draft.windowEnd ?? null,
-      recurrenceType: draft.recurrenceType ?? 'none',
-      recurrenceInterval: draft.recurrenceInterval ?? 1,
-      recurrenceDays: draft.recurrenceDays ?? [],
-      recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
-      recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
-      recurrenceEndDate: draft.recurrenceEndDate ?? null,
-      recurrenceCount: draft.recurrenceCount ?? null,
-      recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
-      targetCount: draft.targetCount ?? null,
-      progressCount: draft.progressCount ?? 0,
-      tags: draft.tags ?? [],
-      category: draft.category ?? null,
-      sortOrder: maxOrder + 1,
-      pinned: draft.pinned ?? false,
-      priority: draft.priority ?? 0,
-      effort: draft.effort ?? 0,
-      estimatedMinutes: draft.estimatedMinutes ?? null,
-      streakCount: 0,
-      streakDate: null,
-      previousStreakCount: 0,
-      previousStreakDate: null,
-      parentId: draft.parentId ?? null,
-      groupId: draft.groupId ?? null,
-      projectId: draft.projectId ?? null,
-      reminderTime: draft.reminderTime ?? null,
-      chainEnabled: draft.chainEnabled ?? false,
-      chainIndex: draft.chainIndex ?? 0,
-      chainItems: draft.chainItems ?? [],
-      vacationPause: draft.vacationPause ?? false,
-      timerStartedAt: draft.timerStartedAt ?? null,
-      actualMinutes: draft.actualMinutes ?? null,
-      previousOccurrenceId: draft.previousOccurrenceId ?? null,
-      seriesDefaults: null,
-      archived: false,
-      archivedAt: null,
-      linkUrl: draft.linkUrl ?? null,
-    };
+    const task = newTaskFromDraft(draft, now, maxOrder + 1);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
     return task;
+  },
+
+  addTaskSeries(draft, dates, repeat) {
+    const sorted = [...dates].sort((a, b) => +a - +b);
+    if (sorted.length === 0) return [];
+
+    const seriesId = generateId();
+    const now = new Date().toISOString();
+    let order = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+
+    const rows = sorted.map(date => {
+      order += 1;
+      return {
+        ...buildSeriesRow(draft, date, seriesId, repeat),
+        createdAt: now,
+        seenAt: now,
+        sortOrder: order,
+      };
+    });
+
+    rows.forEach(row => {
+      dbInsertTask(row);
+      scheduleTaskReminder(row);
+    });
+    set(s => ({ tasks: [...s.tasks, ...rows] }));
+    return rows;
+  },
+
+  seriesRowsOf(seriesId) {
+    return get().tasks.filter(t => t.seriesId === seriesId && !t.parentId);
+  },
+
+  applyTaskDates(taskId, dates, repeat) {
+    const anchor = get().tasks.find(t => t.id === taskId);
+    if (!anchor) return;
+
+    const sorted = [...dates].sort((a, b) => +a - +b);
+    const monthDays = repeat?.monthDays ?? [];
+    const repeatMonths = repeat?.repeatMonths ?? 1;
+
+    // One date or none isn't a series. If this task was in one, the rest of
+    // the set goes away and the row becomes an ordinary dated task again —
+    // except for its completed dates, which are history and stay put, just
+    // unfiled from a series that no longer exists.
+    if (sorted.length <= 1) {
+      if (!anchor.seriesId) {
+        get().updateTask(taskId, { dueDate: sorted[0]?.toISOString() ?? anchor.dueDate });
+        return;
+      }
+      const others = get().seriesRowsOf(anchor.seriesId).filter(t => t.id !== taskId);
+      const dropped = others.filter(t => !t.completed);
+      const unfiled = others
+        .filter(t => t.completed)
+        .map(t => ({ ...t, seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1 }));
+
+      dropped.forEach(t => {
+        dbDeleteSubtasks(t.id);
+        dbDeleteTask(t.id);
+        cancelTaskReminder(t.id);
+      });
+      unfiled.forEach(dbUpdateTask);
+
+      const droppedIds = new Set(dropped.map(t => t.id));
+      const unfiledById = new Map(unfiled.map(t => [t.id, t]));
+      set(s => ({
+        tasks: s.tasks
+          .filter(t => !droppedIds.has(t.id) && !(t.parentId && droppedIds.has(t.parentId)))
+          .map(t => unfiledById.get(t.id) ?? t),
+      }));
+      get().updateTask(taskId, {
+        dueDate: sorted[0]?.toISOString() ?? anchor.dueDate,
+        seriesId: null,
+        seriesMonthDays: [],
+        seriesRepeatMonths: 1,
+      });
+      return;
+    }
+
+    // Two or more dates: the anchor takes the series id, whether it's already
+    // in a series or is a plain task being given extra dates for the first
+    // time. It keeps its own date whenever that date survived the edit — the
+    // row the user has open shouldn't silently become a different date, and
+    // moving it would also make the reconcile below read it as dropped and
+    // delete it. Only a row whose date was edited away gets repointed.
+    const seriesId = anchor.seriesId ?? generateId();
+    const anchorDay = anchor.dueDate ? calendarDayKey(new Date(anchor.dueDate)) : null;
+    const anchorKept = anchorDay !== null && sorted.some(d => calendarDayKey(d) === anchorDay);
+    get().updateTask(taskId, {
+      dueDate: anchorKept ? anchor.dueDate : sorted[0].toISOString(),
+      seriesId,
+      seriesMonthDays: monthDays,
+      seriesRepeatMonths: repeatMonths,
+    });
+
+    const rows = get().seriesRowsOf(seriesId);
+    if (rows.length === 0) return;
+
+    // New rows clone the row the user was actually editing, so a title or
+    // category changed in the same save reaches the dates added by it.
+    const template = rows.find(t => t.id === taskId) ?? rows.find(t => !t.completed) ?? rows[0];
+
+    // Completed rows hold their date permanently — they're a record of a day
+    // that happened, so they neither get rewritten nor count as a date the
+    // set still owes. Everything below reconciles the incomplete rows only.
+    const wanted = new Map(sorted.map(d => [calendarDayKey(d), d]));
+    const live = rows.filter(t => !t.completed);
+
+    const kept: Task[] = [];
+    const removed: Task[] = [];
+    for (const row of live) {
+      const key = row.dueDate ? calendarDayKey(new Date(row.dueDate)) : null;
+      if (key !== null && wanted.has(key)) {
+        wanted.delete(key);
+        kept.push(row);
+      } else {
+        removed.push(row);
+      }
+    }
+
+    let order = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+    const added = Array.from(wanted.values())
+      .sort((a, b) => +a - +b)
+      .map(date => {
+        order += 1;
+        return { ...buildSeriesRow(template, date, seriesId, repeat), sortOrder: order };
+      });
+
+    // The repeat rule lives on every row of the set (they share one schedule),
+    // so a change to it has to reach the rows that already existed too.
+    const rewritten = [...kept, ...rows.filter(t => t.completed)].map(t => ({
+      ...t,
+      seriesMonthDays: monthDays,
+      seriesRepeatMonths: repeatMonths,
+    }));
+
+    removed.forEach(t => {
+      dbDeleteSubtasks(t.id);
+      dbDeleteTask(t.id);
+      cancelTaskReminder(t.id);
+    });
+    added.forEach(t => {
+      dbInsertTask(t);
+      scheduleTaskReminder(t);
+    });
+    rewritten.forEach(dbUpdateTask);
+
+    const removedIds = new Set(removed.map(t => t.id));
+    const rewrittenById = new Map(rewritten.map(t => [t.id, t]));
+    set(s => ({
+      tasks: [
+        ...s.tasks
+          .filter(t => !removedIds.has(t.id) && !(t.parentId && removedIds.has(t.parentId)))
+          .map(t => rewrittenById.get(t.id) ?? t),
+        ...added,
+      ],
+    }));
+  },
+
+  deleteSeries(seriesId) {
+    const live = get().seriesRowsOf(seriesId).filter(t => !t.completed);
+    if (live.length === 0) return;
+    const subtasks = live.flatMap(t => get().subtasksOf(t.id));
+    const ids = new Set(live.map(t => t.id));
+
+    live.forEach(t => {
+      dbDeleteSubtasks(t.id);
+      dbDeleteTask(t.id);
+      cancelTaskReminder(t.id);
+    });
+    set(s => ({ tasks: s.tasks.filter(t => !ids.has(t.id) && !(t.parentId && ids.has(t.parentId))) }));
+
+    get().setLastAction({
+      label: live.length === 1 ? 'Task deleted' : `${live.length} dates deleted`,
+      undo: () => {
+        [...live, ...subtasks].forEach(t => {
+          dbInsertTask(t);
+          scheduleTaskReminder(t);
+        });
+        set(s => ({ tasks: [...s.tasks, ...live, ...subtasks] }));
+      },
+    });
   },
 
   duplicateTask(id) {
@@ -361,10 +636,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       timerStartedAt: null,
       actualMinutes: null,
+      // The duplicate keeps the duration but starts its countdown fresh.
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
+      seriesId: null,
+      seriesMonthDays: [],
+      seriesRepeatMonths: 1,
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      chainIndex: 0, // a duplicate starts a chain fresh, not mid-way through the original
     };
     const copy: Task = {
       ...original,
@@ -432,9 +713,53 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
       }
+      // Archiving out from under a running countdown would otherwise leave its
+      // alarm to fire for a task the user can no longer see.
+      if (updated.archived && updated.timerStartedAt !== null) cancelTimerAlarm(id);
       return updated;
     });
     set({ tasks });
+
+    // "This and future tasks" on a dated series has real rows to write to
+    // rather than a next occurrence that doesn't exist yet, so the same
+    // content fields are pushed onto the set's later still-incomplete dates.
+    // Only CONTENT_FIELDS: dueDate and the series' own fields are per-row or
+    // per-set and would flatten the whole schedule onto one day.
+    const edited = get().tasks.find(t => t.id === id);
+    if (scope === 'series' && edited?.seriesId) {
+      const fanOut: Partial<Task> = {};
+      for (const key of CONTENT_FIELDS) {
+        if (key in updates) captureField(fanOut, edited, key);
+      }
+      if (Object.keys(fanOut).length > 0) {
+        const from = edited.dueDate ? +new Date(edited.dueDate) : -Infinity;
+        const siblings = get().tasks.filter(
+          t => t.seriesId === edited.seriesId &&
+            t.id !== id &&
+            !t.completed &&
+            !t.archived &&
+            (t.dueDate ? +new Date(t.dueDate) > from : false)
+        );
+        if (siblings.length > 0) {
+          const patched = siblings.map(t => ({
+            ...t,
+            ...fanOut,
+            // reminderTime is absolute; every date keeps its own instant at
+            // the edited time of day rather than inheriting this row's.
+            ...('reminderTime' in fanOut
+              ? { reminderTime: reanchorReminder(fanOut.reminderTime ?? null, new Date(t.dueDate!)) }
+              : {}),
+          }));
+          patched.forEach(t => {
+            dbUpdateTask(t);
+            cancelTaskReminder(t.id);
+            scheduleTaskReminder(t);
+          });
+          const byId = new Map(patched.map(t => [t.id, t]));
+          set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+        }
+      }
+    }
   },
 
   markTaskSeen(id) {
@@ -475,6 +800,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
+    if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     get().setLastAction({
@@ -500,8 +826,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // tasks have no such next-occurrence math, so early completion is fine.
     if (isRecurrenceNotYetDue(task)) return;
 
-    // If a timer is still running, stop it first so the session's time is saved.
-    if (task.timerStartedAt !== null) {
+    // If a timer is still running — or a countdown was paused with time banked
+    // on it — stop it first so the session's time is saved.
+    if (task.timerStartedAt !== null || task.timerElapsedSeconds > 0) {
       get().stopTimer(id);
       task = get().tasks.find(t => t.id === id)!;
     }
@@ -561,6 +888,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     cancelTaskReminder(id);
 
     let nextTask: Task | null = null;
+    let nextSubtasks: Task[] = [];
     const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
     if (spawnsNext) {
       // The recurrence's schedule only decides the date at the point it
@@ -640,12 +968,68 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           recurrenceCount:
             advancesBySchedule && task.recurrenceCount !== null ? task.recurrenceCount - 1 : task.recurrenceCount,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
+          timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
           seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
+
+        // Subtasks belong to the series, not a single occurrence — carry them
+        // onto the fresh occurrence the same way duplicateTask does, reset to
+        // unchecked (a subtask always starts unchecked — see TemplateItem.subtasks).
+        // Chains spawn a new row on every step, so without this a chained
+        // task's subtasks would vanish after the first step.
+        nextSubtasks = get().subtasksOf(task.id).map(sub => ({
+          ...sub,
+          id: generateId(),
+          parentId: nextTask!.id,
+          completed: false,
+          completedAt: null,
+          createdAt: now.toISOString(),
+          seenAt: now.toISOString(),
+        }));
+        nextSubtasks.forEach(sub => {
+          dbInsertTask(sub);
+          scheduleTaskReminder(sub);
+        });
+      }
+    }
+
+    // A repeating dated series rolls over as a whole set, not row by row:
+    // the next month's dates appear only once every date in the current set
+    // is done, so ticking off the 10th doesn't conjure a third row while the
+    // 15th is still outstanding. Order-independent — whichever date you
+    // finish last is the one that triggers it. Series rows carry
+    // recurrenceType 'none', so this never runs alongside the spawn above.
+    const rolledOver: Task[] = [];
+    if (task.seriesId && task.seriesMonthDays.length > 0) {
+      const siblings = get().tasks.filter(
+        t => t.seriesId === task.seriesId && !t.parentId && t.id !== id
+      );
+      const setComplete = siblings.every(t => t.completed || t.archived);
+      if (setComplete) {
+        const dueDates = [...siblings, completed]
+          .filter(t => t.dueDate)
+          .map(t => new Date(t.dueDate!));
+        const nextDates = getNextSeriesDates(dueDates, task.seriesMonthDays, task.seriesRepeatMonths);
+        let order = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+        for (const date of nextDates) {
+          order += 1;
+          const row = {
+            ...buildSeriesRow(
+              { ...task, ...(task.seriesDefaults ?? {}) },
+              date,
+              task.seriesId,
+              { monthDays: task.seriesMonthDays, repeatMonths: task.seriesRepeatMonths },
+            ),
+            sortOrder: order,
+          };
+          dbInsertTask(row);
+          scheduleTaskReminder(row);
+          rolledOver.push(row);
+        }
       }
     }
 
@@ -653,6 +1037,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: [
         ...s.tasks.map(t => (t.id === id ? completed : t)),
         ...(nextTask ? [nextTask] : []),
+        ...nextSubtasks,
+        ...rolledOver,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
     }));
@@ -921,6 +1307,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
+    // Mirror completeTask's advancesBySchedule split: a mid-chain step never
+    // consults the recurrence schedule, so skipping one should only move the
+    // chain position — pushing dueDate/recurrenceCount here would burn a full
+    // cycle of the recurrence on a step that isn't scheduled at all.
+    const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
+    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+    if (chainAdvances && !atChainEnd) {
+      get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+      return;
+    }
     const { dayResetTime } = useSettingsStore.getState();
     const nextDue = getNextDueDate(task, dayResetTime);
     if (!nextDue) return;
@@ -931,10 +1327,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
-    const nextChainIndex =
-      task.chainEnabled && task.chainItems.length > 0
-        ? (task.chainIndex + 1) % task.chainItems.length
-        : task.chainIndex;
+    const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
       dueDate: nextDue.toISOString(),
       deferUntil: null,
@@ -988,24 +1381,52 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   startTimer(id) {
-    // Only one task times at a time — stop any other running timer first.
+    // Only one task times at a time — stop any other running timer first. A
+    // timed task gets paused rather than stopped, so its countdown progress is
+    // banked instead of being logged as a finished measurement.
     const running = get().tasks.find(t => t.timerStartedAt !== null && t.id !== id);
-    if (running) get().stopTimer(running.id);
+    if (running) {
+      if (isTimedTask(running)) get().pauseTimer(running.id);
+      else get().stopTimer(running.id);
+    }
     get().updateTask(id, { timerStartedAt: new Date().toISOString() });
+    const started = get().tasks.find(t => t.id === id);
+    if (started) scheduleTimerAlarm(started);
   },
 
   stopTimer(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.timerStartedAt === null) return;
-    const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
-    const minutes = elapsedMs / 60000;
-    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes, task.estimatedMinutes) });
+    // Finish and log: banked time from earlier segments counts too, so pausing
+    // a countdown and then completing the task still records the full session.
+    if (!task || (task.timerStartedAt === null && task.timerElapsedSeconds <= 0)) return;
+    const minutes = timerElapsed(task) / 60;
+    cancelTimerAlarm(id);
+    get().updateTask(id, {
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      ...applyMeasuredTime(minutes, task.estimatedMinutes),
+    });
   },
 
   discardTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
+    cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null });
+  },
+
+  pauseTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.timerStartedAt === null) return;
+    cancelTimerAlarm(id);
+    get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: timerElapsed(task) });
+  },
+
+  resetTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    cancelTimerAlarm(id);
+    get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
   },
 
   logManualTime(id, minutes) {
@@ -1101,7 +1522,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
+      timedMinutes: null,
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
+      seriesId: null,
+      seriesMonthDays: [],
+      seriesRepeatMonths: 1,
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
@@ -1216,7 +1642,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
+      timedMinutes: null,
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
+      seriesId: null,
+      seriesMonthDays: [],
+      seriesRepeatMonths: 1,
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
@@ -1558,6 +1989,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // see the same predicate in rescheduleAllReminders.
     deleted.forEach(t => {
       if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
+      if (idSet.has(t.id) && t.timerStartedAt !== null) cancelTimerAlarm(t.id);
     });
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),

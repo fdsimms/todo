@@ -322,6 +322,7 @@ export function TodayScreen() {
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const addCategory = useTaskStore(s => s.addCategory);
   const markTasksSeen = useTaskStore(s => s.markTasksSeen);
+  const markTaskSeen = useTaskStore(s => s.markTaskSeen);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
   const updateGroup = useTaskGroupStore(s => s.updateGroup);
@@ -611,6 +612,12 @@ export function TodayScreen() {
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+  // Only priority/effort filters narrow which tasks render — sort just
+  // reorders them — so only those should suppress a stack's "N/M" tally (see
+  // the filtered prop on TaskGroupHeader). Later Today and Inbox groups don't
+  // go through this filter at all (deferredTasks/inboxTasks are unfiltered),
+  // so this only applies to the main Today list's group rows below.
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down no longer refreshes anything — it opens quick add instead, which
@@ -1133,6 +1140,7 @@ export function TodayScreen() {
           <TaskGroupHeader
             group={item.group}
             allChildren={allChildren}
+            filtered={groupTallyFiltered}
             onToggleCollapse={() => {
               if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
               haptics.tap();
@@ -1396,13 +1404,16 @@ export function TodayScreen() {
     />
   );
 
-  const newTaskIds = useMemo(
-    () => visibleTasks.filter(isTaskNew).map(t => t.id),
-    [visibleTasks]
-  );
+  const newTasks = useMemo(() => visibleTasks.filter(isTaskNew), [visibleTasks]);
   const dismissNewTasksBanner = () => {
     animateLayout();
-    markTasksSeen(newTaskIds);
+    markTasksSeen(newTasks.map(t => t.id));
+  };
+  // Opening a new task from the banner counts as seeing it, the same as
+  // tapping its row in the list does (see TaskItem.handleContentPress).
+  const openNewTask = (task: Task) => {
+    markTaskSeen(task.id);
+    openEditor(task);
   };
 
   const today = format(new Date(), 'EEEE, MMMM d');
@@ -1528,8 +1539,8 @@ export function TodayScreen() {
           })}
         </ScrollView>
 
-        {viewMode === 'today' && newTaskIds.length > 0 && (
-          <NewTasksBanner count={newTaskIds.length} onDismiss={dismissNewTasksBanner} />
+        {viewMode === 'today' && newTasks.length > 0 && (
+          <NewTasksBanner tasks={newTasks} onSelectTask={openNewTask} onDismiss={dismissNewTasksBanner} />
         )}
 
         <SpotlightOverlay

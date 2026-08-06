@@ -28,10 +28,11 @@ export type DeloadBlocker =
   | 'quota'
   | 'chain'
   | 'streak'
+  | 'started'
   | 'high-priority';
 
 /** Blockers that leave the task movable but unchecked — the user can opt in. */
-const SOFT_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set(['streak', 'high-priority']);
+const SOFT_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set(['streak', 'started', 'high-priority']);
 
 export interface DeloadProposal {
   task: Task;
@@ -44,10 +45,11 @@ export interface DeloadProposal {
   /** "light day", "good for \"email\"" — from the snooze engine. */
   reason: string | null;
   /**
-   * How the move should be applied. Recurring tasks defer (dueDate untouched,
-   * so a fixed schedule doesn't rotate — see getNextDueDate's anchor); one-offs
-   * reschedule outright, since there's no grid to protect and a stale dueDate
-   * would read as overdue on arrival.
+   * How the move should be applied. Recurring tasks and series members defer
+   * (dueDate untouched) — a recurrence has a grid that getNextDueDate anchors
+   * to, and a series date was hand-picked, so neither should be overwritten by
+   * a bulk sweep. A plain one-off reschedules outright, since there's nothing
+   * to protect and a stale dueDate would read as overdue on arrival.
    */
   mode: 'defer' | 'reschedule';
   /** Checked by default in the sheet. */
@@ -65,8 +67,22 @@ export interface DeloadPlan {
   projectedMinutes: number;
 }
 
+// Matches sumEstimatedMinutes, so the sheet's "5.5h → 3.0h" reconciles with the
+// Today header's "5.5h planned today". (Note a timed task's timedMinutes isn't
+// part of that sum on either side — a pre-existing gap in the workload readout,
+// not one to close from in here.)
 function taskMinutes(t: Task): number {
   return t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 0;
+}
+
+/**
+ * Does this task's dueDate carry meaning beyond "the day it shows up"? A
+ * recurrence anchors its whole future grid to it (getNextDueDate), and a
+ * series member's date was hand-picked out of a set. Both move by deferring so
+ * the stored date survives; everything else can just be rescheduled.
+ */
+function isAnchored(task: Task): boolean {
+  return task.recurrenceType !== 'none' || task.seriesId !== null;
 }
 
 /**
@@ -89,6 +105,13 @@ function findBlocker(task: Task): { blocker: DeloadBlocker; label: string } | nu
   // Soft from here down — movable, but never checked for you.
   if (task.streakCount > 1) {
     return { blocker: 'streak', label: `${task.streakCount}-day streak` };
+  }
+  // Banked countdown time means this occurrence was already worked on today.
+  // The banked seconds travel with the row, so moving it loses nothing — but
+  // it shouldn't be swept along by default either. (timerElapsedSeconds resets
+  // to 0 on each new occurrence, so this only ever means "started *today*".)
+  if (task.timerElapsedSeconds > 0) {
+    return { blocker: 'started', label: 'Already started' };
   }
   if (task.priority === 3) return { blocker: 'high-priority', label: 'High priority' };
   return null;
@@ -143,7 +166,7 @@ export function buildDeloadPlan(
         date: null,
         dayLabel: null,
         reason: null,
-        mode: task.recurrenceType !== 'none' ? 'defer' : 'reschedule',
+        mode: isAnchored(task) ? 'defer' : 'reschedule',
         selected: false,
         blocker: found!.blocker,
         blockerLabel: found!.label,
@@ -151,7 +174,7 @@ export function buildDeloadPlan(
     }
 
     const suggestion = computeSnoozeSuggestion(task, working);
-    const mode: 'defer' | 'reschedule' = task.recurrenceType !== 'none' ? 'defer' : 'reschedule';
+    const mode: 'defer' | 'reschedule' = isAnchored(task) ? 'defer' : 'reschedule';
 
     if (missesDeadline(task, suggestion.date, resetTime)) {
       return {

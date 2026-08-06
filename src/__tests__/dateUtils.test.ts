@@ -13,6 +13,8 @@ import {
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
+  seriesMonthDaysFrom,
+  getNextSeriesDates,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -68,8 +70,13 @@ const baseTask: Task = {
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
@@ -892,5 +899,77 @@ describe('getDeadlineFromMonthDay', () => {
     const result = getDeadlineFromMonthDay(new Date(2026, 1, 1), 31); // February
     expect(result.getMonth()).toBe(1);
     expect(result.getDate()).toBe(28);
+  });
+});
+
+// ─── dated series ────────────────────────────────────────────────────────────
+
+describe('seriesMonthDaysFrom', () => {
+  it('reads the day-of-month anchors off a picked set', () => {
+    expect(seriesMonthDaysFrom([new Date(2025, 8, 15), new Date(2025, 8, 10)])).toEqual([10, 15]);
+  });
+
+  it('dedupes the same day picked in two different months', () => {
+    expect(seriesMonthDaysFrom([new Date(2025, 8, 10), new Date(2025, 9, 10)])).toEqual([10]);
+  });
+});
+
+describe('getNextSeriesDates', () => {
+  const set = (...days: number[]) => days.map(d => new Date(2025, 8, d, 12, 0, 0));
+
+  it('moves the whole set into the next month', () => {
+    const next = getNextSeriesDates(set(10, 15), [10, 15], 1);
+    expect(next.map(d => [d.getMonth(), d.getDate()])).toEqual([[9, 10], [9, 15]]);
+  });
+
+  it('honours a multi-month interval', () => {
+    const next = getNextSeriesDates(set(10, 15), [10, 15], 3);
+    expect(next.map(d => d.getMonth())).toEqual([11, 11]);
+  });
+
+  it('anchors off the set\'s last date, not its first', () => {
+    // A set spanning two months rolls forward from the later one.
+    const spanning = [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 9, 15, 12, 0, 0)];
+    const next = getNextSeriesDates(spanning, [10, 15], 1);
+    expect(next.map(d => d.getMonth())).toEqual([10, 10]); // November
+  });
+
+  it('clamps a day the target month does not have', () => {
+    const jan = [new Date(2026, 0, 31, 12, 0, 0)];
+    const next = getNextSeriesDates(jan, [31], 1);
+    expect(next[0].getMonth()).toBe(1);
+    expect(next[0].getDate()).toBe(28);
+  });
+
+  it('recovers the real anchor after a clamped month instead of staying clamped', () => {
+    // February clamped the 31st to the 28th; March gets the 31st back
+    // because the anchor is stored, not re-derived from the clamped date.
+    const feb = [new Date(2026, 1, 28, 12, 0, 0)];
+    const next = getNextSeriesDates(feb, [31], 1);
+    expect(next[0].getMonth()).toBe(2);
+    expect(next[0].getDate()).toBe(31);
+  });
+
+  it('collapses two anchors that clamp onto the same short-month day', () => {
+    const jan = [new Date(2026, 0, 30, 12, 0, 0), new Date(2026, 0, 31, 12, 0, 0)];
+    const next = getNextSeriesDates(jan, [30, 31], 1);
+    expect(next).toHaveLength(1);
+    expect(next[0].getDate()).toBe(28);
+  });
+
+  it('supports -1 as the last day of the month', () => {
+    const next = getNextSeriesDates(set(30), [-1], 1);
+    expect(next[0].getMonth()).toBe(9);
+    expect(next[0].getDate()).toBe(31); // October
+  });
+
+  it('carries the time of day over from the finished set', () => {
+    const next = getNextSeriesDates([new Date(2025, 8, 10, 7, 45, 0)], [10], 1);
+    expect(next[0].getHours()).toBe(7);
+    expect(next[0].getMinutes()).toBe(45);
+  });
+
+  it('returns nothing when the set does not repeat', () => {
+    expect(getNextSeriesDates(set(10, 15), [], 1)).toEqual([]);
   });
 });

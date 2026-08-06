@@ -39,6 +39,10 @@ export function getRepeatedInstances(tasks: Task[], minCount = 2): InstanceGroup
     if (task.parentId) continue;
     if (!task.completed || !task.completedAt) continue;
     if (task.recurrenceType !== 'none') continue;
+    // A dated series already models "the same thing on several days" — its
+    // rows share a title by design, so counting them here would report a
+    // deliberate schedule as an ad-hoc repeat the user should formalise.
+    if (task.seriesId) continue;
 
     const key = normalizeTitle(task.title);
     if (!key) continue;
