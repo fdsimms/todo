@@ -1966,6 +1966,48 @@ describe('addNewGroupedTask', () => {
   });
 });
 
+describe('reorderGroupChildren', () => {
+  it('renumbers the children into the given order', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', sortOrder: 1 }),
+        makeTask({ id: 'b', groupId: 'g1', sortOrder: 2 }),
+        makeTask({ id: 'c', groupId: 'g1', sortOrder: 3 }),
+      ],
+    });
+    useTaskStore.getState().reorderGroupChildren('g1', ['c', 'a', 'b']);
+    expect(useTaskStore.getState().groupChildrenOf('g1').map(t => t.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('leaves members that were not on screen where they were', () => {
+    // Today renders only the members due today, so a drag there hands back a
+    // subset. Renumbering just that subset 1..n would drop the members nobody
+    // could see into slots they never asked for.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'visible-1', groupId: 'g1', sortOrder: 1 }),
+        makeTask({ id: 'hidden', groupId: 'g1', sortOrder: 2 }),
+        makeTask({ id: 'visible-2', groupId: 'g1', sortOrder: 3 }),
+      ],
+    });
+    useTaskStore.getState().reorderGroupChildren('g1', ['visible-2', 'visible-1']);
+    expect(useTaskStore.getState().groupChildrenOf('g1').map(t => t.id))
+      .toEqual(['visible-2', 'hidden', 'visible-1']);
+  });
+
+  it('does not disturb another stack', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', sortOrder: 1 }),
+        makeTask({ id: 'b', groupId: 'g1', sortOrder: 2 }),
+        makeTask({ id: 'other', groupId: 'g2', sortOrder: 9 }),
+      ],
+    });
+    useTaskStore.getState().reorderGroupChildren('g1', ['b', 'a']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'other')!.sortOrder).toBe(9);
+  });
+});
+
 describe('addExistingToGroup / removeFromGroup', () => {
   it('sets groupId on an existing task', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', groupId: null })] });

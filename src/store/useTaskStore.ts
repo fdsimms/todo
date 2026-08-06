@@ -32,6 +32,7 @@ import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
+import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
@@ -1692,8 +1693,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(taskId, { groupId: null });
   },
 
+  // `orderedIds` is whatever list the user actually dragged in, which is
+  // rarely the whole stack: Today shows only the members due today, and the
+  // editor shows the roster but not the completed occurrences behind it.
+  // Renumbering just those 1..n would drop every unseen row into a slot it
+  // never asked for, so the new order is folded back into the full child list
+  // (see reorderSubset) and the renumber runs across all of it.
   reorderGroupChildren(groupId, orderedIds) {
-    const updates = orderedIds.map((id, index) => ({ id, sortOrder: index + 1 }));
+    const children = get().groupChildrenOf(groupId);
+    const fullOrder = reorderSubset(children.map(c => c.id), orderedIds);
+    const updates = fullOrder.map((id, index) => ({ id, sortOrder: index + 1 }));
     dbBatchUpdateSortOrders(updates);
     const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
     set(s => ({ tasks: patchTasksById(s.tasks, byId) }));

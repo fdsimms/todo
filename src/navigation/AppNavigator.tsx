@@ -9,6 +9,7 @@ import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
+import { StacksScreen } from '../screens/StacksScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
@@ -33,7 +34,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Tags', 'Categories', 'Templates', 'Logbook', 'Stats', 'Archived']);
+const DRAWER_TABS = new Set(['Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Archived']);
 
 function MorePlaceholder() {
   return null;
@@ -114,6 +115,7 @@ const MainTabs = React.memo(function MainTabs({
       {/* Drawer-only screens — not visible in the tab bar */}
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
+      <Tab.Screen name="Stacks" component={StacksScreen} options={HIDDEN} />
       <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />

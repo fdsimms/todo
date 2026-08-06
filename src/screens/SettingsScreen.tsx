@@ -72,6 +72,7 @@ export function SettingsScreen() {
     vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
+    resetToDefaults,
   } = useSettingsStore();
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
@@ -127,6 +128,17 @@ export function SettingsScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetAllStreaks() },
+      ]
+    );
+  };
+
+  const confirmResetToDefaults = () => {
+    Alert.alert(
+      'Reset Settings to Defaults',
+      'This resets appearance, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
       ]
     );
   };
@@ -516,6 +528,29 @@ export function SettingsScreen() {
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Reset */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Reset</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={confirmResetToDefaults}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Reset settings to defaults"
+              >
+                <Ionicons name="refresh-circle-outline" size={18} color={colors.red} />
+                <View style={styles.rowContent}>
+                  <Text style={[styles.rowLabel, { color: colors.red }]}>Reset to defaults</Text>
+                  <Text style={styles.rowHint}>Restores appearance and day/time settings on this screen</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Asks for confirmation first. Your tasks, API key, and vacation mode are not affected.
+            </Text>
           </View>
         </ScrollView>
         </KeyboardAvoidingView>

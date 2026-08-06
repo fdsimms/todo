@@ -794,6 +794,13 @@ export function TodayScreen() {
       if (list) list.push(t);
       else map.set(t.groupId, [t]);
     }
+    // Sorted, not left in store order: `tasks` is only sort_order-ordered as it
+    // comes out of SQLite at startup, and every mutation after that patches
+    // rows in place without moving them. Reordering a stack's children writes
+    // sortOrder and nothing else, so without this the drag committed and the
+    // list carried on showing the order it had before — a drag that looked
+    // like it did nothing at all. (groupChildrenOf sorts for the same reason.)
+    for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
     return map;
   }, [allTasks]);
 
@@ -1133,7 +1140,9 @@ export function TodayScreen() {
   const draggingCategoryRef = useRef<string | null>(null);
   const startCategoryDrag = (label: string, drag: () => void) => {
     draggingCategoryRef.current = label;
-    haptics.tap();
+    // No lift haptic here — drag() fires it (ReorderableList.startDrag), so it
+    // can't sound off for a long-press the list declines to take.
+    //
     // No animateLayout() here, on purpose — same rule layoutAnimation.ts
     // states for the drop-settle commit applies just as much to drag start.
     // The dragged header's own calibration (ReorderableList.calibrateOverlayBase)
@@ -1153,6 +1162,11 @@ export function TodayScreen() {
   // duration of the drag (rendered check further down) without touching the
   // rest of the category. Cleared in the outer ReorderableList's onDragEnd.
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
+  // A stack's children are reordered by a nested SortableList, whose responder
+  // sits *inside* this screen's list rather than around it — so the list has to
+  // be told to stop scrolling for the drag to survive the first finger move
+  // (see SortableList's onDragStateChange).
+  const [draggingStackChild, setDraggingStackChild] = useState(false);
   // The group whose long-press is currently calling drag(), handed to
   // onDragBegin so the state above is only ever set once the list has
   // actually taken the drag.
@@ -1168,7 +1182,6 @@ export function TodayScreen() {
   const pendingGroupDragRef = useRef<string | null>(null);
   const startGroupDrag = (groupId: string, drag: () => void) => {
     draggingCategoryRef.current = null;
-    haptics.tap();
     pendingGroupDragRef.current = groupId;
     drag();
     pendingGroupDragRef.current = null;
@@ -1398,6 +1411,7 @@ export function TodayScreen() {
                 data={item.children}
                 onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
                 onDragOut={task => removeFromGroup(task.id)}
+                onDragStateChange={setDraggingStackChild}
                 renderItem={(child, _displayIndex, childDrag, childIsActive) => (
                   <React.Fragment key={child.id}>
                     {renderTaskRow(child, {
@@ -1885,7 +1899,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length > 0 && (
           <FlatList
-            scrollEnabled={!painting && !fabDragging}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChild}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
@@ -1907,7 +1921,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length === 0 && (
           <ReorderableList
-            scrollEnabled={!painting && !fabDragging}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChild}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
