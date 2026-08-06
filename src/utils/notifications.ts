@@ -23,6 +23,28 @@ export async function requestNotificationPermissions(): Promise<boolean> {
   return result.granted;
 }
 
+/**
+ * `undetermined` means the OS prompt hasn't been shown yet, so asking still
+ * works; `denied` means it has, and on iOS asking again is a no-op — the only
+ * way back is the system Settings app.
+ */
+export type NotificationPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
+
+/**
+ * The live permission state, for showing the user why their reminders aren't
+ * arriving. `requestNotificationPermissions` returns a bare boolean that
+ * nothing surfaced, so a declined prompt just looked like the app was broken.
+ */
+export async function getNotificationPermission(): Promise<NotificationPermission> {
+  if (Platform.OS === 'web') return 'unsupported';
+  const existing = (await Notifications.getPermissionsAsync()) as unknown as PermissionResponse;
+  if (existing.granted) return 'granted';
+  // `canAskAgain` is the honest signal for "the prompt is still available":
+  // iOS reports `undetermined` only before the first ask, and some platforms
+  // report a provisional status that is neither granted nor a hard denial.
+  return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
+}
+
 export async function scheduleTaskReminder(task: Task): Promise<void> {
   if (!task.reminderTime || task.completed || task.archived) return;
   const triggerDate = new Date(task.reminderTime);
@@ -49,16 +71,49 @@ export async function cancelTaskReminder(taskId: string): Promise<void> {
 }
 
 // iOS caps pending local notification requests at 64.
-const MAX_PENDING_REMINDERS = 64;
+export const MAX_PENDING_REMINDERS = 64;
+
+/**
+ * Every reminder still ahead of `now`, soonest first — uncapped.
+ *
+ * Split out from rescheduleAllReminders so Settings can count what the user
+ * asked for against what iOS will actually hold, without re-deriving the rule
+ * and drifting from it.
+ */
+export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[] {
+  return tasks
+    .filter(t => t.reminderTime && !t.completed && !t.archived && new Date(t.reminderTime) > now)
+    .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime());
+}
+
+export interface PendingReminderStats {
+  /** Upcoming reminders the user has actually asked for. */
+  wanted: number;
+  /** How many of those iOS will hold — the rest are silently never scheduled. */
+  scheduled: number;
+  /** wanted − scheduled: reminders that will not fire, and used to say so. */
+  dropped: number;
+}
+
+/**
+ * What the reminder queue looks like against the OS cap.
+ *
+ * The scheduler drops the furthest-out reminders when there are more than the
+ * cap, which is the right call — nearer ones matter sooner — but it happens
+ * silently, so a user with 80 future reminders has 16 that will never fire and
+ * nothing anywhere tells them.
+ */
+export function pendingReminderStats(tasks: Task[], now: Date = new Date()): PendingReminderStats {
+  const wanted = upcomingReminders(tasks, now).length;
+  const scheduled = Math.min(wanted, MAX_PENDING_REMINDERS);
+  return { wanted, scheduled, dropped: wanted - scheduled };
+}
 
 export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
   const now = new Date();
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 
-  const upcoming = tasks
-    .filter(t => t.reminderTime && !t.completed && !t.archived && new Date(t.reminderTime) > now)
-    .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime())
-    .slice(0, MAX_PENDING_REMINDERS);
+  const upcoming = upcomingReminders(tasks, now).slice(0, MAX_PENDING_REMINDERS);
 
   for (const task of upcoming) {
     await scheduleTaskReminder(task);
