@@ -202,6 +202,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 - `ScreenHeader` (`src/components/ScreenHeader.tsx`) — every screen's large-title header: title, optional subtitle/overline, 34pt icon actions with badges/active tint/loading, or custom `right` content.
 - `PressableScale` (`src/components/PressableScale.tsx`) — standard press feedback (spring scale + opacity dip) for buttons, chips, FABs, icon buttons. Full-width list rows keep `TouchableOpacity` with `interaction.activeOpacity` — scaling a full row looks wrong.
+- `InlineAction` (`src/components/InlineAction.tsx`) — the small tinted pill that adds a thing to the
+  list or grid it sits under: "New task", "Add subtask", "Add tag", "New" in a category picker. It
+  replaced the bare accent-coloured text these all used to be, which had drifted into three
+  treatments for the same action (bare, dashed-bordered, filled) across five duplicate style
+  objects. Accent text was also doing three unrelated jobs at once — *this is a link* / *this is a
+  button* / *this is the selected value* — so a card holding two of them read as a stack of links
+  floating under the content. **Bare accent text is now only for sheet header buttons (Cancel /
+  Save / Done) and the current-value summaries in `EditorRow` / `CollapsibleField`**; an action gets
+  a shape. Use `variant="neutral"` for the quieter half of a pair ("Add existing" beside "New
+  task"), and — this is the non-obvious one — for an add button sitting at the end of a row of
+  *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'` and `tagPalette[0]` is
+  the accent blue, so an accent pill there reads as one more tag rather than as a control.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.

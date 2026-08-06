@@ -16,6 +16,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -205,10 +206,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 autoCapitalize="words"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>New</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -313,13 +311,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
   },
-  addTagBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1,
-    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
-  },
-  addTagText: { color: colors.accent, fontSize: font.sm },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,

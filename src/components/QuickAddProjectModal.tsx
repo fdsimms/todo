@@ -14,6 +14,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { CalendarPicker } from './CalendarPicker';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -334,16 +335,7 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
                     autoCapitalize="words"
                   />
                 ) : (
-                  <TouchableOpacity
-                    style={styles.addCategoryBtn}
-                    onPress={() => setAddingCategory(true)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel="New category"
-                  >
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addCategoryText}>New</Text>
-                  </TouchableOpacity>
+                  <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
                 )}
               </View>
             </View>
@@ -480,21 +472,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 4,
     minWidth: 80,
-  },
-  addCategoryBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: colors.bgQuaternary,
-    borderStyle: 'dashed',
-  },
-  addCategoryText: {
-    color: colors.accent,
-    fontSize: font.sm,
   },
   moreBtn: {
     flexDirection: 'row',

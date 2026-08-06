@@ -27,6 +27,7 @@ import { generateId } from '../utils/id';
 import { SortableList } from './SortableList';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 
@@ -644,10 +645,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   />
                 </View>
               ) : (
-                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingChainItem(true)}>
-                  <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addTagText}>Add item</Text>
-                </TouchableOpacity>
+                <InlineAction
+                  icon="add"
+                  label="Add item"
+                  onPress={() => setAddingChainItem(true)}
+                  style={styles.addBtnSpacing}
+                />
               )}
             </>
           )}
@@ -720,10 +723,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               />
             </View>
           ) : (
-            <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingSubtask(true)}>
-              <Ionicons name="add" size={14} color={colors.accent} />
-              <Text style={styles.addTagText}>Add subtask</Text>
-            </TouchableOpacity>
+            <InlineAction
+              icon="add"
+              label="Add subtask"
+              onPress={() => setAddingSubtask(true)}
+              style={styles.addBtnSpacing}
+            />
           )}
         </CollapsibleField>
       </View>
@@ -792,10 +797,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 autoCapitalize="none"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>Add tag</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
             )}
           </View>
           {allTags.filter(t => !tags.includes(t)).length > 0 && (
@@ -890,9 +892,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity onPress={() => { haptics.tap(); setEstimatedMinutes(30); }}>
-                <Text style={styles.addTagText}>Set a custom estimate</Text>
-              </TouchableOpacity>
+              <InlineAction
+                label="Set a custom estimate"
+                haptic
+                onPress={() => setEstimatedMinutes(30)}
+              />
             )}
           </View>
         </CollapsibleField>
@@ -1021,13 +1025,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
   },
-  addTagBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1,
-    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
-  },
-  addTagText: { color: colors.accent, fontSize: font.sm },
+  /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
+  addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
     paddingHorizontal: 8, paddingVertical: 3,

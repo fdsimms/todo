@@ -47,6 +47,7 @@ import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
 import { EditorRow } from './EditorRow';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
@@ -1558,13 +1559,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.addChainItemBtn}
+                <InlineAction
+                  icon="add"
+                  label="Add item"
                   onPress={() => setAddingChainItem(true)}
-                >
-                  <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addChainItemText}>Add item</Text>
-                </TouchableOpacity>
+                  style={styles.addBtnSpacing}
+                />
               )}
               {chainIndex < chainItems.length && chainItems.length > 1 && (
                 <Text style={styles.chainCurrentHint}>
@@ -1654,10 +1654,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 autoCapitalize="words"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>New</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -1746,10 +1743,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 autoCapitalize="none"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>Add tag</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
             )}
           </View>
           {allTags.filter(t => !tags.includes(t)).length > 0 && (
@@ -2053,13 +2047,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 />
               </View>
             ) : (
-              <TouchableOpacity
-                style={styles.addSubtaskBtn}
+              <InlineAction
+                icon="add"
+                label="Add subtask"
                 onPress={() => setAddingSubtask(true)}
-              >
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addSubtaskText}>Add subtask</Text>
-              </TouchableOpacity>
+                style={styles.addBtnSpacing}
+              />
             )}
           </CollapsibleField>
         </View>
@@ -2396,13 +2389,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
   },
-  addTagBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1,
-    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
-  },
-  addTagText: { color: colors.accent, fontSize: font.sm },
+  /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
+  addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
   tagSuggestions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.sm },
   tagSuggestion: {
     paddingHorizontal: 8, paddingVertical: 3,
@@ -2589,11 +2577,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 2,
   },
-  addSubtaskBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingVertical: spacing.sm,
-  },
-  addSubtaskText: { color: colors.accent, fontSize: font.sm },
   chainHeader: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginBottom: spacing.sm,
@@ -2642,11 +2625,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 2,
   },
-  addChainItemBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingVertical: spacing.sm,
-  },
-  addChainItemText: { color: colors.accent, fontSize: font.sm },
   chainCurrentHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,

@@ -24,6 +24,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
+import { InlineAction } from './InlineAction';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -283,10 +284,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 autoCapitalize="none"
               />
             ) : (
-              <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingTag(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addPillText}>Add tag</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -342,7 +340,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
             }}
           />
 
-          {addingChild ? (
+          {addingChild && (
             <View style={styles.subtaskInputRow}>
               <TextInput
                 autoFocus
@@ -367,17 +365,19 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 }}
               />
             </View>
-          ) : (
-            <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingChild(true)}>
-              <Ionicons name="add" size={14} color={colors.accent} />
-              <Text style={styles.addPillText}>Add new task</Text>
-            </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.addPillBtn} onPress={() => setShowExistingPicker(v => !v)}>
-            <Ionicons name={showExistingPicker ? 'chevron-up' : 'chevron-down'} size={14} color={colors.accent} />
-            <Text style={styles.addPillText}>Add existing task</Text>
-          </TouchableOpacity>
+          <View style={styles.actionPillRow}>
+            {!addingChild && (
+              <InlineAction icon="add" label="New task" onPress={() => setAddingChild(true)} />
+            )}
+            <InlineAction
+              icon={showExistingPicker ? 'chevron-up' : 'chevron-down'}
+              label="Add existing"
+              variant="neutral"
+              onPress={() => setShowExistingPicker(v => !v)}
+            />
+          </View>
 
           {showExistingPicker && (
             <View style={styles.existingPicker}>
@@ -458,11 +458,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm, paddingVertical: 8,
     backgroundColor: colors.bgTertiary, borderRadius: radius.full, minWidth: 100,
   },
-  addPillBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginTop: spacing.xs,
-  },
-  addPillText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
+  actionPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   subtaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   subtaskProgress: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
   childRow: {
