@@ -1,0 +1,4 @@
+{
+  "message": "AI suggestions now time out and show a clear message instead of hanging or failing silently, and no longer overwrite a tag or category you picked while one was loading",
+  "date": "2026-08-06"
+}

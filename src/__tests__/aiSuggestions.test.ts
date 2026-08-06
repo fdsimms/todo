@@ -8,6 +8,7 @@
 import {
   suggestTaskAttributes,
   suggestTemplateItems,
+  describeAIError,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
 
@@ -362,5 +363,88 @@ describe('suggestTemplateItems', () => {
     expect(content).toContain('Camping trip');
     expect(content).toContain('Pitch the tent');
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
+  });
+});
+
+// ============================================================================
+// Shared request behavior (temperature, timeout, truncation)
+// ============================================================================
+
+describe('shared Anthropic request handling', () => {
+  it('sends temperature: 0 so suggestions are deterministic', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('suggest', { tags: [], effort: 0, category: '' })),
+    } as Response);
+
+    await suggestTaskAttributes('task', '', [], []);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.temperature).toBe(0);
+  });
+
+  it('aborts the request after 15s and reports a timeout', async () => {
+    jest.useFakeTimers();
+    jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      return new Promise((_resolve, reject) => {
+        (init as RequestInit).signal?.addEventListener('abort', () => {
+          const err = new Error('Aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+
+    const promise = suggestTaskAttributes('task', '', [], []);
+    const assertion = expect(promise).rejects.toThrow('Request timed out');
+    await jest.advanceTimersByTimeAsync(15_000);
+    await assertion;
+  });
+
+  it('throws when the response was truncated at max_tokens', async () => {
+    mockFetchOnce({ stop_reason: 'max_tokens', content: [{ type: 'tool_use', input: { tags: [], effort: 0, category: '' } }] });
+
+    await expect(
+      suggestTaskAttributes('task', '', [], []),
+    ).rejects.toThrow('Response was truncated');
+  });
+});
+
+// ============================================================================
+// describeAIError
+// ============================================================================
+
+describe('describeAIError', () => {
+  it('points at Settings for a missing API key', () => {
+    expect(describeAIError(new Error('No API key'))).toContain('Settings');
+  });
+
+  it('points at Settings for an unauthorized response', () => {
+    expect(describeAIError(new Error('API error 401'))).toContain('API key');
+  });
+
+  it('mentions rate limiting for a 429', () => {
+    expect(describeAIError(new Error('API error 429'))).toContain('Rate limited');
+  });
+
+  it('mentions Anthropic having issues for a 5xx', () => {
+    expect(describeAIError(new Error('API error 503'))).toContain('Anthropic');
+  });
+
+  it('mentions timing out for an aborted request', () => {
+    expect(describeAIError(new Error('Request timed out'))).toContain('timed out');
+  });
+
+  it('mentions truncation for a max_tokens cutoff', () => {
+    expect(describeAIError(new Error('Response was truncated'))).toContain('cut off');
+  });
+
+  it('falls back to a network message for an unrecognized error', () => {
+    expect(describeAIError(new Error('Network request failed'))).toContain('connection');
+  });
+
+  it('falls back to a network message for a non-Error throw', () => {
+    expect(describeAIError('some string')).toContain('connection');
   });
 });

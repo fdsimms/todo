@@ -38,7 +38,7 @@ import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
 import { getLogicalToday, getLogicalTomorrow, getLogicalNow } from '../utils/dateUtils';
-import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
@@ -460,12 +460,22 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
     setAiLoading(true);
     try {
       const result = await suggestTaskAttributes(title.trim(), '', allTags, allCategories);
-      if (result.effort > 0 && effort === 0) { setEffort(result.effort); setEstimatedMinutes(EFFORT_MINUTES[result.effort]); }
+      if (result.effort > 0) {
+        setEffort(prev => {
+          if (prev !== 0) return prev;
+          setEstimatedMinutes(EFFORT_MINUTES[result.effort]);
+          return result.effort;
+        });
+      }
       if (result.tags.length > 0) setTags(prev => [...new Set([...prev, ...result.tags])]);
-      if (result.category && !category) setCategory(result.category);
-      else if (result.newCategory && !category) setPendingCategory(result.newCategory);
-    } catch {
-      // silent fail
+      setCategory(prev => {
+        if (prev) return prev;
+        if (result.category) return result.category;
+        if (result.newCategory) setPendingCategory(result.newCategory);
+        return prev;
+      });
+    } catch (e) {
+      Alert.alert('AI suggestion failed', describeAIError(e));
     } finally {
       setAiLoading(false);
     }
