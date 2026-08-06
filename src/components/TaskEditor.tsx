@@ -31,6 +31,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { TARGET_COUNT_OPTIONS } from '../utils/quickAddTypes';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -75,15 +76,13 @@ export interface TaskDraft {
   recurrenceCount: number | null;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
+  /** Steps already built in quick add, so "More details" doesn't drop them. */
+  chainItems?: ChainItem[];
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
   linkUrl?: string | null;
   targetCount?: number | null;
 }
-
-// Offered daily targets. Small enough to tap through, and stops short of the
-// point where a quota stops being a habit and starts being a tally.
-const TARGET_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
 
 interface Props {
   visible: boolean;
@@ -283,7 +282,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
-      setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems([]); setChainIndex(0);
+      setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
     }
@@ -337,7 +336,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timedMinutes: task ? (task.timedMinutes ?? null) : (initialDraft?.timedMinutes ?? null),
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
-      chainItems: task?.chainItems ?? [],
+      chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),

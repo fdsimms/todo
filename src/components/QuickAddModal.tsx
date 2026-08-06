@@ -25,8 +25,22 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import type { Priority, Effort, TimeOfDay, RecurrenceType, Task } from '../types';
+import type { Priority, Effort, TimeOfDay, RecurrenceType, Task, ChainItem } from '../types';
 import { PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
+import { generateId } from '../utils/id';
+import {
+  bakedFields,
+  blockedReason,
+  canSaveType,
+  isChipVisible,
+  typeSummary,
+  DEFAULT_TARGET_COUNT,
+  DEFAULT_TIMED_MINUTES,
+  TARGET_COUNT_OPTIONS,
+  TIMED_MINUTE_OPTIONS,
+  type QuickAddType,
+  type TypeValues,
+} from '../utils/quickAddTypes';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
@@ -67,9 +81,19 @@ interface Props {
   seed?: { category?: string | null; groupId?: string; pinned?: boolean };
   /** Names the seed on a removable chip, e.g. "Errands". No chip without one. */
   seedLabel?: string | null;
+  /** Which task type the sheet opens in — the add menu's Chain entry lands here. */
+  initialType?: QuickAddType;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | null;
+
+/** The type row's labels and icons. Order is fixed: plain first, then the modes. */
+const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { key: 'task', label: 'Task', icon: 'checkmark-circle-outline' },
+  { key: 'timed', label: 'Timed', icon: 'timer-outline' },
+  { key: 'target', label: 'Target', icon: 'speedometer-outline' },
+  { key: 'chain', label: 'Chain', icon: 'link-outline' },
+];
 
 /** Known app name for a link scheme, else the raw URL. */
 function linkLabel(url: string): string {
@@ -94,6 +118,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 
 export function QuickAddModal({
   visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, seed, seedLabel,
+  initialType = 'task',
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
@@ -162,7 +187,12 @@ export function QuickAddModal({
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [type, setType] = useState<QuickAddType>('task');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
+  const [customTimedText, setCustomTimedText] = useState('');
+  const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
@@ -213,11 +243,18 @@ export function QuickAddModal({
       setCategory(seedRef.current?.category ?? null);
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
-      setTimedMinutes(null);
+      setType(initialType);
+      setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
+      setCustomTimedText('');
+      setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
+      setChainItems([]);
+      setNewStepTitle('');
       setCustomLinkText('');
       setTagInput('');
       setActivePanel(null);
-      setRecurrenceType('none');
+      // A quota resets by spawning its next occurrence, so opening straight
+      // into Target has to arrive with the repeat already on.
+      setRecurrenceType(initialType === 'target' ? 'daily' : 'none');
       setRecurrenceInterval(1);
       setRecurrenceDays([]);
       setRecurrenceMonthDay(null);
@@ -248,7 +285,7 @@ export function QuickAddModal({
         inputRef.current?.focus();
       });
     }
-  }, [visible, context]);
+  }, [visible, context, initialType]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -267,9 +304,14 @@ export function QuickAddModal({
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule or link phrase always wins.
+  //
+  // Only offered from the plain type, because accepting it switches the sheet
+  // into Timed: it's how someone who has never picked a type discovers there
+  // is one. Someone already part-way through a Chain or a Target has said what
+  // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !linkParsed && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, linkParsed]
+    () => (!parsed && !linkParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, linkParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -349,13 +391,87 @@ export function QuickAddModal({
     setLinkUrl(linkParsed.url);
   };
 
-  // Apply the detected duration and strip the phrase from the title.
+  // Apply the detected duration and strip the phrase from the title. Typing
+  // "for 15 minutes" is someone describing a timed task in their own words, so
+  // accepting it switches the sheet into that mode rather than quietly setting
+  // a field they'd have no way to see.
   const applyDuration = () => {
     if (!durationParsed) return;
     haptics.success();
     animateLayout();
     setTitle(durationParsed.cleanTitle);
+    setType('timed');
     setTimedMinutes(durationParsed.minutes);
+    setCustomTimedText('');
+  };
+
+  const addStep = (stepTitle: string) => {
+    const t = stepTitle.trim();
+    if (!t) return;
+    haptics.tap();
+    animateLayout();
+    setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+    setNewStepTitle('');
+  };
+
+  const removeStep = (id: string) => {
+    haptics.tap();
+    animateLayout();
+    setChainItems(prev => prev.filter(s => s.id !== id));
+  };
+
+  // A step typed but not yet submitted still counts — the main add button is
+  // right there, and losing the last step to an un-hit return key is the
+  // failure this mode would be judged on.
+  const pendingStep = newStepTitle.trim();
+  const resolvedChainItems = useMemo(
+    // The id is regenerated on each keystroke and only ever committed by
+    // createTask, so churn here costs nothing.
+    () => (pendingStep ? [...chainItems, { id: generateId(), title: pendingStep, notes: '' }] : chainItems),
+    [chainItems, pendingStep],
+  );
+
+  const typeValues: TypeValues = {
+    timedMinutes,
+    targetCount,
+    chainItems: resolvedChainItems,
+    recurrenceType,
+    effort,
+    estimatedMinutes,
+  };
+  const summary = typeSummary(type, typeValues);
+  const blocked = blockedReason(type, typeValues);
+
+  /**
+   * Switching type seeds the new mode's defining value and drops the previous
+   * one's — a duration left over from Timed must not ride along invisibly into
+   * a plain task (bakedFields enforces the same rule at save time).
+   */
+  const selectType = (next: QuickAddType) => {
+    if (next === type) return;
+    haptics.tap();
+    animateLayout();
+    setType(next);
+    setActivePanel(null);
+    setTimedMinutes(next === 'timed' ? (timedMinutes ?? DEFAULT_TIMED_MINUTES) : null);
+    if (next !== 'timed') setCustomTimedText('');
+    setTargetCount(next === 'target' ? (targetCount ?? DEFAULT_TARGET_COUNT) : null);
+    if (next !== 'chain') {
+      setChainItems([]);
+      setNewStepTitle('');
+    }
+    // Target's repeat is baked in; leaving Target takes back only the repeat
+    // it set for you, never one that was already there.
+    if (next === 'target' && recurrenceType === 'none') setRecurrenceType('daily');
+    if (type === 'target' && next !== 'target' && recurrenceType === 'daily' && recurrenceInterval === 1) {
+      setRecurrenceType('none');
+    }
+  };
+
+  const applyCustomTimed = (text: string) => {
+    setCustomTimedText(text);
+    const n = parseInt(text, 10);
+    setTimedMinutes(Number.isFinite(n) && n > 0 ? n : null);
   };
 
   const commitCustomLink = () => {
@@ -367,18 +483,18 @@ export function QuickAddModal({
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
+    const baked = bakedFields(type, typeValues);
     const task = addTask({
       title: finalTitle,
       priority,
-      effort,
-      estimatedMinutes,
-      timedMinutes,
+      ...baked,
       dueDate: dueDate?.toISOString() ?? null,
       timeSegments,
       tags,
       category,
       linkUrl,
-      recurrenceType,
+      // recurrenceType deliberately absent — it comes from `baked` above,
+      // which is what turns a Target into a daily task.
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
@@ -397,7 +513,7 @@ export function QuickAddModal({
 
   const handleAdd = () => {
     const finalTitle = title.trim();
-    if (!finalTitle) return;
+    if (!finalTitle || !canSaveType(type, typeValues)) return;
 
     const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), finalTitle);
     if (archivedMatch) {
@@ -425,18 +541,16 @@ export function QuickAddModal({
   };
 
   const handleOpenFull = () => {
+    const baked = bakedFields(type, typeValues);
     onOpenFull({
       title: title.trim(),
       priority,
-      effort,
-      estimatedMinutes,
-      timedMinutes,
+      ...baked,
       dueDate,
       timeSegments,
       tags,
       category,
       linkUrl,
-      recurrenceType,
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
@@ -601,6 +715,37 @@ export function QuickAddModal({
             </View>
           ) : null}
 
+          {/* Task type. Sits above the field rather than behind a chip
+              because these modes were the app's least-discovered feature —
+              you can't choose a shape you've never been shown. Picking one
+              bakes its defining fields in and drops the chips it just
+              answered (see utils/quickAddTypes). */}
+          <View style={styles.typeRow}>
+            {TYPE_META.map(t => {
+              const active = type === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  style={[styles.typeChip, active && styles.typeChipActive]}
+                  onPress={() => selectType(t.key)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${t.label} task`}
+                >
+                  <Ionicons
+                    name={t.icon}
+                    size={13}
+                    color={active ? colors.accent : colors.textTertiary}
+                  />
+                  <Text style={[styles.typeChipText, active && styles.typeChipTextActive]}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
@@ -644,9 +789,11 @@ export function QuickAddModal({
               )}
             </View>
             <TouchableOpacity
-              style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
+              style={[styles.addBtn, (!title.trim() || blocked !== null) && styles.addBtnDisabled]}
               onPress={handleAdd}
-              disabled={!title.trim()}
+              disabled={!title.trim() || blocked !== null}
+              accessibilityRole="button"
+              accessibilityLabel="Add task"
             >
               <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
             </TouchableOpacity>
@@ -721,168 +868,313 @@ export function QuickAddModal({
             </Animated.View>
           )}
 
-          {/* Attribute toolbar */}
+          {/* What the chosen type decides for you, in one line. These modes
+              have no other explanation anywhere in the app. */}
+          {summary && (
+            <View style={styles.typeSummaryRow}>
+              <Text style={styles.typeSummary}>{summary}</Text>
+            </View>
+          )}
+
+          {/* The type's defining control — inline rather than behind a chip,
+              since it's the whole reason the mode was picked. */}
+          {type === 'timed' && (
+            <View style={styles.typeControl}>
+              <View style={styles.presetRow}>
+                {TIMED_MINUTE_OPTIONS.map(m => {
+                  const active = timedMinutes === m;
+                  return (
+                    <TouchableOpacity
+                      key={m}
+                      style={[styles.presetChip, active && styles.presetChipActive]}
+                      onPress={() => {
+                        haptics.tap();
+                        setTimedMinutes(m);
+                        setCustomTimedText('');
+                      }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${m} minutes`}
+                    >
+                      <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
+                        {formatDuration(m)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+                <TextInput
+                  style={styles.inlineCustomInput}
+                  value={customTimedText}
+                  onChangeText={applyCustomTimed}
+                  keyboardType="number-pad"
+                  placeholder="custom"
+                  placeholderTextColor={colors.textTertiary}
+                  accessibilityLabel="Custom duration in minutes"
+                />
+              </View>
+            </View>
+          )}
+
+          {type === 'target' && (
+            <View style={styles.typeControl}>
+              <View style={styles.presetRow}>
+                {TARGET_COUNT_OPTIONS.map(n => {
+                  const active = targetCount === n;
+                  return (
+                    <TouchableOpacity
+                      key={n}
+                      style={[styles.presetChip, active && styles.presetChipActive]}
+                      onPress={() => { haptics.tap(); setTargetCount(n); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`${n} times a day`}
+                    >
+                      <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
+                        {n}×
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          )}
+
+          {type === 'chain' && (
+            <View style={styles.typeControl}>
+              {chainItems.length > 0 && (
+                <ScrollView style={styles.stepList} keyboardShouldPersistTaps="handled">
+                  {chainItems.map((item, i) => (
+                    <View key={item.id} style={styles.stepRow}>
+                      <View style={styles.stepDot}>
+                        <Text style={styles.stepDotText}>{i + 1}</Text>
+                      </View>
+                      <Text style={styles.stepTitle} numberOfLines={1}>{item.title}</Text>
+                      <TouchableOpacity
+                        onPress={() => removeStep(item.id)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove step ${item.title}`}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+              <View style={styles.stepInputRow}>
+                <View style={styles.stepDot}>
+                  <Text style={styles.stepDotText}>{chainItems.length + 1}</Text>
+                </View>
+                <TextInput
+                  style={styles.stepInput}
+                  value={newStepTitle}
+                  onChangeText={setNewStepTitle}
+                  onSubmitEditing={() => addStep(newStepTitle)}
+                  placeholder={chainItems.length === 0 ? 'First step…' : 'Next step…'}
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  autoCorrect={false}
+                />
+                {pendingStep.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => addStep(newStepTitle)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add step ${pendingStep}`}
+                  >
+                    <Ionicons name="add-circle" size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                )}
+              </View>
+              {blocked && <Text style={styles.typeBlocked}>{blocked}</Text>}
+            </View>
+          )}
+
+          {/* Attribute toolbar. Every chip is gated on isChipVisible, so the
+              table in utils/quickAddTypes is the only place that decides what
+              a type takes off the toolbar — a chip left ungated here would
+              silently ignore being listed there. */}
           <View style={styles.toolbar}>
             {/* Due date chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
-              onPress={() => setWhenPickerVisible(true)}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={dueDate ? `Date: ${formatDate(dueDate)}` : 'Set date'}
-            >
-              <Ionicons
-                name="calendar-outline"
-                size={13}
-                color={dueDate ? colors.accent : colors.textTertiary}
-              />
-              {dueDate != null && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {formatDate(dueDate)}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'date') && (
+              <TouchableOpacity
+                style={[styles.toolChip, dueDate != null && styles.toolChipSet]}
+                onPress={() => setWhenPickerVisible(true)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={dueDate ? `Date: ${formatDate(dueDate)}` : 'Set date'}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={13}
+                  color={dueDate ? colors.accent : colors.textTertiary}
+                />
+                {dueDate != null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {formatDate(dueDate)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Repeat chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'repeat' && styles.toolChipActive, recurrenceType !== 'none' && styles.toolChipSet]}
-              onPress={() => togglePanel('repeat')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={recurrenceType !== 'none' ? `Repeat: ${RECURRENCE_LABELS[recurrenceType]}` : 'Set repeat'}
-            >
-              <Ionicons
-                name="repeat"
-                size={13}
-                color={recurrenceType !== 'none' ? colors.accent : colors.textTertiary}
-              />
-              {recurrenceType !== 'none' && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {RECURRENCE_LABELS[recurrenceType]}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'repeat') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'repeat' && styles.toolChipActive, recurrenceType !== 'none' && styles.toolChipSet]}
+                onPress={() => togglePanel('repeat')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={recurrenceType !== 'none' ? `Repeat: ${RECURRENCE_LABELS[recurrenceType]}` : 'Set repeat'}
+              >
+                <Ionicons
+                  name="repeat"
+                  size={13}
+                  color={recurrenceType !== 'none' ? colors.accent : colors.textTertiary}
+                />
+                {recurrenceType !== 'none' && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {RECURRENCE_LABELS[recurrenceType]}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Segment chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'segment' && styles.toolChipActive, timeSegments.length > 0 && styles.toolChipSet]}
-              onPress={() => togglePanel('segment')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={timeSegments.length > 0 ? `Segment: ${SEGMENTS.find(s => s.key === timeSegments[0])!.label}` : 'Set time segment'}
-            >
-              <Ionicons
-                name={timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline'}
-                size={13}
-                color={timeSegments.length > 0 ? {
-                  morning: colors.timeMorning,
-                  afternoon: colors.timeAfternoon,
-                  evening: colors.timeEvening,
-                  night: colors.timeNight,
-                }[timeSegments[0]] : colors.textTertiary}
-              />
-              {timeSegments.length > 0 && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {SEGMENTS.find(s => s.key === timeSegments[0])!.label}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'segment') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'segment' && styles.toolChipActive, timeSegments.length > 0 && styles.toolChipSet]}
+                onPress={() => togglePanel('segment')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={timeSegments.length > 0 ? `Segment: ${SEGMENTS.find(s => s.key === timeSegments[0])!.label}` : 'Set time segment'}
+              >
+                <Ionicons
+                  name={timeSegments.length > 0 ? SEGMENTS.find(s => s.key === timeSegments[0])!.icon : 'partly-sunny-outline'}
+                  size={13}
+                  color={timeSegments.length > 0 ? {
+                    morning: colors.timeMorning,
+                    afternoon: colors.timeAfternoon,
+                    evening: colors.timeEvening,
+                    night: colors.timeNight,
+                  }[timeSegments[0]] : colors.textTertiary}
+                />
+                {timeSegments.length > 0 && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {SEGMENTS.find(s => s.key === timeSegments[0])!.label}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Priority chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
-              onPress={() => togglePanel('priority')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={priority > 0 ? `Priority: ${PRIORITY_LABELS_SHORT[priority]}` : 'Set priority'}
-            >
-              <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
-              {priority > 0 && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {PRIORITY_LABELS_SHORT[priority]}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'priority') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
+                onPress={() => togglePanel('priority')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={priority > 0 ? `Priority: ${PRIORITY_LABELS_SHORT[priority]}` : 'Set priority'}
+              >
+                <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
+                {priority > 0 && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {PRIORITY_LABELS_SHORT[priority]}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Effort chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
-              onPress={() => togglePanel('effort')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={effort > 0 ? `Effort: ${estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}` : 'Set effort'}
-            >
-              <Ionicons
-                name="barbell"
-                size={13}
-                color={effort > 0 ? colors.accent : colors.textTertiary}
-              />
-              {effort > 0 && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'effort') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'effort' && styles.toolChipActive, effort > 0 && styles.toolChipSet]}
+                onPress={() => togglePanel('effort')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={effort > 0 ? `Effort: ${estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}` : 'Set effort'}
+              >
+                <Ionicons
+                  name="barbell"
+                  size={13}
+                  color={effort > 0 ? colors.accent : colors.textTertiary}
+                />
+                {effort > 0 && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {estimatedMinutes != null ? formatDuration(estimatedMinutes) : EFFORT_LABELS[effort]}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Tags chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
-              onPress={() => togglePanel('tags')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={tags.length > 0 ? `Tags: ${tags.join(', ')}` : 'Set tags'}
-            >
-              <Ionicons
-                name="pricetag-outline"
-                size={13}
-                color={tags.length > 0 ? colors.accent : colors.textTertiary}
-              />
-              {tags.length > 0 && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {tags.slice(0, 2).join(', ')}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'tags') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'tags' && styles.toolChipActive, tags.length > 0 && styles.toolChipSet]}
+                onPress={() => togglePanel('tags')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={tags.length > 0 ? `Tags: ${tags.join(', ')}` : 'Set tags'}
+              >
+                <Ionicons
+                  name="pricetag-outline"
+                  size={13}
+                  color={tags.length > 0 ? colors.accent : colors.textTertiary}
+                />
+                {tags.length > 0 && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {tags.slice(0, 2).join(', ')}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Category chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
-              onPress={() => togglePanel('category')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={category !== null ? `Category: ${categoryLabel(category, categories)}` : 'Set category'}
-            >
-              <Ionicons
-                name="folder-outline"
-                size={13}
-                color={category ? colors.accent : colors.textTertiary}
-              />
-              {category !== null && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {categoryLabel(category, categories)}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'category') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
+                onPress={() => togglePanel('category')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={category !== null ? `Category: ${categoryLabel(category, categories)}` : 'Set category'}
+              >
+                <Ionicons
+                  name="folder-outline"
+                  size={13}
+                  color={category ? colors.accent : colors.textTertiary}
+                />
+                {category !== null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                    {categoryLabel(category, categories)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* Link chip */}
-            <TouchableOpacity
-              style={[styles.toolChip, activePanel === 'link' && styles.toolChipActive, linkUrl !== null && styles.toolChipSet]}
-              onPress={() => togglePanel('link')}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={linkUrl !== null ? `Link: ${linkLabel(linkUrl)}` : 'Set link'}
-            >
-              <Ionicons
-                name="link-outline"
-                size={13}
-                color={linkUrl ? colors.accent : colors.textTertiary}
-              />
-              {linkUrl !== null && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
-                  {linkLabel(linkUrl)}
-                </Text>
-              )}
-            </TouchableOpacity>
+            {isChipVisible(type, 'link') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'link' && styles.toolChipActive, linkUrl !== null && styles.toolChipSet]}
+                onPress={() => togglePanel('link')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={linkUrl !== null ? `Link: ${linkLabel(linkUrl)}` : 'Set link'}
+              >
+                <Ionicons
+                  name="link-outline"
+                  size={13}
+                  color={linkUrl ? colors.accent : colors.textTertiary}
+                />
+                {linkUrl !== null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                    {linkLabel(linkUrl)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
 
             {/* AI Suggest chip */}
             {!!anthropicApiKey && !!title.trim() && (
@@ -1507,6 +1799,104 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     marginBottom: spacing.sm,
     flexWrap: 'wrap',
+  },
+  typeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  typeChip: {
+    flex: 1,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  typeChipActive: {
+    backgroundColor: colors.accentSubtle,
+  },
+  typeChipText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+  },
+  typeChipTextActive: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  typeSummaryRow: {
+    marginBottom: spacing.sm,
+  },
+  typeSummary: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: 16,
+  },
+  typeControl: {
+    marginBottom: spacing.sm,
+  },
+  typeBlocked: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
+  },
+  inlineCustomInput: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    // Matches presetChip's box so the custom field sits level with the pills.
+    // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
+    height: 32,
+    minWidth: 72,
+  },
+  // Room for roughly four steps before the list scrolls, so a long chain
+  // can't push the sheet past the screen.
+  stepList: {
+    maxHeight: 132,
+    marginBottom: spacing.xs,
+  },
+  stepRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 5,
+  },
+  stepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stepDotText: {
+    color: colors.textTertiary,
+    fontSize: 10,
+    fontWeight: fontWeight.semibold,
+  },
+  stepTitle: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+  },
+  stepInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  stepInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.bgQuaternary,
+    paddingVertical: 4,
   },
   toolChip: {
     flexDirection: 'row',
