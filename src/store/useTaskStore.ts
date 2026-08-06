@@ -359,6 +359,10 @@ interface TaskStore {
   addExistingToProject: (taskId: string, projectId: string) => void;
   removeFromProject: (taskId: string) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
+  // Archive/restore a project through here rather than through useProjectStore
+  // directly — these are the ones that register an undo entry.
+  archiveProject: (projectId: string) => void;
+  unarchiveProject: (projectId: string) => void;
 
   deleteTemplate: (id: string) => void;
 
@@ -1048,11 +1052,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
     // finishing a project never happens automatically otherwise; the user
-    // decides when a 100%-complete project actually gets archived.
+    // decides when a 100%-complete project actually gets archived. It rides on
+    // the completion's own undo instead of setting its own entry: it wasn't a
+    // separate action the user took, so undoing the tick has to take it back.
+    let autoArchivedProjectId: string | null = null;
     if (task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
       const progress = projectProgress(task.projectId, get().tasks);
-      if (progress.total > 0 && progress.done === progress.total) {
-        useProjectStore.getState().archiveProject(task.projectId);
+      const project = useProjectStore.getState().getProjectById(task.projectId);
+      if (progress.total > 0 && progress.done === progress.total && project && !project.archived) {
+        useProjectStore.getState().applyProjectArchived(task.projectId, true);
+        autoArchivedProjectId = task.projectId;
       }
     }
 
@@ -1089,7 +1098,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: 'Task completed',
-      undo: () => get().uncompleteTask(id),
+      undo: () => {
+        if (autoArchivedProjectId) {
+          useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
+        }
+        get().uncompleteTask(id);
+      },
     });
   },
 
@@ -1349,21 +1363,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   archiveTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.archived) return;
+    // Archiving unpins, so the undo has to put the pin back — otherwise
+    // undoing lands the task back on the list without the pin it had.
+    const pinned = task.pinned;
     get().updateTask(id, { archived: true, archivedAt: new Date().toISOString(), pinned: false });
     get().setLastAction({
       label: 'Task archived',
-      undo: () => get().updateTask(id, { archived: false, archivedAt: null }),
+      undo: () => get().updateTask(id, { archived: false, archivedAt: null, pinned }),
     });
   },
 
   unarchiveTask(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || !task.archived) return;
+    // Resuming is lossy — it breaks the streak and drops the archived-on
+    // stamp — so the undo restores those exact values rather than re-archiving
+    // from scratch, which would stamp today and leave the streak at 0.
+    const { archivedAt, streakCount, streakDate } = task;
     get().updateTask(id, {
       archived: false,
       archivedAt: null,
       streakCount: 0,
       streakDate: null,
+    });
+    get().setLastAction({
+      label: 'Task resumed',
+      undo: () => get().updateTask(id, { archived: true, archivedAt, streakCount, streakDate }),
     });
   },
 
@@ -1871,6 +1896,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   removeFromProject(taskId) {
     get().updateTask(taskId, { projectId: null });
+  },
+
+  // Archiving a project lives here rather than in useProjectStore for the same
+  // reason deleting one does: the undo queue is a task-store concern, and every
+  // undoable action registers its entry through setLastAction.
+  archiveProject(projectId) {
+    const project = useProjectStore.getState().getProjectById(projectId);
+    if (!project || project.archived) return;
+    useProjectStore.getState().applyProjectArchived(projectId, true);
+    get().setLastAction({
+      label: 'Project archived',
+      undo: () => useProjectStore.getState().applyProjectArchived(projectId, false),
+    });
+  },
+
+  unarchiveProject(projectId) {
+    const project = useProjectStore.getState().getProjectById(projectId);
+    if (!project || !project.archived) return;
+    const archivedAt = project.archivedAt;
+    useProjectStore.getState().applyProjectArchived(projectId, false);
+    get().setLastAction({
+      label: 'Project restored',
+      undo: () => useProjectStore.getState().applyProjectArchived(projectId, true, archivedAt),
+    });
   },
 
   deleteProject(projectId, opts) {

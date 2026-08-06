@@ -1571,6 +1571,13 @@ describe('archiveTask', () => {
     useTaskStore.getState().archiveTask('t1');
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
+
+  it('restores the pin on undo', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })], lastAction: null });
+    useTaskStore.getState().archiveTask('t1');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+  });
 });
 
 describe('unarchiveTask', () => {
@@ -1590,6 +1597,26 @@ describe('unarchiveTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false, streakCount: 5 })] });
     useTaskStore.getState().unarchiveTask('t1');
     expect(useTaskStore.getState().tasks[0].streakCount).toBe(5);
+  });
+
+  it('is undoable, restoring the archived stamp and the broken streak', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z', streakCount: 30, streakDate: '2024-12-31T00:00:00.000Z' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().unarchiveTask('t1');
+    useTaskStore.getState().undoLastAction();
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.archived).toBe(true);
+    expect(task.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+    expect(task.streakCount).toBe(30);
+    expect(task.streakDate).toBe('2024-12-31T00:00:00.000Z');
+  });
+
+  it('leaves no undo entry when the task is not archived', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false })], lastAction: null });
+    useTaskStore.getState().unarchiveTask('t1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
 
@@ -3300,6 +3327,50 @@ describe('addExistingToProject / removeFromProject', () => {
   });
 });
 
+// ─── archiveProject / unarchiveProject ──────────────────────────────────────
+
+describe('archiveProject', () => {
+  it('archives the project and is undoable', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().archiveProject('p1');
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.archived).toBe(false);
+    expect(project.archivedAt).toBeNull();
+  });
+
+  it('leaves no undo entry for an already-archived project', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().archiveProject('p1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+describe('unarchiveProject', () => {
+  it('restores the project and undoes back to the original archivedAt', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().unarchiveProject('p1');
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.archived).toBe(true);
+    expect(project.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('leaves no undo entry for a project that is not archived', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().unarchiveProject('p1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 // ─── completeTask: project auto-archive ────────────────────────────────────────
 
 describe('completeTask auto-archiving a finished project', () => {
@@ -3336,6 +3407,27 @@ describe('completeTask auto-archiving a finished project', () => {
     useProjectStore.setState({ projects: [] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
     expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
+  });
+
+  it('unarchives the project again when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(false);
+  });
+
+  it('leaves a project the user had already archived alone when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
   });
 });
 
