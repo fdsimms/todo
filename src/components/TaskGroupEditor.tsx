@@ -15,7 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatTaskDate } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -41,9 +41,7 @@ type FieldKey = 'category' | 'tags';
 function memberSchedule(task: Task): string {
   if (task.completed) return 'Done today';
   if (isTaskVisible(task)) return 'Due today';
-  if (task.dueDate) return formatDueDate(task.dueDate);
-  if (task.deferUntil) return formatDueDate(task.deferUntil);
-  return '';
+  return formatTaskDate(task) ?? '';
 }
 
 interface Props {

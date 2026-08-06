@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -17,6 +17,10 @@ interface Props {
   onClose: () => void;
   hideCategories: boolean;
   onHideCategoriesChange: (v: boolean) => void;
+  /** Opens the "lighten today" sheet. Omitted when there's nothing on the day to move. */
+  onLightenDay?: () => void;
+  /** Summary of the day's planned time, shown as the action's hint. */
+  plannedLabel?: string;
 }
 
 /**
@@ -24,7 +28,14 @@ interface Props {
  * from the Sort & Filter sheet since it holds display options rather than
  * filters.
  */
-export function TodayOptionsMenu({ visible, onClose, hideCategories, onHideCategoriesChange }: Props) {
+export function TodayOptionsMenu({
+  visible,
+  onClose,
+  hideCategories,
+  onHideCategoriesChange,
+  onLightenDay,
+  plannedLabel,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -59,6 +70,32 @@ export function TodayOptionsMenu({ visible, onClose, hideCategories, onHideCateg
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.optionsCard}>
+          {onLightenDay && (
+            <>
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  haptics.tap();
+                  onLightenDay();
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Lighten today"
+              >
+                <Ionicons name="leaf-outline" size={18} color={colors.accent} />
+                <View style={styles.optionContent}>
+                  <Text style={[styles.optionLabel, styles.optionLabelActive]}>Lighten today</Text>
+                  <Text style={styles.optionHint}>
+                    {plannedLabel
+                      ? `${plannedLabel} planned — move some of it to a better day`
+                      : 'Move some of today to a better day'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+              <View style={styles.optionSep} />
+            </>
+          )}
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => {
@@ -122,6 +159,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: spacing.md,
     minHeight: 56,
+  },
+  optionSep: {
+    height: border.hairline,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md,
   },
   optionContent: { flex: 1 },
   optionLabel: {

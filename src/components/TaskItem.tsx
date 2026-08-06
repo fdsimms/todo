@@ -27,7 +27,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
-import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask } from '../utils/visibilityUtils';
@@ -1137,7 +1137,7 @@ export function TaskItem({
                     style={[styles.editBtn, !task.dueDate && styles.editBtnIconOnly]}
                     onPress={() => setShowWhenPicker(true)}
                     activeOpacity={interaction.activeOpacity}
-                    accessibilityLabel={task.dueDate ? `Change date, currently ${formatDueDate(task.dueDate)}` : 'Set date'}
+                    accessibilityLabel={task.dueDate ? `Change date, currently ${formatTaskDate(task)}` : 'Set date'}
                   >
                     <Ionicons
                       name="calendar-outline"
@@ -1145,7 +1145,7 @@ export function TaskItem({
                       color={task.dueDate ? colors.accent : colors.textSecondary}
                     />
                     {task.dueDate && (
-                      <Text style={styles.editBtnText}>{formatDueDate(task.dueDate)}</Text>
+                      <Text style={styles.editBtnText}>{formatTaskDate(task)}</Text>
                     )}
                   </TouchableOpacity>
                   <PressableScale
