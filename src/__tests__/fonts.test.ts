@@ -115,6 +115,7 @@ describe('resolveFontFace', () => {
     expect(resolveFontFace('bricolage', 'bold')).toBe('BricolageGrotesque_700Bold');
     expect(resolveFontFace('fraunces', undefined)).toBe('Fraunces_400Regular');
     expect(resolveFontFace('spaceGrotesk', '500')).toBe('SpaceGrotesk_500Medium');
+    expect(resolveFontFace('outfit', '700')).toBe('Outfit_700Bold');
   });
 
   it('falls back to the platform font for an unknown id', () => {

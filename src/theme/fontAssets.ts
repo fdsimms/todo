@@ -40,12 +40,23 @@ export const FONT_ASSETS: Record<Exclude<AppFont, 'system'>, Record<string, numb
     Nunito_600SemiBold: require('@expo-google-fonts/nunito/600SemiBold/Nunito_600SemiBold.ttf'),
     Nunito_700Bold: require('@expo-google-fonts/nunito/700Bold/Nunito_700Bold.ttf'),
   },
+  outfit: {
+    Outfit_400Regular: require('@expo-google-fonts/outfit/400Regular/Outfit_400Regular.ttf'),
+    Outfit_500Medium: require('@expo-google-fonts/outfit/500Medium/Outfit_500Medium.ttf'),
+    Outfit_600SemiBold: require('@expo-google-fonts/outfit/600SemiBold/Outfit_600SemiBold.ttf'),
+    Outfit_700Bold: require('@expo-google-fonts/outfit/700Bold/Outfit_700Bold.ttf'),
+  },
 };
 
-/** The regular face of each bundled font, for previewing all the options at once. */
-export const PREVIEW_FONT_ASSETS: Record<string, number> = {
-  BricolageGrotesque_400Regular: FONT_ASSETS.bricolage.BricolageGrotesque_400Regular,
-  Fraunces_400Regular: FONT_ASSETS.fraunces.Fraunces_400Regular,
-  SpaceGrotesk_400Regular: FONT_ASSETS.spaceGrotesk.SpaceGrotesk_400Regular,
-  Nunito_400Regular: FONT_ASSETS.nunito.Nunito_400Regular,
-};
+/**
+ * The regular face of each bundled font, for previewing all the options at once.
+ *
+ * Derived rather than listed so adding a font can't half-land: a hand-kept copy
+ * of this map would leave the new option previewing in the *selected* font,
+ * which looks like a working row rather than a missing one.
+ */
+export const PREVIEW_FONT_ASSETS: Record<string, number> = Object.fromEntries(
+  Object.values(FONT_ASSETS).flatMap(faces =>
+    Object.entries(faces).filter(([face]) => face.endsWith('_400Regular'))
+  )
+);

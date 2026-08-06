@@ -22,7 +22,7 @@
  * for anyone who never opens this setting.
  */
 
-export type AppFont = 'system' | 'bricolage' | 'fraunces' | 'spaceGrotesk' | 'nunito';
+export type AppFont = 'system' | 'bricolage' | 'fraunces' | 'spaceGrotesk' | 'nunito' | 'outfit';
 
 /** The weights the app actually uses. Every bundled family ships a face for each. */
 export type FontWeightKey = 400 | 500 | 600 | 700;
@@ -78,6 +78,12 @@ export const APP_FONT_OPTIONS: AppFontOption[] = [
     label: 'Nunito',
     hint: 'Rounded and soft. The friendliest of the set, and the widest.',
     faces: facesFor('Nunito'),
+  },
+  {
+    id: 'outfit',
+    label: 'Outfit',
+    hint: 'Geometric and even, on near-circular shapes. The tidiest of the set.',
+    faces: facesFor('Outfit'),
   },
 ];
 
