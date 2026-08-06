@@ -2055,6 +2055,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       {/* Everything else — rarely changed, so it sits last */}
       <Text style={styles.groupLabel}>More</Text>
       <View style={styles.optionsCard}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setPinned(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Pin to Today"
+          accessibilityState={{ checked: pinned }}
+        >
+          <Ionicons name={pinned ? 'pin' : 'pin-outline'} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Pin to Today</Text>
+            <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
+          </View>
+          <View style={[styles.toggle, pinned && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
         <EditorRow
           icon="link-outline"
           label="Link"

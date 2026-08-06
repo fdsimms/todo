@@ -379,6 +379,7 @@ export function TodayScreen() {
   const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
+  const bulkTogglePin = useTaskStore(s => s.bulkTogglePin);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
@@ -2391,6 +2392,10 @@ export function TodayScreen() {
               groupTasks(ids, title, category);
               exitSelection();
             }}
+            onTogglePin={() => { bulkTogglePin(Array.from(selectedIds)); exitSelection(); }}
+            allPinned={selectedIds.size > 0 && Array.from(selectedIds).every(
+              id => allTasks.find(t => t.id === id)?.pinned,
+            )}
             onSelectAll={() => selectAll(visibleForMode.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}

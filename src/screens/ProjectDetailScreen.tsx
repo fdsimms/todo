@@ -225,7 +225,6 @@ export function ProjectDetailScreen() {
                   onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
                   showCategory
                   showGroup
-                  showPin={false}
                   justCreated={item.id === justCreatedId}
                 />
               );
@@ -283,7 +282,6 @@ export function ProjectDetailScreen() {
                           onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
                           showCategory
                           showGroup
-                          showPin={false}
                         />
                       );
                     })}

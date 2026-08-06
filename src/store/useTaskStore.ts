@@ -368,6 +368,7 @@ interface TaskStore {
   bulkDeleteTasks: (ids: string[]) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
+  bulkTogglePin: (ids: string[]) => void;
   bulkDefer: (ids: string[], until: Date) => void;
   bulkSetWhen: (ids: string[], date: Date | null, timeSegments: TimeOfDay[]) => void;
   bulkSetCategory: (ids: string[], category: string | null) => void;
@@ -2033,6 +2034,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (ids.length === 0) return;
     dbBulkSetPriority(ids, priority);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { priority }) }));
+  },
+
+  // Mixed selections pin (same rule as pinGroup/pinCategory): a selection is
+  // only unpinned when every task in it is already pinned, so the common case
+  // of "these three, plus that one I'd already pinned" adds rather than clears.
+  bulkTogglePin(ids) {
+    if (ids.length === 0) return;
+    const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
+    const nextPinned = !allPinned;
+    dbBulkSetPinned(ids, nextPinned);
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
   },
 
   bulkDefer(ids, until) {

@@ -34,6 +34,10 @@ interface Props {
   // Grouping is Today/Later-only for now — other screens that bulk-select
   // tasks (Categories, Inbox, Tags) simply omit this and the action hides.
   onGroup?: (title: string) => void;
+  // Pinning is a Today concept, so it's omitted the same way grouping is.
+  onTogglePin?: () => void;
+  /** True when every selected task is already pinned — the action then reads "Unpin". */
+  allPinned?: boolean;
   onSelectAll: () => void;
   onDeselectAll: () => void;
   onCancel: () => void;
@@ -58,6 +62,8 @@ export function BulkActionBar({
   onAddTags,
   onSetPriority,
   onGroup,
+  onTogglePin,
+  allPinned = false,
   onSelectAll,
   onDeselectAll,
   onCancel,
@@ -179,13 +185,15 @@ export function BulkActionBar({
                 <Ionicons name="folder" size={24} color={colors.purple} />
                 <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
               </PressableScale>
-              {onGroup && (
+              {onTogglePin && (
                 <PressableScale
                   style={styles.actionBtn}
-                  onPress={() => { haptics.tap(); setPanel('group'); }}
+                  onPress={() => { haptics.tap(); onTogglePin(); }}
                 >
-                  <Ionicons name="layers" size={24} color={colors.accent} />
-                  <Text style={[styles.actionLabel, { color: colors.accent }]}>Stack</Text>
+                  <Ionicons name={allPinned ? 'pin' : 'pin-outline'} size={24} color={colors.orange} />
+                  <Text style={[styles.actionLabel, { color: colors.orange }]}>
+                    {allPinned ? 'Unpin' : 'Pin'}
+                  </Text>
                 </PressableScale>
               )}
               <PressableScale
@@ -215,6 +223,13 @@ export function BulkActionBar({
               <Text style={styles.subTitle}>More Actions</Text>
               <View style={{ width: 28 }} />
             </View>
+            {onGroup && (
+              <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('group')}>
+                <Ionicons name="layers-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.moreRowText}>Stack</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('tags')}>
               <Ionicons name="pricetag-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Tag</Text>
