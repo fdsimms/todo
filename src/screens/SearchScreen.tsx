@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
@@ -97,6 +98,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
+  const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
   const projects = useProjectStore(s => s.projects);
@@ -107,6 +109,28 @@ export function SearchScreen() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const inputRef = useRef<TextInput>(null);
+
+  // Handed a query by quick search (see QuickSearchModal's footer row).
+  // `at` is stamped fresh on every handoff, so searching the same term twice
+  // still lands — same trick as resetToToday in navigationRef.ts.
+  //
+  // Applied during render rather than from an effect because this screen
+  // stays mounted in the tab navigator: an effect only runs after the frame
+  // is committed, so the user would see one frame of the previous query
+  // before it swapped.
+  const [handledQueryAt, setHandledQueryAt] = useState<number | undefined>(undefined);
+  if (route.params?.at !== undefined && route.params.at !== handledQueryAt) {
+    setHandledQueryAt(route.params.at);
+    setQuery(route.params.query ?? '');
+  }
+
+  // Retyping a query you just typed would make the handoff a net loss, so the
+  // field arrives focused and ready to be refined.
+  useEffect(() => {
+    if (handledQueryAt === undefined) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [handledQueryAt]);
 
   const projectNamesById = useMemo(
     () => new Map(projects.map(p => [p.id, p.title])),
