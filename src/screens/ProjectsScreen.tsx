@@ -27,7 +27,12 @@ import {
   type FabDropZonesHandle,
   type FabIntentChannel,
 } from '../components/FabDropZones';
-import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/fabDrop';
+import {
+  categoriesByIndex,
+  type DragScroller,
+  type DropZone,
+  type FabDropIntent,
+} from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { useColors } from '../theme/ThemeContext';
@@ -53,11 +58,11 @@ function AddProjectFabWithDropLabel({
 }: {
   channel: FabIntentChannel;
 } & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
-  const label = useFabIntentSelector(channel, intent =>
-    intent?.kind === 'insert'
-      ? (intent.category ? `New project in ${intent.category}` : 'New project here')
-      : null,
-  );
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind !== 'insert') return null;
+    return intent.category ? `New project in ${intent.category}` : 'New project here';
+  });
   return <Fab {...props} dragLabel={label} />;
 }
 
@@ -106,6 +111,8 @@ export function ProjectsScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
+  // Lets the drag scroll the list once it reaches either end of the screen.
+  const scrollControl = useRef<DragScroller | null>(null);
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.
@@ -169,6 +176,13 @@ export function ProjectsScreen() {
   };
 
   const openQuickAddForDrop = (intent: FabDropIntent) => {
+    // Dropped back on the button: the drag is the whole of what happened, so
+    // no sheet, and nothing left armed for the next tap (see closeQuickAdd).
+    if (intent.kind === 'cancel') {
+      pendingDropRef.current = null;
+      haptics.tap();
+      return;
+    }
     pendingDropRef.current = intent;
     if (intent.kind === 'insert') {
       setQuickAddSeed({ category: intent.category });
@@ -195,12 +209,12 @@ export function ProjectsScreen() {
       setFabDragging(true);
       dropZonesRef.current?.begin();
     },
-    onMove: pageY => dropZonesRef.current?.moveTo(pageY),
-    onEnd: pageY => {
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
       setFabDragging(false);
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label.
-      openQuickAddForDrop(dropZonesRef.current?.end(pageY) ?? { kind: 'plain' });
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
       setFabDragging(false);
@@ -302,7 +316,11 @@ export function ProjectsScreen() {
         ]}
       />
 
-      <FabDropZoneProvider ref={dropZonesRef} onIntentChange={fabIntentChannel.publish}>
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
       {visibleProjects.length === 0 ? (
         <EmptyState
           icon={showArchived ? 'archive-outline' : 'briefcase-outline'}
@@ -316,9 +334,11 @@ export function ProjectsScreen() {
         <ReorderableList
           data={projectListItems}
           keyExtractor={item => item.key}
-          // The zone snapshot is taken once as the drag arms, so the list must
-          // hold still for it.
+          // The user can't scroll during an add-button drag (the button's
+          // responder has the touch); the drag scrolls it instead, through the
+          // control below.
           scrollEnabled={!fabDragging}
+          scrollControlRef={scrollControl}
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
@@ -348,7 +368,7 @@ export function ProjectsScreen() {
           accessibilityLabel="Add project"
           bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
-          dragHint="Drag onto the list to add a project there"
+          dragHint="Drag onto the list to add a project there, or back to the button to cancel"
         />
       )}
 

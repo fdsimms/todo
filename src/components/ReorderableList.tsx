@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect, useCallback, useImperativeHandle } from 'react';
 import {
   View,
   ScrollView,
@@ -20,6 +20,7 @@ import {
   rowIndexAtContentY,
   contentOriginOffset,
 } from '../utils/reorder';
+import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
@@ -102,6 +103,16 @@ interface Props<T> {
    * suspension; it can't re-enable scrolling during a drag.
    */
   scrollEnabled?: boolean;
+  /**
+   * Filled with a handle for scrolling this list from the outside, for the
+   * add-button drag's autoscroll (FabDropZones) — that gesture belongs to the
+   * button, not to a row, so it can't go through the drag machinery below.
+   *
+   * A prop rather than the component's own ref because this component is
+   * generic and forwardRef isn't; and read-and-scroll rather than a scroll view
+   * ref because the caller needs the same clamped offset this component tracks.
+   */
+  scrollControlRef?: React.Ref<DragScroller>;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -145,6 +156,7 @@ export function ReorderableList<T>({
   onEndReached,
   onEndReachedThreshold = 300,
   scrollEnabled = true,
+  scrollControlRef,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -260,6 +272,19 @@ export function ReorderableList<T>({
     if (activeIndexRef.current !== null && !committingRef.current) resetDrag();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataKeySignature]);
+
+  // Same optimistic bookkeeping this component's own autoscroll does: record
+  // the offset as commanded, because the scroll event confirming it lands a
+  // frame later and a caller stepping every frame would keep re-issuing the
+  // offset it already asked for.
+  useImperativeHandle(scrollControlRef, () => ({
+    getOffset: () => scrollOffsetRef.current,
+    getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
+    scrollToOffset: (y: number) => {
+      scrollOffsetRef.current = y;
+      scrollRef.current?.scrollTo({ y, animated: false });
+    },
+  }), [scrollRef]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {

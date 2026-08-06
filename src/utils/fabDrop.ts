@@ -5,12 +5,18 @@
  * and pinning, uses `header` and `task`.
  *
  * Kept out of the component (like reorder.ts and paintSelect.ts) so the
- * hit-testing can be tested without a running gesture. Every coordinate here is
+ * hit-testing can be tested without a running gesture. Coordinates are
  * window-space, because that's the one space a PanResponder's pageY and a
  * view's measureInWindow already agree on — the dragged button lives in an
  * absolutely-positioned sibling of the list, so there is no shared content
  * space to reconcile against (see contentOriginOffset in reorder.ts for what
  * reconciling one costs).
+ *
+ * The one adjustment on top is the list's own scroll offset, added to both the
+ * measured bands and the queried point so a drag that autoscrolls compares two
+ * numbers from the same moment (FabDropZones). It cancels out of everything
+ * below, which only ever compares a point against bands — so the functions
+ * here are "one consistent space", and the provider picks which.
  */
 
 /**
@@ -58,6 +64,12 @@ export type FabDropIntent =
   | { kind: 'insert'; anchorKey: string; before: boolean; category: string | null }
   | { kind: 'joinGroup'; groupId: string; groupTitle: string; category: string | null }
   | { kind: 'pin' }
+  /**
+   * Released back on the corner the button came from — create nothing at all.
+   * Distinct from `plain`: that one still opens the sheet, this one is the way
+   * out of a drag you've thought better of.
+   */
+  | { kind: 'cancel' }
   /** Released on nothing in particular — create exactly as tapping the button does. */
   | { kind: 'plain' };
 
@@ -132,7 +144,17 @@ export function zoneAtY(
  * half of a header to mean "above it" would be a two-pixel distinction between
  * two different categories.
  */
-export function resolveFabDrop(hit: ZoneRect | null, y: number): FabDropIntent {
+export function resolveFabDrop(
+  hit: ZoneRect | null,
+  y: number,
+  overHome: boolean = false,
+): FabDropIntent {
+  // Checked before the rows: the button's resting corner sits over the tail of
+  // the list, so the bottom row is a real hit at the same moment the button is
+  // home. Whichever wins has to win everywhere — during the drag (what the
+  // label says) and at the release (what gets created) — so it's decided here
+  // rather than at either call site.
+  if (overHome) return { kind: 'cancel' };
   if (!hit) return { kind: 'plain' };
   const { zone } = hit;
   switch (zone.kind) {
@@ -175,6 +197,8 @@ export function targetKey(rects: ZoneRect[], intent: FabDropIntent): string {
   switch (intent.kind) {
     case 'plain':
       return 'plain';
+    case 'cancel':
+      return 'cancel';
     case 'pin':
       return 'pin';
     case 'joinGroup':
@@ -208,4 +232,111 @@ export function categoriesByIndex(headerLabels: Array<string | null>): Array<str
 /** Window-space Y the insertion line should be drawn at for an `insert` intent. */
 export function indicatorY(hit: ZoneRect, before: boolean): number {
   return before ? hit.top : hit.bottom;
+}
+
+/**
+ * How near its resting corner the button has to come back for a release to
+ * cancel. A bit more than the button's own radius (FAB_SIZE is 56), so the
+ * catch is forgiving without swallowing the whole bottom-right of the list —
+ * everything outside it, including the rest of the bottom edge, still
+ * autoscrolls and still drops.
+ */
+export const CANCEL_RADIUS = 44;
+
+/**
+ * Whether the button has been dragged back onto the spot it started from,
+ * given the gesture's cumulative translation.
+ *
+ * Measured from the gesture rather than from a measured rect: the drag can
+ * only ever start on the button, and the button is translated by exactly this
+ * delta, so `dx`/`dy` of zero *is* the resting corner however the finger
+ * happened to grab it. Nothing has to be measured, and — the reason it matters
+ * here — the answer doesn't move when the list scrolls underneath.
+ */
+export function isOverFabHome(dx: number, dy: number, radius: number = CANCEL_RADIUS): boolean {
+  return Math.hypot(dx, dy) <= radius;
+}
+
+/**
+ * Where a drag stands relative to the corner it started in.
+ *
+ * Three states rather than a boolean because the drag *begins* on that corner,
+ * and the first moments of it must not be read as a return to it: `inside` is
+ * the lift, and it neither arms the cancel well nor scrolls the list — which
+ * would otherwise start the moment the button came off its spot, since the
+ * corner sits inside the list's bottom autoscroll band.
+ */
+export type FabHomeState =
+  /** Still on the resting spot, never having left it — the lift. */
+  | 'inside'
+  /** Out over the list. The only state that autoscrolls. */
+  | 'outside'
+  /** Brought back to the resting spot. A release here cancels. */
+  | 'returned';
+
+/** The state a gesture translated by `dx`/`dy` is in, given whether it has ever left home. */
+export function fabHomeState(dx: number, dy: number, hasLeftHome: boolean): FabHomeState {
+  if (!isOverFabHome(dx, dy)) return 'outside';
+  return hasLeftHome ? 'returned' : 'inside';
+}
+
+/** Height of the band at each end of the list that scrolls it while dragged into. */
+export const AUTOSCROLL_EDGE = 88;
+/** Pixels per tick at the very edge; the band ramps up to this. */
+export const AUTOSCROLL_MAX_STEP = 14;
+export const AUTOSCROLL_INTERVAL_MS = 16;
+
+/**
+ * Pixels to scroll this tick, given where the finger is and where the list's
+ * viewport starts and ends (all window-space). Negative scrolls back toward
+ * the top; zero anywhere in the middle.
+ *
+ * Ramped rather than a flat step (which is what a row drag uses, see
+ * ReorderableList's AUTOSCROLL_STEP) because this drag enters the bottom band
+ * on its way out of the corner it started in: a flat step means the list
+ * lurches the instant the button lifts, before the user has aimed at anything.
+ * Easing in from zero at the band's inner edge makes the near-edge crawl
+ * controllable and keeps the lift itself still.
+ *
+ * The band is halved rather than dropped on a viewport too short to hold two
+ * of them, so a small list still scrolls; a viewport with no height at all
+ * (measured before layout) scrolls not at all.
+ */
+export function autoscrollStep(
+  pageY: number,
+  top: number,
+  bottom: number,
+  edge: number = AUTOSCROLL_EDGE,
+  maxStep: number = AUTOSCROLL_MAX_STEP,
+): number {
+  const height = bottom - top;
+  if (!(height > 0)) return 0;
+  const band = Math.min(edge, height / 2);
+  if (band <= 0) return 0;
+  if (pageY < top + band) {
+    return -maxStep * Math.min(1, (top + band - pageY) / band);
+  }
+  if (pageY > bottom - band) {
+    return maxStep * Math.min(1, (pageY - (bottom - band)) / band);
+  }
+  return 0;
+}
+
+/**
+ * A list the add-button drag can scroll while it's in flight.
+ *
+ * Deliberately three plain functions rather than a list ref: the two lists
+ * Today renders (a FlatList whenever anything is pinned, a ReorderableList
+ * otherwise) don't share a scroll API, and the reorderable one owns its scroll
+ * view privately. Both can satisfy this.
+ *
+ * `scrollToOffset` is expected to record the offset it was given synchronously,
+ * because the tick reads `getOffset()` back a frame before the real scroll
+ * event lands and would otherwise re-issue the same offset forever.
+ */
+export interface DragScroller {
+  getOffset: () => number;
+  /** Largest scrollable offset — content height less viewport height, floored at 0. */
+  getMaxOffset: () => number;
+  scrollToOffset: (y: number) => void;
 }
