@@ -8,7 +8,7 @@ import {
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { TaskTemplate } from '../types';
+import type { TaskTemplate, TemplateContainer } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
@@ -34,6 +34,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
   const renameTemplate = useTemplateStore(s => s.renameTemplate);
   const setTemplateCategory = useTemplateStore(s => s.setTemplateCategory);
+  const setTemplateContainer = useTemplateStore(s => s.setTemplateContainer);
   const deleteTemplate = useTaskStore(s => s.deleteTemplate);
   const templates = useTemplateStore(useShallow(s => s.templates));
   const categories = useTemplateCategoryStore(useShallow(s => s.categories));
@@ -41,25 +42,31 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
   const [name, setName] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  const [container, setContainer] = useState<TemplateContainer>('stack');
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [containerOpen, setContainerOpen] = useState(false);
 
   useEffect(() => {
     if (!template) return;
     setName(template.name);
     setCategory(template.category);
+    setContainer(template.applyContainer);
     setCategoryOpen(false);
+    setContainerOpen(false);
   }, [template]);
 
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
+  const closeContainer = () => { animateLayout(); setContainerOpen(false); };
 
   const saveAndClose = () => {
     if (!template) { onClose(); return; }
     const trimmed = name.trim();
     if (trimmed) renameTemplate(template.id, trimmed);
     setTemplateCategory(template.id, category);
+    setTemplateContainer(template.id, container);
     onClose();
   };
 
@@ -185,9 +192,54 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
           </View>
         </CollapsibleField>
       </View>
+
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="When applied"
+          summary={CONTAINER_LABELS[container]}
+          hint="Where a run of this template puts its tasks, once you name the run."
+          expanded={containerOpen}
+          onToggle={() => setContainerOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            {CONTAINER_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt}
+                style={[styles.pill, container === opt && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setContainer(opt); closeContainer(); }}
+              >
+                <Text style={[styles.pillText, container === opt && styles.pillTextActive]}>
+                  {CONTAINER_LABELS[opt]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.containerNote}>{CONTAINER_NOTES[container]}</Text>
+          {container === 'stack' && template.itemGroups.length > 0 && (
+            <Text style={styles.containerNote}>
+              This template has item groups, which already become stacks — a named run of it
+              will use a project instead, so the groups have somewhere to sit.
+            </Text>
+          )}
+        </CollapsibleField>
+      </View>
     </EditorSheet>
   );
 }
+
+const CONTAINER_OPTIONS: TemplateContainer[] = ['none', 'stack', 'project'];
+
+const CONTAINER_LABELS: Record<TemplateContainer, string> = {
+  none: 'Nothing',
+  stack: 'A stack',
+  project: 'A project',
+};
+
+const CONTAINER_NOTES: Record<TemplateContainer, string> = {
+  none: 'Tasks are added loose, and the run name only fills in {blanks}.',
+  stack: 'Tasks are headed by a stack named after the run — best for most templates.',
+  project: 'Tasks go in a project named after the run, dated by the two anchors. Best for long, multi-week ones.',
+};
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: {
@@ -274,5 +326,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   addTagText: {
     color: colors.accent,
     fontSize: font.sm,
+  },
+  containerNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.sm,
   },
 });

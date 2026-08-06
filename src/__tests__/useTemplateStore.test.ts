@@ -25,6 +25,16 @@ jest.mock('../store/useTaskStore', () => ({
   },
 }));
 
+const mockCreateGroup = jest.fn();
+jest.mock('../store/useTaskGroupStore', () => ({
+  useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup }) },
+}));
+
+const mockCreateProject = jest.fn();
+jest.mock('../store/useProjectStore', () => ({
+  useProjectStore: { getState: () => ({ createProject: mockCreateProject }) },
+}));
+
 const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   id: 'item-1',
   title: 'Pack bags',
@@ -67,6 +77,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,
+  applyContainer: 'stack',
   ...overrides,
 });
 
@@ -77,6 +88,12 @@ beforeEach(() => {
   mockAddSubtask.mockImplementation((parentId: string, title: string) => ({ id: `sub-${title}`, parentId, title }));
   mockGroupTasks.mockImplementation((taskIds: string[], title: string, category: string | null) => ({
     id: `group-${title}`, title, category, taskIds,
+  }));
+  mockCreateGroup.mockImplementation((title: string, category: string | null) => ({
+    id: `group-${title}`, title, category,
+  }));
+  mockCreateProject.mockImplementation((title: string, targetStartDate: string | null, targetEndDate: string | null) => ({
+    id: `project-${title}`, title, targetStartDate, targetEndDate,
   }));
   useTemplateStore.setState({ templates: [], initialized: false });
 });
@@ -393,5 +410,160 @@ describe('item groups', () => {
     expect(state.items.find(i => i.id === a.id)?.groupId).toBe(group.id);
     expect(state.items.find(i => i.id === b.id)?.groupId).toBe(group.id);
     expect(state.items.find(i => i.title === 'C')?.groupId).toBeNull();
+  });
+});
+
+describe('applyTemplate — naming the run', () => {
+  const oneItem = (overrides: Partial<TemplateItem> = {}) =>
+    makeTemplate({ items: [makeItem({ id: 'a', title: 'Buy tickets', ...overrides })] });
+
+  it('creates no container and changes no title when the run is unnamed', () => {
+    useTemplateStore.setState({ templates: [oneItem()] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+    const [draft] = mockAddTask.mock.calls[0];
+    expect(draft.title).toBe('Buy tickets');
+    expect(draft.groupId).toBeUndefined();
+    expect(draft.projectId).toBeUndefined();
+  });
+
+  it('treats a whitespace-only run name as unnamed', () => {
+    useTemplateStore.setState({ templates: [oneItem()] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: '   ' });
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it('files every created task under one stack named after the run', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Buy tickets' }), makeItem({ id: 'b', title: 'Decide date' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockCreateGroup).toHaveBeenCalledWith('Camping w/ Dan', null);
+    expect(mockAddTask.mock.calls.map(([d]) => d.groupId)).toEqual(['group-Camping w/ Dan', 'group-Camping w/ Dan']);
+  });
+
+  it('trims the run name before it becomes a container title', () => {
+    useTemplateStore.setState({ templates: [oneItem()] });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null }, { runName: '  Camping  ' }
+    );
+    expect(mockCreateGroup).toHaveBeenCalledWith('Camping', null);
+  });
+
+  it('creates a project dated by the two anchors when the template asks for one', () => {
+    const start = new Date('2026-09-12T12:00:00');
+    const end = new Date('2026-09-14T12:00:00');
+    useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Denver' });
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', start.toISOString(), end.toISOString());
+    expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+  });
+
+  it('leaves a project undated when the run picked no anchors', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null, null);
+  });
+
+  it('honors a template that opts out of containers entirely', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'none', items: [makeItem({ id: 'a' })] })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+    expect(mockCreateProject).not.toHaveBeenCalled();
+  });
+
+  it('upgrades a run stack to a project when the template already makes stacks from item groups', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        applyContainer: 'stack',
+        itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+        items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
+    // The run becomes the project; the item group still becomes its own stack inside it.
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null, null);
+    expect(mockCreateGroup).not.toHaveBeenCalled();
+    expect(mockGroupTasks).toHaveBeenCalledWith(['task-Book'], 'Flights', null);
+    expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
+  });
+});
+
+describe('applyTemplate — placeholders', () => {
+  it('substitutes values into titles and notes', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ items: [makeItem({ id: 'a', title: 'Book {where}', notes: 'ask {who}' })] })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null },
+      { placeholders: { where: 'Denver', who: 'Dan' } }
+    );
+    const [draft] = mockAddTask.mock.calls[0];
+    expect(draft.title).toBe('Book Denver');
+    expect(draft.notes).toBe('ask Dan');
+  });
+
+  it('binds {run} to the run name without a separate input', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ items: [makeItem({ id: 'a', title: 'Put in for PTO for {run}' })] })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Camping w/ Dan' }
+    );
+    expect(mockAddTask.mock.calls[0][0].title).toBe('Put in for PTO for Camping w/ Dan');
+  });
+
+  it('drops an unfilled {run} rather than leaving braces in the task title', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ items: [makeItem({ id: 'a', title: 'Put in for PTO for {run}' })] })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
+    expect(mockAddTask.mock.calls[0][0].title).toBe('Put in for PTO for');
+  });
+
+  it('substitutes into subtask titles too', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Pack', subtasks: [{ id: 's1', title: 'Charge the {device}' }] })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null }, { placeholders: { device: 'headlamp' } }
+    );
+    expect(mockAddSubtask).toHaveBeenCalledWith('task-Pack', 'Charge the headlamp');
+  });
+
+  it('carries placeholder values into items pulled from a nested template', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({ id: 'tpl-1', items: [makeItem({ id: 'ref', refTemplateId: 'tpl-2', refTemplateName: 'Packing' })] }),
+        makeTemplate({ id: 'tpl-2', name: 'Packing', items: [makeItem({ id: 'n1', title: 'Pack for {where}' })] }),
+      ],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['ref', 'n1']), { start: null, end: null }, { placeholders: { where: 'Denver' } }
+    );
+    expect(mockAddTask.mock.calls[0][0].title).toBe('Pack for Denver');
+  });
+});
+
+describe('setTemplateContainer', () => {
+  it('persists the choice', () => {
+    useTemplateStore.setState({ templates: [makeTemplate()] });
+    useTemplateStore.getState().setTemplateContainer('tpl-1', 'project');
+    expect(useTemplateStore.getState().templates[0].applyContainer).toBe('project');
+    expect(dbUpdateTemplate).toHaveBeenCalledWith(expect.objectContaining({ applyContainer: 'project' }));
+  });
+
+  it('ignores an unknown template', () => {
+    useTemplateStore.setState({ templates: [] });
+    expect(() => useTemplateStore.getState().setTemplateContainer('nope', 'none')).not.toThrow();
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
   });
 });

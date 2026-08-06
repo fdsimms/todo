@@ -158,6 +158,16 @@ export const radius = {
   full: 9999,
 };
 
+/**
+ * Corner radius for a completion checkbox — the Things-3-style rounded square
+ * that replaced the circle. Derived from the box's size rather than picked off
+ * `radius`, because these come in three sizes (24pt row, 22pt search result,
+ * 18pt subtask) and a fixed radius makes the smallest one a circle while the
+ * largest still reads as a square. Pair it with `borderCurve: 'continuous'` so
+ * iOS draws the superellipse instead of a plain quarter-circle corner.
+ */
+export const checkboxRadius = (size: number) => Math.round(size / 3);
+
 export const font = {
   xs: 12,
   sm: 13,
@@ -187,6 +197,7 @@ export const border = {
   hairline: StyleSheet.hairlineWidth,
   thin: 0.5,
   sm: 1,
+  md: 1.5,
 };
 
 export const iconSize = {

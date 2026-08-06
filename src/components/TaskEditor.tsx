@@ -26,7 +26,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
+import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { TARGET_COUNT_OPTIONS } from '../utils/quickAddTypes';
@@ -97,6 +97,10 @@ type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'durat
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
 const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
+
+// Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
+// whether it's read in the expanded row or in this editor.
+const SUBTASK_CHECKBOX_SIZE = 16;
 
 function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
   if (type === 'none') return '';
@@ -197,6 +201,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customLinkText, setCustomLinkText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
+  const [showStreak, setShowStreak] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
   // an explicit tap, so the form reads as a list of named fields rather than a
@@ -271,6 +276,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
+      setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
@@ -287,6 +293,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
+      setShowStreak(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
     }
     setShowLinkPicker(false); setCustomLinkText('');
@@ -342,6 +349,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
+      showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
     });
   }, [visible, task]);
@@ -445,6 +453,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainItems,
       chainIndex,
       vacationPause,
+      // Only a recurring task has a streak to show, and the toggle is only
+      // offered there — don't strand a stale `true` on a task that stopped
+      // recurring, or the chip would be waiting if it ever recurs again.
+      showStreak: recurrenceType !== 'none' && showStreak,
       linkUrl: resolveLinkUrl(),
     };
 
@@ -686,6 +698,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
+      showStreak,
       linkUrl,
     });
     if (current !== initialStateRef.current) {
@@ -1976,11 +1989,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     accessibilityLabel={sub.title}
                     accessibilityState={{ checked: sub.completed }}
                   >
-                    <Ionicons
-                      name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={20}
-                      color={sub.completed ? colors.green : colors.bgQuaternary}
-                    />
+                    <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                      {sub.completed && (
+                        <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                      )}
+                    </View>
                   </TouchableOpacity>
                   <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
                     {sub.title}
@@ -2055,6 +2068,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       {/* Everything else — rarely changed, so it sits last */}
       <Text style={styles.groupLabel}>More</Text>
       <View style={styles.optionsCard}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setPinned(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Pin to Today"
+          accessibilityState={{ checked: pinned }}
+        >
+          <Ionicons name={pinned ? 'pin' : 'pin-outline'} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Pin to Today</Text>
+            <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
+          </View>
+          <View style={[styles.toggle, pinned && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
         <EditorRow
           icon="link-outline"
           label="Link"
@@ -2209,6 +2240,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </TouchableOpacity>
               </View>
             )}
+          </>
+        )}
+        {/* Keyed off the draft's recurrence, not the saved task's, so it shows
+            up the moment a repeat is picked on a brand new task too. */}
+        {recurrenceType !== 'none' && (
+          <>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                haptics.tap();
+                setShowStreak(v => !v);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Show streak on row"
+              accessibilityState={{ checked: showStreak }}
+            >
+              <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Show streak on row</Text>
+                <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+              </View>
+              <View style={[styles.toggle, showStreak && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -2499,6 +2557,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   subtaskCheck: { padding: 2 },
+  subtaskBox: {
+    width: SUBTASK_CHECKBOX_SIZE,
+    height: SUBTASK_CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
+    borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  subtaskBoxDone: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
   subtaskTitle: {
     flex: 1, color: colors.text, fontSize: font.md,
   },

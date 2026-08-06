@@ -100,6 +100,7 @@ const baseTask: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  showStreak: false,
   recurrenceFromCompletion: false,
   targetCount: null,
   progressCount: 0,

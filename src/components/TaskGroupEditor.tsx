@@ -174,18 +174,33 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
 
   const handleDelete = () => {
     if (!group) return;
+    // The roster is exactly what a cascading delete destroys (see deleteGroup),
+    // so with an empty one both choices do the same thing — offering "and all
+    // its tasks" there asks the user to weigh a consequence that doesn't
+    // exist, in a destructive-red button. A stack whose only children are
+    // completed occurrences still counts as empty: those are unfiled either
+    // way, never deleted.
+    const deleteThenClose = (cascade: boolean) => () => {
+      deleteGroup(group.id, { cascade });
+      onClose();
+    };
     Alert.alert(
       'Delete Stack',
       `Delete "${group.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete This Stack', onPress: () => { deleteGroup(group.id, { cascade: false }); onClose(); } },
-        {
-          text: 'Delete Stack and All Its Tasks',
-          style: 'destructive',
-          onPress: () => { deleteGroup(group.id, { cascade: true }); onClose(); },
-        },
-      ],
+      members.length === 0
+        ? [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete', style: 'destructive', onPress: deleteThenClose(false) },
+          ]
+        : [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Delete This Stack', onPress: deleteThenClose(false) },
+            {
+              text: 'Delete Stack and All Its Tasks',
+              style: 'destructive',
+              onPress: deleteThenClose(true),
+            },
+          ],
     );
   };
 

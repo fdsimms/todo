@@ -184,6 +184,13 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  // Opt-in per task: surface the streak as a chip on the collapsed row rather
+  // than only in the expanded panel. Off by default — a flame on every
+  // recurring row is noise, but a habit you're deliberately tracking is worth
+  // seeing the count for without tapping. Only meaningful when the task
+  // recurs, which is the only place the editor offers the toggle.
+  showStreak: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a
@@ -329,6 +336,18 @@ export interface TemplateItemGroup {
   sortOrder: number;
 }
 
+// Where one apply of a template puts the tasks it creates. Item titles are
+// written to be read next to the template's name ("Buy tickets" under "Plan an
+// activity"), so loose in Today they lose the thing they were about — a
+// container carries that context once instead of repeating it in every title.
+//   'none'    — loose tasks, the original behavior
+//   'stack'   — one TaskGroup named after the run
+//   'project' — one Project named after the run, the apply's two anchor dates
+//               becoming its targetStartDate/targetEndDate
+// Only consulted when the user actually names the run; a blank name always
+// means 'none'.
+export type TemplateContainer = 'none' | 'stack' | 'project';
+
 export interface TaskTemplate {
   id: string;
   name: string;
@@ -339,6 +358,7 @@ export interface TaskTemplate {
   // Name of a TemplateCategory, purely for grouping templates on the
   // Templates page. Independent of task Category and ProjectCategory.
   category: string | null;
+  applyContainer: TemplateContainer;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

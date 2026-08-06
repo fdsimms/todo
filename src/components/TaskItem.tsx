@@ -26,7 +26,7 @@ import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
@@ -44,6 +44,9 @@ import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
+
+const CHECKBOX_SIZE = 20;
+const SUBTASK_CHECKBOX_SIZE = 16;
 
 interface Props {
   task: Task;
@@ -65,8 +68,6 @@ interface Props {
   showProject?: boolean;
   showGroup?: boolean;
   showActions?: boolean;
-  /** Narrower than `showActions`: drops just the pin, for lists where pinning (a Today concept) doesn't apply but the link and timer actions still do. */
-  showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
   /** Briefly tints the row on mount to draw the eye to a task that was just created. */
@@ -127,7 +128,6 @@ export function TaskItem({
   showProject = false,
   showGroup = false,
   showActions = true,
-  showPin = true,
   indented = false,
   justCreated = false,
   autoComplete = false,
@@ -161,7 +161,6 @@ export function TaskItem({
     setLastAction,
     markTaskSeen,
     skipNextRecurrence,
-    togglePin,
     startTimer,
     stopTimer,
     discardTimer,
@@ -437,6 +436,11 @@ export function TaskItem({
   // exactly as it does for every other row.
   const showQuotaMeter = isQuota && !selectionMode && !completing;
 
+  // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
+  // a habit whose streak just broke doesn't silently lose a chip — the row
+  // keeps its height and reads as "back to nothing" rather than "untracked".
+  const showStreakChip = task.showStreak && task.recurrenceType !== 'none';
+
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -633,11 +637,11 @@ export function TaskItem({
             />
           )}
           {selectionMode && selected && (
-            <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+            <Ionicons name="checkmark" size={12} color={colors.onAccent} />
           )}
           {!selectionMode && completing && (
             <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-              <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
             </Animated.View>
           )}
           {!selectionMode && !completing && recurrenceNotYetDue && (
@@ -717,8 +721,27 @@ export function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
+            {showStreakChip && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  task.streakCount > 0
+                    ? `${task.streakCount} day streak`
+                    : 'No streak yet'
+                }
+              >
+                <Ionicons
+                  name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
+                  size={iconSize.xs}
+                  color={task.streakCount > 0 ? colors.orange : colors.textTertiary}
+                />
+                <Text style={[styles.streakChipText, task.streakCount > 0 && styles.streakChipTextActive]} numberOfLines={1}>
+                  {task.streakCount}
+                </Text>
+              </View>
+            )}
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
@@ -820,28 +843,6 @@ export function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && (
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            togglePin(task.id);
-          }}
-          hitSlop={8}
-          style={styles.starBtn}
-          accessibilityRole="button"
-          accessibilityState={{ selected: task.pinned }}
-          accessibilityLabel={
-            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
-          }
-        >
-          <Ionicons
-            name={task.pinned ? 'pin' : 'pin-outline'}
-            size={iconSize.sm}
-            color={task.pinned ? colors.orange : colors.textTertiary}
-          />
-        </TouchableOpacity>
-      )}
-
     </View>
   );
 
@@ -888,7 +889,7 @@ export function TaskItem({
                       >
                         <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                           {sub.completed && (
-                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={8} color={colors.onAccent} />
                           )}
                         </View>
                       </TouchableOpacity>
@@ -1379,10 +1380,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 2,
   },
   circle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: border.sm,
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.bgQuaternary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1482,6 +1484,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  streakChipText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  streakChipTextActive: {
+    color: colors.orange,
+  },
   windowLabel: {
     color: colors.red,
     fontSize: font.xs,
@@ -1490,9 +1500,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   windowLabelExpired: {
     color: colors.textTertiary,
     fontSize: font.xs,
-  },
-  starBtn: {
-    padding: 4,
   },
   linkBtn: {
     padding: 4,
@@ -1583,10 +1590,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 0,
   },
   subtaskCheck: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
+    width: SUBTASK_CHECKBOX_SIZE,
+    height: SUBTASK_CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.bgQuaternary,
     alignItems: 'center',
     justifyContent: 'center',

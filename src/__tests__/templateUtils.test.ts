@@ -14,6 +14,12 @@ import {
   buildApplyTree,
   flattenApplyTree,
   expandSelectionWithAncestors,
+  extractPlaceholders,
+  substitutePlaceholders,
+  substituteDraftPlaceholders,
+  declaresRunPlaceholder,
+  usesItemGroups,
+  resolveApplyContainer,
 } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
 
@@ -258,6 +264,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,
+  applyContainer: 'stack',
   ...overrides,
 });
 
@@ -449,5 +456,150 @@ describe('buildApplyTree / flattenApplyTree / expandSelectionWithAncestors', () 
 
     const none = expandSelectionWithAncestors(tree, new Set());
     expect(none).toEqual(new Set());
+  });
+});
+
+describe('extractPlaceholders', () => {
+  it('returns distinct names in first-appearance order', () => {
+    const items = [
+      makeItem({ id: 'i1', title: 'Book {where}' }),
+      makeItem({ id: 'i2', title: 'Tell {who} about {where}' }),
+    ];
+    expect(extractPlaceholders(items)).toEqual(['where', 'who']);
+  });
+
+  it('reads notes, subtasks and chain steps too', () => {
+    const items = [makeItem({
+      title: 'Pack',
+      notes: 'for {trip}',
+      subtasks: [{ id: 's1', title: 'Charge the {device}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm with {who}', notes: '{when}' }],
+    })];
+    expect(extractPlaceholders(items)).toEqual(['trip', 'device', 'who', 'when']);
+  });
+
+  it('excludes the reserved run placeholder, which is bound to the run name', () => {
+    expect(extractPlaceholders([makeItem({ title: 'Put in for PTO for {run}' })])).toEqual([]);
+  });
+
+  it('matches case-insensitively and normalizes to lowercase', () => {
+    expect(extractPlaceholders([makeItem({ title: '{Where} then {WHERE}' })])).toEqual(['where']);
+  });
+
+  it('ignores braces that are not placeholders', () => {
+    expect(extractPlaceholders([makeItem({ title: 'Fix {} and {2} and {' })])).toEqual([]);
+  });
+});
+
+describe('substitutePlaceholders', () => {
+  it('substitutes a value', () => {
+    expect(substitutePlaceholders('Book {where}', { where: 'Denver' })).toBe('Book Denver');
+  });
+
+  it('matches the name case-insensitively', () => {
+    expect(substitutePlaceholders('Book {Where}', { where: 'Denver' })).toBe('Book Denver');
+  });
+
+  it('replaces every occurrence', () => {
+    expect(substitutePlaceholders('{x} and {x}', { x: 'a' })).toBe('a and a');
+  });
+
+  it('leaves text with no placeholders byte for byte, including odd spacing', () => {
+    expect(substitutePlaceholders('Buy  tickets  -', {})).toBe('Buy  tickets  -');
+  });
+
+  it('drops an unfilled placeholder rather than leaving a literal brace in a task title', () => {
+    expect(substitutePlaceholders('Put in for PTO for {what}', {})).toBe('Put in for PTO for');
+    expect(substitutePlaceholders('Put in for PTO for {what}', { what: '   ' })).toBe('Put in for PTO for');
+  });
+
+  it('tidies the gap and the dangling separator a dropped value leaves behind', () => {
+    expect(substitutePlaceholders('Pack {what} bags', {})).toBe('Pack bags');
+    expect(substitutePlaceholders('Book flights — {where}', {})).toBe('Book flights');
+    expect(substitutePlaceholders('Call {who}, then pack', {})).toBe('Call, then pack');
+  });
+
+  it('trims the value it substitutes', () => {
+    expect(substitutePlaceholders('Book {where}', { where: '  Denver  ' })).toBe('Book Denver');
+  });
+
+  it('is not left stateful by a previous call (the pattern is a /g regex)', () => {
+    const text = 'Book {where}';
+    expect(substitutePlaceholders(text, { where: 'A' })).toBe('Book A');
+    expect(substitutePlaceholders(text, { where: 'B' })).toBe('Book B');
+    expect(substitutePlaceholders(text, { where: 'C' })).toBe('Book C');
+  });
+});
+
+describe('substituteDraftPlaceholders', () => {
+  it('substitutes into title, notes and chain steps', () => {
+    const out = substituteDraftPlaceholders({
+      title: 'Pack for {trip}',
+      notes: 'ask {who}',
+      chainItems: [{ id: 'c1', title: 'Confirm {who}', notes: 'by {when}' }],
+    }, { trip: 'Denver', who: 'Dan', when: 'Friday' });
+    expect(out.title).toBe('Pack for Denver');
+    expect(out.notes).toBe('ask Dan');
+    expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan', notes: 'by Friday' }]);
+  });
+
+  it('leaves an absent title/notes/chain absent rather than turning it into a blank string', () => {
+    expect(substituteDraftPlaceholders({ dueDate: null }, {})).toEqual({ dueDate: null });
+  });
+});
+
+describe('declaresRunPlaceholder', () => {
+  it('is true when {run} appears anywhere on an item', () => {
+    expect(declaresRunPlaceholder([makeItem({ title: 'PTO for {run}' })])).toBe(true);
+    expect(declaresRunPlaceholder([makeItem({ notes: 'for {run}' })])).toBe(true);
+    expect(declaresRunPlaceholder([makeItem({
+      subtasks: [{ id: 's', title: '{run}' }],
+    })])).toBe(true);
+  });
+
+  it('is false for ordinary items and for other placeholders', () => {
+    expect(declaresRunPlaceholder([makeItem({ title: 'Buy tickets' })])).toBe(false);
+    expect(declaresRunPlaceholder([makeItem({ title: 'Book {where}' })])).toBe(false);
+  });
+});
+
+describe('usesItemGroups / resolveApplyContainer', () => {
+  const grouped = makeTemplate({
+    id: 'trip',
+    itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
+    items: [makeItem({ id: 'i1', groupId: 'g1' })],
+  });
+  const plain = makeTemplate({ id: 'plain', items: [makeItem({ id: 'i2' })] });
+  const byId = new Map([[grouped.id, grouped], [plain.id, plain]]);
+
+  const expandedOf = (t: TaskTemplate) => t.items.map(item => ({ item, sourceTemplateId: t.id }));
+
+  it('detects a live item group', () => {
+    expect(usesItemGroups(expandedOf(grouped), byId)).toBe(true);
+    expect(usesItemGroups(expandedOf(plain), byId)).toBe(false);
+  });
+
+  it('ignores a groupId whose group no longer exists', () => {
+    const orphan = makeTemplate({ id: 'orphan', items: [makeItem({ id: 'i3', groupId: 'deleted' })] });
+    expect(usesItemGroups(expandedOf(orphan), new Map([[orphan.id, orphan]]))).toBe(false);
+  });
+
+  it('upgrades stack to project when item groups are in play — a stack cannot hold a stack', () => {
+    expect(resolveApplyContainer('stack', expandedOf(grouped), byId)).toBe('project');
+  });
+
+  it('leaves stack alone without item groups', () => {
+    expect(resolveApplyContainer('stack', expandedOf(plain), byId)).toBe('stack');
+  });
+
+  it('never changes an explicit project or none', () => {
+    expect(resolveApplyContainer('project', expandedOf(grouped), byId)).toBe('project');
+    expect(resolveApplyContainer('none', expandedOf(grouped), byId)).toBe('none');
+  });
+
+  it('sees item groups contributed by a nested template, not just the top-level one', () => {
+    // The expanded list spans templates, so the check has to be per-source.
+    const expanded = [...expandedOf(plain), ...expandedOf(grouped)];
+    expect(resolveApplyContainer('stack', expanded, byId)).toBe('project');
   });
 });

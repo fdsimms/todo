@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
@@ -234,6 +234,12 @@ export function initDatabase(): void {
     'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)',
     'ALTER TABLE tasks ADD COLUMN timed_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN show_streak INTEGER NOT NULL DEFAULT 0',
+    // Existing templates default to 'stack' rather than 'none': the setting is
+    // inert until the user names a run in the apply sheet, so this changes
+    // nothing for anyone until they opt in, and 'stack' is the right answer
+    // for most templates when they do.
+    "ALTER TABLE templates ADD COLUMN apply_container TEXT NOT NULL DEFAULT 'stack'",
     // Defaulted rather than nullable so every project that predates the nudge
     // feature gets a cadence in one statement — the alternative is a feature
     // that stays inert until each project is configured by hand, which is the
@@ -417,6 +423,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     seriesRepeatMonths: (row.series_repeat_months as number) ?? 1,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
+    showStreak: Boolean(row.show_streak),
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -440,8 +447,9 @@ export function dbInsertTask(task: Task): void {
       tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
-      timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
+      show_streak
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -464,6 +472,7 @@ export function dbInsertTask(task: Task): void {
       task.timedMinutes ?? null, task.timerElapsedSeconds ?? 0,
       task.targetCount ?? null, task.progressCount,
       task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
+      task.showStreak ? 1 : 0,
     ]
   );
 }
@@ -479,7 +488,8 @@ export function dbUpdateTask(task: Task): void {
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
-      timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?
+      timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
+      show_streak=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -503,6 +513,7 @@ export function dbUpdateTask(task: Task): void {
       task.timedMinutes ?? null, task.timerElapsedSeconds ?? 0,
       task.targetCount ?? null, task.progressCount,
       task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
+      task.showStreak ? 1 : 0,
       task.id,
     ]
   );
@@ -910,7 +921,13 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
     category: (row.category as string) ?? null,
+    applyContainer: parseApplyContainer(row.apply_container),
   };
+}
+
+/** Tolerates a null (pre-migration row) or an unknown value from a newer app version, same as parseTimeSegments. */
+function parseApplyContainer(raw: unknown): TemplateContainer {
+  return raw === 'none' || raw === 'project' ? raw : 'stack';
 }
 
 export function dbGetAllTemplates(): TaskTemplate[] {
@@ -922,15 +939,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category) VALUES (?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category]
+    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category, template.applyContainer]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.applyContainer, template.id]
   );
 }
 

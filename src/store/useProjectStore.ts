@@ -38,8 +38,12 @@ interface ProjectStore {
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
   reorderProjectsWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
-  archiveProject: (id: string) => void;
-  unarchiveProject: (id: string) => void;
+  // Archiving is undoable, and the undo entry lives in useTaskStore
+  // (archiveProject/unarchiveProject there) with every other undoable action;
+  // this is the low-level row write it calls. `archivedAt` is passed back
+  // explicitly when undoing an unarchive so the project keeps the day it was
+  // originally archived rather than being re-stamped as archived just now.
+  applyProjectArchived: (id: string, archived: boolean, archivedAt?: string | null) => void;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
   // are the low-level row operations it calls once members are handled.
   removeProjectRow: (id: string) => void;
@@ -106,18 +110,14 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     categoryUpdates.forEach(u => get().updateProject(u.id, { category: u.category }));
   },
 
-  archiveProject(id) {
+  applyProjectArchived(id, archived, archivedAt) {
     const project = get().projects.find(p => p.id === id);
-    if (!project || project.archived) return;
-    const updated = { ...project, archived: true, archivedAt: new Date().toISOString() };
-    dbUpdateProject(updated);
-    set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
-  },
-
-  unarchiveProject(id) {
-    const project = get().projects.find(p => p.id === id);
-    if (!project || !project.archived) return;
-    const updated = { ...project, archived: false, archivedAt: null };
+    if (!project || project.archived === archived) return;
+    const updated = {
+      ...project,
+      archived,
+      archivedAt: archived ? (archivedAt ?? new Date().toISOString()) : null,
+    };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
   },

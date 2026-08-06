@@ -21,6 +21,7 @@ import {
   contentOriginOffset,
 } from '../utils/reorder';
 import { useTheme } from '../theme/ThemeContext';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { haptics } from '../utils/haptics';
 
 const ROW_SHIFT_DURATION = 180;
@@ -164,7 +165,10 @@ export function ReorderableList<T>({
   const overlayScale = useRef(new Animated.Value(1.03)).current;
   const overlayOpacity = useRef(new Animated.Value(1)).current;
 
-  const scrollRef = useRef<ScrollView>(null);
+  // Owns the scroll ref so it can pull the list back out of a keyboard inset
+  // it was left parked in (see the hook).
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const scrollRef = keyboardScroll.ref;
   const dataRef = useRef(data);
   const onReorderRef = useRef(onReorder);
   const onDragEndRef = useRef(onDragEnd);
@@ -701,7 +705,7 @@ export function ReorderableList<T>({
         onScrollBeginDrag={onScrollBeginDrag}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        automaticallyAdjustKeyboardInsets
+        {...keyboardScroll.props}
       >
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {

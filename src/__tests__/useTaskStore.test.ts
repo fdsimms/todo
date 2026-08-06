@@ -151,6 +151,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  showStreak: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -210,6 +211,7 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
   createdAt: '2025-01-01T00:00:00.000Z',
   sortOrder: 1,
   category: null,
+  applyContainer: 'stack',
   ...overrides,
 });
 
@@ -276,6 +278,7 @@ describe('addTask', () => {
     expect(task.recurrenceType).toBe('none');
     expect(task.pinned).toBe(false);
     expect(task.parentId).toBeNull();
+    expect(task.showStreak).toBe(false);
   });
 
   it('applies draft overrides', () => {
@@ -492,6 +495,15 @@ describe('duplicateTask', () => {
     expect(copy!.dueDate).toBe('2025-01-05T00:00:00.000Z');
     expect(copy!.timeSegments).toEqual(['morning']);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('keeps showStreak on the copy even though the streak itself resets', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', recurrenceType: 'daily', showStreak: true, streakCount: 5 })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.showStreak).toBe(true);
+    expect(copy.streakCount).toBe(0);
   });
 
   it('resets completion, streak, timer, and occurrence bookkeeping', () => {
@@ -1674,6 +1686,13 @@ describe('archiveTask', () => {
     useTaskStore.getState().archiveTask('t1');
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
   });
+
+  it('restores the pin on undo', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', pinned: true })], lastAction: null });
+    useTaskStore.getState().archiveTask('t1');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+  });
 });
 
 describe('unarchiveTask', () => {
@@ -1693,6 +1712,26 @@ describe('unarchiveTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false, streakCount: 5 })] });
     useTaskStore.getState().unarchiveTask('t1');
     expect(useTaskStore.getState().tasks[0].streakCount).toBe(5);
+  });
+
+  it('is undoable, restoring the archived stamp and the broken streak', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z', streakCount: 30, streakDate: '2024-12-31T00:00:00.000Z' })],
+      lastAction: null,
+    });
+    useTaskStore.getState().unarchiveTask('t1');
+    useTaskStore.getState().undoLastAction();
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.archived).toBe(true);
+    expect(task.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+    expect(task.streakCount).toBe(30);
+    expect(task.streakDate).toBe('2024-12-31T00:00:00.000Z');
+  });
+
+  it('leaves no undo entry when the task is not archived', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', archived: false })], lastAction: null });
+    useTaskStore.getState().unarchiveTask('t1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
 
@@ -2743,6 +2782,40 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulkTogglePin', () => {
+  it('pins the whole selection when only some of it is pinned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: false }),
+        makeTask({ id: 'b', pinned: true }),
+        makeTask({ id: 'c', pinned: false }),
+      ],
+    });
+    useTaskStore.getState().bulkTogglePin(['a', 'b']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'b')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'c')?.pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a', 'b'], true);
+  });
+
+  it('unpins the selection when every task in it is already pinned', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true }), makeTask({ id: 'b', pinned: true })],
+    });
+    useTaskStore.getState().bulkTogglePin(['a', 'b']);
+    expect(useTaskStore.getState().tasks.every(t => !t.pinned)).toBe(true);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a', 'b'], false);
+  });
+
+  it('does nothing for an empty selection', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkTogglePin([]);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+  });
+});
+
 describe('bulkDefer', () => {
   it('sets deferUntil on all specified tasks', () => {
     const until = new Date(2025, 5, 20);
@@ -3138,6 +3211,15 @@ describe('timers', () => {
     expect(next.estimatedMinutes).toBe(10);
     expect(next.timerStartedAt).toBeNull();
   });
+
+  it('carries showStreak onto the next occurrence', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'daily', showStreak: true })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next.showStreak).toBe(true);
+  });
 });
 
 // ─── countdowns on timed tasks ───────────────────────────────────────────────
@@ -3360,6 +3442,50 @@ describe('addExistingToProject / removeFromProject', () => {
   });
 });
 
+// ─── archiveProject / unarchiveProject ──────────────────────────────────────
+
+describe('archiveProject', () => {
+  it('archives the project and is undoable', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().archiveProject('p1');
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.archived).toBe(false);
+    expect(project.archivedAt).toBeNull();
+  });
+
+  it('leaves no undo entry for an already-archived project', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().archiveProject('p1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+describe('unarchiveProject', () => {
+  it('restores the project and undoes back to the original archivedAt', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().unarchiveProject('p1');
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    useTaskStore.getState().undoLastAction();
+    const project = useProjectStore.getState().getProjectById('p1')!;
+    expect(project.archived).toBe(true);
+    expect(project.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  it('leaves no undo entry for a project that is not archived', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().unarchiveProject('p1');
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 // ─── completeTask: project auto-archive ────────────────────────────────────────
 
 describe('completeTask auto-archiving a finished project', () => {
@@ -3396,6 +3522,27 @@ describe('completeTask auto-archiving a finished project', () => {
     useProjectStore.setState({ projects: [] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
     expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
+  });
+
+  it('unarchives the project again when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(false);
+  });
+
+  it('leaves a project the user had already archived alone when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().completeTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
   });
 });
 

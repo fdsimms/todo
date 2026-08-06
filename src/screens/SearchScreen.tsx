@@ -20,11 +20,13 @@ import type { SearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, checkboxRadius, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { format } from 'date-fns/format';
+
+const CHECKBOX_SIZE = 20;
 
 function SearchResultItem({ result, onPress, styles, colors }: {
   result: SearchResult;
@@ -56,10 +58,9 @@ function SearchResultItem({ result, onPress, styles, colors }: {
       accessibilityHint="Double tap to open task"
     >
       <View style={styles.statusIcon}>
-        {isCompleted
-          ? <Ionicons name="checkmark-circle" size={22} color={colors.green} />
-          : <View style={styles.circle} />
-        }
+        <View style={[styles.checkbox, isCompleted && styles.checkboxDone]}>
+          {isCompleted && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
+        </View>
       </View>
 
       <View style={styles.resultContent}>
@@ -293,12 +294,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginLeft: spacing.md,
     paddingTop: 1,
   },
-  circle: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
+  checkbox: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxDone: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
   },
   resultContent: { flex: 1, gap: 3 },
   resultTitle: {

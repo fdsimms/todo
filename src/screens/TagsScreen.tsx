@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -73,6 +74,7 @@ export function TagsScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
 
@@ -250,10 +252,11 @@ export function TagsScreen() {
             >
             <PaintSelectionProvider {...paintProps}>
               <FlatList
+                ref={keyboardScroll.ref}
                 scrollEnabled={!painting}
                 data={tagTasks}
                 keyExtractor={t => t.id}
-                automaticallyAdjustKeyboardInsets
+                {...keyboardScroll.props}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {
                   const subs = allTasks.filter(t => t.parentId === item.id);
