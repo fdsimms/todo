@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -21,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
 import { EditorRow } from './EditorRow';
+import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
@@ -105,9 +102,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   if (!project) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
+    <EditorSheet
+      visible={visible}
+      onRequestClose={saveAndClose}
+      rootStyle={styles.root}
+      headerStyle={styles.header}
+      scrollStyle={styles.scroll}
+      scrollContentStyle={styles.scrollContent}
+      header={
+        <>
           <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
@@ -115,152 +118,153 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
-        </View>
-
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <TextInput
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Project name"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-            maxLength={TITLE_MAX_LENGTH}
+        </>
+      }
+      footer={
+        <>
+          <CalendarPicker
+            visible={showStartDatePicker}
+            value={targetStartDate}
+            mode="date"
+            title="Start Date"
+            onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
+            onCancel={() => setShowStartDatePicker(false)}
           />
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes"
-            placeholderTextColor={colors.textTertiary}
-            multiline
+          <CalendarPicker
+            visible={showEndDatePicker}
+            value={targetEndDate}
+            mode="date"
+            title="Target Date"
+            onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
+            onCancel={() => setShowEndDatePicker(false)}
           />
+        </>
+      }
+    >
+      <TextInput
+        style={styles.titleInput}
+        value={title}
+        onChangeText={setTitle}
+        placeholder="Project name"
+        placeholderTextColor={colors.textTertiary}
+        multiline
+        maxLength={TITLE_MAX_LENGTH}
+      />
+      <TextInput
+        style={styles.notesInput}
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Notes"
+        placeholderTextColor={colors.textTertiary}
+        multiline
+      />
 
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Category"
-              summary={category ?? undefined}
-              hint="Groups this project with others of the same kind."
-              expanded={categoryOpen}
-              onToggle={() => setCategoryOpen(v => !v)}
-            >
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
-                >
-                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
-                  >
-                    <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-                {addingCategory ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newCategory}
-                    onChangeText={setNewCategory}
-                    onSubmitEditing={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    onBlur={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    placeholder="category name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addTagText}>New</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </CollapsibleField>
-          </View>
-
-          <View style={[styles.card, { marginTop: spacing.lg }]}>
-            <EditorRow
-              icon="play-outline"
-              label="Start date"
-              value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
-              onPress={() => setShowStartDatePicker(true)}
-              onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
-            />
-            <View style={styles.sep} />
-            <EditorRow
-              icon="flag-outline"
-              label="Target date"
-              value={targetEndDate ? formatDueDate(targetEndDate.toISOString()) : undefined}
-              onPress={() => setShowEndDatePicker(true)}
-              onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
-            />
-          </View>
-          <Text style={styles.sectionFooter}>
-            Optional. If the target date passes before the project's done, nothing happens automatically — it's just flagged so you can decide what to do.
-          </Text>
-
-          <View style={[styles.card, { marginTop: spacing.xl }]}>
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Category"
+          summary={category ?? undefined}
+          hint="Groups this project with others of the same kind."
+          expanded={categoryOpen}
+          onToggle={() => setCategoryOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
             <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => {
-                if (project.archived) {
-                  unarchiveProject(project.id);
-                } else {
-                  haptics.success();
-                  archiveProject(project.id);
-                  onClose();
-                }
-              }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Archive"
-              accessibilityState={{ checked: project.archived }}
+              style={[styles.pill, !category && styles.pillActiveNeutral]}
+              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
             >
-              <Ionicons name="archive-outline" size={18} color={project.archived ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Archive</Text>
-                <Text style={styles.optionHint}>
-                  {project.archived ? 'Hidden from the active list' : 'Move to the archived list'}
-                </Text>
-              </View>
-              <View style={[styles.toggle, project.archived && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, project.archived && styles.toggleKnobOn]} />
-              </View>
+              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
             </TouchableOpacity>
+            {categories.map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
+              >
+                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {addingCategory ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newCategory}
+                onChangeText={setNewCategory}
+                onSubmitEditing={() => {
+                  const c = newCategory.trim();
+                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
+                  setNewCategory(''); setAddingCategory(false);
+                }}
+                onBlur={() => {
+                  const c = newCategory.trim();
+                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
+                  setNewCategory(''); setAddingCategory(false);
+                }}
+                placeholder="category name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="words"
+              />
+            ) : (
+              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                <Ionicons name="add" size={14} color={colors.accent} />
+                <Text style={styles.addTagText}>New</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </ScrollView>
+        </CollapsibleField>
+      </View>
 
-        <CalendarPicker
-          visible={showStartDatePicker}
-          value={targetStartDate}
-          mode="date"
-          title="Start Date"
-          onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
-          onCancel={() => setShowStartDatePicker(false)}
+      <View style={[styles.card, { marginTop: spacing.lg }]}>
+        <EditorRow
+          icon="play-outline"
+          label="Start date"
+          value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
+          onPress={() => setShowStartDatePicker(true)}
+          onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
         />
-        <CalendarPicker
-          visible={showEndDatePicker}
-          value={targetEndDate}
-          mode="date"
-          title="Target Date"
-          onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
-          onCancel={() => setShowEndDatePicker(false)}
+        <View style={styles.sep} />
+        <EditorRow
+          icon="flag-outline"
+          label="Target date"
+          value={targetEndDate ? formatDueDate(targetEndDate.toISOString()) : undefined}
+          onPress={() => setShowEndDatePicker(true)}
+          onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
         />
-      </KeyboardAvoidingView>
-    </Modal>
+      </View>
+      <Text style={styles.sectionFooter}>
+        Optional. If the target date passes before the project's done, nothing happens automatically — it's just flagged so you can decide what to do.
+      </Text>
+
+      <View style={[styles.card, { marginTop: spacing.xl }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => {
+            if (project.archived) {
+              unarchiveProject(project.id);
+            } else {
+              haptics.success();
+              archiveProject(project.id);
+              onClose();
+            }
+          }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Archive"
+          accessibilityState={{ checked: project.archived }}
+        >
+          <Ionicons name="archive-outline" size={18} color={project.archived ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Archive</Text>
+            <Text style={styles.optionHint}>
+              {project.archived ? 'Hidden from the active list' : 'Move to the archived list'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, project.archived && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, project.archived && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+    </EditorSheet>
   );
 }
 

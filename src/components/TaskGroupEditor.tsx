@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -27,6 +23,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
+import { EditorSheet } from './EditorSheet';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -195,9 +192,16 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   if (!group) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
+    <EditorSheet
+      visible={visible}
+      onRequestClose={saveAndClose}
+      rootStyle={styles.root}
+      headerStyle={styles.header}
+      scrollStyle={styles.scroll}
+      scrollContentStyle={styles.scrollContent}
+      scrollEnabled={!draggingChild}
+      header={
+        <>
           <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
@@ -205,231 +209,224 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
-        </View>
+        </>
+      }
+    >
+      <TextInput
+        style={styles.titleInput}
+        value={title}
+        onChangeText={setTitle}
+        placeholder="Stack title"
+        placeholderTextColor={colors.textTertiary}
+        maxLength={TITLE_MAX_LENGTH}
+        multiline
+      />
+      <TextInput
+        style={styles.notesInput}
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Notes"
+        placeholderTextColor={colors.textTertiary}
+        multiline
+      />
 
-        <ScrollView
-          style={styles.scroll}
-          scrollEnabled={!draggingChild}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Category"
+          summary={category ? categoryLabel(category, categories) : undefined}
+          hint="Every task in this stack takes this category. Changing it moves them all."
+          expanded={fieldOpen('category')}
+          onToggle={() => toggleField('category')}
         >
-          <TextInput
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Stack title"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={TITLE_MAX_LENGTH}
-            multiline
-          />
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-          />
-
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Category"
-              summary={category ? categoryLabel(category, categories) : undefined}
-              hint="Every task in this stack takes this category. Changing it moves them all."
-              expanded={fieldOpen('category')}
-              onToggle={() => toggleField('category')}
+          <View style={styles.pillRow}>
+            <TouchableOpacity
+              style={[styles.pill, !category && styles.pillActive]}
+              onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
             >
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !category && styles.pillActive]}
-                  onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
-                >
-                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {allCategories.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.pill, category === cat && styles.pillActive]}
-                    onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
-                  >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </CollapsibleField>
-            <View style={styles.cardSep} />
-            <CollapsibleField
-              label="Tags"
-              summary={tags.length > 0 ? tags.join(', ') : undefined}
-              hint="Free-form labels you can filter and search by."
-              expanded={fieldOpen('tags')}
-              onToggle={() => toggleField('tags')}
-            >
-              <View style={styles.pillRow}>
-                {tags.map(tag => (
-                  <TouchableOpacity key={tag} style={styles.pill} onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}>
-                    <Text style={styles.pillText}>{tag} ✕</Text>
-                  </TouchableOpacity>
-                ))}
-                {addingTag ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newTag}
-                    onChangeText={setNewTag}
-                    onSubmitEditing={addTagFromInput}
-                    onBlur={addTagFromInput}
-                    placeholder="tag name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="none"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingTag(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addPillText}>Add tag</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </CollapsibleField>
+              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+            </TouchableOpacity>
+            {allCategories.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.pill, category === cat && styles.pillActive]}
+                onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+              >
+                <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        </CollapsibleField>
+        <View style={styles.cardSep} />
+        <CollapsibleField
+          label="Tags"
+          summary={tags.length > 0 ? tags.join(', ') : undefined}
+          hint="Free-form labels you can filter and search by."
+          expanded={fieldOpen('tags')}
+          onToggle={() => toggleField('tags')}
+        >
+          <View style={styles.pillRow}>
+            {tags.map(tag => (
+              <TouchableOpacity key={tag} style={styles.pill} onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}>
+                <Text style={styles.pillText}>{tag} ✕</Text>
+              </TouchableOpacity>
+            ))}
+            {addingTag ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newTag}
+                onChangeText={setNewTag}
+                onSubmitEditing={addTagFromInput}
+                onBlur={addTagFromInput}
+                placeholder="tag name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+              />
+            ) : (
+              <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingTag(true)}>
+                <Ionicons name="add" size={14} color={colors.accent} />
+                <Text style={styles.addPillText}>Add tag</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </CollapsibleField>
+      </View>
 
-          <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <View style={styles.subtaskHeader}>
-                <Text style={styles.sectionLabel}>Tasks in this stack</Text>
-                <Text style={styles.subtaskProgress}>
-                  {members.length}
-                  {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
-                </Text>
-              </View>
-              <SortableList
-                data={members}
-                onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
-                onDragStateChange={setDraggingChild}
-                renderItem={(child, _i, drag) => {
-                  const subtitle = memberSchedule(child);
-                  return (
-                    <View style={styles.childRow}>
-                      <TouchableOpacity
-                        onLongPress={e => drag(e.nativeEvent.pageY)}
-                        delayLongPress={150}
-                        hitSlop={8}
-                        style={styles.dragHandle}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Reorder ${child.title}`}
-                      >
-                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                      <View style={styles.childText}>
-                        <Text
-                          style={[styles.childTitle, child.completed && styles.childTitleDone]}
-                          numberOfLines={1}
-                        >
-                          {child.title}
-                        </Text>
-                        {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => removeFromGroup(child.id)}
-                        hitSlop={8}
-                        style={styles.childRemove}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove ${child.title} from stack`}
-                      >
-                        <Ionicons name="close" size={14} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                    </View>
-                  );
+      <View style={styles.sectionCard}>
+        <View style={styles.cardSection}>
+          <View style={styles.subtaskHeader}>
+            <Text style={styles.sectionLabel}>Tasks in this stack</Text>
+            <Text style={styles.subtaskProgress}>
+              {members.length}
+              {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
+            </Text>
+          </View>
+          <SortableList
+            data={members}
+            onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
+            onDragStateChange={setDraggingChild}
+            renderItem={(child, _i, drag) => {
+              const subtitle = memberSchedule(child);
+              return (
+                <View style={styles.childRow}>
+                  <TouchableOpacity
+                    onLongPress={e => drag(e.nativeEvent.pageY)}
+                    delayLongPress={150}
+                    hitSlop={8}
+                    style={styles.dragHandle}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Reorder ${child.title}`}
+                  >
+                    <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                  <View style={styles.childText}>
+                    <Text
+                      style={[styles.childTitle, child.completed && styles.childTitleDone]}
+                      numberOfLines={1}
+                    >
+                      {child.title}
+                    </Text>
+                    {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => removeFromGroup(child.id)}
+                    hitSlop={8}
+                    style={styles.childRemove}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${child.title} from stack`}
+                  >
+                    <Ionicons name="close" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                </View>
+              );
+            }}
+          />
+
+          {addingChild ? (
+            <View style={styles.subtaskInputRow}>
+              <TextInput
+                autoFocus
+                style={styles.subtaskInput}
+                value={newChildTitle}
+                onChangeText={setNewChildTitle}
+                placeholder="New task title"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  const t = newChildTitle.trim();
+                  if (t) addNewGroupedTask(group.id, t);
+                  setNewChildTitle('');
+                  haptics.tap();
+                }}
+                onBlur={() => {
+                  const t = newChildTitle.trim();
+                  if (t) addNewGroupedTask(group.id, t);
+                  setNewChildTitle('');
+                  setAddingChild(false);
                 }}
               />
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingChild(true)}>
+              <Ionicons name="add" size={14} color={colors.accent} />
+              <Text style={styles.addPillText}>Add new task</Text>
+            </TouchableOpacity>
+          )}
 
-              {addingChild ? (
-                <View style={styles.subtaskInputRow}>
-                  <TextInput
-                    autoFocus
-                    style={styles.subtaskInput}
-                    value={newChildTitle}
-                    onChangeText={setNewChildTitle}
-                    placeholder="New task title"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      const t = newChildTitle.trim();
-                      if (t) addNewGroupedTask(group.id, t);
-                      setNewChildTitle('');
-                      haptics.tap();
-                    }}
-                    onBlur={() => {
-                      const t = newChildTitle.trim();
-                      if (t) addNewGroupedTask(group.id, t);
-                      setNewChildTitle('');
-                      setAddingChild(false);
-                    }}
-                  />
-                </View>
-              ) : (
-                <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingChild(true)}>
-                  <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addPillText}>Add new task</Text>
+          <TouchableOpacity style={styles.addPillBtn} onPress={() => setShowExistingPicker(v => !v)}>
+            <Ionicons name={showExistingPicker ? 'chevron-up' : 'chevron-down'} size={14} color={colors.accent} />
+            <Text style={styles.addPillText}>Add existing task</Text>
+          </TouchableOpacity>
+
+          {showExistingPicker && (
+            <View style={styles.existingPicker}>
+              <TextInput
+                style={styles.existingSearch}
+                value={existingSearch}
+                onChangeText={setExistingSearch}
+                placeholder="Search tasks…"
+                placeholderTextColor={colors.textTertiary}
+              />
+              {eligibleForAdd.map(t => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.existingRow}
+                  onPress={() => { addExistingToGroup(t.id, group.id); haptics.tap(); }}
+                >
+                  <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
                 </TouchableOpacity>
+              ))}
+              {eligibleForAdd.length === 0 && (
+                <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
               )}
-
-              <TouchableOpacity style={styles.addPillBtn} onPress={() => setShowExistingPicker(v => !v)}>
-                <Ionicons name={showExistingPicker ? 'chevron-up' : 'chevron-down'} size={14} color={colors.accent} />
-                <Text style={styles.addPillText}>Add existing task</Text>
-              </TouchableOpacity>
-
-              {showExistingPicker && (
-                <View style={styles.existingPicker}>
-                  <TextInput
-                    style={styles.existingSearch}
-                    value={existingSearch}
-                    onChangeText={setExistingSearch}
-                    placeholder="Search tasks…"
-                    placeholderTextColor={colors.textTertiary}
-                  />
-                  {eligibleForAdd.map(t => (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={styles.existingRow}
-                      onPress={() => { addExistingToGroup(t.id, group.id); haptics.tap(); }}
-                    >
-                      <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
-                      <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                    </TouchableOpacity>
-                  ))}
-                  {eligibleForAdd.length === 0 && (
-                    <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
-                  )}
-                  {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
-                    <Text style={styles.existingEmpty}>
-                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
-                    </Text>
-                  )}
-                </View>
+              {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
+                <Text style={styles.existingEmpty}>
+                  Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
+                </Text>
               )}
             </View>
-          </View>
+          )}
+        </View>
+      </View>
 
-          {/* Pin-all used to be an icon button on the stack header itself,
-              which spent a permanent slot on every row for one of the rarest
-              things you can do to a stack. */}
-          <View style={styles.sectionCard}>
-            <TouchableOpacity
-              style={styles.actionRow}
-              onPress={() => { haptics.tap(); pinGroup(group.id); onClose(); }}
-              accessibilityRole="button"
-              accessibilityLabel={`Pin all of ${group.title}`}
-            >
-              <Ionicons name="pin-outline" size={18} color={colors.accent} />
-              <Text style={styles.actionText}>Pin all tasks in this stack</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </Modal>
+      {/* Pin-all used to be an icon button on the stack header itself,
+          which spent a permanent slot on every row for one of the rarest
+          things you can do to a stack. */}
+      <View style={styles.sectionCard}>
+        <TouchableOpacity
+          style={styles.actionRow}
+          onPress={() => { haptics.tap(); pinGroup(group.id); onClose(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`Pin all of ${group.title}`}
+        >
+          <Ionicons name="pin-outline" size={18} color={colors.accent} />
+          <Text style={styles.actionText}>Pin all tasks in this stack</Text>
+        </TouchableOpacity>
+      </View>
+    </EditorSheet>
   );
 }
 
