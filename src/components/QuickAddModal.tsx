@@ -36,7 +36,8 @@ import {
   typeSummary,
   DEFAULT_TARGET_COUNT,
   DEFAULT_TIMED_MINUTES,
-  TARGET_COUNT_OPTIONS,
+  MAX_TARGET_COUNT,
+  MIN_TARGET_COUNT,
   TIMED_MINUTE_OPTIONS,
   type QuickAddType,
   type TypeValues,
@@ -44,6 +45,7 @@ import {
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
+import { CountStepper } from './CountStepper';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -918,25 +920,18 @@ export function QuickAddModal({
 
           {type === 'target' && (
             <View style={styles.typeControl}>
-              <View style={styles.presetRow}>
-                {TARGET_COUNT_OPTIONS.map(n => {
-                  const active = targetCount === n;
-                  return (
-                    <TouchableOpacity
-                      key={n}
-                      style={[styles.presetChip, active && styles.presetChipActive]}
-                      onPress={() => { haptics.tap(); setTargetCount(n); }}
-                      activeOpacity={interaction.activeOpacity}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={`${n} times a day`}
-                    >
-                      <Text style={[styles.presetChipText, active && styles.presetChipTextActive]}>
-                        {n}×
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
+              <View style={styles.targetStepperRow}>
+                <CountStepper
+                  value={targetCount}
+                  onChange={setTargetCount}
+                  min={MIN_TARGET_COUNT}
+                  max={MAX_TARGET_COUNT}
+                  // No clearing here: in this mode the target is the task.
+                  format={n => `${n}×`}
+                  label="Daily target"
+                  describeValue={n => `${n} times a day`}
+                />
+                <Text style={styles.targetStepperCaption}>a day</Text>
               </View>
             </View>
           )}
@@ -2033,6 +2028,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     alignItems: 'center',
+  },
+  targetStepperRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  targetStepperCaption: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
   },
   presetChip: {
     paddingHorizontal: 12,

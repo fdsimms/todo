@@ -26,11 +26,17 @@ export const DEFAULT_TARGET_COUNT = 3;
 
 export const TIMED_MINUTE_OPTIONS = [5, 10, 15, 25, 30, 60] as const;
 /**
- * Offered daily targets, shared with the editor's own Daily target row. Small
- * enough to tap through, and stops short of the point where a quota stops
- * being a habit and starts being a tally.
+ * Range of the daily target stepper, shared with the editor's own Daily target
+ * row. A target of 1 isn't a quota, so 2 is the floor; the ceiling is only
+ * there to keep a held key and a fat-fingered digit from producing a meter
+ * nobody can fill, not because a habit stops making sense somewhere below it.
+ *
+ * This used to be a fixed list of chips ([2..6, 8, 10, 12]), which had to pick
+ * both a granularity and a ceiling for everyone — 7 was unsayable and 20 was
+ * off the end.
  */
-export const TARGET_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
+export const MIN_TARGET_COUNT = 2;
+export const MAX_TARGET_COUNT = 99;
 
 /**
  * Chips a type leaves out because picking the type already answered them.
