@@ -42,6 +42,7 @@ import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -430,6 +431,11 @@ export function TodayScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+  // One per view mode: only ever one of these lists is mounted at a time, but
+  // each needs its own ref and its own record of where it last settled.
+  const pinnedScroll = useKeyboardInsetScroll<FlatList>();
+  const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
+  const inboxScroll = useKeyboardInsetScroll<FlatList>();
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   const [restExpanded, setRestExpanded] = useState(false);
@@ -1909,12 +1915,13 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length > 0 && (
           <FlatList
+            ref={pinnedScroll.ref}
             scrollEnabled={!painting && !fabDragging && !draggingStackChild}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            automaticallyAdjustKeyboardInsets
+            {...pinnedScroll.props}
             renderItem={({ item }) => renderItem({ item })}
             contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             refreshControl={
@@ -2125,10 +2132,11 @@ export function TodayScreen() {
 
         {viewMode === 'unscheduled' && (
           <FlatList
+            ref={unscheduledScroll.ref}
             scrollEnabled={!painting}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
-            automaticallyAdjustKeyboardInsets
+            {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? [];
               return (
@@ -2198,10 +2206,11 @@ export function TodayScreen() {
             Today (see inboxData). */}
         {viewMode === 'inbox' && (
           <FlatList
+            ref={inboxScroll.ref}
             scrollEnabled={!painting}
             data={inboxData}
             keyExtractor={listItemKey}
-            automaticallyAdjustKeyboardInsets
+            {...inboxScroll.props}
             renderItem={({ item }) =>
               item.type === 'group'
                 ? renderInboxGroup(item.group, item.children)
