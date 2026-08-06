@@ -12,6 +12,7 @@ import {
   dbSetCategoryEmoji,
   dbBatchUpdateCategorySortOrders,
 } from '../db/database';
+import { firstEmoji } from '../utils/emojiInput';
 
 interface CategoryStore {
   categories: Category[];
@@ -120,11 +121,14 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
   setCategoryEmoji(name, emoji) {
     const cat = get().categories.find(c => c.name === name);
     if (!cat) return;
-    const trimmed = emoji?.trim() || null;
-    dbSetCategoryEmoji(cat.id, trimmed);
+    // One emoji, always — every write lands here, so clamping at this one point
+    // is what keeps a two-emoji category from existing at all. See emojiInput.ts
+    // for why "one emoji" can't be expressed as a string length.
+    const single = firstEmoji(emoji) || null;
+    dbSetCategoryEmoji(cat.id, single);
     set(s => ({
       categories: s.categories.map(c =>
-        c.name === name ? { ...c, emoji: trimmed } : c
+        c.name === name ? { ...c, emoji: single } : c
       ),
     }));
   },

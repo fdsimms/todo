@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -16,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { EditorRow } from './EditorRow';
+import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -28,6 +30,7 @@ import {
   formatScheduleTime,
 } from '../utils/categorySchedule';
 import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
+import { firstEmoji } from '../utils/emojiInput';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
@@ -76,7 +79,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [excludeFromPins, setExcludeFromPins] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [pickerDate, setPickerDate] = useState(() => new Date());
-  const emojiInputRef = useRef<TextInput>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   // Reload from the store each time the sheet opens on a category, so a
   // half-finished edit from last time never leaks into the next one.
@@ -93,6 +96,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setHideOnVacation(!!cat?.hideOnVacation);
     setExcludeFromPins(!!cat?.excludeFromPinSuggestions);
     setPicker(null);
+    setEmojiPickerOpen(false);
     // Intentionally keyed on the category name only — `cat` changes on every
     // store write, and re-syncing on those would stomp in-progress edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -156,9 +160,11 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     if (excludeFromPins !== !!cat?.excludeFromPinSuggestions) {
       setCategoryExcludeFromPinSuggestions(category, excludeFromPins);
     }
-    const trimmedEmoji = emoji.trim();
-    if (trimmedEmoji !== (cat?.emoji ?? '')) {
-      setCategoryEmoji(category, trimmedEmoji || null);
+    // Clamped on the way out as well as on the way in — a category saved before
+    // the picker existed can still be holding two emoji from the old text field.
+    const singleEmoji = firstEmoji(emoji);
+    if (singleEmoji !== (cat?.emoji ?? '')) {
+      setCategoryEmoji(category, singleEmoji || null);
     }
 
     const trimmedName = name.trim();
@@ -207,29 +213,16 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
           <View style={styles.identityRow}>
             <PressableScale
               style={styles.emojiWell}
-              onPress={() => emojiInputRef.current?.focus()}
+              onPress={() => { Keyboard.dismiss(); setEmojiPickerOpen(true); }}
               haptic
-              accessibilityLabel="Category emoji"
-              accessibilityHint="Opens the emoji keyboard"
+              accessibilityLabel={emoji ? `Category emoji, ${emoji}` : 'Category emoji, none set'}
+              accessibilityHint="Opens the emoji picker"
             >
               {emoji ? (
                 <Text style={styles.emojiDisplay}>{emoji}</Text>
               ) : (
                 <Ionicons name="happy-outline" size={26} color={colors.textTertiary} />
               )}
-              <TextInput
-                ref={emojiInputRef}
-                style={styles.emojiHiddenInput}
-                value={emoji}
-                onChangeText={setEmoji}
-                maxLength={4}
-                caretHidden
-                contextMenuHidden
-                returnKeyType="done"
-                onSubmitEditing={() => emojiInputRef.current?.blur()}
-                pointerEvents="none"
-                importantForAccessibility="no-hide-descendants"
-              />
             </PressableScale>
             <TextInput
               style={styles.nameInput}
@@ -244,7 +237,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             />
           </View>
           <Text style={styles.identityHint}>
-            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the emoji to change it — it stands in for the category everywhere it's shown.
+            {taskCount === 1 ? '1 task' : `${taskCount} tasks`} in this category. Tap the icon to pick an emoji — one stands in for the category everywhere it's shown.
           </Text>
 
           <Text style={styles.groupLabel}>VISIBILITY</Text>
@@ -362,6 +355,15 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        <EmojiPickerSheet
+          visible={emojiPickerOpen}
+          value={emoji || null}
+          title="Category emoji"
+          hint="One emoji stands in for this category everywhere it's shown."
+          onSelect={picked => setEmoji(picked ?? '')}
+          onClose={() => setEmojiPickerOpen(false)}
+        />
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -384,12 +386,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   emojiDisplay: { fontSize: font.xxl, textAlign: 'center' },
-  // Invisible and untouchable — the well's PressableScale owns the tap and
-  // just calls .focus() on this to raise the keyboard, so the well reads as
-  // a button rather than a text field with a cursor sitting in it.
-  emojiHiddenInput: {
-    position: 'absolute', width: 56, height: 56, opacity: 0,
-  },
   nameInput: {
     flex: 1, minHeight: 44,
     color: colors.text, fontSize: font.xl, fontWeight: fontWeight.medium,
