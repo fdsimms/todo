@@ -256,3 +256,133 @@ describe('setVacationEnd', () => {
     expect(useSettingsStore.getState().vacationEnd).toBeNull();
   });
 });
+
+// ─── formatting, haptics, and the persisted sort & filter ────────────────────
+
+describe('use24HourTime', () => {
+  it('defaults to 12-hour', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().use24HourTime).toBe(false);
+  });
+
+  it('round-trips through the settings table', () => {
+    useSettingsStore.getState().setUse24HourTime(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('use24HourTime', 'true');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'use24HourTime' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().use24HourTime).toBe(true);
+  });
+});
+
+describe('weekStartsOn', () => {
+  it('defaults to Sunday', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().weekStartsOn).toBe(0);
+  });
+
+  it('round-trips Monday', () => {
+    useSettingsStore.getState().setWeekStartsOn(1);
+    expect(dbSetSetting).toHaveBeenCalledWith('weekStartsOn', '1');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'weekStartsOn' ? '1' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().weekStartsOn).toBe(1);
+  });
+
+  it('falls back to Sunday for a value that is neither 0 nor 1', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'weekStartsOn' ? '5' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().weekStartsOn).toBe(0);
+  });
+});
+
+describe('hapticsEnabled', () => {
+  // Defaults on rather than off, so an install predating the setting doesn't
+  // silently lose the haptics it already had.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().hapticsEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'hapticsEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().hapticsEnabled).toBe(false);
+  });
+});
+
+describe('persisted sort', () => {
+  it('defaults to the user-defined order', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().sortOption).toBe('default');
+  });
+
+  it('round-trips a real sort option', () => {
+    useSettingsStore.getState().setSortOption('due-date');
+    expect(dbSetSetting).toHaveBeenCalledWith('sortOption', 'due-date');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'sortOption' ? 'due-date' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().sortOption).toBe('due-date');
+  });
+
+  it('rejects a stored value that is not a sort option', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'sortOption' ? 'by-vibes' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().sortOption).toBe('default');
+  });
+});
+
+describe('persisted filters', () => {
+  const storing = (values: Record<string, string>) =>
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) => values[key] ?? null);
+
+  it('defaults to no filters', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterPriorities).toEqual([]);
+    expect(useSettingsStore.getState().filterEfforts).toEqual([]);
+  });
+
+  it('round-trips both filter arrays as JSON', () => {
+    useSettingsStore.getState().setFilterPriorities([2, 4]);
+    useSettingsStore.getState().setFilterEfforts([0, 6]);
+    expect(dbSetSetting).toHaveBeenCalledWith('filterPriorities', '[2,4]');
+    expect(dbSetSetting).toHaveBeenCalledWith('filterEfforts', '[0,6]');
+    storing({ filterPriorities: '[2,4]', filterEfforts: '[0,6]' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterPriorities).toEqual([2, 4]);
+    expect(useSettingsStore.getState().filterEfforts).toEqual([0, 6]);
+  });
+
+  // A filter hides tasks, so a value that survives validation but isn't a real
+  // priority would empty Today with nothing to explain it.
+  it('drops entries outside the valid range', () => {
+    storing({ filterPriorities: '[0,4,9,-1]', filterEfforts: '[3,6,7]' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterPriorities).toEqual([0, 4]);
+    expect(useSettingsStore.getState().filterEfforts).toEqual([3, 6]);
+  });
+
+  it('drops non-integer and non-numeric entries', () => {
+    storing({ filterPriorities: '[1,"2",2.5,null]' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterPriorities).toEqual([1]);
+  });
+
+  it('falls back to no filter for unparseable or non-array JSON', () => {
+    storing({ filterPriorities: 'not json', filterEfforts: '{"a":1}' });
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().filterPriorities).toEqual([]);
+    expect(useSettingsStore.getState().filterEfforts).toEqual([]);
+  });
+});

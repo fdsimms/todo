@@ -14,8 +14,8 @@ import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
-import { hhmmToDate } from './clockTime';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken } from './clockTime';
+import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 
 /**
  * Returns the start of the logical "day" for a given datetime.
@@ -62,7 +62,39 @@ export function getTaskDayStart(date: Date, dayResetTime?: string): Date {
 
 // The "HH:MM" clock helpers live in the store-free clockTime module; re-exported
 // here because most callers reach for them alongside the rest of the date math.
-export { hhmmToDate, formatHHMM, dateToHHMM } from './clockTime';
+export { hhmmToDate, dateToHHMM } from './clockTime';
+
+/**
+ * Formats an "HH:MM" clock time, honouring the 12/24-hour setting.
+ *
+ * Wraps the store-free version in clockTime the same way getDayStart wraps
+ * dayResetTime: the preference is an optional argument, and falls back to the
+ * store when the caller doesn't care. This is the one the app imports —
+ * clockTime's is for modules that must not touch the store.
+ */
+export function formatHHMM(hhmm: string, use24Hour?: boolean): string {
+  return formatClockTime(hhmm, use24Hour ?? useSettingsStore.getState().use24HourTime);
+}
+
+/**
+ * Formats a Date's clock time, honouring the 12/24-hour setting — the Date
+ * counterpart to formatHHMM, for reminders and Logbook timestamps.
+ */
+export function formatTimeOfDay(date: Date, use24Hour?: boolean): string {
+  return format(date, clockTimeToken(use24Hour ?? useSettingsStore.getState().use24HourTime));
+}
+
+/**
+ * The configured first day of the week, for date-fns' `weekStartsOn`.
+ *
+ * Everything that slices a week has to agree on this or the same completion
+ * lands in different weeks on different screens — which is exactly what used
+ * to happen, with the calendar grid on Sunday and Stats' "this week" on
+ * Monday. One reader, so there's one answer.
+ */
+export function getWeekStart(): WeekStart {
+  return useSettingsStore.getState().weekStartsOn;
+}
 
 /**
  * The calendar date of the current logical day — i.e. the date a task needs
@@ -135,7 +167,7 @@ export function formatDueDate(iso: string, dayResetTime?: string): string {
   if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
   const diff = differenceInCalendarDays(d, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
-  if (isSameWeek(d, today)) return format(d, 'EEEE');
+  if (isSameWeek(d, today, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 
@@ -150,7 +182,7 @@ export function formatStartDate(iso: string, dayResetTime?: string): string {
   if (isSameDay(d, today)) return 'Today';
   if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
   const diff = differenceInCalendarDays(d, today);
-  if (diff >= 0 && isSameWeek(d, today)) return format(d, 'EEEE');
+  if (diff >= 0 && isSameWeek(d, today, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 

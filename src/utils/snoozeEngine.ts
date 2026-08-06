@@ -4,7 +4,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { isThisWeek } from 'date-fns/isThisWeek';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
-import { getDayStart, getNextDueDate } from './dateUtils';
+import { getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
 import { effortToMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -32,7 +32,7 @@ function labelForDate(d: Date): string {
   const today = new Date();
   const diff = differenceInCalendarDays(d, today);
   if (diff === 1) return 'Tomorrow';
-  if (isThisWeek(d, { weekStartsOn: 0 })) return format(d, 'EEEE');
+  if (isThisWeek(d, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
   return format(d, 'EEE, MMM d');
 }
 

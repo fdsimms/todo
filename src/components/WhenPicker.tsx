@@ -18,7 +18,7 @@ import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { buildCalendarGrid } from '../utils/calendarGrid';
+import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
@@ -81,7 +81,6 @@ const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 // How long the selection "pop" plays before the modal commits and closes.
 const CONFIRM_DELAY_MS = 320;
 
-const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
@@ -143,7 +142,12 @@ export function WhenPicker({
     };
   }, [visible]);
 
-  const calendarDays = useMemo(() => buildCalendarGrid(displayMonth), [displayMonth]);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const calendarDays = useMemo(
+    () => buildCalendarGrid(displayMonth, weekStartsOn),
+    [displayMonth, weekStartsOn]
+  );
+  const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
@@ -351,7 +355,7 @@ export function WhenPicker({
             </View>
 
             <View style={styles.dayHeaders}>
-              {DAY_HEADERS.map((d, i) => (
+              {dayHeaders.map((d, i) => (
                 <View key={i} style={styles.dayHeaderCell}>
                   <Text style={styles.dayHeaderText}>{d}</Text>
                 </View>

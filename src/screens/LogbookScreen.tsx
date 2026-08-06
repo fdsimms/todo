@@ -34,6 +34,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
+import { formatTimeOfDay } from '../utils/dateUtils';
 import { isQuotaPartial, displayTitleFor } from '../utils/visibilityUtils';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -78,7 +79,7 @@ function formatDayHeader(iso: string): string {
 }
 
 function formatTime(iso: string): string {
-  return format(new Date(iso), 'h:mm a');
+  return formatTimeOfDay(new Date(iso));
 }
 
 export function LogbookScreen() {
