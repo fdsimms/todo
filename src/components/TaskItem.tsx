@@ -714,7 +714,7 @@ export function TaskItem({
               // Editing always edits the task's own title, not the chain step's
               // (handleTitleTap/saveTitle), even though the displayed text here
               // is the step's while one is active — matching the collapsed row.
-              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity}>
+              <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
                 <Text style={styles.title} numberOfLines={2}>{displayTitle}</Text>
               </TouchableOpacity>
             ) : (
@@ -958,6 +958,7 @@ export function TaskItem({
                           style={styles.subtaskTitleWrapper}
                           onPress={() => handleSubtaskTitleTap(sub)}
                           activeOpacity={interaction.activeOpacity}
+                          hitSlop={8}
                         >
                           <Text style={[
                             styles.subtaskTitle,
