@@ -21,6 +21,16 @@ export function moveItem<T>(arr: T[], from: number, to: number): T[] {
  * walking real neighbour heights and crossing a neighbour only once the finger
  * passes its midpoint. Purely a function of the drag delta, so it's independent
  * of scroll position and of any intermediate reordering.
+ *
+ * **A zero-height row is walked past but never landed on.** Rows a caller has
+ * rendered as nothing still sit in the data (the Today list hides every task
+ * under a category header for the duration of a category drag, render-only, so
+ * `onReorder` still gets the whole list back), and a slot with no height is
+ * indistinguishable on screen from its neighbour's: dropping either side of it
+ * lays the rows out identically. Landing on one is therefore a hover change the
+ * user cannot see — which is exactly what the drag tick fires on, so crossing
+ * one collapsed header used to buzz twice, once at its midpoint and again at
+ * its far edge.
  */
 export function dropIndexFromTranslation(
   heights: number[],
@@ -34,7 +44,7 @@ export function dropIndexFromTranslation(
     for (let i = fromIndex - 1; i >= 0; i--) {
       boundary -= heights[i];
       if (translationY <= boundary + heights[i] / 2) {
-        index = i;
+        if (heights[i] > 0) index = i;
       } else {
         break;
       }
@@ -45,7 +55,7 @@ export function dropIndexFromTranslation(
     for (let i = fromIndex + 1; i < heights.length; i++) {
       boundary += heights[i];
       if (translationY >= boundary - heights[i] / 2) {
-        index = i;
+        if (heights[i] > 0) index = i;
       } else {
         break;
       }
@@ -162,6 +172,29 @@ export function dragTranslation(
   scrollOffset: number,
 ): number {
   return cardTop - (rowContentY - scrollOffset);
+}
+
+/**
+ * Hold the floating drag card inside the span of slots the drag can actually
+ * reach — the drop positions at the two ends of its range, as on-screen tops.
+ *
+ * The card is anchored to the finger, which is right up until the list re-lays
+ * out underneath it: a category header's drag collapses every section away, so
+ * the rows it can move among close up to a short run at the top of the screen
+ * while the finger stays wherever it grabbed from — a screenful below, if the
+ * header was dragged from far down a scrolled list. Nothing about that is
+ * recoverable by scrolling (the drag owns the touch), and the drop gap follows
+ * the card, so the card being out there means the drop is too.
+ *
+ * Clamping costs nothing while the finger is over the range — the card sits
+ * under it exactly as before — and the two converge again the moment it comes
+ * back, which is why this is a clamp rather than a re-anchor: an offset added
+ * to the card would never be paid back.
+ */
+export function clampCardToSlots(cardTop: number, firstSlotY: number, lastSlotY: number): number {
+  const lo = Math.min(firstSlotY, lastSlotY);
+  const hi = Math.max(firstSlotY, lastSlotY);
+  return Math.max(lo, Math.min(hi, cardTop));
 }
 
 /**
