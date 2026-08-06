@@ -134,6 +134,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,

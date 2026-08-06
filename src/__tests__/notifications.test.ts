@@ -21,6 +21,8 @@ import {
   scheduleTaskReminder,
   cancelTaskReminder,
   rescheduleAllReminders,
+  scheduleTimerAlarm,
+  cancelTimerAlarm,
 } from '../utils/notifications';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -72,6 +74,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   category: null,
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
@@ -246,5 +250,73 @@ describe('rescheduleAllReminders', () => {
 
   it('handles an empty list without error', async () => {
     await expect(rescheduleAllReminders([])).resolves.toBeUndefined();
+  });
+});
+
+// ─── timer alarms ───
+
+describe('scheduleTimerAlarm', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('namespaces the identifier so it cannot collide with the task reminder', async () => {
+    await scheduleTimerAlarm(
+      makeTask({ id: 'task-1', timedMinutes: 15, timerStartedAt: new Date().toISOString() })
+    );
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.identifier).toBe('timer:task-1');
+    expect(call.identifier).not.toBe('task-1');
+  });
+
+  it('fires at the remaining time, not the full duration', async () => {
+    // 15-minute target, 10 minutes already banked → 5 minutes left.
+    await scheduleTimerAlarm(
+      makeTask({
+        id: 'task-1',
+        timedMinutes: 15,
+        timerElapsedSeconds: 10 * 60,
+        timerStartedAt: new Date().toISOString(),
+      })
+    );
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    const msOut = new Date(call.trigger.date).getTime() - Date.now();
+    expect(msOut).toBeGreaterThan(4.5 * 60 * 1000);
+    expect(msOut).toBeLessThan(5.5 * 60 * 1000);
+  });
+
+  it('does not schedule for a task with no duration', async () => {
+    await scheduleTimerAlarm(makeTask({ timerStartedAt: new Date().toISOString() }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule while the timer is paused', async () => {
+    await scheduleTimerAlarm(makeTask({ timedMinutes: 15, timerElapsedSeconds: 60 }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule when the countdown has already run out', async () => {
+    await scheduleTimerAlarm(
+      makeTask({
+        timedMinutes: 15,
+        timerElapsedSeconds: 20 * 60,
+        timerStartedAt: new Date().toISOString(),
+      })
+    );
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('does not schedule for a completed or archived task', async () => {
+    const running = { timedMinutes: 15, timerStartedAt: new Date().toISOString() };
+    await scheduleTimerAlarm(makeTask({ ...running, completed: true }));
+    await scheduleTimerAlarm(makeTask({ ...running, archived: true }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('cancelTimerAlarm', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('cancels the namespaced id, leaving the task reminder alone', async () => {
+    await cancelTimerAlarm('task-1');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('timer:task-1');
   });
 });

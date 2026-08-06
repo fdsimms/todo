@@ -44,6 +44,7 @@ const BLANK_SNOOZE_TASK: Task = {
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], vacationPause: false,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
+  timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null, seriesDefaults: null,
 };
 
