@@ -4359,6 +4359,64 @@ describe('completeTask — series rollover', () => {
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(0);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
   });
+
+  // A recurrence's next occurrence is removed when its completion is undone;
+  // the set a rollover inserts is the same thing, several rows at a time, and
+  // was being left behind after the completion that conjured it was taken back.
+  it('takes the whole next set back out when the completion is undone', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+    expect(useTaskStore.getState().tasks).toHaveLength(4);
+
+    useTaskStore.getState().undoLastAction();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map(t => t.id).sort()).toEqual(rows.map(r => r.id).sort());
+    expect(tasks.find(t => t.id === rows[1].id)!.completed).toBe(false);
+  });
+
+  it('re-inserts the next set when the uncomplete is itself undone', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    useTaskStore.getState().uncompleteTask(rows[1].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+    expect(live.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b)).toEqual([10, 15]);
+    expect(live.every(t => new Date(t.dueDate!).getMonth() === 9)).toBe(true);
+  });
+
+  it('keeps a date the user completed themselves out of the undo', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+    const next = useTaskStore.getState().tasks.filter(t => !t.completed);
+    useTaskStore.getState().completeTask(next[0].id);
+
+    useTaskStore.getState().uncompleteTask(rows[1].id);
+
+    // The October date the user actually ticked survives; only the untouched
+    // one goes back out with the completion that created it.
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toContain(next[0].id);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).not.toContain(next[1].id);
+  });
+
+  it('collapses to one roster entry for a stack after a rollover', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', groupId: 'g1' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    expect(useTaskStore.getState().groupRosterOf('g1')).toHaveLength(1);
+  });
 });
 
 // ─── Waiting on (blockedById) ─────────────────────────────────────────────────

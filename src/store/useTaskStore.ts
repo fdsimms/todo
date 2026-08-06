@@ -208,6 +208,12 @@ function buildSeriesRow(
     seriesId,
     seriesMonthDays: repeat?.monthDays ?? [],
     seriesRepeatMonths: repeat?.repeatMonths ?? 1,
+    // Cloned from a template row, which may itself have been spawned by a
+    // completion — inheriting that pointer would make this row read as the
+    // follow-up to a completion it has nothing to do with, and uncompleting
+    // that one would delete it. Callers that do want the link (the rollover in
+    // completeTask) set it themselves on top of this.
+    previousOccurrenceId: null,
     deadline:
       base.deadlineOffsetDays !== null
         ? getDeadlineFromOffset(date, base.deadlineOffsetDays).toISOString()
@@ -1197,6 +1203,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               { monthDays: task.seriesMonthDays, repeatMonths: task.seriesRepeatMonths },
             ),
             sortOrder: order,
+            // Linked to the completion that produced it, exactly as a
+            // recurrence's next occurrence is, so undoing that completion
+            // takes the next set back out with it (see uncompleteTask).
+            previousOccurrenceId: id,
           };
           dbInsertTask(row);
           scheduleTaskReminder(row);
@@ -1297,17 +1307,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // that completion means it never happened, so the occurrence it
     // generated shouldn't exist either — unless the user has since
     // completed it themselves, in which case it's a real completion.
-    const followUp = get().tasks.find(t => t.previousOccurrenceId === id && !t.completed);
-    const followUpSubtasks = followUp ? get().subtasksOf(followUp.id) : [];
-    if (followUp) {
-      dbDeleteSubtasks(followUp.id);
-      dbDeleteTask(followUp.id);
-      cancelTaskReminder(followUp.id);
-    }
+    //
+    // Plural because a repeating dated series rolls over as a *set*: finishing
+    // its last outstanding date inserts every date of the next set at once
+    // (see completeTask). Matching only the first left next month on the board
+    // after the completion that conjured it had been taken back.
+    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
+    const followUpIds = new Set(followUps.map(f => f.id));
+    const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
+    followUps.forEach(f => {
+      dbDeleteSubtasks(f.id);
+      dbDeleteTask(f.id);
+      cancelTaskReminder(f.id);
+    });
 
     set(s => ({
       tasks: s.tasks
-        .filter(t => !followUp || (t.id !== followUp.id && t.parentId !== followUp.id))
+        .filter(t => !followUpIds.has(t.id) && !(t.parentId && followUpIds.has(t.parentId)))
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
       completionCollapseIds: s.completionCollapseIds.filter(x => x !== id),
@@ -1321,18 +1337,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: 'Task uncompleted',
       undo: () => {
         dbUpdateTask(original);
-        if (followUp) {
-          dbInsertTask(followUp);
-          scheduleTaskReminder(followUp);
-          followUpSubtasks.forEach(sub => {
-            dbInsertTask(sub);
-            scheduleTaskReminder(sub);
-          });
-        }
+        [...followUps, ...followUpSubtasks].forEach(t => {
+          dbInsertTask(t);
+          scheduleTaskReminder(t);
+        });
         set(s => ({
           tasks: [
             ...s.tasks.map(t => (t.id === id ? original : t)),
-            ...(followUp ? [followUp, ...followUpSubtasks] : []),
+            ...followUps,
+            ...followUpSubtasks,
           ],
         }));
       },
