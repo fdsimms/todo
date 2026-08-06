@@ -3137,21 +3137,21 @@ describe('expiredTasks', () => {
   it('returns non-subtask tasks whose time window has closed, sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', sortOrder: 2, windowEnd: '13:00' }),
-        makeTask({ id: 'b', sortOrder: 1, windowEnd: '13:00' }),
+        makeTask({ id: 'a', sortOrder: 2, windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'b', sortOrder: 1, windowStart: '08:00', windowEnd: '13:00' }),
       ],
     });
     expect(useTaskStore.getState().expiredTasks().map(t => t.id)).toEqual(['b', 'a']);
   });
 
   it('excludes tasks whose window has not closed yet', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', windowEnd: '18:00' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', windowStart: '08:00', windowEnd: '18:00' })] });
     expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
   });
 
   it('excludes subtasks', () => {
     useTaskStore.setState({
-      tasks: [makeTask({ id: 't1', parentId: 'parent', windowEnd: '13:00' })],
+      tasks: [makeTask({ id: 't1', parentId: 'parent', windowStart: '08:00', windowEnd: '13:00' })],
     });
     expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
   });
@@ -3179,7 +3179,7 @@ describe('sweepExpiredTasks', () => {
       autoRemoveExpiredTasks: false,
       vacationMode: false,
     });
-    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowEnd: '13:00' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })] });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
@@ -3194,8 +3194,8 @@ describe('sweepExpiredTasks', () => {
     });
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'expired', windowEnd: '13:00' }),
-        makeTask({ id: 'active', windowEnd: '18:00' }),
+        makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'active', windowStart: '08:00', windowEnd: '18:00' }),
       ],
     });
     useTaskStore.getState().sweepExpiredTasks();
@@ -3211,7 +3211,7 @@ describe('sweepExpiredTasks', () => {
       vacationMode: true,
     });
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'paused', windowEnd: '13:00', vacationPause: true })],
+      tasks: [makeTask({ id: 'paused', windowStart: '08:00', windowEnd: '13:00', vacationPause: true })],
     });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['paused']);

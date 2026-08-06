@@ -31,7 +31,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -509,6 +509,9 @@ export const TaskItem = React.memo(function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
+  // Not task.windowEnd: a window that runs into the small hours has no closing
+  // time on this day, so there's no countdown to show (see effectiveWindowEnd).
+  const windowEnd = effectiveWindowEnd(task);
   const deadlineDays = task.deadline ? getDeadlineCountdown(task.deadline) : null;
   const deadlineColor =
     deadlineDays === null ? colors.textTertiary
@@ -1072,11 +1075,11 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {windowActive && task.windowEnd && (
+            {windowActive && windowEnd && (
               <View style={styles.metaChip}>
                 <Ionicons name="time" size={iconSize.xs} color={colors.red} />
                 <Text style={styles.windowLabel} numberOfLines={1}>
-                  {formatWindowRemaining(task.windowEnd)}
+                  {formatWindowRemaining(windowEnd)}
                 </Text>
               </View>
             )}
