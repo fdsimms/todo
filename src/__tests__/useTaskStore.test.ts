@@ -4194,6 +4194,35 @@ describe('updateTask series fan-out', () => {
     expect(later.getHours()).toBe(7);
     expect(later.getMinutes()).toBe(15);
   });
+
+  it('fans a blocker out to the whole set', () => {
+    const errand = useTaskStore.getState().addTask({ title: 'Collect the key' });
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { blockedById: errand.id });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.blockedById).toBe(errand.id);
+  });
+
+  // wouldCycle() keeps the picker from offering a blocker that would close a
+  // loop, but the fan-out doesn't go through the picker: naming a later date of
+  // the same set handed that row a pointer at its own id, and a task waiting on
+  // itself is invisible everywhere with no user action able to free it.
+  it('never blocks a date on itself when the blocker is a later date of the same set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { blockedById: rows[2].id });
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.every(t => t.blockedById !== t.id)).toBe(true);
+    expect(tasks.find(t => t.id === rows[1].id)!.blockedById).toBe(rows[2].id);
+    expect(tasks.find(t => t.id === rows[2].id)!.blockedById).toBeNull();
+  });
 });
 
 describe('deleteSeries', () => {

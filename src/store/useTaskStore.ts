@@ -855,6 +855,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             ...('reminderTime' in fanOut
               ? { reminderTime: reanchorReminder(fanOut.reminderTime ?? null, new Date(t.dueDate!)) }
               : {}),
+            // A set shares one blocker, but no row can wait on itself. Picking
+            // a later date of this same set as the blocker would otherwise
+            // hand that row a pointer at its own id, and a task waiting on
+            // itself is invisible everywhere and can never be unblocked by
+            // anything the user does to another task. wouldCycle() guards the
+            // picker against exactly this; the fan-out doesn't go through it,
+            // so it re-checks here and leaves that one row's blocker alone.
+            ...('blockedById' in fanOut && fanOut.blockedById === t.id
+              ? { blockedById: t.blockedById }
+              : {}),
           }));
           patched.forEach(t => {
             dbUpdateTask(t);
