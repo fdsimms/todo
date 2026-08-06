@@ -2028,7 +2028,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Logbook and Stats history, not stack membership, so they're only
     // unfiled (group_id cleared), never destroyed. Deleting a stack the
     // user has run nightly for a year shouldn't erase a year of completions.
-    const doomed = opts.cascade ? new Set(get().groupRosterOf(groupId).map(c => c.id)) : new Set<string>();
+    //
+    // The roster is a set of task *series*, though, so it names one row per
+    // member and a dated series has several (see Task.seriesId). Cascading
+    // over roster ids alone deleted whichever date spoke for the member and
+    // left the rest of the set behind as loose, unfiled tasks — "walk the dog
+    // on the 10th and the 15th" lost the 10th and kept the 15th, still on
+    // Later, no longer in any stack. Each roster entry is expanded back to its
+    // live sibling rows here. Completed and archived rows stay out for the
+    // same reason as above: they're history, not schedule.
+    const doomed = new Set<string>();
+    if (opts.cascade) {
+      const series = new Set<string>();
+      for (const member of get().groupRosterOf(groupId)) {
+        doomed.add(member.id);
+        if (member.seriesId) series.add(member.seriesId);
+      }
+      for (const child of children) {
+        if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived) {
+          doomed.add(child.id);
+        }
+      }
+    }
     dbTransaction(() => {
       children.forEach(child => {
         if (doomed.has(child.id)) {

@@ -2715,6 +2715,43 @@ describe('deleteGroup', () => {
     expect(tasks[0].groupId).toBeNull();
     expect(tasks[0].completed).toBe(true);
   });
+
+  // The roster names one row per member and a dated series has several, so
+  // cascading over roster ids alone deleted the date that spoke for the member
+  // and left the rest of the set behind, loose and unfiled.
+  it('cascade-deletes every live date of a series member, not just the one in the roster', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog', groupId: 'g1' },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    expect(useTaskStore.getState().groupRosterOf('g1')).toHaveLength(1);
+
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(useTaskStore.getState().tasks).toEqual([]);
+  });
+
+  it('still keeps a series member’s completed and archived dates as history', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [] });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog', groupId: 'g1' },
+      [new Date(2025, 5, 1, 12), new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date(2025, 5, 1, 13).toISOString() }
+        : t.id === rows[1].id ? { ...t, archived: true, archivedAt: new Date(2025, 5, 9).toISOString() }
+        : t
+      ),
+    });
+
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.map(t => t.id).sort()).toEqual([rows[0].id, rows[1].id].sort());
+    expect(tasks.every(t => t.groupId === null)).toBe(true);
+  });
 });
 
 // ─── bulk operations ─────────────────────────────────────────────────────────
