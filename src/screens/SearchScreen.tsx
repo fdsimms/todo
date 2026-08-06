@@ -26,7 +26,7 @@ import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { format } from 'date-fns/format';
 
-const CHECKBOX_SIZE = 22;
+const CHECKBOX_SIZE = 20;
 
 function SearchResultItem({ result, onPress, styles, colors }: {
   result: SearchResult;
@@ -59,7 +59,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
     >
       <View style={styles.statusIcon}>
         <View style={[styles.checkbox, isCompleted && styles.checkboxDone]}>
-          {isCompleted && <Ionicons name="checkmark" size={13} color={colors.onAccent} />}
+          {isCompleted && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
         </View>
       </View>
 

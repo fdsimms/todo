@@ -45,8 +45,8 @@ import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 
-const CHECKBOX_SIZE = 24;
-const SUBTASK_CHECKBOX_SIZE = 18;
+const CHECKBOX_SIZE = 22;
+const SUBTASK_CHECKBOX_SIZE = 16;
 
 interface Props {
   task: Task;
@@ -636,11 +636,11 @@ export function TaskItem({
             />
           )}
           {selectionMode && selected && (
-            <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+            <Ionicons name="checkmark" size={13} color={colors.onAccent} />
           )}
           {!selectionMode && completing && (
             <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-              <Ionicons name="checkmark" size={14} color={colors.onAccent} />
+              <Ionicons name="checkmark" size={13} color={colors.onAccent} />
             </Animated.View>
           )}
           {!selectionMode && !completing && recurrenceNotYetDue && (
@@ -891,7 +891,7 @@ export function TaskItem({
                       >
                         <View style={[styles.subtaskCheck, sub.completed && styles.subtaskCheckDone]}>
                           {sub.completed && (
-                            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                            <Ionicons name="checkmark" size={8} color={colors.onAccent} />
                           )}
                         </View>
                       </TouchableOpacity>

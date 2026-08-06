@@ -100,7 +100,7 @@ const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
 
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
-const SUBTASK_CHECKBOX_SIZE = 18;
+const SUBTASK_CHECKBOX_SIZE = 16;
 
 function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
   if (type === 'none') return '';
@@ -1982,7 +1982,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   >
                     <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
                       {sub.completed && (
-                        <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+                        <Ionicons name="checkmark" size={11} color={colors.onAccent} />
                       )}
                     </View>
                   </TouchableOpacity>

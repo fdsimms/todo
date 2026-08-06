@@ -39,7 +39,7 @@ interface LogbookSection {
   data: Task[];
 }
 
-const CHECKBOX_SIZE = 24;
+const CHECKBOX_SIZE = 22;
 
 function formatDayHeader(iso: string): string {
   const d = new Date(iso);
@@ -231,7 +231,7 @@ export function LogbookScreen() {
               >
                 <Ionicons
                   name={isQuotaPartial(item) ? 'remove' : 'checkmark'}
-                  size={14}
+                  size={13}
                   color={isQuotaPartial(item) ? colors.textTertiary : colors.green}
                 />
               </TouchableOpacity>
