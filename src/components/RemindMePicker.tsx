@@ -12,18 +12,15 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
-import { endOfMonth } from 'date-fns/endOfMonth';
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
 import { addMonths } from 'date-fns/addMonths';
 import { subMonths } from 'date-fns/subMonths';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
-import { addDays } from 'date-fns/addDays';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { buildCalendarGrid } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 
 interface Props {
@@ -32,23 +29,6 @@ interface Props {
   onConfirm: (date: Date) => void;
   onClear?: () => void;
   onCancel: () => void;
-}
-
-function buildCalendarGrid(displayMonth: Date): Date[] {
-  const monthStart = startOfMonth(displayMonth);
-  const monthEnd = endOfMonth(displayMonth);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
-  const days: Date[] = [];
-  let cur = gridStart;
-  while (cur <= gridEnd) {
-    days.push(cur);
-    cur = addDays(cur, 1);
-  }
-  while (days.length < 42) {
-    days.push(addDays(days[days.length - 1], 1));
-  }
-  return days;
 }
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];

@@ -33,14 +33,3 @@ export function formatCategorySchedule(cat: Category | null | undefined): string
   if (cat.scheduleDays.length === 0) return null;
   return `${formatScheduleDays(cat.scheduleDays)}, ${formatScheduleTime(cat.scheduleStart)}–${formatScheduleTime(cat.scheduleEnd)}`;
 }
-
-export function parseTimeToDate(hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
-export function dateToHHMM(d: Date): string {
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}

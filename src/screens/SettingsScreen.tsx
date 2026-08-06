@@ -16,6 +16,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { format } from 'date-fns/format';
+import { dateToHHMM, formatHHMM, hhmmToDate } from '../utils/clockTime';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useDemoStore } from '../store/useDemoStore';
@@ -33,17 +34,6 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
 ];
 
 type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | null;
-
-function hhmmToDate(hhmm: string): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date();
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
-function dateToHhmm(d: Date): string {
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
 
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -116,15 +106,13 @@ export function SettingsScreen() {
   };
 
   const confirmPicker = () => {
-    const hhmm = dateToHhmm(pickerDate);
+    const hhmm = dateToHHMM(pickerDate);
     if (activePicker === 'dayReset') setDayResetTime(hhmm);
     else if (activePicker === 'afternoon') setAfternoonStart(hhmm);
     else if (activePicker === 'evening') setEveningStart(hhmm);
     else if (activePicker === 'night') setNightStart(hhmm);
     setActivePicker(null);
   };
-
-  const formatTime = (hhmm: string) => format(hhmmToDate(hhmm), 'h:mm a');
 
   const confirmResetStreaks = () => {
     Alert.alert(
@@ -142,12 +130,12 @@ export function SettingsScreen() {
       key: 'dayReset',
       label: 'Morning',
       icon: 'sunny',
-      value: formatTime(morningStart),
+      value: formatHHMM(morningStart),
       hint: '"Today" flips and streaks reset at this time',
     },
-    { key: 'afternoon', label: 'Afternoon starts', icon: 'partly-sunny', value: formatTime(afternoonStart) },
-    { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatTime(eveningStart) },
-    { key: 'night', label: 'Night starts', icon: 'moon', value: formatTime(nightStart) },
+    { key: 'afternoon', label: 'Afternoon starts', icon: 'partly-sunny', value: formatHHMM(afternoonStart) },
+    { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatHHMM(eveningStart) },
+    { key: 'night', label: 'Night starts', icon: 'moon', value: formatHHMM(nightStart) },
   ];
 
   return (
