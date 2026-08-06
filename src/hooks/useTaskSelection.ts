@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Alert } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import type { Task } from '../types';
 import { isLiveRecurring } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
@@ -62,6 +63,26 @@ export function useTaskSelection(allTasks: Task[]) {
     setSelectionMode(false);
     setSelectedIds(new Set());
   };
+
+  // Selection lasts for a visit, not for the life of the screen. Every screen
+  // that bulk-selects stays mounted when you leave it (tab screens are kept
+  // alive, and enableScreens(false) means a blurred one isn't even frozen), so
+  // without this a selection made on Today is still active — bar and all — on
+  // coming back from Projects. Cleared on blur rather than on focus so the
+  // first frame painted on return is already out of selection mode.
+  //
+  // No animateLayout() on this path, unlike exitSelection: the rows going away
+  // aren't on screen to animate, and a queued LayoutAnimation would land on
+  // whichever screen commits next instead.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        setSelectionMode(false);
+        setSelectedIds(new Set());
+        setPainting(false);
+      };
+    }, [])
+  );
 
   const selectAll = (ids: string[]) => setSelectedIds(new Set(ids));
   const deselectAll = () => setSelectedIds(new Set());
