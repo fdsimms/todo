@@ -189,6 +189,7 @@ export function CategoryDetailScreen() {
                   selected={selectedIds.has(item.id)}
                   onSelect={() => toggleSelection(item.id)}
                   onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  showProject
                 />
               );
             }}

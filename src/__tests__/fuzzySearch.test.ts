@@ -1,4 +1,4 @@
-import { fuzzySearch } from '../utils/fuzzySearch';
+import { fuzzySearch, mergeRanges } from '../utils/fuzzySearch';
 import type { Task } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -257,6 +257,71 @@ describe('fuzzySearch', () => {
       const task = makeTask({ title: 'Buy groceries' });
       const [result] = fuzzySearch([task], 'buy groceries');
       expect(result.titleMatches.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('merges overlapping ranges from two words matching the same span', () => {
+      // Without merging, HighlightedText walks [[4,7],[4,13]] with one cursor
+      // and emits "gro" twice — the row renders "Buy gro groceries".
+      const task = makeTask({ title: 'Buy groceries' });
+      const [result] = fuzzySearch([task], 'gro groceries');
+      expect(result.titleMatches).toEqual([[4, 13]]);
+    });
+  });
+
+  describe('project name on the result', () => {
+    const projectNamesById = new Map([['proj-1', 'Iceland trip']]);
+
+    it('carries the project name so a row can show where the task came from', () => {
+      const task = makeTask({ title: 'Book Airbnb', projectId: 'proj-1' });
+      const [result] = fuzzySearch([task], 'airbnb', projectNamesById);
+      expect(result.projectName).toBe('Iceland trip');
+    });
+
+    it('is null for a task with no project', () => {
+      const [result] = fuzzySearch([makeTask({ title: 'Book Airbnb' })], 'airbnb');
+      expect(result.projectName).toBeNull();
+    });
+
+    it('is null when the project id resolves to nothing', () => {
+      const task = makeTask({ title: 'Book Airbnb', projectId: 'gone' });
+      const [result] = fuzzySearch([task], 'airbnb', projectNamesById);
+      expect(result.projectName).toBeNull();
+    });
+
+    it('ranges cover what matched in the project name', () => {
+      const task = makeTask({ title: 'Book Airbnb', projectId: 'proj-1' });
+      const [result] = fuzzySearch([task], 'iceland', projectNamesById);
+      expect(result.projectMatches).toEqual([[0, 7]]);
+    });
+
+    it('leaves ranges empty when the query matched the title instead', () => {
+      const task = makeTask({ title: 'Book Airbnb', projectId: 'proj-1' });
+      const [result] = fuzzySearch([task], 'airbnb', projectNamesById);
+      expect(result.projectMatches).toEqual([]);
+    });
+  });
+
+  describe('mergeRanges', () => {
+    it('leaves a single range alone', () => {
+      expect(mergeRanges([[2, 5]])).toEqual([[2, 5]]);
+    });
+
+    it('sorts disjoint ranges and keeps them separate', () => {
+      expect(mergeRanges([[8, 10], [0, 3]])).toEqual([[0, 3], [8, 10]]);
+    });
+
+    it('merges overlapping and adjacent ranges', () => {
+      expect(mergeRanges([[0, 5], [3, 9], [9, 11]])).toEqual([[0, 11]]);
+    });
+
+    it('absorbs a range fully contained in an earlier one', () => {
+      expect(mergeRanges([[0, 10], [2, 4]])).toEqual([[0, 10]]);
+    });
+
+    it('does not mutate the ranges it was given', () => {
+      const input: [number, number][] = [[0, 5], [3, 9]];
+      mergeRanges(input);
+      expect(input).toEqual([[0, 5], [3, 9]]);
     });
   });
 

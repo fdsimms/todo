@@ -42,7 +42,12 @@ import {
   dbDeleteCategory,
   dbGetAllTaskGroups,
   dbInsertTaskGroup,
+  dbTableColumns,
+  dbExportTables,
+  dbReplaceAllData,
+  BACKUP_TABLES,
 } from '../db/database';
+import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -1047,5 +1052,179 @@ describe('Categories', () => {
     };
     dbInsertCategoryRow(category);
     expect(dbGetAllCategories()).toEqual([category]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Backup / restore
+// ---------------------------------------------------------------------------
+
+describe('backup and restore', () => {
+  beforeEach(() => {
+    mockRawDb.exec(
+      'DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects;' +
+      'DELETE FROM categories; DELETE FROM task_groups; DELETE FROM project_categories;' +
+      'DELETE FROM template_categories;'
+    );
+  });
+
+  it('dbTableColumns reports the live schema, migrations included', () => {
+    const columns = dbTableColumns('tasks');
+    expect(columns).toContain('id');
+    expect(columns).toContain('title');
+    // Added by a migration rather than the CREATE TABLE, so its presence is
+    // what proves this reads the real schema and not the original statement.
+    expect(columns).toContain('series_id');
+  });
+
+  it('dbExportTables returns every backed-up table, even the empty ones', () => {
+    const tables = dbExportTables();
+    for (const table of BACKUP_TABLES) {
+      expect(Array.isArray(tables[table])).toBe(true);
+    }
+  });
+
+  it('exports rows as raw columns rather than model objects', () => {
+    dbInsertTask(makeTask({ id: 't1', title: 'Walk the dog', completed: true }));
+    const [row] = dbExportTables().tasks;
+    // snake_case column names and SQLite's 0/1 booleans — the raw row.
+    expect(row.id).toBe('t1');
+    expect(row.title).toBe('Walk the dog');
+    expect(row.completed).toBe(1);
+  });
+
+  it('round-trips a full database through export and restore', () => {
+    dbInsertTask(makeTask({ id: 't1', title: 'Walk the dog', tags: ['home'], priority: 3 }));
+    dbInsertTask(makeTask({ id: 't2', title: 'Pay rent', completed: true }));
+    dbInsertProject({
+      id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
+      category: null, sortOrder: 1, archived: false, archivedAt: null,
+      createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false,
+    });
+    dbInsertCategory('Home');
+    dbSetSetting('themeMode', 'light');
+
+    const before = dbExportTables();
+    const backup = buildBackup(before, { appVersion: '1.0.0', exportedAt: new Date() });
+
+    // Wipe everything, exactly as a fresh install would look.
+    mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM projects; DELETE FROM categories;');
+    expect(dbGetAllTasks()).toHaveLength(0);
+
+    dbReplaceAllData(backup.tables);
+
+    expect(dbExportTables()).toEqual(before);
+    expect(dbGetAllTasks().map(t => t.id).sort()).toEqual(['t1', 't2']);
+    expect(dbGetAllProjects()).toHaveLength(1);
+    expect(dbGetAllCategories()).toHaveLength(1);
+    expect(dbGetSetting('themeMode')).toBe('light');
+  });
+
+  it('survives a serialize/parse round trip on the way through', () => {
+    dbInsertTask(makeTask({ id: 't1', title: 'Quoted "title" and \\ backslash', notes: 'a\nb' }));
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+
+    const parsed = parseBackup(serializeBackup(backup));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+
+    mockRawDb.exec('DELETE FROM tasks;');
+    dbReplaceAllData(parsed.backup.tables);
+
+    const [task] = dbGetAllTasks();
+    expect(task.title).toBe('Quoted "title" and \\ backslash');
+    expect(task.notes).toBe('a\nb');
+  });
+
+  it('replaces rather than merges — rows absent from the backup are gone', () => {
+    dbInsertTask(makeTask({ id: 'keep', title: 'In the backup' }));
+    const backup = dbExportTables();
+
+    dbInsertTask(makeTask({ id: 'added-later', title: 'Not in the backup' }));
+    expect(dbGetAllTasks()).toHaveLength(2);
+
+    dbReplaceAllData(backup);
+    expect(dbGetAllTasks().map(t => t.id)).toEqual(['keep']);
+  });
+
+  it('drops columns the running schema does not have', () => {
+    const rows = [{ id: 't1', title: 'From the future', created_at: '2025-01-01T00:00:00.000Z', invented_in_v2: 'ignored' }];
+    expect(() => dbReplaceAllData({ tasks: rows })).not.toThrow();
+    expect(dbGetAllTasks()[0].title).toBe('From the future');
+  });
+
+  it('fills in the schema default for a column the backup predates', () => {
+    // An old backup with only the original columns still restores; everything
+    // added by a migration since falls back to its default.
+    dbReplaceAllData({ tasks: [{ id: 't1', title: 'Old backup', created_at: '2025-01-01T00:00:00.000Z' }] });
+    const [task] = dbGetAllTasks();
+    expect(task.title).toBe('Old backup');
+    expect(task.priority).toBe(0);
+    expect(task.seriesMonthDays).toEqual([]);
+  });
+
+  // The column names reach SQL as text, so this is the guard that matters.
+  it('ignores a column name carrying SQL instead of executing it', () => {
+    const evil = [{ id: 't1', title: 'Nice try', created_at: '2025-01-01T00:00:00.000Z', 'x"); DROP TABLE tasks; --': 'boom' }];
+    expect(() => dbReplaceAllData({ tasks: evil })).not.toThrow();
+    expect(dbTableColumns('tasks')).toContain('id'); // table still exists
+    expect(dbGetAllTasks()[0].title).toBe('Nice try');
+  });
+
+  it('leaves the old data in place when the restore throws part way', () => {
+    dbInsertTask(makeTask({ id: 'original', title: 'Still here' }));
+    const good = dbExportTables();
+
+    // A row whose id is the right type but whose value violates NOT NULL —
+    // enough to fail the insert after the DELETEs have already run.
+    const broken = { ...good, tasks: [{ id: 't1', title: 'ok' }, { id: null, title: 'bad' }] };
+    expect(() => dbReplaceAllData(broken as never)).toThrow();
+
+    // The whole thing is one transaction, so the failure rolled the DELETEs
+    // back too and the user still has what they had.
+    expect(dbGetAllTasks().map(t => t.id)).toEqual(['original']);
+  });
+
+  it('restores an empty backup to an empty database without throwing', () => {
+    dbInsertTask(makeTask({ id: 't1' }));
+    dbReplaceAllData({});
+    expect(dbGetAllTasks()).toHaveLength(0);
+  });
+
+  it('does not carry the API key out of the database', () => {
+    dbSetSetting('anthropicApiKey', 'sk-ant-secret');
+    dbSetSetting('themeMode', 'dark');
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+
+    const keys = backup.tables.settings.map(r => r.key);
+    expect(keys).not.toContain('anthropicApiKey');
+    expect(keys).toContain('themeMode');
+    expect(serializeBackup(backup)).not.toContain('sk-ant-secret');
+  });
+
+  // Restoring must not wipe a key the user entered on this device: the backup
+  // deliberately doesn't carry one, so there'd be nothing to put it back from.
+  it('leaves an existing API key in place across a restore', () => {
+    dbSetSetting('anthropicApiKey', 'sk-ant-local');
+    dbSetSetting('themeMode', 'dark');
+    const backup = buildBackup(dbExportTables(), { appVersion: '1.0.0', exportedAt: new Date() });
+
+    dbSetSetting('themeMode', 'light'); // a change the restore should undo
+    dbReplaceAllData(backup.tables);
+
+    expect(dbGetSetting('anthropicApiKey')).toBe('sk-ant-local');
+    expect(dbGetSetting('themeMode')).toBe('dark');
+  });
+
+  it('keeps the device key even when restoring a backup that carries one', () => {
+    dbSetSetting('anthropicApiKey', 'sk-ant-local');
+    // A hand-edited file, or one from a build that didn't redact.
+    dbReplaceAllData({ settings: [{ key: 'anthropicApiKey', value: 'sk-ant-from-file' }] });
+    expect(dbGetSetting('anthropicApiKey')).toBe('sk-ant-local');
+  });
+
+  it('does not invent an API key row when the device has none', () => {
+    dbReplaceAllData({ settings: [{ key: 'themeMode', value: 'dark' }] });
+    expect(dbGetSetting('anthropicApiKey')).toBeNull();
   });
 });
