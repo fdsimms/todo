@@ -3897,25 +3897,21 @@ describe('quota tasks', () => {
     });
   });
 
-  // Today's "on pace" reveal: the targets you're keeping up with, one tap away
-  // rather than a trip to Later.
-  describe('onPaceTasks', () => {
+  // A target you're keeping up with is Later Today's, same as a task whose
+  // segment hasn't opened — it isn't due yet and it's back when the next unit
+  // falls due.
+  describe('upcomingTodayTasks — daily targets', () => {
     const ids = (tasks: Task[]) => tasks.map(t => t.id);
 
     it('lists a target you are keeping up with', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 2 })] });
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual(['water']);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual(['water']);
     });
 
     it('leaves out one that is behind pace — that one is on Today itself', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual([]);
       expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
-    });
-
-    it('leaves out a pinned one, which is on Today whether it is due or not', () => {
-      useTaskStore.setState({ tasks: [quota({ progressCount: 2, pinned: true })] });
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
     });
 
     it('leaves out one still held on Today, so it is not in two places at once', () => {
@@ -3924,25 +3920,46 @@ describe('quota tasks', () => {
       store.holdQuotaOnToday('water');
       store.logQuotaUnit('water');
 
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual([]);
       expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
 
+      // Once the row has played out, Later Today takes it.
       store.releaseQuotaHold('water');
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual(['water']);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual(['water']);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
     });
 
-    it('drops one the moment it meets its target, hold or no hold', () => {
+    // Meeting the target completes the row, and the completion hold masks it
+    // back to incomplete for a second so it can collapse with its burst. The
+    // mask has to leave it in the list it was already in — at 8/8 it would read
+    // as on pace wherever it came from, and hop lists on the way out.
+    it('keeps a target finished from the reveal in the reveal for the hold', () => {
+      // 7 of 8 at 10:00 is miles ahead of the 2 owed, so this one is in Later
+      // Today to begin with.
       useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual(['water']);
+
+      useTaskStore.getState().logQuotaUnit('water'); // the eighth completes it
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual(['water']);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
+    });
+
+    it('keeps a target finished from Today on Today for the hold', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0)); // all 8 owed by now
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+
       useTaskStore.getState().logQuotaUnit('water');
-      // Today's fresh occurrence starts at zero, which is behind pace at 10:00.
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual([]);
     });
 
     it('leaves out one held back by something other than pace', () => {
       useTaskStore.setState({
         tasks: [quota({ progressCount: 2, dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString() })],
       });
-      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().upcomingTodayTasks())).toEqual([]);
     });
   });
 

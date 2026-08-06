@@ -420,9 +420,17 @@ export function isWaitingTask(task: Task): boolean {
   return !task.parentId && !task.completed && !task.archived && isTaskBlocked(task);
 }
 
-// True when a task is hidden solely because its time-of-day segment hasn't started yet today.
-// Excludes tasks deferred to a future day or due on a future day.
+// True when a task is hidden solely because it isn't due yet today: a
+// time-of-day segment that hasn't started, or a daily target you're keeping up
+// with. Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
+  // A target on pace is upcoming in exactly the same sense — nothing is owed
+  // *yet*, and it comes back later today when the next unit falls due
+  // (quotaNextDueAt). It has no time segment of its own, so it lands in the
+  // headerless bucket of Later Today rather than under Morning/Afternoon: the
+  // pace ramp reaches across the whole day, so no one segment is where it
+  // belongs. isOnPaceQuota has already run every gate below.
+  if (isOnPaceQuota(task)) return true;
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;

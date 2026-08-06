@@ -292,11 +292,15 @@ function VacationHiddenSection({
   );
 }
 
-// Collapsible reveal for tasks deferred to later today (a time segment or
-// window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
-// deemphasized by default, expands in place to show the tasks, sub-grouped by
-// time segment (Morning/Afternoon/Evening) the same way the Later screen
-// sub-groups by segment within a day.
+// Collapsible reveal for tasks that aren't due yet today — a time segment or
+// window that hasn't opened, or a daily target you're keeping up with (which
+// is also how a unit gets logged at a moment nothing asked for it: the rows
+// here keep their meters, and one tap logs without sending the row anywhere).
+// Mirrors ExpiredSection below: collapsed and deemphasized by default, expands
+// in place to show the tasks, sub-grouped by time segment
+// (Morning/Afternoon/Evening) the same way the Later screen sub-groups by
+// segment within a day. A target has no segment, so it sits in the headerless
+// bucket at the end.
 function LaterTodaySection({
   sections,
   expanded,
@@ -347,49 +351,6 @@ function LaterTodaySection({
             <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
           ))}
         </View>
-      ))}
-    </View>
-  );
-}
-
-// Collapsible reveal for daily targets that are only off Today because you're
-// keeping up with them. They're the one kind of task you might want to tick at
-// a moment nothing asked you to — four glasses of water drunk at once, three of
-// them ahead of schedule — and without this the only way to log those was to go
-// looking for the task in Later. Collapsed it's a single quiet line, same as
-// the two either side of it; expanded it's the real rows, meters and all, so a
-// unit goes in with one tap and the row stays put for the next.
-function OnPaceSection({
-  tasks,
-  expanded,
-  onToggle,
-  renderTask,
-  styles,
-  colors,
-}: {
-  tasks: Task[];
-  expanded: boolean;
-  onToggle: () => void;
-  renderTask: (task: Task) => React.ReactNode;
-  styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
-}) {
-  if (tasks.length === 0) return null;
-  return (
-    <View style={styles.hiddenSection}>
-      <TouchableOpacity
-        style={styles.hiddenToggle}
-        onPress={onToggle}
-        activeOpacity={interaction.activeOpacity}
-      >
-        <Ionicons name="speedometer-outline" size={13} color={colors.textTertiary} />
-        <Text style={styles.hiddenToggleText}>
-          {expanded ? 'Hide' : 'Show'} {tasks.length} {tasks.length === 1 ? 'target' : 'targets'} on pace
-        </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={13} color={colors.textTertiary} />
-      </TouchableOpacity>
-      {expanded && tasks.map(task => (
-        <React.Fragment key={task.id}>{renderTask(task)}</React.Fragment>
       ))}
     </View>
   );
@@ -446,7 +407,6 @@ export function TodayScreen() {
   const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
   const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
   const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
-  const onPaceTasks = useTaskStore(useShallow(s => s.onPaceTasks()));
   const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
   const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
   const allTasks = useTaskStore(s => s.tasks);
@@ -522,7 +482,6 @@ export function TodayScreen() {
   const [restExpanded, setRestExpanded] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
-  const [showOnPace, setShowOnPace] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   // True only while a category header is mid-drag: every category's tasks
   // hide (render-only — see categorySectionKeys below, NOT removed from the
@@ -1782,21 +1741,6 @@ export function TodayScreen() {
           }}
           renderTask={renderHiddenTask}
           renderGroup={renderLaterGroup}
-          styles={styles}
-          colors={colors}
-        />
-      )}
-      {viewMode === 'today' && (
-        <OnPaceSection
-          tasks={onPaceTasks}
-          expanded={showOnPace}
-          onToggle={() => {
-            haptics.tap();
-            animateLayout();
-            setExpandedTaskId(null);
-            setShowOnPace(v => !v);
-          }}
-          renderTask={renderHiddenTask}
           styles={styles}
           colors={colors}
         />

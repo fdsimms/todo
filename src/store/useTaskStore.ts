@@ -36,7 +36,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isOnPaceQuota } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -280,7 +280,17 @@ function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
     if (!held.has(t.id)) return t;
     const cached = heldMaskCache.get(t.id);
     if (cached && cached.source === t) return cached.masked;
-    const masked = { ...t, completed: false };
+    // "Wherever it would be if it were still incomplete" has to include the
+    // count for a daily target, because completion *is* the count reaching the
+    // target: a mask left at 8/8 reads as a target on pace rather than as the
+    // row that was there before the tap, and lands it in whichever list it
+    // hadn't been in. One finished on Today would jump into Later Today's
+    // on-pace run for the length of the hold; one finished from that run would
+    // drop out of it and skip the batched collapse. A unit short is also what
+    // uncompleteTask restores, for the same reason.
+    const masked = isQuotaTask(t)
+      ? { ...t, completed: false, progressCount: Math.max(0, t.targetCount! - 1) }
+      : { ...t, completed: false };
     heldMaskCache.set(t.id, { source: t, masked });
     return masked;
   });
@@ -503,8 +513,6 @@ interface TaskStore {
   waitingTasks: () => Task[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
-  /** Daily targets held off Today only because you're keeping up with them. */
-  onPaceTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
   pinnedTasks: () => Task[];
   completedTasks: () => Task[];
@@ -2394,10 +2402,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
+  // Feeds Today's "later today" reveal, which is where a daily target lives
+  // while you're keeping up with it (isUpcomingToday). A target inside its hold
+  // window is left out: it's still on Today proper for those few seconds, and
+  // the two lists can't both be showing it.
   upcomingTodayTasks() {
-    const { tasks, completionHoldIds } = get();
+    const { tasks, completionHoldIds, quotaHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isUpcomingToday(t))
+      .filter(t => !t.parentId && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -2433,24 +2445,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
       .filter(t => !t.parentId && isTaskExpired(t))
-      .sort((a, b) => a.sortOrder - b.sortOrder);
-  },
-
-  // Deliberately not run through withHeldCompletions: a target that just met
-  // its own target is finished for the day, and masking it back to incomplete
-  // for the hold would park it in this reveal for a second on the way out.
-  onPaceTasks() {
-    const { tasks, quotaHoldIds } = get();
-    return tasks
-      .filter(t =>
-        !t.parentId &&
-        isOnPaceQuota(t) &&
-        // Both of these are already showing on Today under their own rules —
-        // pinned rows ignore visibility entirely, and a held one is still in
-        // visibleTasks while its row plays out. Listing them here too would
-        // put the same task on the screen twice.
-        !t.pinned &&
-        !quotaHoldIds.includes(t.id))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
