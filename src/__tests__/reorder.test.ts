@@ -5,7 +5,6 @@ import {
   rowDragOffset,
   dragRange,
   rowIndexAtContentY,
-  contentOriginOffset,
   dragTranslation,
   reorderSubset,
 } from '../utils/reorder';
@@ -174,64 +173,26 @@ describe('rowIndexAtContentY', () => {
   });
 });
 
-describe('contentOriginOffset', () => {
-  it('is zero when the content starts flush with the container', () => {
-    expect(contentOriginOffset(200, 200)).toBe(0);
-  });
-
-  it('stays zero however far the list is scrolled', () => {
-    // measureLayout answers in layout coordinates, so a row at content-Y 900
-    // measures at 900 whether the list is at the top or scrolled right to it.
-    // Reading that against the row's on-screen position (900 - 380) and calling
-    // the difference an inset is what pushed the floating drag card a whole
-    // scroll offset below the finger — worse the further down the list it went.
-    expect(contentOriginOffset(900, 900)).toBe(0);
-  });
-
-  it('recovers a top content inset from a measured row', () => {
-    // Row laid out at content-Y 200 measures at 320 against the container, so
-    // the content starts 120 below the container's top edge.
-    expect(contentOriginOffset(320, 200)).toBe(120);
-  });
-
-  it('round-trips a content-Y back to where the row is on screen', () => {
-    const origin = contentOriginOffset(320, 200);
-    // Scrolled 80: the row measures at 320 in layout space and sits at 240 on
-    // screen, one scroll offset higher.
-    expect(200 - 80 + origin).toBe(240);
-  });
-
-  it('handles content drawn above the container origin', () => {
-    expect(contentOriginOffset(170, 200)).toBe(-30);
-  });
-});
-
 describe('dragTranslation', () => {
-  // A row resting at content-Y 400 in a list scrolled to 0, no inset: the card
-  // is pinned to 400 on screen at the moment the finger takes hold of it.
+  // A row resting at content-Y 400 in a list scrolled to 0: the card is pinned
+  // to 400 on screen at the moment the finger takes hold of it.
   it('is zero for a card still sitting in its own slot', () => {
-    expect(dragTranslation(400, 400, 0, 0)).toBe(0);
+    expect(dragTranslation(400, 400, 0)).toBe(0);
   });
 
   it('follows the card up and down', () => {
-    expect(dragTranslation(460, 400, 0, 0)).toBe(60);
-    expect(dragTranslation(330, 400, 0, 0)).toBe(-70);
+    expect(dragTranslation(460, 400, 0)).toBe(60);
+    expect(dragTranslation(330, 400, 0)).toBe(-70);
   });
 
   it('matches finger delta + scroll delta while the layout holds still', () => {
     // What the old finger-only math computed: dragged 60 down, list autoscrolled
     // 25 further under it. The card's anchor doesn't move with the scroll, so
     // the slot slides up 25 and the translation grows by the same amount.
-    const anchor = 400; // 400 - 0 (scroll at start) - 0 (origin)
+    const anchor = 400; // 400 - 0 (scroll at start)
     const fingerDelta = 60;
     const scrollDelta = 25;
-    expect(dragTranslation(anchor + fingerDelta, 400, scrollDelta, 0)).toBe(fingerDelta + scrollDelta);
-  });
-
-  it('accounts for a top content inset', () => {
-    // The row's content-Y 400 sits at 520 on screen behind a 120 inset, so a
-    // card at 520 is resting, not dragged.
-    expect(dragTranslation(520, 400, 0, 120)).toBe(0);
+    expect(dragTranslation(anchor + fingerDelta, 400, scrollDelta)).toBe(fingerDelta + scrollDelta);
   });
 
   it('re-derives the slot when the list re-lays out under a live drag', () => {
@@ -241,10 +202,21 @@ describe('dragTranslation', () => {
     // moves to 120. The card belongs to the finger, so the drop is now 780
     // below the slot — which is what puts the gap under the card instead of
     // leaving the card a screen away from the finger.
-    expect(dragTranslation(900, 120, 0, 0)).toBe(780);
+    expect(dragTranslation(900, 120, 0)).toBe(780);
     // Once the finger drags back up to the collapsed run, the translation
     // shrinks toward zero exactly as it would in a list that never moved.
-    expect(dragTranslation(160, 120, 0, 0)).toBe(40);
+    expect(dragTranslation(160, 120, 0)).toBe(40);
+  });
+
+  it('aims a whole screen wrong if the row content-Y is left stale', () => {
+    // Same drag as above, one move later, with rowContentY still reading the
+    // pre-collapse 900 because no onLayout has landed yet. The card sits over
+    // the collapsed header run near the top, but the translation claims it
+    // hasn't moved — so the gap opens a screenful from the card. This is why
+    // the caller overwrites rowContentY from measureLayout instead of waiting
+    // for onLayout to catch up.
+    expect(dragTranslation(900, 900, 0)).toBe(0);
+    expect(dragTranslation(900, 120, 0)).toBe(780);
   });
 });
 
