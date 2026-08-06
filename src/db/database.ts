@@ -227,6 +227,9 @@ export function initDatabase(): void {
     'ALTER TABLE categories ADD COLUMN exclude_from_pin_suggestions INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN target_count INTEGER',
     'ALTER TABLE tasks ADD COLUMN progress_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN series_id TEXT',
+    "ALTER TABLE tasks ADD COLUMN series_month_days TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE tasks ADD COLUMN series_repeat_months INTEGER NOT NULL DEFAULT 1',
     'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)',
   ];
   for (const sql of migrations) {
@@ -398,6 +401,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
+    seriesId: (row.series_id as string | null) ?? null,
+    seriesMonthDays: JSON.parse((row.series_month_days as string) ?? '[]') as number[],
+    seriesRepeatMonths: (row.series_repeat_months as number) ?? 1,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
@@ -423,8 +429,8 @@ export function dbInsertTask(task: Task): void {
       tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
-      target_count, progress_count
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      target_count, progress_count, series_id, series_month_days, series_repeat_months
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -445,6 +451,7 @@ export function dbInsertTask(task: Task): void {
       task.projectId ?? null,
       task.linkUrl ?? null,
       task.targetCount ?? null, task.progressCount,
+      task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
     ]
   );
 }
@@ -460,7 +467,7 @@ export function dbUpdateTask(task: Task): void {
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
-      target_count=?, progress_count=?
+      target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -482,6 +489,7 @@ export function dbUpdateTask(task: Task): void {
       task.projectId ?? null,
       task.linkUrl ?? null,
       task.targetCount ?? null, task.progressCount,
+      task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
       task.id,
     ]
   );

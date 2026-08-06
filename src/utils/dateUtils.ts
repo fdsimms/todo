@@ -227,6 +227,51 @@ function getNextMonthDayOccurrence(day: number, from: Date, interval: number): D
   return clampToMonth(addMonths(from, interval));
 }
 
+/**
+ * The day-of-month anchors implied by a hand-picked set of dates — what a
+ * series repeats on once Repeat monthly is turned on (see Task.seriesMonthDays).
+ * Deduped and sorted, so picking the 10th of one month and the 15th of the
+ * next still describes one monthly pair rather than a two-month span.
+ */
+export function seriesMonthDaysFrom(dates: Date[]): number[] {
+  return Array.from(new Set(dates.map(d => d.getDate()))).sort((a, b) => a - b);
+}
+
+/**
+ * The next set of dates for a repeating series. Anchored to the month of the
+ * finished set's last date plus `repeatMonths`, then rebuilt from the stored
+ * day numbers rather than by shifting the current dates — so an anchor on the
+ * 31st that had to clamp to the 28th for February comes back as the 31st in
+ * March instead of staying on the 28th for good. `-1` means the last day of
+ * the month, the same convention as recurrenceMonthDay.
+ *
+ * Two anchors can land on the same day in a short month (the 30th and the
+ * 31st both clamp to February 28th), so the result is deduped after clamping
+ * rather than before — otherwise that month would get two identical rows.
+ * Time of day carries over from the set that just finished, keeping reminders
+ * on the same hour.
+ */
+export function getNextSeriesDates(
+  currentDueDates: Date[],
+  monthDays: number[],
+  repeatMonths: number
+): Date[] {
+  if (currentDueDates.length === 0 || monthDays.length === 0) return [];
+
+  const latest = currentDueDates.reduce((max, d) => (d > max ? d : max));
+  const earliest = currentDueDates.reduce((min, d) => (d < min ? d : min));
+  const targetMonth = addMonths(startOfMonth(latest), Math.max(1, repeatMonths));
+  const lastDay = lastDayOfMonth(targetMonth).getDate();
+
+  const byTime = new Map<number, Date>();
+  for (const day of monthDays) {
+    const date = setDate(targetMonth, day === -1 ? lastDay : Math.min(Math.max(1, day), lastDay));
+    date.setHours(earliest.getHours(), earliest.getMinutes(), 0, 0);
+    byTime.set(+date, date);
+  }
+  return Array.from(byTime.values()).sort((a, b) => +a - +b);
+}
+
 /** Formats time remaining until an "HH:MM" window end, e.g. "2h 15m left" or "15m left". */
 export function formatWindowRemaining(windowEnd: string): string {
   const minutesLeft = Math.max(0, Math.round((hhmmToDate(windowEnd).getTime() - Date.now()) / 60000));

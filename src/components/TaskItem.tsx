@@ -130,6 +130,20 @@ export function TaskItem({
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
   const groupTitle = useTaskGroupStore(s => task.groupId ? s.getGroupById(task.groupId)?.title ?? null : null);
+  // The set's other dates still to come (see Task.seriesId), preformatted so
+  // the selector returns a plain string — a fresh array here would re-render
+  // every row on every store change. Subscribed rather than read once, so
+  // finishing or adding a date updates the line.
+  const otherSeriesDates = useTaskStore(s =>
+    task.seriesId
+      ? s.tasks
+          .filter(t => t.seriesId === task.seriesId && t.id !== task.id && !t.completed && !t.archived && t.dueDate)
+          .map(t => t.dueDate!)
+          .sort()
+          .map(iso => formatDueDate(iso))
+          .join(', ')
+      : ''
+  );
   // Action functions are built once by the store and never replaced, so
   // reading them via getState() here is safe even though it skips the
   // subscription — there is no update to these references to miss, and
@@ -391,7 +405,8 @@ export function TaskItem({
   const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
 
   const hasExpandContent =
-    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null;
+    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
+    otherSeriesDates !== '';
 
   const handleComplete = async () => {
     if (completingRef.current) return;
@@ -864,6 +879,16 @@ export function TaskItem({
                     </View>
                   </>
                 )}
+              </View>
+            )}
+
+            {otherSeriesDates !== '' && (
+              <View style={[
+                styles.recurrenceRow,
+                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+              ]}>
+                <Ionicons name="calendar-number-outline" size={12} color={colors.textTertiary} />
+                <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
               </View>
             )}
 

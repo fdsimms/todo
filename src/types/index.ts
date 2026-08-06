@@ -169,6 +169,31 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  // Series — one commitment that falls on several hand-picked dates (e.g.
+  // walking the neighbour's dog on the 10th and the 15th). Every date is its
+  // own real row sharing this id, deliberately rather than one row holding a
+  // list of dates: dueDate/completedAt/streakDate are singular everywhere,
+  // and Later renders real Task rows (see laterSections), so materialising
+  // them is the only way all the dates actually show up there.
+  //
+  // Not recurrence — a series is a finite set the user picked, and it can
+  // hold dates a rule couldn't express. seriesMonthDays is what optionally
+  // makes it come back.
+  //
+  // Deliberately NOT previousOccurrenceId: that's the backward completion
+  // chain, and uncompleteTask deletes whichever row points at the one being
+  // uncompleted — reusing it would make un-ticking the 10th delete the 15th.
+  seriesId: string | null;
+  // Days of the month the set repeats on (-1 = last day, same convention as
+  // recurrenceMonthDay). Empty = the set happens once and is then done.
+  // Stored rather than re-derived from the rows' own dueDates so an anchor on
+  // the 29th-31st, clamped into a short month for one set, doesn't stay
+  // clamped for every set after it.
+  seriesMonthDays: number[];
+  // Months from one set to the next. Only read when seriesMonthDays is
+  // non-empty; defaults to 1 so nothing has to null-check it.
+  seriesRepeatMonths: number;
+
   parentId: string | null;   // null = root task; set = subtask of that id
   groupId: string | null;    // null = ungrouped; set = grouped under that TaskGroup's id
   projectId: string | null;  // null = not in a project; independent of groupId/category — a task can carry both

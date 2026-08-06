@@ -30,13 +30,28 @@ interface Props {
   onConfirm: (date: Date) => void;
   onCancel: () => void;
   nlEnabled?: boolean;
+  /**
+   * Multi-date mode: a tap toggles a day in or out of a set rather than
+   * replacing the selection, and Done reports the whole set through
+   * `onConfirmMultiple` (`onConfirm`/`value` are unused). Used for a task
+   * that falls on several dates — see Task.seriesId.
+   */
+  multiple?: boolean;
+  values?: Date[];
+  onConfirmMultiple?: (dates: Date[]) => void;
 }
+
+/** Calendar identity of a date — the day the user tapped, ignoring its time. */
+const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2 - spacing.xs * 6) / 7);
 
-export function CalendarPicker({ visible, value, mode, title, onConfirm, onCancel, nlEnabled }: Props) {
+export function CalendarPicker({
+  visible, value, mode, title, onConfirm, onCancel, nlEnabled,
+  multiple, values, onConfirmMultiple,
+}: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -50,17 +65,20 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
   });
   const [nlText, setNlText] = useState('');
   const [pickerReady, setPickerReady] = useState(false);
+  const [selectedDates, setSelectedDates] = useState<Date[]>(values ?? []);
 
   useEffect(() => {
     if (!visible) {
       setPickerReady(false);
       return;
     }
-    const base = value ?? new Date();
+    const seed = multiple ? (values && values.length > 0 ? values[0] : null) : value;
+    const base = seed ?? new Date();
     setDisplayMonth(startOfMonth(base));
     setSelectedDate(value);
+    setSelectedDates(values ?? []);
     const t = new Date(base);
-    if (!value) t.setHours(9, 0, 0, 0);
+    if (!seed) t.setHours(9, 0, 0, 0);
     setTimeDate(t);
     setNlText('');
   }, [visible]);
@@ -80,13 +98,28 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
   const onDayPress = (day: Date) => {
     const merged = new Date(day);
     merged.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-    setSelectedDate(merged);
+    if (multiple) {
+      // Toggle: tapping a picked day takes it back out, so correcting a
+      // mistake doesn't mean cancelling and starting the set over.
+      const key = dayKey(day);
+      setSelectedDates(prev =>
+        prev.some(d => dayKey(d) === key)
+          ? prev.filter(d => dayKey(d) !== key)
+          : [...prev, merged].sort((a, b) => +a - +b)
+      );
+    } else {
+      setSelectedDate(merged);
+    }
     if (!isSameMonth(day, displayMonth)) {
       setDisplayMonth(startOfMonth(day));
     }
   };
 
   const confirm = () => {
+    if (multiple) {
+      onConfirmMultiple?.(selectedDates);
+      return;
+    }
     if (!selectedDate) return;
     if (mode === 'datetime') {
       const result = new Date(selectedDate);
@@ -96,6 +129,8 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
       onConfirm(selectedDate);
     }
   };
+
+  const canConfirm = multiple ? true : !!selectedDate;
 
   return (
     <Modal
@@ -112,8 +147,8 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
             <Text style={styles.headerBtn}>Cancel</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{title}</Text>
-          <TouchableOpacity onPress={confirm} hitSlop={8} disabled={!selectedDate}>
-            <Text style={[styles.headerBtn, styles.headerDone, !selectedDate && styles.disabled]}>
+          <TouchableOpacity onPress={confirm} hitSlop={8} disabled={!canConfirm}>
+            <Text style={[styles.headerBtn, styles.headerDone, !canConfirm && styles.disabled]}>
               Done
             </Text>
           </TouchableOpacity>
@@ -172,7 +207,9 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
         <View style={styles.grid}>
           {calendarDays.map((day, idx) => {
             const inMonth = isSameMonth(day, displayMonth);
-            const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
+            const isSelected = multiple
+              ? selectedDates.some(d => isSameDay(day, d))
+              : selectedDate ? isSameDay(day, selectedDate) : false;
             const todayDay = isToday(day);
 
             return (
@@ -209,6 +246,18 @@ export function CalendarPicker({ visible, value, mode, title, onConfirm, onCance
           })}
         </View>
 
+        {/* Picked-set summary — the grid only shows one month at a time, so
+            without this a date picked in another month looks like it was lost. */}
+        {multiple && (
+          <View style={styles.multiSummary}>
+            <Text style={styles.multiSummaryText} numberOfLines={2}>
+              {selectedDates.length === 0
+                ? 'Tap each day this task falls on'
+                : selectedDates.map(d => format(d, 'MMM d')).join('  ·  ')}
+            </Text>
+          </View>
+        )}
+
         {/* Time picker (datetime mode only) */}
         {mode === 'datetime' && pickerReady && (
           <View style={styles.timePicker}>
@@ -244,6 +293,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  multiSummary: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    alignItems: 'center',
+  },
+  multiSummaryText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    textAlign: 'center',
   },
   header: {
     flexDirection: 'row',

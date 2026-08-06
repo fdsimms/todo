@@ -46,6 +46,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
+| a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
 | any model's shape | `src/types/index.ts` — one file, every type |
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
@@ -123,6 +124,17 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 ### Recurrence
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.
+
+### Series (`seriesId`) — one task on several dates
+
+A task the user gave more than one date ("walk the neighbour's dog on the 10th and the 15th") is **N real rows sharing a `seriesId`**, each an ordinary one-off with its own `dueDate` and `recurrenceType: 'none'`. It is deliberately not one row holding a list of dates: `dueDate`/`completedAt`/`streakDate` are singular in every visibility, completion and Logbook path, and Later renders real `Task` rows (`laterSections`), so materialising them is the only way all the dates actually appear there. Projected "ghost" rows were the alternative and would have needed a second, non-completable, non-selectable row type through `TaskItem`/`TodayScreen`/`useTaskSelection`.
+
+**Never reuse `previousOccurrenceId` to link them.** That's the backward completion chain, and `uncompleteTask` deletes whichever row points at the one being uncompleted — un-ticking the 10th would delete the 15th.
+
+- **One entry point**: `applyTaskDates(taskId, dates, repeat?)` creates a series around a task, reconciles an existing one, or dissolves it back to a plain task when the set drops to one date. `addTaskSeries` is the create-from-scratch path. Reconciling never touches completed rows — a date that already happened is history, not schedule.
+- **Repeat is optional and separate from recurrence**: `seriesMonthDays` (empty = happens once) holds day-of-month anchors, `seriesRepeatMonths` the interval. The next set is inserted by `completeTask` only once *every* date in the current one is done, so finishing the 10th doesn't conjure a third row while the 15th is outstanding. `getNextSeriesDates()` rebuilds from the stored day numbers rather than shifting the current dates, so a 31st clamped to the 28th for February comes back as the 31st in March. The interval field isn't exposed in the editor yet — the UI ships a monthly on/off toggle.
+- **Editing** is scoped like a recurrence: `updateTask(..., {scope: 'series'})` fans `CONTENT_FIELDS` out to the set's *later* incomplete dates, re-anchoring `reminderTime` onto each date's own day (it's an absolute instant, and a set shares an hour, not a moment).
+- **Counting**: `groupRoster()` collapses a series to one entry, same as it does recurrence tombstones — otherwise a stack holding a 2-date series reads as 2 members. `getRepeatedInstances()` skips series rows so a deliberate schedule isn't reported as an ad-hoc repeat.
 
 ### Chains
 
