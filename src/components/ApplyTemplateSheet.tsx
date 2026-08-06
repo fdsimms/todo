@@ -3,6 +3,7 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   Animated,
@@ -25,12 +26,18 @@ import {
   flattenApplyTree,
   leafIdsUnder,
   expandSelectionWithAncestors,
+  extractPlaceholders,
+  substitutePlaceholders,
+  declaresRunPlaceholder,
+  resolveApplyContainer,
+  RUN_PLACEHOLDER,
   type TemplateAnchors,
   type ApplyTreeNode,
 } from '../utils/templateUtils';
 import { formatDueDate } from '../utils/dateUtils';
+import { TITLE_MAX_LENGTH } from '../types';
 import { CalendarPicker } from './CalendarPicker';
-import type { TaskTemplate, TemplateItem } from '../types';
+import type { TaskTemplate, TemplateContainer, TemplateItem } from '../types';
 
 interface Props {
   visible: boolean;
@@ -61,6 +68,18 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | nu
     parts.push(`from ${anchorLabel(item.anchor).toLowerCase()}`);
   }
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** What the run name will do, given the container this apply resolves to. Doubles as the field's only in-app documentation. */
+function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceholders: boolean): string {
+  const fills = hasPlaceholders ? ', and fills in the blanks below' : '';
+  if (container === 'project') {
+    return upgraded
+      ? `Names the project these tasks land in — this template's groups become stacks inside it${fills}`
+      : `Names the project these tasks land in, dated by the anchors above${fills}`;
+  }
+  if (container === 'stack') return `Names the stack these tasks land in${fills}`;
+  return `Fills in the blanks below${fills ? '' : ''}`;
 }
 
 /** Recursively collect the ids of every leaf item under `nodes` that should start checked (optional items, and everything under an optional nested-template block, start unchecked). */
@@ -100,6 +119,10 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   const [startAnchor, setStartAnchor] = useState<Date | null>(null);
   const [endAnchor, setEndAnchor] = useState<Date | null>(null);
   const [calendarTarget, setCalendarTarget] = useState<'start' | 'end' | null>(null);
+  // What this run of the template is about ("Camping w/ Dan"), and values for
+  // any `{name}` blanks its items declare. Both empty = the original behavior.
+  const [runName, setRunName] = useState('');
+  const [placeholderValues, setPlaceholderValues] = useState<Record<string, string>>({});
   const anchors: TemplateAnchors = { start: startAnchor, end: endAnchor };
 
   const translateY = useRef(new Animated.Value(600)).current;
@@ -116,6 +139,8 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
       setStartAnchor(null);
       setEndAnchor(null);
       setCalendarTarget(null);
+      setRunName('');
+      setPlaceholderValues({});
       translateY.setValue(600);
       backdropOpacity.setValue(0);
       Animated.parallel([
@@ -234,11 +259,25 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
     return i.anchor === 'end' ? endAnchor === null : startAnchor === null;
   });
 
+  // Derived off the whole tree rather than the current selection, so the field
+  // and its hint don't appear and disappear as items are ticked.
+  const selectedLeafItems = flatLeaves.map(l => l.item);
+  const placeholderNames = extractPlaceholders(selectedLeafItems);
+  const container = resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
+  const containerUpgraded = container !== template.applyContainer;
+  // Nothing to name when the run has no container and no `{run}` to fill.
+  const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
+
+  const values = { ...placeholderValues, [RUN_PLACEHOLDER]: runName.trim() };
+
   const handleApply = () => {
     if (selectedCount === 0) return;
     haptics.success();
     const flatSelection = expandSelectionWithAncestors(tree, selectedIds);
-    applyTemplate(template.id, flatSelection, anchors);
+    applyTemplate(template.id, flatSelection, anchors, {
+      runName,
+      placeholders: placeholderValues,
+    });
     dismiss();
   };
 
@@ -316,13 +355,16 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
     const checked = selectedIds.has(node.item.id);
     const sublabel = itemSublabel(node.item, anchors);
+    // Shown substituted so the checklist is a live preview of the titles that
+    // will actually be created, blanks and all.
+    const title = substitutePlaceholders(node.item.title, values);
     return (
       <TouchableOpacity
         style={[styles.itemRow, indent]}
         onPress={() => toggleItem(node.item.id)}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="checkbox"
-        accessibilityLabel={node.item.title}
+        accessibilityLabel={title}
         accessibilityState={{ checked }}
       >
         <Ionicons
@@ -332,7 +374,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
         />
         <View style={styles.itemContent}>
           <Text style={[styles.itemTitle, !checked && styles.itemTitleUnchecked]} numberOfLines={1}>
-            {node.item.title}
+            {title}
           </Text>
           {sublabel && <Text style={styles.itemSub} numberOfLines={1}>{sublabel}</Text>}
         </View>
@@ -364,6 +406,51 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
 
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>{template.name}</Text>
+
+          {/* What this run is about — the one field that carries the context
+              the item titles leave out. Optional: blank means loose, unnamed
+              tasks, exactly as before it existed. */}
+          {showRunField && (
+            <View style={styles.runBlock}>
+              <TextInput
+                style={styles.runInput}
+                value={runName}
+                onChangeText={setRunName}
+                placeholder={`What's this ${template.name.toLowerCase()} for?`}
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="done"
+              />
+              <Text style={styles.runHint}>
+                {runNameHint(container, containerUpgraded, placeholderNames.length > 0)}
+              </Text>
+            </View>
+          )}
+
+          {/* The name stays visible beside the field rather than living in its
+              placeholder text — with two or three blanks, a filled-in box with
+              no label is unidentifiable. */}
+          {placeholderNames.length > 0 && (
+            <View style={styles.runBlock}>
+              {placeholderNames.map(name => (
+                <View key={name} style={styles.blankRow}>
+                  <Text style={styles.blankLabel} numberOfLines={1}>{name}</Text>
+                  <TextInput
+                    style={styles.blankInput}
+                    value={placeholderValues[name] ?? ''}
+                    onChangeText={text => setPlaceholderValues(prev => ({ ...prev, [name]: text }))}
+                    placeholder={`{${name}}`}
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={TITLE_MAX_LENGTH}
+                    returnKeyType="done"
+                    accessibilityLabel={`Value for ${name}`}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+
+          {(showRunField || placeholderNames.length > 0) && <View style={styles.inlineSep} />}
 
           {/* Anchor dates */}
           <AnchorRow
@@ -510,6 +597,47 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
+  },
+  runBlock: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  // No lineHeight on either input — RN maps it onto the iOS paragraph style
+  // with no baseline compensation, dropping the glyphs low in the box. Height
+  // does the sizing instead.
+  runInput: {
+    color: colors.text,
+    fontSize: font.md,
+    height: 42,
+    paddingHorizontal: 11,
+    borderRadius: radius.sm,
+    borderWidth: border.sm,
+    borderColor: colors.accent,
+    backgroundColor: colors.bgTertiary,
+  },
+  runHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  blankRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  blankLabel: {
+    width: 76,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  blankInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    height: 38,
+    paddingHorizontal: 11,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgTertiary,
   },
   anchorRow: {
     flexDirection: 'row',

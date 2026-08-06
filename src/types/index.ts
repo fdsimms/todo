@@ -321,6 +321,18 @@ export interface TemplateItemGroup {
   sortOrder: number;
 }
 
+// Where one apply of a template puts the tasks it creates. Item titles are
+// written to be read next to the template's name ("Buy tickets" under "Plan an
+// activity"), so loose in Today they lose the thing they were about — a
+// container carries that context once instead of repeating it in every title.
+//   'none'    — loose tasks, the original behavior
+//   'stack'   — one TaskGroup named after the run
+//   'project' — one Project named after the run, the apply's two anchor dates
+//               becoming its targetStartDate/targetEndDate
+// Only consulted when the user actually names the run; a blank name always
+// means 'none'.
+export type TemplateContainer = 'none' | 'stack' | 'project';
+
 export interface TaskTemplate {
   id: string;
   name: string;
@@ -331,6 +343,7 @@ export interface TaskTemplate {
   // Name of a TemplateCategory, purely for grouping templates on the
   // Templates page. Independent of task Category and ProjectCategory.
   category: string | null;
+  applyContainer: TemplateContainer;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
