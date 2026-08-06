@@ -9,7 +9,7 @@
  * window-space, because that's the one space a PanResponder's pageY and a
  * view's measureInWindow already agree on — the dragged button lives in an
  * absolutely-positioned sibling of the list, so there is no shared content
- * space to reconcile against (see contentOriginOffset in reorder.ts for what
+ * space to reconcile against (see dragTranslation in reorder.ts for what
  * reconciling one costs).
  *
  * The one adjustment on top is the list's own scroll offset, added to both the

@@ -37,8 +37,8 @@ import { animation, radius, spacing, type Colors } from '../theme';
  * button being dragged lives in an absolutely-positioned sibling of the list,
  * so pageY from its PanResponder and measureInWindow from a row are the only
  * two numbers that already agree. Reaching into the list's own scroll-content
- * coordinates instead would mean reconstructing the offset described at length
- * in reorder.ts's contentOriginOffset, for no gain.
+ * coordinates instead would mean reconstructing the offsets described at length
+ * in reorder.ts's dragTranslation, for no gain.
  *
  * Deliberately independent of ReorderableList: its drag can only be armed from
  * a row's own long-press, it hit-tests against its internal drag's anchoring,
