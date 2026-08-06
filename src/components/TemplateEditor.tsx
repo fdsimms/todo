@@ -1,13 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -24,6 +20,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { findTemplatesReferencing } from '../utils/templateUtils';
 import { CollapsibleField } from './CollapsibleField';
+import { EditorSheet } from './EditorSheet';
 
 interface Props {
   visible: boolean;
@@ -100,9 +97,15 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   if (!template) return null;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={saveAndClose}>
-      <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <View style={styles.header}>
+    <EditorSheet
+      visible={visible}
+      onRequestClose={saveAndClose}
+      rootStyle={styles.root}
+      headerStyle={styles.header}
+      scrollStyle={styles.scroll}
+      scrollContentStyle={styles.scrollContent}
+      header={
+        <>
           <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
             <Text style={styles.headerBtn}>Done</Text>
           </TouchableOpacity>
@@ -115,76 +118,74 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
           >
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
-        </View>
+        </>
+      }
+    >
+      <TextInput
+        style={styles.titleInput}
+        value={name}
+        onChangeText={setName}
+        placeholder="Template name"
+        placeholderTextColor={colors.textTertiary}
+        multiline
+        maxLength={TITLE_MAX_LENGTH}
+      />
 
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <TextInput
-            style={styles.titleInput}
-            value={name}
-            onChangeText={setName}
-            placeholder="Template name"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-            maxLength={TITLE_MAX_LENGTH}
-          />
-
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Category"
-              summary={category ?? undefined}
-              hint="Groups this template with others of the same kind."
-              expanded={categoryOpen}
-              onToggle={() => setCategoryOpen(v => !v)}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Category"
+          summary={category ?? undefined}
+          hint="Groups this template with others of the same kind."
+          expanded={categoryOpen}
+          onToggle={() => setCategoryOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            <TouchableOpacity
+              style={[styles.pill, !category && styles.pillActiveNeutral]}
+              onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
             >
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setCategory(null); closeCategory(); }}
-                >
-                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {categories.map(cat => (
-                  <TouchableOpacity
-                    key={cat.id}
-                    style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
-                  >
-                    <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
-                  </TouchableOpacity>
-                ))}
-                {addingCategory ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newCategory}
-                    onChangeText={setNewCategory}
-                    onSubmitEditing={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    onBlur={() => {
-                      const c = newCategory.trim();
-                      if (c) { addCategory(c); setCategory(c); closeCategory(); }
-                      setNewCategory(''); setAddingCategory(false);
-                    }}
-                    placeholder="category name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="words"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addTagText}>New</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </CollapsibleField>
+              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+            </TouchableOpacity>
+            {categories.map(cat => (
+              <TouchableOpacity
+                key={cat.id}
+                style={[styles.pill, category === cat.name && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(cat.name); closeCategory(); }}
+              >
+                <Text style={[styles.pillText, category === cat.name && styles.pillTextActive]}>{cat.name}</Text>
+              </TouchableOpacity>
+            ))}
+            {addingCategory ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newCategory}
+                onChangeText={setNewCategory}
+                onSubmitEditing={() => {
+                  const c = newCategory.trim();
+                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
+                  setNewCategory(''); setAddingCategory(false);
+                }}
+                onBlur={() => {
+                  const c = newCategory.trim();
+                  if (c) { addCategory(c); setCategory(c); closeCategory(); }
+                  setNewCategory(''); setAddingCategory(false);
+                }}
+                placeholder="category name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="words"
+              />
+            ) : (
+              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
+                <Ionicons name="add" size={14} color={colors.accent} />
+                <Text style={styles.addTagText}>New</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </Modal>
+        </CollapsibleField>
+      </View>
+    </EditorSheet>
   );
 }
 

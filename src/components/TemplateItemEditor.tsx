@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
-  Modal,
   View,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
   StyleSheet,
-  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -31,6 +28,7 @@ import { SortableList } from './SortableList';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
 import { EditorRow } from './EditorRow';
+import { EditorSheet } from './EditorSheet';
 
 function formatMinutesOffset(mins: number): string {
   if (mins % 1440 === 0) { const d = mins / 1440; return `${d} day${d === 1 ? '' : 's'} before`; }
@@ -234,17 +232,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     : undefined;
 
   return (
-    <Modal
+    <EditorSheet
       visible={visible}
-      animationType="slide"
-      presentationStyle="pageSheet"
       onRequestClose={onClose}
-    >
-      <KeyboardAvoidingView
-        style={styles.root}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <View style={styles.header}>
+      rootStyle={styles.root}
+      headerStyle={styles.header}
+      scrollStyle={styles.scroll}
+      scrollContentStyle={styles.scrollContent}
+      scrollEnabled={!draggingRow}
+      header={
+        <>
           <TouchableOpacity onPress={onClose}>
             <Text style={styles.headerBtn}>Cancel</Text>
           </TouchableOpacity>
@@ -259,655 +256,648 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               {item ? 'Save' : 'Add'}
             </Text>
           </TouchableOpacity>
+        </>
+      }
+    >
+      <TextInput
+        style={styles.titleInput}
+        value={title}
+        onChangeText={setTitle}
+        placeholder="Task title"
+        placeholderTextColor={colors.textTertiary}
+        maxLength={TITLE_MAX_LENGTH}
+        multiline blurOnSubmit
+      />
+      <TextInput
+        style={styles.notesInput}
+        value={notes}
+        onChangeText={setNotes}
+        placeholder="Notes"
+        placeholderTextColor={colors.textTertiary}
+        multiline
+      />
+
+      {/* Scheduling relative to one of the template's two anchor dates */}
+      <Text style={styles.groupLabel}>Schedule</Text>
+      <View style={styles.optionsCard}>
+        <View style={styles.optionRow}>
+          <Ionicons name="pin-outline" size={18} color={colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Count days from</Text>
+            <Text style={styles.optionHint}>
+              Template items have no fixed date. Every offset below counts from this date, which you pick when applying the template.
+            </Text>
+          </View>
         </View>
-
-        <ScrollView
-          style={styles.scroll}
-          scrollEnabled={!draggingRow}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.scrollContent}
-        >
-          <TextInput
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            placeholder="Task title"
-            placeholderTextColor={colors.textTertiary}
-            maxLength={TITLE_MAX_LENGTH}
-            multiline blurOnSubmit
-          />
-          <TextInput
-            style={styles.notesInput}
-            value={notes}
-            onChangeText={setNotes}
-            placeholder="Notes"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-          />
-
-          {/* Scheduling relative to one of the template's two anchor dates */}
-          <Text style={styles.groupLabel}>Schedule</Text>
-          <View style={styles.optionsCard}>
-            <View style={styles.optionRow}>
-              <Ionicons name="pin-outline" size={18} color={colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Count days from</Text>
-                <Text style={styles.optionHint}>
-                  Template items have no fixed date. Every offset below counts from this date, which you pick when applying the template.
+        <View style={styles.timePillRow}>
+          {(['start', 'end'] as TemplateAnchor[]).map(a => {
+            const active = anchor === a;
+            return (
+              <TouchableOpacity
+                key={a}
+                style={[styles.timePill, active && styles.timePillActive]}
+                onPress={() => { haptics.tap(); setAnchor(a); }}
+              >
+                <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                  {anchorLabel(a)}
                 </Text>
-              </View>
-            </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <View style={styles.sep} />
+        <OffsetRow
+          icon="calendar"
+          label="Due date"
+          hint="When the task is due"
+          offset={dueOffsetDays}
+          anchor={anchor}
+          onChange={setDueOffsetDays}
+          colors={colors}
+          styles={styles}
+        />
+        <View style={styles.sep} />
+        <OffsetRow
+          icon="eye-off-outline"
+          label="Hide until"
+          hint="Keeps the task off Today until this day"
+          offset={deferOffsetDays}
+          anchor={anchor}
+          onChange={setDeferOffsetDays}
+          colors={colors}
+          styles={styles}
+        />
+        <View style={styles.sep} />
+        <OffsetRow
+          icon="flag-outline"
+          label="Deadline"
+          hint="A hard cut-off, shown separately from the due date"
+          offset={deadlineOffsetDays}
+          anchor={anchor}
+          onChange={setDeadlineOffsetDays}
+          colors={colors}
+          styles={styles}
+        />
+        <View style={styles.sep} />
+        <EditorRow
+          icon="time-outline"
+          label="Time of day"
+          hint="Hold it back until a part of the day"
+          value={timeOfDaySummary}
+          expanded={showTimeOfDay}
+          onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
+          onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
+        />
+        {showTimeOfDay && (
+          <View style={styles.timePillRow}>
+            {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+              const active = timeSegments.includes(tod);
+              return (
+                <TouchableOpacity
+                  key={tod}
+                  style={[styles.timePill, active && styles.timePillActive]}
+                  onPress={() => {
+                    haptics.tap();
+                    setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                  }}
+                >
+                  <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                    {capitalize(tod)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+        <View style={styles.sep} />
+        <EditorRow
+          icon="hourglass-outline"
+          label="Time window"
+          hint="Only active for part of the day, then expires"
+          value={timeWindowSummary}
+          expanded={showTimeWindow}
+          onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
+          onClear={(windowStart || windowEnd)
+            ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+            : undefined}
+        />
+        {showTimeWindow && (
+          <>
             <View style={styles.timePillRow}>
-              {(['start', 'end'] as TemplateAnchor[]).map(a => {
-                const active = anchor === a;
-                return (
-                  <TouchableOpacity
-                    key={a}
-                    style={[styles.timePill, active && styles.timePillActive]}
-                    onPress={() => { haptics.tap(); setAnchor(a); }}
-                  >
-                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                      {anchorLabel(a)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              <TouchableOpacity
+                style={[styles.timePill, !!windowStart && styles.timePillActive]}
+                onPress={() => openWindowPicker('start')}
+              >
+                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                  {windowStart ? formatHHMM(windowStart) : 'Start'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.timePill, !!windowEnd && styles.timePillActive]}
+                onPress={() => openWindowPicker('end')}
+              >
+                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.sep} />
-            <OffsetRow
-              icon="calendar"
-              label="Due date"
-              hint="When the task is due"
-              offset={dueOffsetDays}
-              anchor={anchor}
-              onChange={setDueOffsetDays}
-              colors={colors}
-              styles={styles}
-            />
-            <View style={styles.sep} />
-            <OffsetRow
-              icon="eye-off-outline"
-              label="Hide until"
-              hint="Keeps the task off Today until this day"
-              offset={deferOffsetDays}
-              anchor={anchor}
-              onChange={setDeferOffsetDays}
-              colors={colors}
-              styles={styles}
-            />
-            <View style={styles.sep} />
-            <OffsetRow
-              icon="flag-outline"
-              label="Deadline"
-              hint="A hard cut-off, shown separately from the due date"
-              offset={deadlineOffsetDays}
-              anchor={anchor}
-              onChange={setDeadlineOffsetDays}
-              colors={colors}
-              styles={styles}
-            />
-            <View style={styles.sep} />
-            <EditorRow
-              icon="time-outline"
-              label="Time of day"
-              hint="Hold it back until a part of the day"
-              value={timeOfDaySummary}
-              expanded={showTimeOfDay}
-              onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
-              onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
-            />
-            {showTimeOfDay && (
-              <View style={styles.timePillRow}>
-                {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-                  const active = timeSegments.includes(tod);
-                  return (
-                    <TouchableOpacity
-                      key={tod}
-                      style={[styles.timePill, active && styles.timePillActive]}
-                      onPress={() => {
-                        haptics.tap();
-                        setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
-                      }}
-                    >
-                      <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                        {capitalize(tod)}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-            <View style={styles.sep} />
-            <EditorRow
-              icon="hourglass-outline"
-              label="Time window"
-              hint="Only active for part of the day, then expires"
-              value={timeWindowSummary}
-              expanded={showTimeWindow}
-              onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
-              onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
-                : undefined}
-            />
-            {showTimeWindow && (
+            {windowPickerMode !== 'none' && (
               <>
-                <View style={styles.timePillRow}>
-                  <TouchableOpacity
-                    style={[styles.timePill, !!windowStart && styles.timePillActive]}
-                    onPress={() => openWindowPicker('start')}
-                  >
-                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                      {windowStart ? formatHHMM(windowStart) : 'Start'}
-                    </Text>
+                <DateTimePicker
+                  value={windowPickerDate}
+                  mode="time"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={(_e, d) => d && setWindowPickerDate(d)}
+                  themeVariant={isDark ? 'dark' : 'light'}
+                />
+                <View style={styles.intervalRow}>
+                  <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
+                    <Ionicons name="close" size={16} color={colors.textSecondary} />
                   </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.timePill, !!windowEnd && styles.timePillActive]}
-                    onPress={() => openWindowPicker('end')}
-                  >
-                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
-                    </Text>
+                  <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
+                    <Ionicons name="checkmark" size={16} color={colors.accent} />
                   </TouchableOpacity>
                 </View>
-                {windowPickerMode !== 'none' && (
-                  <>
-                    <DateTimePicker
-                      value={windowPickerDate}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_e, d) => d && setWindowPickerDate(d)}
-                      themeVariant={isDark ? 'dark' : 'light'}
-                    />
-                    <View style={styles.intervalRow}>
-                      <TouchableOpacity style={styles.intervalBtn} onPress={() => setWindowPickerMode('none')}>
-                        <Ionicons name="close" size={16} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.intervalBtn} onPress={confirmWindowPicker}>
-                        <Ionicons name="checkmark" size={16} color={colors.accent} />
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
               </>
             )}
-            <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons
-                name="notifications"
-                size={18}
-                color={reminderOffsetMinutes !== null ? colors.accent : colors.textSecondary}
-              />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Remind me</Text>
-                {dueOffsetDays === null ? (
-                  <Text style={styles.optionHint}>Set a due date first</Text>
-                ) : reminderOffsetMinutes === null ? (
-                  <Text style={styles.optionHint}>Minutes before the resolved due date</Text>
-                ) : null}
-              </View>
-              {dueOffsetDays !== null && (
-                reminderOffsetMinutes !== null ? (
-                  <TouchableOpacity onPress={() => setReminderOffsetMinutes(null)} hitSlop={8}>
-                    <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.setBtn}
-                    onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
-                    hitSlop={8}
-                    accessibilityRole="button"
-                    accessibilityLabel="Set a reminder"
-                  >
-                    <Text style={styles.setOffsetText}>Set</Text>
-                  </TouchableOpacity>
-                )
-              )}
-            </View>
-            {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
-              <View style={styles.intervalRow}>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValue}>{formatMinutesOffset(reminderOffsetMinutes)}</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
-              </View>
-            )}
-            <View style={styles.sep} />
-            <View style={styles.optionRow}>
-              <Ionicons name="repeat" size={18} color={recurrenceType !== 'none' ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Repeat</Text>
-                {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
-              </View>
-              {recurrenceType !== 'none' ? (
-                <TouchableOpacity onPress={() => setRecurrenceType('none')} hitSlop={8}>
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.setBtn}
-                  onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Set a repeat schedule"
-                >
-                  <Text style={styles.setOffsetText}>Set</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {recurrenceType !== 'none' && (
-              <RecurrencePicker
-                recurrenceType={recurrenceType}
-                onChangeType={setRecurrenceType}
-                recurrenceInterval={recurrenceInterval}
-                onChangeInterval={setRecurrenceInterval}
-                recurrenceDays={recurrenceDays}
-                onChangeDays={setRecurrenceDays}
-                recurrenceMonthDay={recurrenceMonthDay}
-                onChangeMonthDay={setRecurrenceMonthDay}
-                seedMonthDay={() => 1}
-                recurrenceFromCompletion={recurrenceFromCompletion}
-                onChangeFromCompletion={setRecurrenceFromCompletion}
-                recurrenceCount={recurrenceCount}
-                onChangeCount={setRecurrenceCount}
-                countUnitLabel={() => 'occurrences'}
-                neverEndsLabel="Never ends"
-                afterCountLabel="After N"
-                onSelectEndNever={() => setRecurrenceCount(null)}
-                onSelectEndCount={() => setRecurrenceCount(c => c ?? 5)}
-              />
-            )}
+          </>
+        )}
+        <View style={styles.sep} />
+        <View style={styles.optionRow}>
+          <Ionicons
+            name="notifications"
+            size={18}
+            color={reminderOffsetMinutes !== null ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Remind me</Text>
+            {dueOffsetDays === null ? (
+              <Text style={styles.optionHint}>Set a due date first</Text>
+            ) : reminderOffsetMinutes === null ? (
+              <Text style={styles.optionHint}>Minutes before the resolved due date</Text>
+            ) : null}
           </View>
-
-          {/* How the task behaves once the template is applied */}
-          <Text style={styles.groupLabel}>Options</Text>
-          <View style={styles.optionsCard}>
+          {dueOffsetDays !== null && (
+            reminderOffsetMinutes !== null ? (
+              <TouchableOpacity onPress={() => setReminderOffsetMinutes(null)} hitSlop={8}>
+                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.setBtn}
+                onPress={() => { haptics.tap(); setReminderOffsetMinutes(60); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Set a reminder"
+              >
+                <Text style={styles.setOffsetText}>Set</Text>
+              </TouchableOpacity>
+            )
+          )}
+        </View>
+        {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
+          <View style={styles.intervalRow}>
             <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setOptional(!optional); }}
-              activeOpacity={interaction.activeOpacity}
+              style={styles.intervalBtn}
+              onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
             >
-              <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Optional</Text>
-                <Text style={styles.optionHint}>Starts unticked in the apply sheet, so it's skipped by default</Text>
-              </View>
-              <View style={[styles.toggle, optional && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
-              </View>
+              <Ionicons name="remove" size={16} color={colors.text} />
             </TouchableOpacity>
-            <View style={styles.sep} />
+            <Text style={styles.intervalValue}>{formatMinutesOffset(reminderOffsetMinutes)}</Text>
             <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
-              activeOpacity={interaction.activeOpacity}
+              style={styles.intervalBtn}
+              onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
             >
-              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Pause on vacation</Text>
-                <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
-              </View>
-              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-              </View>
+              <Ionicons name="add" size={16} color={colors.text} />
             </TouchableOpacity>
           </View>
-
-          {/* Chain */}
-          <View style={styles.sectionCard}>
-            <View style={styles.cardSection}>
-              <View style={styles.chainHeader}>
-                <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
-                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
-                <TouchableOpacity
-                  style={[styles.toggle, chainEnabled && styles.toggleOn]}
-                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Chain"
-                  accessibilityState={{ checked: chainEnabled }}
-                >
-                  <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
-                </TouchableOpacity>
-              </View>
-              {!chainEnabled && (
-                <Text style={styles.optionHint}>
-                  Step through a list of items, one per completion — finishing one reveals the next.
-                  {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
-                </Text>
-              )}
-              {chainEnabled && (
-                <>
-                  <SortableList
-                    onDragStateChange={setDraggingRow}
-                    data={chainItems}
-                    onReorder={setChainItems}
-                    renderItem={(chainItem, displayIndex, drag) => (
-                      <View style={styles.chainItemRow}>
-                        <View style={styles.chainItemDot}>
-                          <Text style={styles.chainItemDotText}>{displayIndex + 1}</Text>
-                        </View>
-                        <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
-                        <TouchableOpacity
-                          onLongPress={(e) => drag(e.nativeEvent.pageY)}
-                          delayLongPress={150}
-                          hitSlop={8}
-                          style={styles.dragHandle}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Reorder chain step ${chainItem.title}`}
-                        >
-                          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={() => setChainItems(prev => prev.filter(c => c.id !== chainItem.id))}
-                          hitSlop={8}
-                          style={styles.chainItemDelete}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Remove chain step ${chainItem.title}`}
-                        >
-                          <Ionicons name="close" size={14} color={colors.textTertiary} />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  />
-                  {addingChainItem ? (
-                    <View style={styles.chainInputRow}>
-                      <View style={styles.chainItemDot}>
-                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
-                      </View>
-                      <TextInput
-                        ref={chainInputRef}
-                        autoFocus
-                        style={styles.chainInput}
-                        value={newChainItemTitle}
-                        onChangeText={setNewChainItemTitle}
-                        placeholder="Item title"
-                        placeholderTextColor={colors.textTertiary}
-                        maxLength={TITLE_MAX_LENGTH}
-                        returnKeyType="done"
-                        onSubmitEditing={() => {
-                          chainItemSavedRef.current = true;
-                          const t = newChainItemTitle.trim();
-                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewChainItemTitle('');
-                          setTimeout(() => {
-                            chainItemSavedRef.current = false;
-                            chainInputRef.current?.focus();
-                          }, 50);
-                        }}
-                        onBlur={() => {
-                          if (chainItemSavedRef.current) return;
-                          const t = newChainItemTitle.trim();
-                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
-                          setNewChainItemTitle('');
-                          setAddingChainItem(false);
-                        }}
-                      />
-                    </View>
-                  ) : (
-                    <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingChainItem(true)}>
-                      <Ionicons name="add" size={14} color={colors.accent} />
-                      <Text style={styles.addTagText}>Add item</Text>
-                    </TouchableOpacity>
-                  )}
-                </>
-              )}
-            </View>
+        )}
+        <View style={styles.sep} />
+        <View style={styles.optionRow}>
+          <Ionicons name="repeat" size={18} color={recurrenceType !== 'none' ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Repeat</Text>
+            {recurrenceType === 'none' && <Text style={styles.optionHint}>Recreates on this schedule when applied and completed</Text>}
           </View>
-
-          {/* Subtasks */}
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Subtasks"
-              summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
-              hint="Checklist items created alongside the task when the template is applied."
-              expanded={fieldOpen('subtasks', subtasks.length > 0)}
-              onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+          {recurrenceType !== 'none' ? (
+            <TouchableOpacity onPress={() => setRecurrenceType('none')} hitSlop={8}>
+              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.setBtn}
+              onPress={() => { haptics.tap(); setRecurrenceType('daily'); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Set a repeat schedule"
             >
+              <Text style={styles.setOffsetText}>Set</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+        {recurrenceType !== 'none' && (
+          <RecurrencePicker
+            recurrenceType={recurrenceType}
+            onChangeType={setRecurrenceType}
+            recurrenceInterval={recurrenceInterval}
+            onChangeInterval={setRecurrenceInterval}
+            recurrenceDays={recurrenceDays}
+            onChangeDays={setRecurrenceDays}
+            recurrenceMonthDay={recurrenceMonthDay}
+            onChangeMonthDay={setRecurrenceMonthDay}
+            seedMonthDay={() => 1}
+            recurrenceFromCompletion={recurrenceFromCompletion}
+            onChangeFromCompletion={setRecurrenceFromCompletion}
+            recurrenceCount={recurrenceCount}
+            onChangeCount={setRecurrenceCount}
+            countUnitLabel={() => 'occurrences'}
+            neverEndsLabel="Never ends"
+            afterCountLabel="After N"
+            onSelectEndNever={() => setRecurrenceCount(null)}
+            onSelectEndCount={() => setRecurrenceCount(c => c ?? 5)}
+          />
+        )}
+      </View>
+
+      {/* How the task behaves once the template is applied */}
+      <Text style={styles.groupLabel}>Options</Text>
+      <View style={styles.optionsCard}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setOptional(!optional); }}
+          activeOpacity={interaction.activeOpacity}
+        >
+          <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Optional</Text>
+            <Text style={styles.optionHint}>Starts unticked in the apply sheet, so it's skipped by default</Text>
+          </View>
+          <View style={[styles.toggle, optional && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, optional && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
+          activeOpacity={interaction.activeOpacity}
+        >
+          <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Pause on vacation</Text>
+            <Text style={styles.optionHint}>Hidden while vacation mode is on</Text>
+          </View>
+          <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Chain */}
+      <View style={styles.sectionCard}>
+        <View style={styles.cardSection}>
+          <View style={styles.chainHeader}>
+            <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+            <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
+            <TouchableOpacity
+              style={[styles.toggle, chainEnabled && styles.toggleOn]}
+              onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+              accessibilityRole="switch"
+              accessibilityLabel="Chain"
+              accessibilityState={{ checked: chainEnabled }}
+            >
+              <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
+            </TouchableOpacity>
+          </View>
+          {!chainEnabled && (
+            <Text style={styles.optionHint}>
+              Step through a list of items, one per completion — finishing one reveals the next.
+              {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
+            </Text>
+          )}
+          {chainEnabled && (
+            <>
               <SortableList
                 onDragStateChange={setDraggingRow}
-                data={subtasks}
-                onReorder={setSubtasks}
-                renderItem={(sub, _displayIndex, drag) => (
+                data={chainItems}
+                onReorder={setChainItems}
+                renderItem={(chainItem, displayIndex, drag) => (
                   <View style={styles.chainItemRow}>
-                    <Text style={styles.chainItemTitle}>{sub.title}</Text>
+                    <View style={styles.chainItemDot}>
+                      <Text style={styles.chainItemDotText}>{displayIndex + 1}</Text>
+                    </View>
+                    <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
                     <TouchableOpacity
                       onLongPress={(e) => drag(e.nativeEvent.pageY)}
                       delayLongPress={150}
                       hitSlop={8}
                       style={styles.dragHandle}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reorder chain step ${chainItem.title}`}
                     >
                       <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
+                      onPress={() => setChainItems(prev => prev.filter(c => c.id !== chainItem.id))}
                       hitSlop={8}
                       style={styles.chainItemDelete}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove chain step ${chainItem.title}`}
                     >
                       <Ionicons name="close" size={14} color={colors.textTertiary} />
                     </TouchableOpacity>
                   </View>
                 )}
               />
-              {addingSubtask ? (
+              {addingChainItem ? (
                 <View style={styles.chainInputRow}>
+                  <View style={styles.chainItemDot}>
+                    <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                  </View>
                   <TextInput
-                    ref={subtaskInputRef}
+                    ref={chainInputRef}
                     autoFocus
                     style={styles.chainInput}
-                    value={newSubtaskTitle}
-                    onChangeText={setNewSubtaskTitle}
-                    placeholder="Subtask title"
+                    value={newChainItemTitle}
+                    onChangeText={setNewChainItemTitle}
+                    placeholder="Item title"
                     placeholderTextColor={colors.textTertiary}
                     maxLength={TITLE_MAX_LENGTH}
                     returnKeyType="done"
                     onSubmitEditing={() => {
-                      subtaskSavedRef.current = true;
-                      const t = newSubtaskTitle.trim();
-                      if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
-                      setNewSubtaskTitle('');
+                      chainItemSavedRef.current = true;
+                      const t = newChainItemTitle.trim();
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      setNewChainItemTitle('');
                       setTimeout(() => {
-                        subtaskSavedRef.current = false;
-                        subtaskInputRef.current?.focus();
+                        chainItemSavedRef.current = false;
+                        chainInputRef.current?.focus();
                       }, 50);
                     }}
                     onBlur={() => {
-                      if (subtaskSavedRef.current) return;
-                      const t = newSubtaskTitle.trim();
-                      if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
-                      setNewSubtaskTitle('');
-                      setAddingSubtask(false);
+                      if (chainItemSavedRef.current) return;
+                      const t = newChainItemTitle.trim();
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      setNewChainItemTitle('');
+                      setAddingChainItem(false);
                     }}
                   />
                 </View>
               ) : (
-                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingSubtask(true)}>
+                <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingChainItem(true)}>
                   <Ionicons name="add" size={14} color={colors.accent} />
-                  <Text style={styles.addTagText}>Add subtask</Text>
+                  <Text style={styles.addTagText}>Add item</Text>
                 </TouchableOpacity>
               )}
-            </CollapsibleField>
-          </View>
+            </>
+          )}
+        </View>
+      </View>
 
-          {/* Category + Tags */}
-          <Text style={styles.groupLabel}>Organize</Text>
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Category"
-              summary={category ? categoryLabel(category, categories) : undefined}
-              hint="One home for the task — drives the Categories screen and its filters."
-              expanded={fieldOpen('category')}
-              onToggle={() => toggleField('category')}
-            >
-              <View style={styles.pillRow}>
+      {/* Subtasks */}
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Subtasks"
+          summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
+          hint="Checklist items created alongside the task when the template is applied."
+          expanded={fieldOpen('subtasks', subtasks.length > 0)}
+          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+        >
+          <SortableList
+            onDragStateChange={setDraggingRow}
+            data={subtasks}
+            onReorder={setSubtasks}
+            renderItem={(sub, _displayIndex, drag) => (
+              <View style={styles.chainItemRow}>
+                <Text style={styles.chainItemTitle}>{sub.title}</Text>
                 <TouchableOpacity
-                  style={[styles.pill, !category && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
+                  onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                  delayLongPress={150}
+                  hitSlop={8}
+                  style={styles.dragHandle}
                 >
-                  <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+                  <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                 </TouchableOpacity>
-                {allCategories.map(cat => (
-                  <TouchableOpacity
-                    key={cat}
-                    style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
-                  >
-                    <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-                  </TouchableOpacity>
-                ))}
+                <TouchableOpacity
+                  onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
+                  hitSlop={8}
+                  style={styles.chainItemDelete}
+                >
+                  <Ionicons name="close" size={14} color={colors.textTertiary} />
+                </TouchableOpacity>
               </View>
-            </CollapsibleField>
+            )}
+          />
+          {addingSubtask ? (
+            <View style={styles.chainInputRow}>
+              <TextInput
+                ref={subtaskInputRef}
+                autoFocus
+                style={styles.chainInput}
+                value={newSubtaskTitle}
+                onChangeText={setNewSubtaskTitle}
+                placeholder="Subtask title"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  subtaskSavedRef.current = true;
+                  const t = newSubtaskTitle.trim();
+                  if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
+                  setNewSubtaskTitle('');
+                  setTimeout(() => {
+                    subtaskSavedRef.current = false;
+                    subtaskInputRef.current?.focus();
+                  }, 50);
+                }}
+                onBlur={() => {
+                  if (subtaskSavedRef.current) return;
+                  const t = newSubtaskTitle.trim();
+                  if (t) setSubtasks(prev => [...prev, { id: generateId(), title: t }]);
+                  setNewSubtaskTitle('');
+                  setAddingSubtask(false);
+                }}
+              />
+            </View>
+          ) : (
+            <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingSubtask(true)}>
+              <Ionicons name="add" size={14} color={colors.accent} />
+              <Text style={styles.addTagText}>Add subtask</Text>
+            </TouchableOpacity>
+          )}
+        </CollapsibleField>
+      </View>
 
-            <View style={styles.cardSep} />
-
-            <CollapsibleField
-              label="Tags"
-              summary={tags.length > 0 ? tags.join(', ') : undefined}
-              hint="Free-form labels. A task can carry several, and you can filter or search by them."
-              expanded={fieldOpen('tags')}
-              onToggle={() => toggleField('tags')}
+      {/* Category + Tags */}
+      <Text style={styles.groupLabel}>Organize</Text>
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Category"
+          summary={category ? categoryLabel(category, categories) : undefined}
+          hint="One home for the task — drives the Categories screen and its filters."
+          expanded={fieldOpen('category')}
+          onToggle={() => toggleField('category')}
+        >
+          <View style={styles.pillRow}>
+            <TouchableOpacity
+              style={[styles.pill, !category && styles.pillActiveNeutral]}
+              onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
             >
-              <View style={styles.tagRow}>
-                {tags.map(tag => (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                    onPress={() => setTags(prev => prev.filter(t => t !== tag))}
-                  >
-                    <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                    <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                    <Ionicons name="close" size={12} color={tagColor(tag)} />
-                  </TouchableOpacity>
-                ))}
-                {addingTag ? (
-                  <TextInput
-                    autoFocus
-                    style={styles.tagInput}
-                    value={newTag}
-                    onChangeText={setNewTag}
-                    onSubmitEditing={addTagFromInput}
-                    onBlur={addTagFromInput}
-                    placeholder="tag name"
-                    placeholderTextColor={colors.textTertiary}
-                    returnKeyType="done"
-                    autoCapitalize="none"
-                  />
-                ) : (
-                  <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
-                    <Ionicons name="add" size={14} color={colors.accent} />
-                    <Text style={styles.addTagText}>Add tag</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              {allTags.filter(t => !tags.includes(t)).length > 0 && (
-                <View style={styles.tagSuggestions}>
-                  {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
-                    <TouchableOpacity
-                      key={tag}
-                      style={styles.tagSuggestion}
-                      onPress={() => setTags(prev => [...prev, tag])}
-                    >
-                      <Text style={styles.tagSuggestionText}>{tag}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </CollapsibleField>
+              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
+            </TouchableOpacity>
+            {allCategories.map(cat => (
+              <TouchableOpacity
+                key={cat}
+                style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+              >
+                <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+        </CollapsibleField>
 
-          {/* Priority + Effort */}
-          <Text style={styles.groupLabel}>Priority & effort</Text>
-          <View style={styles.sectionCard}>
-            <CollapsibleField
-              label="Priority"
-              summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-              hint="Ranks the task against everything else on Today."
-              expanded={fieldOpen('priority')}
-              onToggle={() => toggleField('priority')}
-            >
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[
-                      styles.pill,
-                      priority === p && p === 0 && styles.pillActiveNeutral,
-                      priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                    ]}
-                    onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
-                  >
-                    <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                      {PRIORITY_LABELS[p]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </CollapsibleField>
+        <View style={styles.cardSep} />
 
-            <View style={styles.cardSep} />
-
-            <CollapsibleField
-              label="Effort"
-              summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
-              emptySummary="Not set"
-              hint="Roughly how long this takes, so a day's list can be sized realistically."
-              expanded={fieldOpen('effort')}
-              onToggle={() => toggleField('effort')}
-            >
-              <View style={styles.pillRow}>
-                {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => (
-                  <TouchableOpacity
-                    key={e}
-                    style={[styles.pill, effort === e && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setEffort(e); }}
-                  >
-                    <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
-                      {e === 0 ? '—' : EFFORT_LABELS[e]}
-                    </Text>
-                    {EFFORT_HINTS[e] ? (
-                      <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
-                    ) : null}
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <View style={styles.intervalRow}>
-                {estimatedMinutes !== null ? (
-                  <>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setEstimatedMinutes(null)} hitSlop={8}>
-                      <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity onPress={() => { haptics.tap(); setEstimatedMinutes(30); }}>
-                    <Text style={styles.addTagText}>Set a custom estimate</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </CollapsibleField>
+        <CollapsibleField
+          label="Tags"
+          summary={tags.length > 0 ? tags.join(', ') : undefined}
+          hint="Free-form labels. A task can carry several, and you can filter or search by them."
+          expanded={fieldOpen('tags')}
+          onToggle={() => toggleField('tags')}
+        >
+          <View style={styles.tagRow}>
+            {tags.map(tag => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                onPress={() => setTags(prev => prev.filter(t => t !== tag))}
+              >
+                <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                <Ionicons name="close" size={12} color={tagColor(tag)} />
+              </TouchableOpacity>
+            ))}
+            {addingTag ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newTag}
+                onChangeText={setNewTag}
+                onSubmitEditing={addTagFromInput}
+                onBlur={addTagFromInput}
+                placeholder="tag name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                autoCapitalize="none"
+              />
+            ) : (
+              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingTag(true)}>
+                <Ionicons name="add" size={14} color={colors.accent} />
+                <Text style={styles.addTagText}>Add tag</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </Modal>
+          {allTags.filter(t => !tags.includes(t)).length > 0 && (
+            <View style={styles.tagSuggestions}>
+              {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={styles.tagSuggestion}
+                  onPress={() => setTags(prev => [...prev, tag])}
+                >
+                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </CollapsibleField>
+      </View>
+
+      {/* Priority + Effort */}
+      <Text style={styles.groupLabel}>Priority & effort</Text>
+      <View style={styles.sectionCard}>
+        <CollapsibleField
+          label="Priority"
+          summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+          hint="Ranks the task against everything else on Today."
+          expanded={fieldOpen('priority')}
+          onToggle={() => toggleField('priority')}
+        >
+          <View style={styles.pillRow}>
+            {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[
+                  styles.pill,
+                  priority === p && p === 0 && styles.pillActiveNeutral,
+                  priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
+                ]}
+                onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
+              >
+                <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
+                  {PRIORITY_LABELS[p]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Effort"
+          summary={estimatedMinutes !== null ? `${estimatedMinutes} min` : effort > 0 ? EFFORT_LABELS[effort] : undefined}
+          emptySummary="Not set"
+          hint="Roughly how long this takes, so a day's list can be sized realistically."
+          expanded={fieldOpen('effort')}
+          onToggle={() => toggleField('effort')}
+        >
+          <View style={styles.pillRow}>
+            {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => (
+              <TouchableOpacity
+                key={e}
+                style={[styles.pill, effort === e && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setEffort(e); }}
+              >
+                <Text style={[styles.pillText, effort === e && styles.pillTextActive]}>
+                  {e === 0 ? '—' : EFFORT_LABELS[e]}
+                </Text>
+                {EFFORT_HINTS[e] ? (
+                  <Text style={styles.pillHint}>{EFFORT_HINTS[e]}</Text>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.intervalRow}>
+            {estimatedMinutes !== null ? (
+              <>
+                <TouchableOpacity
+                  style={styles.intervalBtn}
+                  onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
+                >
+                  <Ionicons name="remove" size={16} color={colors.text} />
+                </TouchableOpacity>
+                <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
+                <TouchableOpacity
+                  style={styles.intervalBtn}
+                  onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
+                >
+                  <Ionicons name="add" size={16} color={colors.text} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setEstimatedMinutes(null)} hitSlop={8}>
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity onPress={() => { haptics.tap(); setEstimatedMinutes(30); }}>
+                <Text style={styles.addTagText}>Set a custom estimate</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </CollapsibleField>
+      </View>
+    </EditorSheet>
   );
 }
 
