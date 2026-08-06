@@ -51,10 +51,22 @@ interface Props {
   onOpenFull: (draft: TaskDraft) => void;
   /** Which list this was opened from — determines the default due date. Defaults to 'today'. */
   context?: 'today' | 'later' | 'inbox' | 'unscheduled';
-  /** Called right after a new task is created (not on the "resume archived" path). */
-  onCreated?: (task: Task) => void;
+  /**
+   * Called right after a new task is created (not on the "resume archived"
+   * path). `placed` is false when there was no seed, or when the chip shook it
+   * off — a caller that also wanted to position the row shouldn't.
+   */
+  onCreated?: (task: Task, placed: boolean) => void;
   /** Called instead of onCreated when the user resumes an archived task rather than creating one. */
   onResumed?: (task: Task) => void;
+  /**
+   * Placement handed in by a drag of the add button onto the list. `category`
+   * seeds the form's own category field (so it shows, and can be changed like
+   * any other); `groupId` and `pinned` ride along to addTask untouched.
+   */
+  seed?: { category?: string | null; groupId?: string; pinned?: boolean };
+  /** Names the seed on a removable chip, e.g. "Errands". No chip without one. */
+  seedLabel?: string | null;
 }
 
 type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | null;
@@ -80,7 +92,9 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 };
 
 
-export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today', onCreated, onResumed }: Props) {
+export function QuickAddModal({
+  visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, seed, seedLabel,
+}: Props) {
   const addTask = useTaskStore(s => s.addTask);
   const addCategory = useTaskStore(s => s.addCategory);
   const unarchiveTask = useTaskStore(s => s.unarchiveTask);
@@ -171,6 +185,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
   const [whenPickerVisible, setWhenPickerVisible] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
+  // Whether the drop's placement still applies — the chip can shake it off.
+  const [seedActive, setSeedActive] = useState(false);
+  // Read only when the sheet opens: a seed that changes identity mid-edit must
+  // not re-run the reset below and wipe what's already been typed.
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
 
   useEffect(() => {
     if (visible) {
@@ -187,7 +207,10 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       );
       setTimeSegments([]);
       setTags([]);
-      setCategory(null);
+      // Applied after the reset rather than folded into it, so a drop's
+      // category overrides the default instead of racing it.
+      setCategory(seedRef.current?.category ?? null);
+      setSeedActive(!!seedRef.current);
       setLinkUrl(null);
       setCustomLinkText('');
       setTagInput('');
@@ -340,8 +363,12 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       recurrenceEndDate,
       recurrenceCount,
       recurrenceFromCompletion,
+      // addTask takes both, and ignores sortOrder — a drop that also wants a
+      // position splices it in afterwards, from onCreated.
+      ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
+      ...(seedActive && seed?.pinned ? { pinned: true } : {}),
     });
-    onCreated?.(task);
+    onCreated?.(task, seedActive);
     dismiss();
   };
 
@@ -517,6 +544,29 @@ export function QuickAddModal({ visible, onClose, onOpenFull, context = 'today',
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
+          {/* Where the button was dropped. Removable: the drop chose a place,
+              it didn't commit you to one. */}
+          {seedActive && seedLabel ? (
+            <View style={styles.seedRow}>
+              <View style={styles.seedChip}>
+                <Ionicons name="return-down-forward" size={13} color={colors.accent} />
+                <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.tap();
+                    if (seed?.category && category === seed.category) setCategory(null);
+                    setSeedActive(false);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove placement ${seedLabel}`}
+                >
+                  <Ionicons name="close" size={13} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
           {/* Title input row */}
           <View style={styles.row}>
             <View style={styles.inputWrap}>
@@ -1314,6 +1364,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  seedRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  seedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent + '1A',
+    maxWidth: '100%',
+  },
+  seedChipText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
   inputWrap: {
     flex: 1,
