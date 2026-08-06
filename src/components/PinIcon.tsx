@@ -14,9 +14,9 @@ const HEAD = 'M8 3h8l-1 6 3 3v3H6v-3l3-3z';
 const NEEDLE = 'M12 22v-7';
 
 /**
- * The pin glyph, everywhere pinning is shown or toggled: the task row's
- * expanded actions, the bulk bar, the editor's Pin row, the category header's
- * pin-all, and the Pinned Tasks section header.
+ * The pin glyph, everywhere pinning is shown or toggled: the task row, the
+ * bulk bar, the editor's Pin row, the category header's pin-all, and the
+ * Pinned Tasks section header.
  *
  * Drawn here rather than taken from an icon set, which is why this is the one
  * icon in the app that isn't an `Ionicons` name. Ionicons has no thumbtack at
