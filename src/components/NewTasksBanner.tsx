@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Text, View, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { Text, View, StyleSheet, Animated, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useColors } from '../theme/ThemeContext';
 import { animation, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
@@ -12,6 +12,16 @@ import type { Task } from '../types';
 
 /** How many titles the banner lists before it collapses the rest into "+N more". */
 const PREVIEW_LIMIT = 4;
+
+/**
+ * Ceiling on the expanded list's height. The banner is a sibling *above* the
+ * task list rather than a row inside it, so without a cap a morning that
+ * surfaces 26 tasks grows a banner taller than the screen: it pushes the list
+ * out of view and, being outside any scroll view, offers nothing to scroll —
+ * the only way back to your tasks is to dismiss it. Capped, the overflow
+ * scrolls inside the banner and the list keeps its share of the screen.
+ */
+const MAX_LIST_HEIGHT = Math.round(Dimensions.get('window').height * 0.32);
 
 interface Props {
   tasks: Task[];
@@ -107,7 +117,14 @@ export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
       </View>
 
       {shown.length > 0 && (
-        <View style={styles.list}>
+        <ScrollView
+          style={styles.list}
+          contentContainerStyle={styles.listContent}
+          // Only bounce once there's something to scroll — a four-row preview
+          // that rubber-bands reads as broken.
+          alwaysBounceVertical={false}
+          nestedScrollEnabled
+        >
           {shown.map(task => (
             <NewTaskRow key={task.id} task={task} styles={styles} colors={colors} onPress={() => onSelectTask(task)} />
           ))}
@@ -122,7 +139,7 @@ export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
               <Text style={styles.moreText}>+{remaining} more</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </ScrollView>
       )}
     </Animated.View>
   );
@@ -196,6 +213,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   buttonText: { color: colors.onWarning, fontSize: font.sm, fontWeight: fontWeight.bold },
   list: {
     marginTop: spacing.xs,
+    // flexGrow: 0 keeps the ScrollView sized to its content up to the cap
+    // rather than filling whatever the banner's parent offers.
+    flexGrow: 0,
+    maxHeight: MAX_LIST_HEIGHT,
+  },
+  listContent: {
     paddingRight: spacing.xs,
   },
   taskRow: {
