@@ -1257,6 +1257,78 @@ describe('deferTask', () => {
   });
 });
 
+// ─── deloadTasks ────────────────────────────────────────────────────────────
+
+describe('deloadTasks', () => {
+  const thursday = new Date(2025, 5, 12, 12, 0, 0).toISOString();
+  const friday = new Date(2025, 5, 13, 12, 0, 0).toISOString();
+
+  it('applies each move with its own field updates', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'recurring', dueDate: new Date(2025, 5, 10).toISOString() }),
+        makeTask({ id: 'oneoff', dueDate: new Date(2025, 5, 10).toISOString() }),
+      ],
+    });
+
+    useTaskStore.getState().deloadTasks([
+      { id: 'recurring', updates: { deferUntil: thursday } },
+      { id: 'oneoff', updates: { dueDate: friday, deferUntil: null } },
+    ]);
+
+    const [recurring, oneoff] = useTaskStore.getState().tasks;
+    expect(recurring.deferUntil).toBe(thursday);
+    expect(recurring.dueDate).toBe(new Date(2025, 5, 10).toISOString());
+    expect(oneoff.dueDate).toBe(friday);
+    expect(oneoff.deferUntil).toBeNull();
+  });
+
+  it('undoes the whole batch as one action', () => {
+    const originalDue = new Date(2025, 5, 10).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', dueDate: originalDue }),
+        makeTask({ id: 'b', dueDate: originalDue, deferUntil: null }),
+      ],
+    });
+
+    useTaskStore.getState().deloadTasks([
+      { id: 'a', updates: { deferUntil: thursday } },
+      { id: 'b', updates: { dueDate: friday, deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks moved');
+
+    useTaskStore.getState().undoLastAction();
+
+    const [a, b] = useTaskStore.getState().tasks;
+    expect(a.deferUntil).toBeNull();
+    expect(a.dueDate).toBe(originalDue);
+    expect(b.dueDate).toBe(originalDue);
+  });
+
+  it('labels a single move in the singular', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().deloadTasks([{ id: 'a', updates: { deferUntil: thursday } }]);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task moved');
+  });
+
+  it('ignores moves for tasks that no longer exist', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })] });
+    useTaskStore.getState().deloadTasks([
+      { id: 'a', updates: { deferUntil: thursday } },
+      { id: 'gone', updates: { deferUntil: thursday } },
+    ]);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task moved');
+    expect(useTaskStore.getState().tasks[0].deferUntil).toBe(thursday);
+  });
+
+  it('records no action for an empty batch', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })], lastAction: null });
+    useTaskStore.getState().deloadTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 // ─── skipNextRecurrence ─────────────────────────────────────────────────────
 
 describe('skipNextRecurrence', () => {

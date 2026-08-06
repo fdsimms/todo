@@ -160,6 +160,10 @@ interface TaskStore {
   unlogQuotaUnit: (id: string) => void;
   rolloverQuotas: () => void;
   deferTask: (id: string, until: Date) => void;
+  // Applies a batch of approved "lighten this day" moves (see
+  // utils/deloadPlan) under one undo entry — each move carries its own field
+  // updates, since a recurring task defers while a one-off reschedules.
+  deloadTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
   // Hides a recurring task indefinitely (unlike vacationPause, not tied to
@@ -884,6 +888,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Task rescheduled',
       undo: () => get().updateTask(snapshot.id, snapshot),
+    });
+  },
+
+  // A batch of approved deload moves. Each carries its own updates because the
+  // mechanism differs per task — a recurring task gets deferUntil so its
+  // schedule grid stays anchored, a one-off gets a real new dueDate (see
+  // deloadUpdates in utils/deloadPlan). Snapshots are taken before anything is
+  // written so the whole sweep undoes as one action rather than N toasts.
+  deloadTasks(moves) {
+    const byId = new Map(get().tasks.map(t => [t.id, t]));
+    const applied = moves.filter(m => byId.has(m.id));
+    if (applied.length === 0) return;
+
+    const snapshots = applied.map(m => {
+      const t = byId.get(m.id)!;
+      return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil };
+    });
+
+    dbTransaction(() => {
+      applied.forEach(m => get().updateTask(m.id, m.updates));
+    });
+
+    get().setLastAction({
+      label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved`,
+      undo: () => snapshots.forEach(s =>
+        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil })
+      ),
     });
   },
 

@@ -62,6 +62,7 @@ import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
+import { DeloadSheet } from '../components/DeloadSheet';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -348,6 +349,7 @@ export function TodayScreen() {
   const [pullingToAdd, setPullingToAdd] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [deloadVisible, setDeloadVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -1438,11 +1440,14 @@ export function TodayScreen() {
     setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
   }, []);
 
-  const workloadSubtitle = useMemo(() => {
-    if (viewMode !== 'today' || visibleTasks.length === 0) return undefined;
+  // Shared by the header subtitle and the "Lighten today" action's hint.
+  const plannedLabel = useMemo(() => {
     const minutes = sumEstimatedMinutes(visibleTasks);
-    return minutes > 0 ? `${formatDuration(minutes)} planned today` : undefined;
-  }, [viewMode, visibleTasks]);
+    return minutes > 0 ? formatDuration(minutes) : undefined;
+  }, [visibleTasks]);
+
+  const workloadSubtitle =
+    viewMode === 'today' && plannedLabel ? `${plannedLabel} planned today` : undefined;
 
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
@@ -2023,6 +2028,17 @@ export function TodayScreen() {
           onClose={() => setOptionsMenuVisible(false)}
           hideCategories={hideCategories}
           onHideCategoriesChange={setHideCategories}
+          onLightenDay={visibleTasks.length > 0 ? () => {
+            setOptionsMenuVisible(false);
+            setDeloadVisible(true);
+          } : undefined}
+          plannedLabel={plannedLabel}
+        />
+
+        <DeloadSheet
+          visible={deloadVisible}
+          todaysTasks={visibleTasks}
+          onClose={() => setDeloadVisible(false)}
         />
 
         <TaskGroupEditor
