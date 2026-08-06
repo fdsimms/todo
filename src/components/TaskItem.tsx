@@ -1539,8 +1539,21 @@ export const TaskItem = React.memo(function TaskItem({
               (Separate from itemWrapper: overflow hidden there would clip the
               card shadow on iOS.) */}
           <View style={styles.cardClip}>
+          {/* The row is wrapped bare, with no corner radius of its own. It
+              slides sideways over the swipe panels, so its leading and
+              trailing edges are *interior seams* against a panel whenever one
+              is open — not card corners. This wrapper used to carry radius.md
+              + overflow:hidden, which rounded them regardless, and the whole
+              of the defer button's ragged look came from that: the revealed
+              panel met the card across a 12pt notch, and the priority bar
+              riding that edge was clipped to a lens that read as a spike torn
+              out of the panel rather than as an urgency marker. On a 48pt row
+              the notch ate half the bar's height. The same clip pinched the
+              bar to nothing where an expanded row meets its panel, breaking
+              the strip the two halves are meant to form. cardClip above
+              rounds the card at the one place its corners are real. */}
           {selectionMode ? (
-            <View style={styles.swipeContainer}>
+            <View>
               {rowBody}
             </View>
           ) : (
@@ -1565,7 +1578,7 @@ export const TaskItem = React.memo(function TaskItem({
                 accessibilityLabel: `Reschedule ${task.title}`,
               }}
             >
-              <View style={styles.swipeContainer}>
+              <View>
                 <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
                   {rowBody}
                 </View>
@@ -1668,10 +1681,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.accent,
   },
-  swipeContainer: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1684,6 +1693,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // overflow:hidden + borderRadius round it off wherever it meets a true
   // card corner, so it never needs manual insets to avoid overflowing —
   // and it matches the full-height defer button revealed behind it on swipe.
+  // Nothing between here and cardClip may round its corners; the bar is 3pt
+  // against a 12pt radius, so any clip it doesn't share with the card slices
+  // it into a taper. See the note by the row wrapper.
   priorityBar: {
     position: 'absolute',
     left: 0,
