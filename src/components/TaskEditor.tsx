@@ -1541,7 +1541,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={() => {
                       chainItemSavedRef.current = true;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setTimeout(() => {
                         chainItemSavedRef.current = false;
@@ -1551,7 +1551,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onBlur={() => {
                       if (chainItemSavedRef.current) return;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setAddingChainItem(false);
                     }}

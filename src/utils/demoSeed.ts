@@ -118,9 +118,9 @@ export function seedDemoData(): void {
     chainEnabled: true,
     chainIndex: 0,
     chainItems: [
-      { id: generateId(), title: 'Make the bed', notes: '' },
-      { id: generateId(), title: 'Stretch for five minutes', notes: '' },
-      { id: generateId(), title: 'Glass of water', notes: '' },
+      { id: generateId(), title: 'Make the bed' },
+      { id: generateId(), title: 'Stretch for five minutes' },
+      { id: generateId(), title: 'Glass of water' },
     ],
   });
   updateTask(morningRoutine.id, { effort: 1 });

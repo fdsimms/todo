@@ -126,7 +126,7 @@ describe('fuzzySearch', () => {
     });
 
     it('returns no result when query chars cannot be found in order', () => {
-      const task = makeTask({ title: 'buy milk', notes: '', tags: [] });
+      const task = makeTask({ title: 'buy milk', tags: [] });
       expect(fuzzySearch([task], 'zzz')).toHaveLength(0);
     });
   });
@@ -148,7 +148,7 @@ describe('fuzzySearch', () => {
     });
 
     it('title match scores higher than notes-only match', () => {
-      const titleTask = makeTask({ id: '1', title: 'important task', notes: '' });
+      const titleTask = makeTask({ id: '1', title: 'important task' });
       const notesTask = makeTask({ id: '2', title: 'unrelated', notes: 'important note' });
       const results = fuzzySearch([titleTask, notesTask], 'important');
       expect(results[0].task.id).toBe('1');
@@ -176,7 +176,7 @@ describe('fuzzySearch', () => {
       const task = makeTask({
         title: 'Landlord stuff',
         chainItems: [
-          { id: 'c1', title: 'Call the landlord about groceries budget', notes: '' },
+          { id: 'c1', title: 'Call the landlord about groceries budget' },
         ],
       });
       expect(fuzzySearch([task], 'groceries')).toHaveLength(1);
@@ -195,8 +195,8 @@ describe('fuzzySearch', () => {
         chainEnabled: true,
         chainIndex: 0,
         chainItems: [
-          { id: 'c1', title: 'Stretch for five minutes', notes: '' },
-          { id: 'c2', title: 'Shower', notes: '' },
+          { id: 'c1', title: 'Stretch for five minutes' },
+          { id: 'c2', title: 'Shower' },
         ],
       });
       const [result] = fuzzySearch([task], 'stretch');
@@ -211,8 +211,8 @@ describe('fuzzySearch', () => {
         chainEnabled: true,
         chainIndex: 0,
         chainItems: [
-          { id: 'c1', title: 'Stretch for five minutes', notes: '' },
-          { id: 'c2', title: 'Shower', notes: '' },
+          { id: 'c1', title: 'Stretch for five minutes' },
+          { id: 'c2', title: 'Shower' },
         ],
       });
       const withoutChain = makeTask({ id: '2', title: 'unrelated', category: 'stretch' });
@@ -231,7 +231,7 @@ describe('fuzzySearch', () => {
     });
 
     it('includes task when only some words match (not all required)', () => {
-      const task = makeTask({ title: 'Buy milk', notes: '', tags: [] });
+      const task = makeTask({ title: 'Buy milk', tags: [] });
       // 'zzz' has no match but 'milk' does — totalScore > 0
       expect(fuzzySearch([task], 'milk zzz')).toHaveLength(1);
     });

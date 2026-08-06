@@ -410,7 +410,7 @@ export function QuickAddModal({
     if (!t) return;
     haptics.tap();
     animateLayout();
-    setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+    setChainItems(prev => [...prev, { id: generateId(), title: t }]);
     setNewStepTitle('');
   };
 
@@ -427,7 +427,7 @@ export function QuickAddModal({
   const resolvedChainItems = useMemo(
     // The id is regenerated on each keystroke and only ever committed by
     // createTask, so churn here costs nothing.
-    () => (pendingStep ? [...chainItems, { id: generateId(), title: pendingStep, notes: '' }] : chainItems),
+    () => (pendingStep ? [...chainItems, { id: generateId(), title: pendingStep }] : chainItems),
     [chainItems, pendingStep],
   );
 

@@ -537,9 +537,9 @@ describe('duplicateTask', () => {
         id: 't1',
         chainEnabled: true,
         chainItems: [
-          { id: 'a', title: 'Step A', notes: '' },
-          { id: 'b', title: 'Step B', notes: '' },
-          { id: 'c', title: 'Step C', notes: '' },
+          { id: 'a', title: 'Step A' },
+          { id: 'b', title: 'Step B' },
+          { id: 'c', title: 'Step C' },
         ],
         chainIndex: 2,
       })],
@@ -816,9 +816,9 @@ describe('completeTask', () => {
       dueDate: null,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
-        { id: 'c', title: 'Step C', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
+        { id: 'c', title: 'Step C' },
       ],
       chainIndex: 0,
     });
@@ -839,8 +839,8 @@ describe('completeTask', () => {
       recurrenceType: 'none',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
       ],
       chainIndex: 1, // already on the last item
     });
@@ -858,8 +858,8 @@ describe('completeTask', () => {
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
       ],
       chainIndex: 1, // already on the last item
     });
@@ -882,9 +882,9 @@ describe('completeTask', () => {
       streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
-        { id: 'c', title: 'Step C', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
+        { id: 'c', title: 'Step C' },
       ],
       chainIndex: 0, // not the last step
     });
@@ -912,8 +912,8 @@ describe('completeTask', () => {
       id: 'chained-with-subtasks',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
       ],
       chainIndex: 0,
     });
@@ -1242,9 +1242,9 @@ describe('uncompleteTask', () => {
       id: 't1',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
-        { id: 'c', title: 'Step C', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
+        { id: 'c', title: 'Step C' },
       ],
       chainIndex: 0,
     });
@@ -1589,9 +1589,9 @@ describe('skipNextRecurrence', () => {
       recurrenceCount: 5,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
-        { id: 'c', title: 'Step C', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
+        { id: 'c', title: 'Step C' },
       ],
       chainIndex: 0, // not the last step
     });
@@ -1614,9 +1614,9 @@ describe('skipNextRecurrence', () => {
       recurrenceCount: 5,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
-        { id: 'c', title: 'Step C', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
+        { id: 'c', title: 'Step C' },
       ],
       chainIndex: 2, // last step
     });
@@ -2031,8 +2031,8 @@ describe('groupRosterOf', () => {
     const step1 = makeTask({
       id: 'step-1', groupId: 'g1', dueDate: today(), chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A', notes: '' },
-        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'a', title: 'Step A' },
+        { id: 'b', title: 'Step B' },
       ],
       chainIndex: 0, sortOrder: 1,
     });

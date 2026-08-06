@@ -473,9 +473,9 @@ describe('extractPlaceholders', () => {
       title: 'Pack',
       notes: 'for {trip}',
       subtasks: [{ id: 's1', title: 'Charge the {device}' }],
-      chainItems: [{ id: 'c1', title: 'Confirm with {who}', notes: '{when}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm with {who}' }],
     })];
-    expect(extractPlaceholders(items)).toEqual(['trip', 'device', 'who', 'when']);
+    expect(extractPlaceholders(items)).toEqual(['trip', 'device', 'who']);
   });
 
   it('excludes the reserved run placeholder, which is bound to the run name', () => {
@@ -536,11 +536,11 @@ describe('substituteDraftPlaceholders', () => {
     const out = substituteDraftPlaceholders({
       title: 'Pack for {trip}',
       notes: 'ask {who}',
-      chainItems: [{ id: 'c1', title: 'Confirm {who}', notes: 'by {when}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm {who}' }],
     }, { trip: 'Denver', who: 'Dan', when: 'Friday' });
     expect(out.title).toBe('Pack for Denver');
     expect(out.notes).toBe('ask Dan');
-    expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan', notes: 'by Friday' }]);
+    expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan' }]);
   });
 
   it('leaves an absent title/notes/chain absent rather than turning it into a blank string', () => {
