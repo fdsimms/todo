@@ -280,6 +280,7 @@ export function TagsScreen() {
                       selected={selectedIds.has(item.id)}
                       onSelect={() => toggleSelection(item.id)}
                       onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                      showProject
                     />
                   );
                 }}

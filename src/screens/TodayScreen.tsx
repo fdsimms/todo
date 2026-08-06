@@ -1486,6 +1486,13 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory={opts?.showCategory}
+        // Unconditional, unlike showCategory: Today's sections *are* the
+        // categories, so a category chip only earns its place on a row outside
+        // them (the pinned section). Nothing on this screen says which project
+        // a task came from, and a task dated here by a project nudge —
+        // dripStalledProjects, which the user never saw run — is otherwise a
+        // title with no explanation of where it came from.
+        showProject
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
@@ -1687,6 +1694,7 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory
+        showProject
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
