@@ -4088,6 +4088,21 @@ describe('a series and a recurrence rule never coexist', () => {
     expect(tasks.filter(t => !t.completed).map(t => new Date(t.dueDate!).getDate())).toEqual([15]);
   });
 
+  // A chain step spawns onto the same day it was completed, so inheriting the
+  // seriesId put a second row on a date the set already had — and the next
+  // date edit, which reconciles by calendar day, deleted one of the pair.
+  it('leaves the set when a chain step spawns from one of its dates', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Meal prep', chainEnabled: true, chainItems: [{ id: 'a', title: 'Shop' }, { id: 'b', title: 'Cook' }] },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    const spawned = useTaskStore.getState().tasks.find(t => t.chainIndex === 1)!;
+    expect(spawned.seriesId).toBeNull();
+    expect(useTaskStore.getState().seriesRowsOf(rows[0].seriesId!)).toHaveLength(2);
+  });
+
   it('drops the rule from a series built from scratch', () => {
     const rows = useTaskStore.getState().addTaskSeries(
       { title: 'Dog', recurrenceType: 'weekly', recurrenceDays: [1], showStreak: true },

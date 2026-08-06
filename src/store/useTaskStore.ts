@@ -1132,6 +1132,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // the new row inherits a pointer at a completed task and isn't blocked.
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
           seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
+          // A spawned row is never one of the dates the user picked. Since a
+          // series carries no recurrence rule (see NO_RECURRENCE), the only
+          // way to get here from a series row is mid-chain — and a chain step
+          // spawns onto the *same day* it was completed, so inheriting the
+          // seriesId put a second row on a date the set already had. The next
+          // date edit reconciles by calendar day, so it deleted one of them
+          // and the chain's position went with it.
+          seriesId: null,
+          seriesMonthDays: [],
+          seriesRepeatMonths: 1,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
