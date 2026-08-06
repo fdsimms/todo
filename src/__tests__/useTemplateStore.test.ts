@@ -567,3 +567,89 @@ describe('setTemplateContainer', () => {
     expect(dbUpdateTemplate).not.toHaveBeenCalled();
   });
 });
+
+describe('renameItemCategory', () => {
+  const seed = (templates: TaskTemplate[]) => {
+    useTemplateStore.setState({ templates, initialized: true });
+    (dbUpdateTemplate as jest.Mock).mockClear();
+  };
+
+  it('rewrites every item that named the old category', () => {
+    seed([makeTemplate({
+      id: 'tpl-1',
+      items: [
+        makeItem({ id: 'a', category: 'Errands' }),
+        makeItem({ id: 'b', category: 'Home' }),
+        makeItem({ id: 'c', category: 'Errands' }),
+      ],
+    })]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    const items = useTemplateStore.getState().templates[0].items;
+    expect(items.map(i => i.category)).toEqual(['Chores', 'Home', 'Chores']);
+  });
+
+  it('rewrites across several templates and persists each one touched', () => {
+    seed([
+      makeTemplate({ id: 'tpl-1', items: [makeItem({ id: 'a', category: 'Errands' })] }),
+      makeTemplate({ id: 'tpl-2', items: [makeItem({ id: 'b', category: 'Errands' })] }),
+    ]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    expect(dbUpdateTemplate).toHaveBeenCalledTimes(2);
+    expect(useTemplateStore.getState().templates.flatMap(t => t.items).map(i => i.category))
+      .toEqual(['Chores', 'Chores']);
+  });
+
+  it('leaves untouched templates alone, and does not write them back', () => {
+    const untouched = makeTemplate({ id: 'tpl-2', items: [makeItem({ id: 'b', category: 'Home' })] });
+    seed([
+      makeTemplate({ id: 'tpl-1', items: [makeItem({ id: 'a', category: 'Errands' })] }),
+      untouched,
+    ]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    // One write, for the one template that actually mentioned the old name.
+    expect(dbUpdateTemplate).toHaveBeenCalledTimes(1);
+    expect((dbUpdateTemplate as jest.Mock).mock.calls[0][0].id).toBe('tpl-1');
+    // And the untouched template keeps its identity, so nothing downstream
+    // re-renders for a rename that didn't concern it.
+    expect(useTemplateStore.getState().templates[1]).toBe(untouched);
+  });
+
+  it('does nothing when no item names the old category', () => {
+    seed([makeTemplate({ items: [makeItem({ category: 'Home' })] })]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
+  });
+
+  it('does nothing when the name is unchanged', () => {
+    seed([makeTemplate({ items: [makeItem({ category: 'Errands' })] })]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Errands');
+
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
+  });
+
+  it('leaves an item with no category null rather than adopting the new name', () => {
+    seed([makeTemplate({ items: [makeItem({ id: 'a', category: null })] })]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    expect(useTemplateStore.getState().templates[0].items[0].category).toBeNull();
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
+  });
+
+  it('matches exactly, so a differently-cased category is left alone', () => {
+    seed([makeTemplate({ items: [makeItem({ id: 'a', category: 'errands' })] })]);
+
+    useTemplateStore.getState().renameItemCategory('Errands', 'Chores');
+
+    expect(useTemplateStore.getState().templates[0].items[0].category).toBe('errands');
+  });
+});

@@ -2384,6 +2384,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.setState(s => ({
       groups: s.groups.map(g => g.category === name ? { ...g, category: trimmed } : g),
     }));
+    // Templates follow the rename too. Deleting deliberately doesn't cascade
+    // here — an item left naming a deleted category is reported by
+    // findMissingRefs, because there's no correct value to rewrite it to and
+    // silently blanking it would throw away what the user chose. A rename has
+    // an obvious correct value, so leaving it stale was just a gap.
+    useTemplateStore.getState().renameItemCategory(name, trimmed);
     return true;
   },
 

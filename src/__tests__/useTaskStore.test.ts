@@ -2,6 +2,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -1813,6 +1814,20 @@ describe('pinCategory', () => {
 
 // ─── renameCategory ──────────────────────────────────────────────────────────
 
+/** A template whose items carry the given categories, for the rename cascade. */
+function makeTemplateWithItemCategories(id: string, categories: (string | null)[]) {
+  return {
+    id,
+    name: 'Weekly reset',
+    items: categories.map((category, i) => normalizeTemplateItem({ id: `${id}-i${i}`, title: `Item ${i}`, category })),
+    itemGroups: [],
+    createdAt: '2025-01-01T00:00:00.000Z',
+    sortOrder: 1,
+    category: null,
+    applyContainer: 'stack' as const,
+  };
+}
+
 describe('renameCategory', () => {
   it('updates the category on every task that had the old name', () => {
     useTaskStore.setState({
@@ -1844,6 +1859,33 @@ describe('renameCategory', () => {
     const ok = useTaskStore.getState().renameCategory('Work', 'Job');
     expect(ok).toBe(false);
     expect(useTaskStore.getState().tasks[0].category).toBe('Work');
+  });
+
+  // Templates used to be the one holder of a category name that a rename
+  // didn't reach, which left them naming something unresolvable — exactly what
+  // findMissingRefs reports, but with no user action behind it.
+  it('updates the category on template items that had the old name', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplateWithItemCategories('tpl-1', ['Work', 'Home'])],
+      initialized: true,
+    });
+    useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(useTemplateStore.getState().templates[0].items.map(i => i.category))
+      .toEqual(['Job', 'Home']);
+  });
+
+  it('does not touch template items when the underlying rename fails', () => {
+    const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+    useCategoryStore.getState.mockReturnValue({
+      categories: [],
+      renameCategory: jest.fn().mockReturnValue(false),
+    });
+    useTemplateStore.setState({
+      templates: [makeTemplateWithItemCategories('tpl-1', ['Work'])],
+      initialized: true,
+    });
+    useTaskStore.getState().renameCategory('Work', 'Job');
+    expect(useTemplateStore.getState().templates[0].items[0].category).toBe('Work');
   });
 });
 

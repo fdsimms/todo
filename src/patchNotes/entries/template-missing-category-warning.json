@@ -1,4 +1,4 @@
 {
-  "message": "Templates now flag items that still point at a category or tag you've since deleted or renamed, instead of quietly recreating the old name the next time you apply them",
+  "message": "Renaming a category now updates your templates along with your tasks, and a template flags any item still pointing at a category or tag you deleted instead of quietly recreating it next time you apply it",
   "date": "2026-08-06"
 }
