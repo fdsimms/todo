@@ -31,6 +31,7 @@ const MENU_ITEMS: MenuItem[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
+  { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
