@@ -108,9 +108,11 @@ export interface Project {
 }
 
 // Fallback cadence for a project row written before the nudge columns existed,
-// and the default for a newly created project. Two weeks is long enough that an
-// ordinary lull doesn't trigger it.
-export const DEFAULT_NUDGE_CADENCE_DAYS = 14;
+// and the default for a newly created project. Never, deliberately: being asked
+// about a project you haven't decided you want chasing is the annoying half of
+// this feature, and it's the half you get without opting in. It used to default
+// to two weeks so the feature wasn't inert on arrival.
+export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
 export interface Task {
   id: string;

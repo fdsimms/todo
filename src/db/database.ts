@@ -240,11 +240,13 @@ export function initDatabase(): void {
     // nothing for anyone until they opt in, and 'stack' is the right answer
     // for most templates when they do.
     "ALTER TABLE templates ADD COLUMN apply_container TEXT NOT NULL DEFAULT 'stack'",
-    // Defaulted rather than nullable so every project that predates the nudge
-    // feature gets a cadence in one statement — the alternative is a feature
-    // that stays inert until each project is configured by hand, which is the
-    // micromanagement it exists to remove.
-    'ALTER TABLE projects ADD COLUMN nudge_cadence_days INTEGER NOT NULL DEFAULT 14',
+    // 0 = never, matching DEFAULT_NUDGE_CADENCE_DAYS: a project that predates
+    // the nudge feature has never been asked whether it wants chasing, and
+    // answering yes on its behalf is how the feature starts by nagging about
+    // projects nobody opted in. It shipped as DEFAULT 14 and rows written by
+    // that version keep their 14 — this only decides what a device that hasn't
+    // run the migration yet backfills.
+    'ALTER TABLE projects ADD COLUMN nudge_cadence_days INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE projects ADD COLUMN auto_schedule INTEGER NOT NULL DEFAULT 0',
     // Nullable rather than defaulted: null *is* the meaningful value here
     // ("waiting on nothing"), and every existing row wants it.
