@@ -23,6 +23,8 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
+import { APP_FONT_OPTIONS, resolveFontFace } from '../theme/fonts';
+import { useFontPreviewsLoaded } from '../theme/AppFont';
 import { disclosureValue } from '../theme/textStyles';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
@@ -67,6 +69,7 @@ export function SettingsScreen() {
     activeHoursStart, setActiveHoursStart,
     activeHoursEnd, setActiveHoursEnd,
     themeMode, setThemeMode,
+    appFont, setAppFont,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     vacationStart,
@@ -86,6 +89,7 @@ export function SettingsScreen() {
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const [showPatchNotes, setShowPatchNotes] = useState(false);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+  const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
@@ -219,6 +223,64 @@ export function SettingsScreen() {
                 ))}
               </View>
             </View>
+          </View>
+
+          {/* Typeface */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Typeface</Text>
+            <View style={styles.card}>
+              {APP_FONT_OPTIONS.map((opt, i) => {
+                const selected = appFont === opt.id;
+                // Naming a family here is what stops the patched Text applying
+                // the *selected* font to this row, so each option previews
+                // itself. Undefined for System, which flattens over the
+                // injected family and lands back on the real platform default.
+                const family = fontPreviewsLoaded
+                  ? resolveFontFace(opt.id, '400')
+                  : undefined;
+                return (
+                  <React.Fragment key={opt.id}>
+                    {i > 0 && <View style={styles.sep} />}
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={() => setAppFont(opt.id)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${opt.label} typeface`}
+                    >
+                      <Text
+                        style={[
+                          styles.fontSample,
+                          selected && styles.fontSampleActive,
+                          { fontFamily: family },
+                        ]}
+                      >
+                        Aa
+                      </Text>
+                      <View style={styles.rowContent}>
+                        <Text
+                          style={[
+                            styles.fontName,
+                            selected && styles.fontNameActive,
+                            { fontFamily: family },
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                        <Text style={styles.rowHint}>{opt.hint}</Text>
+                      </View>
+                      {selected && (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Changes every screen at once. These all ship with the OS, so nothing downloads.
+            </Text>
           </View>
 
           {/* Day segments */}
@@ -614,6 +676,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  // Fixed width so the "Aa" specimens line up down the column even though the
+  // faces are different widths — a condensed sample is much narrower than a mono one.
+  fontSample: {
+    width: 34, color: colors.textSecondary, fontSize: font.xl, textAlign: 'center',
+  },
+  fontSampleActive: { color: colors.accent },
+  fontName: { color: colors.text, fontSize: font.md },
+  fontNameActive: { color: colors.accent, fontWeight: '600' },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md, flex: 1 },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },

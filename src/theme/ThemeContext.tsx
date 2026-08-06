@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo } from 'react';
 import { useColorScheme } from 'react-native';
 import { darkColors, darkPurpleColors, lightColors, getShadows, type Colors, type ThemeMode } from './index';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { AppFontProvider } from './AppFont';
 
 type Shadows = ReturnType<typeof getShadows>;
 
@@ -36,7 +37,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <ThemeContext.Provider value={value}>
-      {children}
+      {/* Sits here rather than in App.tsx so anything under the theme is also
+          under the font — the two are one "appearance" layer. */}
+      <AppFontProvider>{children}</AppFontProvider>
     </ThemeContext.Provider>
   );
 }
