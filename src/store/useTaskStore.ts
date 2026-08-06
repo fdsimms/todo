@@ -626,9 +626,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return;
       }
       const others = get().seriesRowsOf(anchor.seriesId).filter(t => t.id !== taskId);
-      const dropped = others.filter(t => !t.completed);
+      const dropped = others.filter(t => !t.completed && !t.archived);
       const unfiled = others
-        .filter(t => t.completed)
+        .filter(t => t.completed || t.archived)
         .map(t => ({ ...t, seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1 }));
 
       dropped.forEach(t => {
@@ -683,8 +683,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Completed rows hold their date permanently — they're a record of a day
     // that happened, so they neither get rewritten nor count as a date the
     // set still owes. Everything below reconciles the incomplete rows only.
+    //
+    // Archived rows are held the same way, and for a sharper reason: they used
+    // to count as live, so editing the dates deleted one outright when its date
+    // was dropped from the set — filed-away data destroyed by an unrelated
+    // edit. And when its date was *kept*, the archived row satisfied it, so the
+    // set ended up with nothing actionable on a day the user had just asked
+    // for. Excluded from `live` here, they're neither deleted nor counted, and
+    // a kept date gets a real row of its own alongside them.
     const wanted = new Map(sorted.map(d => [calendarDayKey(d), d]));
-    const live = rows.filter(t => !t.completed);
+    const live = rows.filter(t => !t.completed && !t.archived);
 
     const kept: Task[] = [];
     const removed: Task[] = [];
@@ -708,7 +716,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // The repeat rule lives on every row of the set (they share one schedule),
     // so a change to it has to reach the rows that already existed too.
-    const rewritten = [...kept, ...rows.filter(t => t.completed)].map(t => ({
+    const rewritten = [...kept, ...rows.filter(t => t.completed || t.archived)].map(t => ({
       ...t,
       seriesMonthDays: monthDays,
       seriesRepeatMonths: repeatMonths,

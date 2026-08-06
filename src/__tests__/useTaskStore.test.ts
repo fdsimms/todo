@@ -4176,6 +4176,55 @@ describe('applyTaskDates', () => {
     expect(completed!.completed).toBe(true);
   });
 
+  // Archived rows counted as live, so a date edit deleted a filed-away row
+  // outright when its date was dropped from the set.
+  it('never deletes an archived date either', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const archived = useTaskStore.getState().tasks.find(t => t.id === rows[1].id);
+    expect(archived).toBeDefined();
+    expect(archived!.archived).toBe(true);
+  });
+
+  // ...and when the date was kept, the archived row satisfied it, leaving the
+  // set with nothing actionable on a day the user had just asked for.
+  it('gives a kept date a live row of its own rather than letting an archived one stand for it', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.archived);
+    expect(live.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b)).toEqual([10, 15]);
+    expect(useTaskStore.getState().tasks.filter(t => t.archived)).toHaveLength(1);
+  });
+
+  it('keeps an archived date out of the set when it dissolves back to a plain task', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [new Date(2025, 8, 10, 12, 0, 0)]);
+
+    const archived = useTaskStore.getState().tasks.find(t => t.id === rows[1].id);
+    expect(archived).toBeDefined();
+    expect(archived!.seriesId).toBeNull();
+  });
+
   it('dissolves the series back to a plain task when the set drops to one date', () => {
     const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
       new Date(2025, 8, 10, 12, 0, 0),
