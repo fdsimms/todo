@@ -3772,6 +3772,25 @@ describe('completeTask auto-archiving a finished project', () => {
     expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
   });
 
+  // The fresh occurrence a recurring completion spawns is real outstanding
+  // work, so ticking tonight's habit must not archive the project out from
+  // under tomorrow's.
+  it('does not archive a project whose only member is a recurring task', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'habit',
+        projectId: 'p1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date().toISOString(),
+      })],
+    });
+    useTaskStore.getState().completeTask('habit');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+  });
+
   it('ignores tasks with no projectId', () => {
     useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
     useProjectStore.setState({ projects: [] });
