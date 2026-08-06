@@ -22,7 +22,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
-import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
+import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -428,7 +428,6 @@ export function TodayScreen() {
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const completeGroup = useTaskStore(s => s.completeGroup);
-  const dismissGroup = useTaskStore(s => s.dismissGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
@@ -903,22 +902,21 @@ export function TodayScreen() {
   }, [allTasks]);
 
   // Groups with at least one currently-visible child, each paired with just
-  // that visible-and-filtered subset — a group with nothing due today simply
-  // doesn't render, same as an empty category would. A group whose children
-  // are ALL completed today still renders (with an empty visible-children
-  // list, since completed tasks aren't shown individually) so finishing the
-  // last child doesn't make the whole stack silently vanish out from under
-  // the user — it stays put, checked off, until they explicitly tap it to
-  // dismiss (TaskGroupHeader's circle, dismissGroup in useTaskStore), at
-  // which point it drops out here via the dismissal check. Only the
-  // default (non-pinned) Today view groups/collapses; pinned mode and the
-  // "Everything else" reveal intentionally stay flat so pinning a task
-  // always pulls it out for individual attention.
+  // that visible-and-filtered subset — a group with nothing left to show
+  // simply doesn't render, same as an empty category would. Only the default
+  // (non-pinned) Today view groups/collapses; pinned mode and the "Everything
+  // else" reveal intentionally stay flat so pinning a task always pulls it out
+  // for individual attention.
   //
-  // A dismissal only hides the stack for the logical day it was made, and
-  // only while every member due today is still done — so a stack that gains
-  // live work again reappears on its own, and tomorrow's occurrences always
-  // come back (see isGroupHiddenToday).
+  // Having a visible child is the *whole* condition, which is what makes a
+  // finished stack leave in the same commit its last row does rather than a
+  // beat later: `filtered` comes from visibleTasks, so a just-ticked row is
+  // still in it for the completion hold (see completionHoldIds), and the
+  // header rides that window out with it. A stack used to stay behind here
+  // reading "all 6 done for today" until it was tapped to dismiss; that tap
+  // is gone along with the stamp it wrote (see isDismissedToday's note).
+  // Nothing has to expire either — tomorrow's occurrences are visible tasks
+  // again, so the stack comes back on its own.
   const visibleGroupItems = useMemo(() => {
     const filteredIds = new Set(filtered.map(t => t.id));
     return taskGroups
@@ -926,11 +924,7 @@ export function TodayScreen() {
         group,
         children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
       }))
-      .filter(g => {
-        const dueToday = (childrenByGroupId.get(g.group.id) ?? []).filter(isRelevantToGroupToday);
-        if (isGroupHiddenToday(g.group.completedAt, dueToday)) return false;
-        return g.children.length > 0 || dueToday.length > 0;
-      });
+      .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, filtered]);
 
   // Same pairing as visibleGroupItems, but for tasks deferred to later today
@@ -954,9 +948,7 @@ export function TodayScreen() {
   // rather than loose among the untriaged rows.
   //
   // Built from inboxTasks rather than childrenByGroupId so the children come
-  // out in the Inbox's own sortOrder. No dismissal check: a dismissal means
-  // "done with this stack for today", and Inbox members are undated, so they
-  // still need triaging regardless.
+  // out in the Inbox's own sortOrder.
   const inboxGroupItems = useMemo(() => {
     const byGroup = new Map<string, Task[]>();
     for (const t of inboxTasks) {
@@ -1392,12 +1384,11 @@ export function TodayScreen() {
     enterSelectionMode(ids);
   };
 
-  // The six TaskGroupHeader callbacks below are identical across every place
-  // a stack header renders (main list, Later Today, Inbox) — only
+  // The TaskGroupHeader callbacks below are identical across every place a
+  // stack header renders (main list, Later Today, Inbox) — only
   // onToggleCollapse differs per site, so it stays out of this helper.
   const groupHeaderProps = (group: TaskGroup) => ({
     onComplete: () => completeGroup(group.id),
-    onDismiss: () => { animateLayout(); dismissGroup(group.id); },
     onDefer: (date: Date) => deferGroup(group.id, date),
     onSwipeSelect: () => selectGroupRoster(group.id),
     onPressEdit: () => { setEditingGroup(group); setGroupEditorVisible(true); },
@@ -1558,15 +1549,6 @@ export function TodayScreen() {
             <TaskGroupBody
               expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
               hasChildren={item.children.length > 0}
-              // The only list where a stack can render with no children under
-              // it: everything due today is done, completed rows aren't shown
-              // individually, and the stack stays put until it's dismissed.
-              // Without this the body opened onto nothing.
-              emptyLabel={
-                item.children.length === 0
-                  ? `All ${allChildren.filter(isRelevantToGroupToday).length} done for today`
-                  : undefined
-              }
             >
               <SortableList
                 data={item.children}

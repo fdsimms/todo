@@ -801,7 +801,6 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
-    completedAt: (row.completed_at as string) ?? null,
   };
 }
 
@@ -812,20 +811,23 @@ export function dbGetAllTaskGroups(): TaskGroup[] {
 
 export function dbInsertTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, completed_at) VALUES (?,?,?,?,?,?,?,?)',
+    // completed_at is deliberately absent: it held the old "stack dismissed
+    // for today" stamp, which no longer exists (see TaskGroup). The column
+    // stays on the table for installs that already have it, and stays null.
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed) VALUES (?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
-      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null,
+      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, completed_at=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
-      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.completedAt ?? null, group.id,
+      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.id,
     ]
   );
 }

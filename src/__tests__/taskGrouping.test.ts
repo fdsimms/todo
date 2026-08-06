@@ -49,7 +49,6 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
-  completedAt: null,
   ...overrides,
 });
 
