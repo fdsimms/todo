@@ -381,6 +381,67 @@ export function visibleLaterSections(
   return result;
 }
 
+/**
+ * Task ids across whole Later sections, in display order, deduped — the
+ * canonical order a partial reorder has to be folded back into. See
+ * unrenderedTail: a drag only ever knows about the rows the mount budget let
+ * render, but reorderTasks renumbers sortOrder from 1 for exactly the ids it's
+ * given, so writing only that prefix would leave the unmounted tail holding
+ * numbers that now collide with it.
+ */
+export function laterSectionTaskOrder(sections: { data: Task[] }[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const section of sections) {
+    for (const task of section.data) {
+      if (seen.has(task.id)) continue;
+      seen.add(task.id);
+      ids.push(task.id);
+    }
+  }
+  return ids;
+}
+
+/** Ids of the top-level task rows of a Today list, in display order. */
+export function todayTaskOrder(items: TodayListItem[]): string[] {
+  return items
+    .filter((item): item is { type: 'task'; task: Task } | { type: 'pinned-task'; task: Task } =>
+      item.type === 'task' || item.type === 'pinned-task')
+    .map(item => item.task.id);
+}
+
+/** The ids in `full` that `rendered` left out, in their original order. */
+export function unrenderedTail(full: string[], rendered: string[]): string[] {
+  const shown = new Set(rendered);
+  return full.filter(id => !shown.has(id));
+}
+
+/**
+ * Truncate a Today list to a task budget, to keep the initial mount of the
+ * (unvirtualized) ReorderableList cheap — see useMountBudget.
+ *
+ * Headers are exempt and always survive, for two reasons: they're cheap (a
+ * Text and a scrim), and dragging a category header to reorder categories
+ * needs the full run of them present to drag through. A header left with no
+ * tasks under it is a shape the list already handles — that's what a collapsed
+ * category is.
+ *
+ * A stack counts as its whole roster, since each child renders as a TaskItem
+ * of its own, and is never split.
+ */
+export function visibleTodayItems(items: TodayListItem[], taskLimit: number): TodayListItem[] {
+  let count = 0;
+  const result: TodayListItem[] = [];
+  for (const item of items) {
+    if (item.type === 'task' || item.type === 'pinned-task' || item.type === 'group') {
+      if (count >= taskLimit) continue;
+      count += item.type === 'group' ? 1 + item.children.length : 1;
+    }
+    result.push(item);
+  }
+  return result;
+}
+
 export type LaterTodaySectionData = {
   key: string;
   // null for tasks with no time segment (e.g. plain windowStart/deferUntil) —

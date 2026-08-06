@@ -7,6 +7,10 @@ import {
   laterTaskOrder,
   isLaterHeader,
   laterSections,
+  laterSectionTaskOrder,
+  todayTaskOrder,
+  unrenderedTail,
+  visibleTodayItems,
   visibleLaterSections,
   laterTodaySections,
   categorySpan,
@@ -596,6 +600,82 @@ describe('visibleLaterSections', () => {
   it('includes everything when the budget exceeds the total', () => {
     const sections = [section('a', 10), section('b', 10)];
     expect(visibleLaterSections(sections, 60).map(s => s.title)).toEqual(['a', 'b']);
+  });
+});
+
+describe('laterSectionTaskOrder', () => {
+  it('returns ids across sections in order, deduping a multi-segment task', () => {
+    const a = makeTask({ id: 'a' });
+    const b = makeTask({ id: 'b' });
+    const order = laterSectionTaskOrder([
+      { data: [a, b] },
+      { data: [a] },
+      { data: [makeTask({ id: 'c' })] },
+    ]);
+    expect(order).toEqual(['a', 'b', 'c']);
+  });
+});
+
+describe('todayTaskOrder', () => {
+  it('returns top-level task ids, skipping headers and stacks', () => {
+    const items: TodayListItem[] = [
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: makeTask({ id: 'p' }) },
+      { type: 'header', label: 'Work' },
+      { type: 'group', group: makeGroup(), children: [makeTask({ id: 'child' })] },
+      { type: 'task', task: makeTask({ id: 'a' }) },
+    ];
+    expect(todayTaskOrder(items)).toEqual(['p', 'a']);
+  });
+});
+
+describe('unrenderedTail', () => {
+  it('returns the ids the rendered set left out, in their original order', () => {
+    expect(unrenderedTail(['a', 'b', 'c', 'd'], ['b', 'a'])).toEqual(['c', 'd']);
+  });
+
+  it('returns nothing when everything rendered', () => {
+    expect(unrenderedTail(['a', 'b'], ['b', 'a'])).toEqual([]);
+  });
+});
+
+describe('visibleTodayItems', () => {
+  const task = (id: string): TodayListItem => ({ type: 'task', task: makeTask({ id }) });
+
+  it('stops adding task rows once the budget is spent', () => {
+    const items: TodayListItem[] = [task('a'), task('b'), task('c'), task('d')];
+    expect(visibleTodayItems(items, 2).map(i => (i.type === 'task' ? i.task.id : '?'))).toEqual(['a', 'b']);
+  });
+
+  // Headers are exempt: they're cheap, and a category-header drag needs the
+  // full run of them present to drag through.
+  it('keeps every header even past the budget', () => {
+    const items: TodayListItem[] = [
+      { type: 'header', label: 'Work' },
+      task('a'),
+      { type: 'header', label: 'Home' },
+      task('b'),
+    ];
+    const result = visibleTodayItems(items, 1);
+    expect(result.map(i => (i.type === 'header' ? `#${i.label}` : i.type === 'task' ? i.task.id : '?')))
+      .toEqual(['#Work', 'a', '#Home']);
+  });
+
+  // A stack renders each of its children as a TaskItem, so it costs its whole
+  // roster — and can't be shown as a fraction of one.
+  it('counts a stack as its whole roster and never splits it', () => {
+    const items: TodayListItem[] = [
+      { type: 'group', group: makeGroup(), children: [makeTask({ id: 'c1' }), makeTask({ id: 'c2' })] },
+      task('a'),
+    ];
+    const result = visibleTodayItems(items, 2);
+    expect(result).toHaveLength(1);
+    expect(result[0].type).toBe('group');
+  });
+
+  it('returns everything when the budget exceeds the list', () => {
+    const items: TodayListItem[] = [task('a'), task('b')];
+    expect(visibleTodayItems(items, 60)).toHaveLength(2);
   });
 });
 

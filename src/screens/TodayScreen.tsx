@@ -10,7 +10,6 @@ import {
   RefreshControl,
   Alert,
   AppState,
-  InteractionManager,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -28,6 +27,10 @@ import {
   flattenLaterSections,
   isLaterHeader,
   laterTaskOrder,
+  laterSectionTaskOrder,
+  todayTaskOrder,
+  unrenderedTail,
+  visibleTodayItems,
   LATER_TODAY_LABEL,
   laterSections as computeLaterSections,
   visibleLaterSections as computeVisibleLaterSections,
@@ -44,6 +47,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useMountBudget } from '../hooks/useMountBudget';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -111,6 +115,10 @@ type ViewMode = 'today' | 'later' | 'unscheduled' | 'inbox';
 
 const VIEW_MODES: ViewMode[] = ['today', 'later', 'unscheduled', 'inbox'];
 
+// Stable empty result for a task selector the current sub-view doesn't need,
+// so gating one off doesn't hand useShallow a fresh array every render.
+const NO_TASKS: Task[] = [];
+
 const VIEW_TITLES: Record<ViewMode, string> = {
   today: 'Today',
   later: 'Later',
@@ -118,13 +126,16 @@ const VIEW_TITLES: Record<ViewMode, string> = {
   inbox: 'Inbox',
 };
 
-// Task budgets for the Later list (see the laterTaskLimit block below for why
-// it has one at all). INITIAL is about a screenful — it's what the tap into
-// Later has to mount before anything paints; SETTLED is topped up once that
-// commit is done, and PAGE_SIZE is what each scroll to the bottom adds.
-const LATER_INITIAL_TASK_LIMIT = 15;
-const LATER_SETTLED_TASK_LIMIT = 60;
-const LATER_TASK_PAGE_SIZE = 60;
+// Mount budgets for the two unvirtualized ReorderableLists this screen renders
+// (see useMountBudget). `initial` is about a screenful — what the tap into that
+// sub-view has to mount before anything paints; `settled` is topped up once the
+// commit is done, and `page` is what each scroll to the bottom adds.
+//
+// Today's is the smaller of the two: its rows carry more than Later's (category
+// headers, stack trays whose children are TaskItems of their own), and it's the
+// sub-view the app cold-starts into.
+const LATER_TASK_BUDGET = { initial: 15, settled: 60, page: 60 };
+const TODAY_TASK_BUDGET = { initial: 12, settled: 60, page: 60 };
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -372,16 +383,35 @@ export function TodayScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<any>();
+  // Declared up here rather than with the rest of this screen's state because
+  // the task selectors below are gated on it — see the note there.
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
+  const vacationMode = useSettingsStore(s => s.vacationMode);
   const inboxTasks = useTaskStore(useShallow(s => s.inboxTasks()));
   const tabBarHeight = useBottomTabBarHeight();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
   const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
-  const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
-  const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
-  const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
-  const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
-  const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
+  // Zustand runs selectors through useSyncExternalStore, whose getSnapshot
+  // React calls on *every* render — so each of these is a full pass over the
+  // task list (with per-task date math and category lookups) every time this
+  // screen re-renders, which it does on any local state change and on its own
+  // 30s tick, not just on a store write. useShallow keeps an unchanged result
+  // from re-rendering anything; it can't skip the pass that produced it.
+  //
+  // The five below are each wanted by one sub-view or one setting, so they're
+  // gated on that rather than derived in the modes that will throw them away.
+  // The ones left ungated are either needed whichever mode is showing (the
+  // Inbox pill's badge, a header action) or cheap enough not to be worth it —
+  // isInboxTask and the pinned filter are pure field checks, no dates and no
+  // category reads, unlike the isTaskVisible gauntlet the gated ones run.
+  const deferredTasks = useTaskStore(useShallow(s => (viewMode === 'later' ? s.deferredTasks() : NO_TASKS)));
+  const unscheduledTasks = useTaskStore(useShallow(s => (viewMode === 'unscheduled' ? s.unscheduledTasks() : NO_TASKS)));
+  const expiredTasks = useTaskStore(useShallow(s => (viewMode === 'today' ? s.expiredTasks() : NO_TASKS)));
+  // isHiddenForVacation is false for every task while vacation mode is off, so
+  // the whole pass is knowably empty then — and it's off almost always.
+  const vacationHiddenTasks = useTaskStore(useShallow(s => (vacationMode ? s.vacationHiddenTasks() : NO_TASKS)));
+  const upcomingTodayTasks = useTaskStore(useShallow(s => (viewMode === 'today' ? s.upcomingTodayTasks() : NO_TASKS)));
   const allTasks = useTaskStore(s => s.tasks);
   const isEmptyDatabase = allTasks.length === 0;
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -416,7 +446,6 @@ export function TodayScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [quickAddType, setQuickAddType] = useState<QuickAddType>('task');
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
@@ -1014,11 +1043,28 @@ export function TodayScreen() {
   // useEffect, so a `data` change — including the very first store load —
   // reaches the list in the same render as everything else on screen, instead
   // of landing a frame late and popping in after the rest of the UI.
-  const [draggableData, setDraggableData] = useState<ListItem[]>(data);
-  const syncedDataRef = useRef(data);
-  if (syncedDataRef.current !== data) {
-    syncedDataRef.current = data;
-    setDraggableData(data);
+  //
+  // Budgeted, not `data` itself: the unpinned Today branch renders through the
+  // same unvirtualized ReorderableList as Later, so a switch into Today (or a
+  // cold start, which lands here) mounts every row at once. `data` stays the
+  // full canonical list — the reorder write below folds the rendered rows back
+  // into it.
+  const { limit: todayTaskLimit, loadMore: handleTodayEndReached } = useMountBudget(
+    viewMode === 'today',
+    TODAY_TASK_BUDGET,
+  );
+  const visibleData = useMemo(() => visibleTodayItems(data, todayTaskLimit), [data, todayTaskLimit]);
+  const hasMoreTodayItems = visibleData.length < data.length;
+  const unrenderedTodayTaskIds = useMemo(
+    () => unrenderedTail(todayTaskOrder(data), todayTaskOrder(visibleData)),
+    [data, visibleData],
+  );
+
+  const [draggableData, setDraggableData] = useState<ListItem[]>(visibleData);
+  const syncedDataRef = useRef(visibleData);
+  if (syncedDataRef.current !== visibleData) {
+    syncedDataRef.current = visibleData;
+    setDraggableData(visibleData);
   }
 
   // ——— Dragging the add button into the list ———————————————————————————
@@ -1742,32 +1788,26 @@ export function TodayScreen() {
   // ReorderableList's onEndReached below). Whole sections are always included
   // together so a header never renders without at least one of its tasks.
   //
-  // The budget starts at one screenful rather than at its settled size because
-  // switching to Later mounts every row it's handed in the same blocking
-  // commit as the tab switch, and a TaskItem is not a cheap row (four store
-  // subscriptions, a PanResponder and several animated values each) — sixty of
-  // them is a visible stall between the tap and the switch. The rest is topped
-  // up right after that commit lands, so it's already there by the time anyone
-  // can scroll to it.
-  const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
-
-  useEffect(() => {
-    // Leaving Later drops the budget back: the list unmounts and returns
-    // scrolled to the top, so anything it had paged in is just rows the next
-    // switch would pay to mount off-screen.
-    if (viewMode !== 'later') {
-      setLaterTaskLimit(LATER_INITIAL_TASK_LIMIT);
-      return;
-    }
-    const handle = InteractionManager.runAfterInteractions(() => {
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
-    });
-    return () => handle.cancel();
-  }, [viewMode]);
+  // The budget starts at one screenful rather than at its settled size — see
+  // useMountBudget for why the switch into a list is the expensive moment.
+  const { limit: laterTaskLimit, loadMore: handleLaterEndReached } = useMountBudget(
+    viewMode === 'later',
+    LATER_TASK_BUDGET,
+  );
 
   const visibleLaterSections = useMemo(
     () => computeVisibleLaterSections(laterSections, laterTaskLimit),
     [laterSections, laterTaskLimit],
+  );
+
+  // Rows the budget kept out of the list. A drag can only ever report the rows
+  // that rendered, but reorderTasks renumbers sortOrder from 1 across exactly
+  // the ids it's handed — so committing that prefix alone would leave these
+  // holding numbers that now collide with it, and a drag in the first section
+  // could reshuffle a later one. Appending them keeps the write a total order.
+  const unrenderedLaterTaskIds = useMemo(
+    () => unrenderedTail(laterSectionTaskOrder(laterSections), laterSectionTaskOrder(visibleLaterSections)),
+    [laterSections, visibleLaterSections],
   );
 
   const hasMoreLaterSections = useMemo(
@@ -1776,14 +1816,18 @@ export function TodayScreen() {
   );
 
   const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
+  // Synced during render against a ref, the same way `draggableData` tracks
+  // `data` below — not from an effect, which lands a frame late. That was
+  // harmless while deferredTasks was derived in every sub-view (laterData was
+  // already warm by the time Later mounted), but the selector is gated on
+  // Later now, so the first render after the switch is the one that has the
+  // rows: an effect would paint an empty list for a frame first.
   const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
-  useEffect(() => {
+  const syncedLaterDataRef = useRef(laterData);
+  if (syncedLaterDataRef.current !== laterData) {
+    syncedLaterDataRef.current = laterData;
     setLaterDraggableData(laterData);
-  }, [laterData]);
-
-  const handleLaterEndReached = useCallback(() => {
-    setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
-  }, []);
+  }
 
   // Shared by the header subtitle and the "Lighten today" action's hint.
   const plannedLabel = useMemo(() => {
@@ -1953,7 +1997,7 @@ export function TodayScreen() {
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
               setLaterDraggableData(reordered);
-              reorderTasks(laterTaskOrder(reordered));
+              reorderTasks([...laterTaskOrder(reordered), ...unrenderedLaterTaskIds]);
             }}
             onEndReached={handleLaterEndReached}
             onEndReachedThreshold={400}
@@ -2146,7 +2190,7 @@ export function TodayScreen() {
                 });
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
                 setDraggableData(settled);
-                reorderWithCategoryUpdates(taskIds, categoryUpdates);
+                reorderWithCategoryUpdates([...taskIds, ...unrenderedTodayTaskIds], categoryUpdates);
                 return;
               }
 
@@ -2162,7 +2206,10 @@ export function TodayScreen() {
                 // identical) once the store write lands.
                 setDraggableData(settled);
                 groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
-                reorderWithCategoryUpdates(taskIds, categoryUpdates, scope ? { scope } : undefined);
+                // Same fold-back as Later's onReorder: rows the mount budget
+                // held out of the list keep their relative order after the
+                // rendered ones, so the sortOrder write stays a total order.
+                reorderWithCategoryUpdates([...taskIds, ...unrenderedTodayTaskIds], categoryUpdates, scope ? { scope } : undefined);
               };
 
               // Dragging a recurring task into a new category is a content-field
@@ -2201,12 +2248,21 @@ export function TodayScreen() {
                 tintColor={colors.textSecondary}
               />
             }
+            onEndReached={handleTodayEndReached}
+            onEndReachedThreshold={400}
             ListEmptyComponent={emptyComponent}
             ListFooterComponent={
               // Direct child of the scroll content (no cell wrapper), so the
               // spacer's own flexGrow stretches it; pinned when empty so the
               // empty state stays centered.
-              listFooter(filtered.length === 0)
+              <>
+                {hasMoreTodayItems && (
+                  <View style={styles.laterLoadingMore}>
+                    <Text style={styles.laterLoadingMoreText}>Loading more…</Text>
+                  </View>
+                )}
+                {listFooter(filtered.length === 0)}
+              </>
             }
           />
         )}

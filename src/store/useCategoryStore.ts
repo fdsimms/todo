@@ -33,6 +33,29 @@ interface CategoryStore {
   reorderCategories: (orderedNames: string[]) => void;
 }
 
+// getCategoryByName is called per task inside every visibility predicate
+// (isCategoryHiddenOnVacation, isCategoryScheduleActive, getVisibleAt), which
+// screens re-run over the whole task list on every render — so a linear find
+// here is multiplied by tasks × predicates × renders. Index by name instead,
+// rebuilt whenever the array identity changes: every mutation below replaces
+// `categories` rather than mutating it, so identity is a sound cache key.
+let nameIndexSource: Category[] | null = null;
+let nameIndex = new Map<string, Category>();
+
+function categoryIndex(categories: Category[]): Map<string, Category> {
+  if (nameIndexSource === categories) return nameIndex;
+  const next = new Map<string, Category>();
+  // First occurrence wins, matching the find() this replaced. Names are unique
+  // by construction (addCategory/renameCategory both reject duplicates), so
+  // this only matters for a legacy row that slipped through.
+  for (const category of categories) {
+    if (!next.has(category.name)) next.set(category.name, category);
+  }
+  nameIndexSource = categories;
+  nameIndex = next;
+  return nameIndex;
+}
+
 export const useCategoryStore = create<CategoryStore>((set, get) => ({
   categories: [],
   initialized: false,
@@ -130,7 +153,7 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
   },
 
   getCategoryByName(name) {
-    return get().categories.find(c => c.name === name) ?? null;
+    return categoryIndex(get().categories).get(name) ?? null;
   },
 
   reorderCategories(orderedNames) {
