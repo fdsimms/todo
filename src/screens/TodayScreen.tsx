@@ -47,7 +47,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { suggestPinTasks } from '../services/aiSuggestions';
+import { suggestPinTasks, MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
@@ -373,7 +373,6 @@ export function TodayScreen() {
   // underlying list) so the full run of headers is visible without
   // scrolling, without changing what onReorder hands back on drop.
   const [autoCollapseForDrag, setAutoCollapseForDrag] = useState(false);
-  const [isSuggestingPin, setIsSuggestingPin] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
   // Set while editingGroup is a stack freshly created from the add menu —
@@ -577,21 +576,14 @@ export function TodayScreen() {
     };
   }, []);
 
-  const handleSuggestPin = async () => {
-    setIsSuggestingPin(true);
-    try {
-      const ids = await suggestPinTasks(visibleTasks, pinnedTasks.length, useTaskStore.getState().completedTasks());
-      for (const id of ids) updateTask(id, { pinned: true });
-      // AI pin picks tasks in one shot rather than one tap at a time, so the
-      // grace period that protects manual multi-pin tapping doesn't apply here.
-      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
-      pinViewGraceTimer.current = null;
-      setPinViewGraceActive(false);
-    } catch (e) {
-      Alert.alert('Could not suggest pins', e instanceof Error ? e.message : 'Unknown error');
-    } finally {
-      setIsSuggestingPin(false);
-    }
+  const handleSuggestPin = () => {
+    const ids = suggestPinTasks(visibleTasks, pinnedTasks, useTaskStore.getState().completedTasks());
+    for (const id of ids) updateTask(id, { pinned: true });
+    // Suggested pins arrive in one shot rather than one tap at a time, so the
+    // grace period that protects manual multi-pin tapping doesn't apply here.
+    if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
+    pinViewGraceTimer.current = null;
+    setPinViewGraceActive(false);
   };
 
   const toggleCategoryCollapse = (label: string) => {
@@ -1470,14 +1462,12 @@ export function TodayScreen() {
           accessibilityLabel: 'More options',
         }]
       : []),
-    ...(viewMode === 'today' && pinnedTasks.length < 5 && visibleTasks.length > 0
+    ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
           onPress: handleSuggestPin,
           active: pinnedTasks.length === 0,
           tint: 'orange' as const,
-          disabled: isSuggestingPin,
-          loading: isSuggestingPin,
           accessibilityLabel: 'Suggest pin tasks',
         }]
       : []),

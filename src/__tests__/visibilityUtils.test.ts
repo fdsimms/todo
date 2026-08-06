@@ -61,6 +61,7 @@ const workCategory: Category = {
   scheduleStart: '09:00',
   scheduleEnd: '18:00',
   hideOnVacation: false,
+  excludeFromPinSuggestions: false,
   sortOrder: 1,
   emoji: null,
 };
@@ -722,6 +723,7 @@ const errandsCategory: Category = {
   scheduleStart: null,
   scheduleEnd: null,
   hideOnVacation: true,
+  excludeFromPinSuggestions: false,
   sortOrder: 1,
   emoji: null,
 };

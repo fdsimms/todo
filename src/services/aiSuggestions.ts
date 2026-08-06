@@ -1,7 +1,6 @@
-import type { Effort, Task } from '../types';
+import type { Effort } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { effortToMinutes, formatDuration } from '../utils/effort';
 
 export interface AISuggestions {
   tags: string[];
@@ -108,121 +107,6 @@ export async function suggestTaskAttributes(
     category,
     newCategory,
   };
-}
-
-const CO_COMPLETION_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 hours
-const MAX_COMPLETED_HISTORY = 300;
-
-function buildCoCompletionHints(completedTasks: Task[], candidates: Task[]): string {
-  const recent = [...completedTasks]
-    .filter(t => t.completedAt)
-    .sort((a, b) => new Date(b.completedAt!).getTime() - new Date(a.completedAt!).getTime())
-    .slice(0, MAX_COMPLETED_HISTORY)
-    .sort((a, b) => new Date(a.completedAt!).getTime() - new Date(b.completedAt!).getTime());
-
-  const freq = new Map<string, number>();
-  for (let i = 0; i < recent.length; i++) {
-    const ti = new Date(recent[i].completedAt!).getTime();
-    for (let j = i + 1; j < recent.length; j++) {
-      const tj = new Date(recent[j].completedAt!).getTime();
-      if (tj - ti > CO_COMPLETION_WINDOW_MS) break;
-      const pair = [recent[i].title.toLowerCase(), recent[j].title.toLowerCase()].sort().join(' ↔ ');
-      freq.set(pair, (freq.get(pair) ?? 0) + 1);
-    }
-  }
-
-  const candidateTitles = new Set(candidates.map(t => t.title.toLowerCase()));
-  const relevant = [...freq.entries()]
-    .filter(([pair, count]) => count > 1 && pair.split(' ↔ ').some(p => candidateTitles.has(p)))
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 6);
-
-  if (relevant.length === 0) return '';
-  return 'Tasks historically completed together (within 2hrs of each other): ' +
-    relevant.map(([pair, count]) => `${pair} (${count}x)`).join(', ');
-}
-
-export async function suggestPinTasks(
-  tasks: Task[],
-  alreadyPinnedCount: number,
-  completedTasks: Task[] = [],
-): Promise<string[]> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
-
-  const needed = 5 - alreadyPinnedCount;
-  if (needed <= 0) return [];
-
-  const candidates = tasks.filter(t => !t.pinned);
-  if (candidates.length === 0) return [];
-  if (candidates.length <= needed) return candidates.map(t => t.id);
-
-  const PRIORITY_NAMES = ['', 'low', 'medium', 'high', 'urgent'];
-  const today = new Date().toISOString().split('T')[0];
-
-  const taskList = candidates.map(t => {
-    const parts: string[] = [`"${t.title}"`];
-    if (t.priority > 0) parts.push(`priority=${PRIORITY_NAMES[t.priority]}`);
-    const mins = t.estimatedMinutes ?? effortToMinutes(t.effort);
-    if (mins != null) parts.push(`time=${formatDuration(mins)}`);
-    if (t.dueDate) parts.push(`due=${t.dueDate.split('T')[0]}`);
-    if (t.category) parts.push(`category=${t.category}`);
-    if (t.tags.length > 0) parts.push(`tags=${t.tags.join(',')}`);
-    if (t.notes) parts.push(`notes="${t.notes.slice(0, 80)}"`);
-    return `id:${t.id} ${parts.join(' ')}`;
-  }).join('\n');
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 150,
-      tools: [{
-        name: 'pin',
-        description: 'Return task IDs to pin',
-        input_schema: {
-          type: 'object',
-          properties: {
-            task_ids: {
-              type: 'array',
-              items: { type: 'string' },
-              description: `Exactly ${needed} task ID${needed > 1 ? 's' : ''} to pin`,
-            },
-          },
-          required: ['task_ids'],
-        },
-      }],
-      tool_choice: { type: 'tool', name: 'pin' },
-      messages: (() => {
-        const coHints = buildCoCompletionHints(completedTasks, candidates);
-        const content = [
-          `Pick exactly ${needed} task${needed > 1 ? 's' : ''} to pin right now.`,
-          `Prefer: high priority or overdue tasks; tasks that work well together (spatially or thematically — e.g. errands, computer tasks, cleaning); reasonable combined effort; tasks the user has historically done in the same session.`,
-          `Today: ${today}.`,
-          '',
-          taskList,
-          ...(coHints ? ['', coHints] : []),
-        ].join('\n');
-        return [{ role: 'user' as const, content }];
-      })(),
-    }),
-  });
-
-  if (!response.ok) throw new Error(`API error ${response.status}`);
-
-  const data = await response.json() as {
-    content?: Array<{ type: string; input?: { task_ids: string[] } }>;
-  };
-  const toolUse = data.content?.find(c => c.type === 'tool_use');
-  if (!toolUse?.input?.task_ids) throw new Error('No suggestion returned');
-
-  const validIds = new Set(candidates.map(t => t.id));
-  return toolUse.input.task_ids.filter(id => validIds.has(id)).slice(0, needed);
 }
 
 export interface TemplateItemSuggestion {

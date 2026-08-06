@@ -10,18 +10,15 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfMonth } from 'date-fns/startOfMonth';
-import { endOfMonth } from 'date-fns/endOfMonth';
-import { startOfWeek } from 'date-fns/startOfWeek';
-import { endOfWeek } from 'date-fns/endOfWeek';
 import { addMonths } from 'date-fns/addMonths';
 import { subMonths } from 'date-fns/subMonths';
 import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { format } from 'date-fns/format';
-import { addDays } from 'date-fns/addDays';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { buildCalendarGrid } from '../utils/calendarGrid';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
@@ -96,23 +93,6 @@ const noonOf = (d: Date) => {
   n.setHours(12, 0, 0, 0);
   return n;
 };
-
-function buildCalendarGrid(displayMonth: Date): Date[] {
-  const monthStart = startOfMonth(displayMonth);
-  const monthEnd = endOfMonth(displayMonth);
-  const gridStart = startOfWeek(monthStart, { weekStartsOn: 0 });
-  const gridEnd = endOfWeek(monthEnd, { weekStartsOn: 0 });
-  const days: Date[] = [];
-  let cur = gridStart;
-  while (cur <= gridEnd) {
-    days.push(cur);
-    cur = addDays(cur, 1);
-  }
-  while (days.length < 42) {
-    days.push(addDays(days[days.length - 1], 1));
-  }
-  return days;
-}
 
 export function WhenPicker({
   visible, value, timeSegments: initialSegments,

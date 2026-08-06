@@ -11,6 +11,11 @@ export interface Category {
   scheduleStart: string | null;    // "HH:MM"
   scheduleEnd: string | null;      // "HH:MM"
   hideOnVacation: boolean;         // hide tasks in this category while vacation mode is on
+  // Keep tasks in this category out of suggested pins (see suggestPinTasks).
+  // Only the suggester honours it — the tasks stay visible everywhere and can
+  // still be pinned by hand. For routines and errands, which are perfectly
+  // real work but bad company for whatever else lands in the pinned list.
+  excludeFromPinSuggestions: boolean;
   sortOrder: number;
   emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
 }
