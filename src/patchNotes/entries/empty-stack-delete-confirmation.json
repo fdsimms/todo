@@ -1,0 +1,4 @@
+{
+  "message": "Deleting a stack with nothing in it now just asks once, instead of offering to delete tasks that aren't there",
+  "date": "2026-08-06"
+}
