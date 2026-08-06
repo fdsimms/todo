@@ -1163,7 +1163,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
                 <TouchableOpacity
                   style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-                  onPress={() => setChainEnabled(v => !v)}
+                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
                   accessibilityRole="switch"
                   accessibilityLabel="Chain"
                   accessibilityState={{ checked: chainEnabled }}
