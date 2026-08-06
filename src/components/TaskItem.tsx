@@ -642,7 +642,14 @@ export const TaskItem = React.memo(function TaskItem({
         }
         onLongPress={showQuotaMeter ? handleQuotaUndo : undefined}
         delayLongPress={interaction.delayLongPress}
-        hitSlop={10}
+        // The circle is 20pt in a 24pt box, so it needs most of this to reach a
+        // 44pt target. Left covers the whole leading gutter out to the card edge
+        // (marginLeft is spacing.md, and the row clips hit-testing at its own
+        // bounds, so more than 16 is wasted); right covers the flex gap to the
+        // content column — which only works because `content` below drops its own
+        // left slop. It's the later sibling, so hit-testing reaches it first and
+        // whatever it claims on this side is taken out of the checkbox.
+        hitSlop={{ top: 12, bottom: 12, left: spacing.md, right: 12 }}
         style={styles.circleWrapper}
         // A meter isn't binary, so it's a button rather than a checkbox.
         accessibilityRole={showQuotaMeter ? 'button' : 'checkbox'}
@@ -706,10 +713,12 @@ export const TaskItem = React.memo(function TaskItem({
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         // Content only hugs its text height, leaving the row's own vertical
-        // padding and the flex gaps to either side untappable — this slop
-        // extends the hit target out to cover that dead space so the whole
-        // card row responds, not just the text itself.
-        hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
+        // padding and the trailing flex gap untappable — this slop extends the
+        // hit target out to cover that dead space so the whole card row
+        // responds, not just the text itself. Deliberately 0 on the left: the
+        // gap on that side belongs to the checkbox, and any slop here silently
+        // wins it back (later sibling, so hit-testing reaches this first).
+        hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : { expanded }}
         accessibilityLabel={displayTitle}
@@ -979,7 +988,11 @@ export const TaskItem = React.memo(function TaskItem({
                           haptics.tap();
                           toggleSubtask(sub.id);
                         }}
-                        hitSlop={8}
+                        // Same split as the row checkbox above — the gap to the
+                        // title is this box's, so the title wrapper runs at 0 on
+                        // its left. Vertical stays at 8: the subtask row is only
+                        // ~32pt tall and hit-testing clips at its bounds.
+                        hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: sub.completed }}
                         accessibilityLabel={sub.title}
@@ -1008,7 +1021,7 @@ export const TaskItem = React.memo(function TaskItem({
                           style={styles.subtaskTitleWrapper}
                           onPress={() => handleSubtaskTitleTap(sub)}
                           activeOpacity={interaction.activeOpacity}
-                          hitSlop={8}
+                          hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
                         >
                           <Text style={[
                             styles.subtaskTitle,

@@ -1,19 +1,12 @@
-import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { useColors } from '../theme/ThemeContext';
-import { spacing, font, type Colors } from '../theme';
+import React from 'react';
+import { View, StyleSheet } from 'react-native';
+import { spacing } from '../theme';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
 
 interface Props {
   expanded: boolean;
-  /**
-   * False when the stack has a header but nothing to show under it — the
-   * everything-is-done case on Today, where completed tasks aren't rendered
-   * individually but the stack itself stays put until dismissed.
-   */
+  /** False when the stack has a header but nothing to show under it. */
   hasChildren: boolean;
-  /** Shown in place of the children when `hasChildren` is false. */
-  emptyLabel?: string;
   /**
    * Set while a child row is being dragged, so the floating card that stands
    * in for it can be pulled out of the stack without the tray slicing it in
@@ -24,7 +17,7 @@ interface Props {
 }
 
 /**
- * The children of a stack: the collapse animation and the all-done stand-in.
+ * The children of a stack, and the collapse animation over them.
  *
  * **There is no rail.** A hairline used to hang from the centre of the
  * header's glyph and run down the left of these rows, because back when the
@@ -35,22 +28,15 @@ interface Props {
  * pointing at the relationship is redundant, and it was drawn against the side
  * of a card the header no longer has.
  */
-export function TaskGroupBody({ expanded, hasChildren, emptyLabel, dragging = false, children }: Props) {
-  const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-
+export function TaskGroupBody({ expanded, hasChildren, dragging = false, children }: Props) {
   return (
     <AnimatedCollapsible expanded={expanded} clip={!dragging}>
-      <View style={styles.content}>
-        {hasChildren
-          ? children
-          : emptyLabel !== undefined && <Text style={styles.empty}>{emptyLabel}</Text>}
-      </View>
+      <View style={styles.content}>{hasChildren && children}</View>
     </AnimatedCollapsible>
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const styles = StyleSheet.create({
   // The tray's vertical padding, kept on this side of the collapse so it
   // folds away with the children — a collapsed stack should be a tray the
   // height of its header, not one with an empty band under it. The top gap is
@@ -59,11 +45,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   content: {
     paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
-  },
-  empty: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
-    paddingVertical: spacing.md,
   },
 });
