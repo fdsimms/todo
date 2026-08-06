@@ -85,6 +85,7 @@ const BASE: Task = {
   archived: false,
   archivedAt: null,
   linkUrl: null,
+  blockedById: null,
 };
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({ ...BASE, ...overrides });

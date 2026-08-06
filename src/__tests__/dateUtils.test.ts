@@ -82,6 +82,7 @@ const baseTask: Task = {
   archived: false,
   archivedAt: null,
   linkUrl: null,
+  blockedById: null,
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

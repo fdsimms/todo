@@ -172,6 +172,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archived: false,
   archivedAt: null,
   linkUrl: null,
+  blockedById: null,
   ...overrides,
 });
 
@@ -4008,5 +4009,140 @@ describe('completeTask — series rollover', () => {
 
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(0);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+});
+
+// ─── Waiting on (blockedById) ─────────────────────────────────────────────────
+
+describe('blocking', () => {
+  const TODAY = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('lists blocked tasks under waitingTasks and keeps them off Today', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', title: 'Cancel the internet plan', dueDate: TODAY }),
+        makeTask({ id: 'waiter', title: 'Return the router', dueDate: TODAY, blockedById: 'blocker' }),
+      ],
+    });
+
+    expect(useTaskStore.getState().waitingTasks().map(t => t.id)).toEqual(['waiter']);
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['blocker']);
+  });
+
+  it('surfaces the waiter when the blocker is completed, without writing anything to it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'waiter', dueDate: TODAY, blockedById: 'blocker' }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('blocker');
+
+    // 'blocker' itself lingers here for the completion-hold window, so this
+    // asserts the waiter arrived rather than the exact list.
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toContain('waiter');
+    expect(useTaskStore.getState().waitingTasks()).toEqual([]);
+    // The link is untouched — nothing "unblocks" a task, the state is derived.
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'waiter')!.blockedById).toBe('blocker');
+  });
+
+  it('re-blocks the waiter when the blocker is uncompleted', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'waiter', dueDate: TODAY, blockedById: 'blocker' }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('blocker');
+    expect(useTaskStore.getState().waitingTasks()).toEqual([]);
+
+    useTaskStore.getState().uncompleteTask('blocker');
+    expect(useTaskStore.getState().waitingTasks().map(t => t.id)).toEqual(['waiter']);
+  });
+
+  it('frees the waiter when the blocker is deleted rather than stranding it', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'waiter', dueDate: TODAY, blockedById: 'blocker' }),
+      ],
+    });
+
+    useTaskStore.getState().deleteTask('blocker');
+
+    expect(useTaskStore.getState().waitingTasks()).toEqual([]);
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['waiter']);
+  });
+
+  it('frees the waiter when the blocker is archived', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'waiter', dueDate: TODAY, blockedById: 'blocker' }),
+      ],
+    });
+
+    useTaskStore.getState().archiveTask('blocker');
+
+    expect(useTaskStore.getState().waitingTasks()).toEqual([]);
+    expect(useTaskStore.getState().visibleTasks().map(t => t.id)).toEqual(['waiter']);
+  });
+
+  // The deliberate semantic: a recurring blocker's completion spawns a NEW row
+  // with a new id, so the waiter keeps pointing at the completed original and
+  // is freed for good — "wait for trash day to happen once", not every week.
+  it('unblocks permanently when a recurring blocker is completed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'bins', title: 'Put the bins out', dueDate: TODAY, recurrenceType: 'weekly', recurrenceDays: [2] }),
+        makeTask({ id: 'waiter', title: 'Scrub the bin', dueDate: TODAY, blockedById: 'bins' }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('bins');
+
+    const spawned = useTaskStore.getState().tasks.find(t => !t.completed && t.title === 'Put the bins out');
+    expect(spawned).toBeDefined();
+    expect(spawned!.id).not.toBe('bins');
+    expect(useTaskStore.getState().waitingTasks()).toEqual([]);
+  });
+
+  it('keeps a blocked task out of the Inbox and Unscheduled selectors', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', dueDate: TODAY }),
+        makeTask({ id: 'bare', blockedById: 'blocker' }),
+        makeTask({ id: 'filed', blockedById: 'blocker', category: 'Home' }),
+      ],
+    });
+
+    expect(useTaskStore.getState().inboxTasks()).toEqual([]);
+    expect(useTaskStore.getState().unscheduledTasks()).toEqual([]);
+    expect(useTaskStore.getState().waitingTasks().map(t => t.id).sort()).toEqual(['bare', 'filed']);
+  });
+
+  it('groups the waiting list by blocker', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'aaa' }),
+        makeTask({ id: 'bbb' }),
+        makeTask({ id: 'w1', blockedById: 'bbb', sortOrder: 0 }),
+        makeTask({ id: 'w2', blockedById: 'aaa', sortOrder: 1 }),
+        makeTask({ id: 'w3', blockedById: 'bbb', sortOrder: 2 }),
+      ],
+    });
+
+    expect(useTaskStore.getState().waitingTasks().map(t => t.id)).toEqual(['w2', 'w1', 'w3']);
   });
 });

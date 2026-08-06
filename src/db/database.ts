@@ -246,6 +246,9 @@ export function initDatabase(): void {
     // micromanagement it exists to remove.
     'ALTER TABLE projects ADD COLUMN nudge_cadence_days INTEGER NOT NULL DEFAULT 14',
     'ALTER TABLE projects ADD COLUMN auto_schedule INTEGER NOT NULL DEFAULT 0',
+    // Nullable rather than defaulted: null *is* the meaningful value here
+    // ("waiting on nothing"), and every existing row wants it.
+    'ALTER TABLE tasks ADD COLUMN blocked_by_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -428,6 +431,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
     linkUrl: (row.link_url as string) ?? null,
+    blockedById: (row.blocked_by_id as string | null) ?? null,
   };
 }
 
@@ -448,8 +452,8 @@ export function dbInsertTask(task: Task): void {
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
-      show_streak
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      show_streak, blocked_by_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -473,6 +477,7 @@ export function dbInsertTask(task: Task): void {
       task.targetCount ?? null, task.progressCount,
       task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
       task.showStreak ? 1 : 0,
+      task.blockedById ?? null,
     ]
   );
 }
@@ -489,7 +494,7 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
-      show_streak=?
+      show_streak=?, blocked_by_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -514,6 +519,7 @@ export function dbUpdateTask(task: Task): void {
       task.targetCount ?? null, task.progressCount,
       task.seriesId ?? null, JSON.stringify(task.seriesMonthDays), task.seriesRepeatMonths,
       task.showStreak ? 1 : 0,
+      task.blockedById ?? null,
       task.id,
     ]
   );

@@ -50,6 +50,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
@@ -199,6 +200,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pinned, setPinned] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [blockedById, setBlockedById] = useState<string | null>(null);
+  const [showBlockerPicker, setShowBlockerPicker] = useState(false);
+  // Just the blocker's title, for the row's value. Selecting the one task
+  // rather than the whole list keeps unrelated task changes from re-rendering
+  // the editor.
+  const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [customLinkText, setCustomLinkText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
@@ -280,6 +287,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
       setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setBlockedById(task.blockedById ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null);
@@ -297,7 +305,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(false);
       setShowStreak(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setBlockedById(null);
     }
+    setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false);
@@ -353,6 +363,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       vacationPause: task?.vacationPause ?? false,
       showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      blockedById: task?.blockedById ?? null,
     });
   }, [visible, task]);
 
@@ -460,6 +471,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // recurring, or the chip would be waiting if it ever recurs again.
       showStreak: recurrenceType !== 'none' && showStreak,
       linkUrl: resolveLinkUrl(),
+      blockedById,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -702,6 +714,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
       showStreak,
       linkUrl,
+      blockedById,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -1027,6 +1040,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               setPendingCategory(null);
             }}
             onDismiss={() => setPendingCategory(null)}
+          />
+          <BlockerPickerSheet
+            visible={showBlockerPicker}
+            taskId={task?.id ?? null}
+            onClose={() => setShowBlockerPicker(false)}
+            onSelect={setBlockedById}
           />
         </>
       }
@@ -1392,6 +1411,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           value={reminderTime ? format(reminderTime, "MMM d 'at' h:mm a") : undefined}
           onPress={() => openPicker('reminder')}
           onClear={reminderTime ? () => setReminderTime(null) : undefined}
+        />
+        <View style={styles.sep} />
+        <EditorRow
+          icon="hourglass-outline"
+          label="Waiting on"
+          hint="Stay hidden until another task is done"
+          value={blockerTask?.title ?? (blockedById ? 'Task no longer exists' : undefined)}
+          onPress={() => setShowBlockerPicker(true)}
+          onClear={blockedById ? () => setBlockedById(null) : undefined}
         />
         <View style={styles.sep} />
         <EditorRow
