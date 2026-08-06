@@ -20,6 +20,8 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { findTemplatesReferencing } from '../utils/templateUtils';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
 interface Props {
@@ -113,9 +115,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
           <Text style={styles.headerTitle}>Edit Template</Text>
           <TouchableOpacity
             onPress={handleDelete}
@@ -184,10 +184,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
                 autoCapitalize="words"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>New</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -256,11 +253,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
   },
-  headerBtn: {
-    color: colors.accent,
-    fontSize: font.md,
-    minWidth: 40,
-  },
   headerTitle: {
     color: colors.text,
     fontSize: font.md,
@@ -313,19 +305,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     minWidth: 100,
-  },
-  addTagBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  addTagText: {
-    color: colors.accent,
-    fontSize: font.sm,
   },
   containerNote: {
     color: colors.textTertiary,

@@ -9,13 +9,15 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project } from '../types';
-import { TITLE_MAX_LENGTH } from '../types';
+import { TITLE_MAX_LENGTH, DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -31,6 +33,15 @@ interface Props {
   isNew?: boolean;
   onClose: () => void;
 }
+
+/** Cadence presets. 0 is a real choice — a deliberately parked project. */
+const CADENCE_OPTIONS = [
+  { days: 0, label: 'Never' },
+  { days: 3, label: '3 days' },
+  { days: 7, label: '1 week' },
+  { days: 14, label: '2 weeks' },
+  { days: 30, label: '1 month' },
+] as const;
 
 export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const colors = useColors();
@@ -54,6 +65,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
+  const [nudgeCadenceDays, setNudgeCadenceDays] = useState(DEFAULT_NUDGE_CADENCE_DAYS);
+  const [autoSchedule, setAutoSchedule] = useState(false);
+  const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
     if (!project) return;
@@ -62,10 +76,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setCategory(project.category);
     setTargetStartDate(project.targetStartDate ? new Date(project.targetStartDate) : null);
     setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
+    setNudgeCadenceDays(project.nudgeCadenceDays);
+    setAutoSchedule(project.autoSchedule);
     setCategoryOpen(false);
+    setCadenceOpen(false);
   }, [project]);
 
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
+  const closeCadence = () => { animateLayout(); setCadenceOpen(false); };
 
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
@@ -77,6 +95,10 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         category,
         targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
         targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
+        nudgeCadenceDays,
+        // A cadence of "never" leaves nothing for auto-scheduling to trigger
+        // on, so the two can't disagree about whether this project is managed.
+        autoSchedule: nudgeCadenceDays > 0 && autoSchedule,
       });
     }
     onClose();
@@ -111,9 +133,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -205,10 +225,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 autoCapitalize="words"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>New</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -233,6 +250,60 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       </View>
       <Text style={styles.sectionFooter}>
         Optional. If the target date passes before the project's done, nothing happens automatically — it's just flagged so you can decide what to do.
+      </Text>
+
+      <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
+        <CollapsibleField
+          label="Nudge me"
+          summary={CADENCE_OPTIONS.find(o => o.days === nudgeCadenceDays)?.label ?? `${nudgeCadenceDays} days`}
+          hint="How long this project can sit with nothing scheduled before it offers you the next thing."
+          expanded={cadenceOpen}
+          onToggle={() => setCadenceOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            {CADENCE_OPTIONS.map(option => (
+              <TouchableOpacity
+                key={option.days}
+                style={[styles.pill, nudgeCadenceDays === option.days && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setNudgeCadenceDays(option.days); closeCadence(); }}
+              >
+                <Text style={[styles.pillText, nudgeCadenceDays === option.days && styles.pillTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </CollapsibleField>
+      </View>
+
+      {nudgeCadenceDays > 0 && (
+        <View style={[styles.card, { marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Keep it moving"
+            accessibilityState={{ checked: autoSchedule }}
+          >
+            <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Keep it moving</Text>
+              <Text style={styles.optionHint}>
+                {autoSchedule
+                  ? 'Dates the next task for you instead of asking'
+                  : 'Ask before scheduling anything from this project'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        </View>
+      )}
+      <Text style={styles.sectionFooter}>
+        A project's tasks only show up on Today once they have a date, so a project with nothing
+        scheduled goes quiet. This is how it gets your attention again.
       </Text>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
@@ -277,7 +348,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  headerBtn: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {
@@ -313,13 +383,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
   },
-  addTagBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1,
-    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
-  },
-  addTagText: { color: colors.accent, fontSize: font.sm },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,

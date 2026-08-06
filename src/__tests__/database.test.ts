@@ -943,6 +943,8 @@ describe('Projects', () => {
     archived: false,
     archivedAt: null,
     createdAt: '2025-01-01T00:00:00.000Z',
+    nudgeCadenceDays: 14,
+    autoSchedule: false,
     ...overrides,
   });
 
@@ -959,6 +961,21 @@ describe('Projects', () => {
     dbInsertProject(makeProject({ id: 'b', title: 'B', sortOrder: 2 }));
     dbInsertProject(makeProject({ id: 'a', title: 'A', sortOrder: 1 }));
     expect(dbGetAllProjects().map(p => p.title)).toEqual(['A', 'B']);
+  });
+
+  it('round-trips the nudge settings, with auto-schedule as a real boolean', () => {
+    dbInsertProject(makeProject({ nudgeCadenceDays: 3, autoSchedule: true }));
+    const [p] = dbGetAllProjects();
+    expect(p.nudgeCadenceDays).toBe(3);
+    expect(p.autoSchedule).toBe(true);
+  });
+
+  it('updates the nudge settings in place', () => {
+    dbInsertProject(makeProject());
+    dbUpdateProject(makeProject({ nudgeCadenceDays: 0, autoSchedule: false }));
+    const [p] = dbGetAllProjects();
+    expect(p.nudgeCadenceDays).toBe(0);
+    expect(p.autoSchedule).toBe(false);
   });
 
   it('updates fields in place', () => {

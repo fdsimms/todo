@@ -25,6 +25,7 @@ import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
 import { APP_FONT_OPTIONS, resolveFontFace } from '../theme/fonts';
 import { useFontPreviewsLoaded } from '../theme/AppFont';
+import { disclosureValue } from '../theme/textStyles';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
 
@@ -686,7 +687,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md, flex: 1 },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-  rowValue: { color: colors.accent, fontSize: font.md, fontWeight: '500' },
+  rowValue: disclosureValue(colors),
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   picker: { height: 180 },
   pickerButtons: {

@@ -9,58 +9,6 @@ import { haptics } from '../utils/haptics';
 /** Diameter of the standard list-screen FAB — also the room a list must leave below its last row. */
 export const FAB_SIZE = 56;
 
-interface FabProps {
-  onPress: () => void;
-  /** Spoken label — these buttons are icon-only. */
-  accessibilityLabel: string;
-  /** Distance from the bottom of the screen; callers add their own tab bar / inset math. */
-  bottom: number;
-  icon?: React.ComponentProps<typeof Ionicons>['name'];
-  /** 48 for FABs inside detail screens, which sit closer to the content. */
-  size?: number;
-  disabled?: boolean;
-}
-
-/**
- * The single-action floating button every list screen adds from.
- *
- * Adding lives in the same corner app-wide — Today, Projects, Templates,
- * Categories, Tags — rather than being a header "+" on some screens and a FAB
- * on others. The position, shadow, press scale and impact haptic all live here
- * so the copies can't drift. Screens with more than one thing to add use
- * FabMenu below, which accordions the same button open.
- */
-export function Fab({ onPress, accessibilityLabel, bottom, icon = 'add', size = FAB_SIZE, disabled }: FabProps) {
-  const colors = useColors();
-  const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
-
-  return (
-    <View style={[styles.container, { bottom }]} pointerEvents="box-none">
-      <PressableScale
-        style={[
-          styles.fab,
-          { width: size, height: size, borderRadius: size / 2 },
-          shadows.fab,
-          disabled && styles.fabDisabled,
-        ]}
-        pressScale={0.9}
-        disabled={disabled}
-        onPress={() => { haptics.impactLight(); onPress(); }}
-        accessibilityLabel={accessibilityLabel}
-      >
-        <Ionicons name={icon} size={size >= FAB_SIZE ? 28 : 24} color={colors.onAccent} />
-      </PressableScale>
-    </View>
-  );
-}
-
-export interface FabMenuItem {
-  key: string;
-  label: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-}
-
 /**
  * Turns the button into a thing you can also pull into the list behind it,
  * rather than only tap. The button reports where it is and where it was let
@@ -74,42 +22,35 @@ export interface FabDragHandlers {
   onCancel: () => void;
 }
 
-interface FabMenuProps {
-  /** Rendered bottom-up: the last item ends up closest to the button, so put the most-used one there. */
-  items: FabMenuItem[];
-  onSelect: (key: string) => void;
+interface FabButtonProps {
+  onPress: () => void;
+  accessibilityLabel: string;
   bottom: number;
-  accessibilityLabel?: string;
-  size?: number;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  size: number;
   disabled?: boolean;
-  /** Fades the resting button (e.g. while a task is spotlighted). Ignored while the menu is open. */
+  /** Greys the circle out while disabled; the menu variant fades via `opacity` instead. */
+  dimWhenDisabled?: boolean;
   opacity?: Animated.AnimatedInterpolation<number> | Animated.Value;
-  /** Omit to leave the button tap-only. */
   drag?: FabDragHandlers;
-  /** Names the current drop target beside the button while dragging, e.g. "New task in Work". */
+  dragHint?: string;
   dragLabel?: string | null;
 }
 
 /**
- * A FAB that accordions out into labelled shortcuts — for screens with more
- * than one thing to add, where a single "+" would have to guess which one you
- * meant. Same resting button as `Fab`, so the corner behaves identically until
- * you tap it.
+ * The button itself: the circle, the corner it sits in, and — when `drag` is
+ * supplied — the responder that lets it be pulled off that corner.
  *
- * With `drag` supplied it can also be pulled off its corner and dropped
- * somewhere. Tapping is unaffected: the responder is never claimed on
- * touch-down, only once the finger has travelled far enough to rule a tap out,
- * so a press still opens the menu exactly as before.
+ * Shared by both exports below so the resting look, the press feedback and the
+ * drag gesture can't drift between the single-action and the menu variants.
  */
-export function FabMenu({
-  items, onSelect, bottom, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
-  drag, dragLabel,
-}: FabMenuProps) {
+function FabButton({
+  onPress, accessibilityLabel, bottom, icon, size, disabled, dimWhenDisabled, opacity,
+  drag, dragHint, dragLabel,
+}: FabButtonProps) {
   const colors = useColors();
   const { shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
-  const [menuVisible, setMenuVisible] = useState(false);
-  const anim = useRef(new Animated.Value(0)).current;
 
   const dragX = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
@@ -154,6 +95,132 @@ export function FabMenu({
     });
   }, [dragX, dragY]);
 
+  return (
+    <Animated.View
+      style={[styles.container, { bottom, opacity }]}
+      pointerEvents={disabled ? 'none' : 'box-none'}
+    >
+      <Animated.View
+        style={[styles.dragRow, { transform: [{ translateX: dragX }, { translateY: dragY }] }]}
+        {...(drag ? panResponder.panHandlers : {})}
+      >
+        {dragLabel ? (
+          <View style={[styles.dragLabel, shadows.fab]}>
+            <Text style={styles.dragLabelText} numberOfLines={1}>{dragLabel}</Text>
+          </View>
+        ) : null}
+        <PressableScale
+          style={[
+            styles.fab,
+            { width: size, height: size, borderRadius: size / 2 },
+            shadows.fab,
+            disabled && dimWhenDisabled && styles.fabDisabled,
+          ]}
+          pressScale={0.9}
+          disabled={disabled}
+          onPress={onPress}
+          accessibilityLabel={accessibilityLabel}
+          accessibilityHint={drag ? dragHint : undefined}
+        >
+          <Ionicons name={icon} size={size >= FAB_SIZE ? 28 : 24} color={colors.onAccent} />
+        </PressableScale>
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+interface FabProps {
+  onPress: () => void;
+  /** Spoken label — these buttons are icon-only. */
+  accessibilityLabel: string;
+  /** Distance from the bottom of the screen; callers add their own tab bar / inset math. */
+  bottom: number;
+  icon?: React.ComponentProps<typeof Ionicons>['name'];
+  /** 48 for FABs inside detail screens, which sit closer to the content. */
+  size?: number;
+  disabled?: boolean;
+  /** Lets the button be dragged into the list behind it. Omit for tap-only. */
+  drag?: FabDragHandlers;
+  /** Spoken explanation of what dragging does, e.g. "Drag onto the list to add a project there". */
+  dragHint?: string;
+  /** Names the drop target beside the button while dragging. */
+  dragLabel?: string | null;
+}
+
+/**
+ * The single-action floating button every list screen adds from.
+ *
+ * Adding lives in the same corner app-wide — Today, Projects, Templates,
+ * Categories, Tags — rather than being a header "+" on some screens and a FAB
+ * on others. The position, shadow, press scale and impact haptic all live here
+ * so the copies can't drift. Screens with more than one thing to add use
+ * FabMenu below, which accordions the same button open.
+ */
+export function Fab({
+  onPress, accessibilityLabel, bottom, icon = 'add', size = FAB_SIZE, disabled,
+  drag, dragHint, dragLabel,
+}: FabProps) {
+  return (
+    <FabButton
+      onPress={() => { haptics.impactLight(); onPress(); }}
+      accessibilityLabel={accessibilityLabel}
+      bottom={bottom}
+      icon={icon}
+      size={size}
+      disabled={disabled}
+      dimWhenDisabled
+      drag={drag}
+      dragHint={dragHint}
+      dragLabel={dragLabel}
+    />
+  );
+}
+
+export interface FabMenuItem {
+  key: string;
+  label: string;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}
+
+interface FabMenuProps {
+  /** Rendered bottom-up: the last item ends up closest to the button, so put the most-used one there. */
+  items: FabMenuItem[];
+  onSelect: (key: string) => void;
+  bottom: number;
+  accessibilityLabel?: string;
+  size?: number;
+  disabled?: boolean;
+  /** Fades the resting button (e.g. while a task is spotlighted). Ignored while the menu is open. */
+  opacity?: Animated.AnimatedInterpolation<number> | Animated.Value;
+  /** Omit to leave the button tap-only. */
+  drag?: FabDragHandlers;
+  /** Spoken explanation of what dragging does. */
+  dragHint?: string;
+  /** Names the current drop target beside the button while dragging, e.g. "New task in Work". */
+  dragLabel?: string | null;
+}
+
+/**
+ * A FAB that accordions out into labelled shortcuts — for screens with more
+ * than one thing to add, where a single "+" would have to guess which one you
+ * meant. Same resting button as `Fab`, so the corner behaves identically until
+ * you tap it.
+ *
+ * With `drag` supplied it can also be pulled off its corner and dropped
+ * somewhere. Tapping is unaffected: the responder is never claimed on
+ * touch-down, only once the finger has travelled far enough to rule a tap out,
+ * so a press still opens the menu exactly as before.
+ */
+export function FabMenu({
+  items, onSelect, bottom, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
+  drag, dragHint = 'Drag onto the list to add a task there', dragLabel,
+}: FabMenuProps) {
+  const colors = useColors();
+  const { shadows } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+
   const circle = [styles.fab, { width: size, height: size, borderRadius: size / 2 }, shadows.fab];
 
   const open = () => {
@@ -178,30 +245,18 @@ export function FabMenu({
 
   return (
     <>
-      <Animated.View
-        style={[styles.container, { bottom, opacity }]}
-        pointerEvents={disabled ? 'none' : 'box-none'}
-      >
-        <Animated.View
-          style={[styles.dragRow, { transform: [{ translateX: dragX }, { translateY: dragY }] }]}
-          {...(drag ? panResponder.panHandlers : {})}
-        >
-          {dragLabel ? (
-            <View style={[styles.dragLabel, shadows.fab]}>
-              <Text style={styles.dragLabelText} numberOfLines={1}>{dragLabel}</Text>
-            </View>
-          ) : null}
-          <PressableScale
-            style={circle}
-            pressScale={0.9}
-            onPress={open}
-            accessibilityLabel={accessibilityLabel}
-            accessibilityHint={drag ? 'Drag onto the list to add a task there' : undefined}
-          >
-            <Ionicons name="add" size={size >= FAB_SIZE ? 28 : 24} color={colors.onAccent} />
-          </PressableScale>
-        </Animated.View>
-      </Animated.View>
+      <FabButton
+        onPress={open}
+        accessibilityLabel={accessibilityLabel}
+        bottom={bottom}
+        icon="add"
+        size={size}
+        disabled={disabled}
+        opacity={opacity}
+        drag={drag}
+        dragHint={dragHint}
+        dragLabel={dragLabel}
+      />
 
       <Modal visible={menuVisible} transparent animationType="none" onRequestClose={() => close()}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => close()}>

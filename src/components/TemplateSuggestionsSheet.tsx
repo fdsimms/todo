@@ -19,6 +19,7 @@ import { EmptyState } from './EmptyState';
 import { suggestTemplateItems, describeAIError, type TemplateItemSuggestion } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { minutesToEffort } from '../utils/effort';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
   visible: boolean;
@@ -123,18 +124,16 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.headerBtn}>Cancel</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>Suggested Tasks</Text>
           </View>
-          <TouchableOpacity onPress={handleAdd} disabled={!canAdd}>
-            <Text style={[styles.headerBtn, styles.headerSave, !canAdd && styles.disabled]}>
-              {acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
-            </Text>
-          </TouchableOpacity>
+          <SheetHeaderButton
+            label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}
+            onPress={handleAdd}
+            disabled={!canAdd}
+          />
         </View>
 
         {loading ? (
@@ -217,8 +216,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  headerBtn: { color: colors.accent, fontSize: font.md },
-  headerSave: { fontWeight: '600' },
   disabled: { opacity: 0.4 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
   loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
+import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -118,8 +119,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   spacer: { flex: 1 },
   summary: {
+    ...disclosureValue(colors),
     flexShrink: 1, textAlign: 'right',
-    color: colors.accent, fontSize: font.sm, fontWeight: '500',
   },
   summaryEmpty: { color: colors.textTertiary, fontWeight: '400' },
   // Not accent: accent is what "you can change this" looks like everywhere

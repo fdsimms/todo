@@ -21,6 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { buildCalendarGrid } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
   visible: boolean;
@@ -143,15 +144,9 @@ export function CalendarPicker({
       <View style={styles.root}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onCancel} hitSlop={8}>
-            <Text style={styles.headerBtn}>Cancel</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} />
           <Text style={styles.headerTitle}>{title}</Text>
-          <TouchableOpacity onPress={confirm} hitSlop={8} disabled={!canConfirm}>
-            <Text style={[styles.headerBtn, styles.headerDone, !canConfirm && styles.disabled]}>
-              Done
-            </Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={confirm} disabled={!canConfirm} />
         </View>
 
         {/* Natural language input */}
@@ -316,14 +311,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: {
     color: colors.text,
     fontSize: font.md,
-    fontWeight: '600',
-  },
-  headerBtn: {
-    color: colors.textSecondary,
-    fontSize: font.md,
-  },
-  headerDone: {
-    color: colors.accent,
     fontWeight: '600',
   },
   disabled: { opacity: 0.4 },

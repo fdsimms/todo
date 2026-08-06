@@ -37,6 +37,7 @@ import {
 import { formatDueDate } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
 import { CalendarPicker } from './CalendarPicker';
+import { EditorRow } from './EditorRow';
 import type { TaskTemplate, TemplateContainer, TemplateItem } from '../types';
 
 interface Props {
@@ -460,8 +461,6 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
-            colors={colors}
-            styles={styles}
           />
           <View style={styles.inlineSep} />
           <AnchorRow
@@ -471,8 +470,6 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}
-            colors={colors}
-            styles={styles}
           />
 
           <View style={styles.inlineSep} />
@@ -525,9 +522,14 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   );
 }
 
-/** One of the two anchor date pickers (start / end) shown atop the sheet. */
+/**
+ * One of the two anchor date pickers (start / end) shown atop the sheet.
+ * A thin wrapper over `EditorRow` — the row this sheet needs is the same
+ * "icon — label — value ›" one every editor uses; it only has to format the
+ * Date into the value string first.
+ */
 function AnchorRow({
-  icon, label, hint, value, onPress, onClear, colors, styles,
+  icon, label, hint, value, onPress, onClear,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
@@ -535,29 +537,18 @@ function AnchorRow({
   value: Date | null;
   onPress: () => void;
   onClear: () => void;
-  colors: Colors;
-  styles: ReturnType<typeof makeStyles>;
 }) {
   return (
-    <TouchableOpacity style={styles.anchorRow} onPress={onPress} activeOpacity={interaction.activeOpacity}>
-      <Ionicons name={icon} size={18} color={value ? colors.accent : colors.textSecondary} />
-      <View style={styles.anchorContent}>
-        <Text style={styles.anchorLabel}>{label}</Text>
-        {!value && <Text style={styles.anchorHint}>{hint}</Text>}
-      </View>
-      {value ? (
-        <View style={styles.anchorValueRow}>
-          <Text style={styles.anchorValue}>
-            {value.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-          </Text>
-          <TouchableOpacity onPress={onClear} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Clear ${label.toLowerCase()}`}>
-            <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
-      )}
-    </TouchableOpacity>
+    <EditorRow
+      icon={icon}
+      label={label}
+      hint={hint}
+      value={value
+        ? value.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+        : undefined}
+      onPress={onPress}
+      onClear={onClear}
+    />
   );
 }
 
@@ -639,18 +630,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colors.bgTertiary,
   },
-  anchorRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 13,
-  },
-  anchorContent: { flex: 1 },
-  anchorLabel: { color: colors.text, fontSize: font.md },
-  anchorHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
-  anchorValueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  anchorValue: { color: colors.accent, fontSize: font.sm },
   itemList: {
     maxHeight: 320,
   },

@@ -21,6 +21,14 @@ interface Props {
   onLightenDay?: () => void;
   /** Summary of the day's planned time, shown as the action's hint. */
   plannedLabel?: string;
+  /**
+   * Opens the "pull from projects" sheet. Passed unconditionally, unlike
+   * onLightenDay — the sheet is how you reach quiet projects once the banner
+   * has been dismissed, and it explains itself when nothing is quiet.
+   */
+  onPullFromProjects: () => void;
+  /** How many projects have gone quiet, shown as the action's hint. */
+  quietProjectCount: number;
 }
 
 /**
@@ -35,6 +43,8 @@ export function TodayOptionsMenu({
   onHideCategoriesChange,
   onLightenDay,
   plannedLabel,
+  onPullFromProjects,
+  quietProjectCount,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -96,6 +106,34 @@ export function TodayOptionsMenu({
               <View style={styles.optionSep} />
             </>
           )}
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => {
+              haptics.tap();
+              onPullFromProjects();
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Pull from projects"
+          >
+            <Ionicons
+              name="albums-outline"
+              size={18}
+              color={quietProjectCount > 0 ? colors.accent : colors.textSecondary}
+            />
+            <View style={styles.optionContent}>
+              <Text style={[styles.optionLabel, quietProjectCount > 0 && styles.optionLabelActive]}>
+                Pull from projects
+              </Text>
+              <Text style={styles.optionHint}>
+                {quietProjectCount > 0
+                  ? `${quietProjectCount} project${quietProjectCount === 1 ? '' : 's'} gone quiet — bring something in`
+                  : 'Bring the next thing from a quiet project into today'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <View style={styles.optionSep} />
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => {

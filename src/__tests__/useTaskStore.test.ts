@@ -198,6 +198,8 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   archived: false,
   archivedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
+  nudgeCadenceDays: 14,
+  autoSchedule: false,
   ...overrides,
 });
 
@@ -1418,6 +1420,118 @@ describe('deloadTasks', () => {
   it('records no action for an empty batch', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })], lastAction: null });
     useTaskStore.getState().deloadTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── pullProjectTasks / dripStalledProjects ─────────────────────────────────
+
+describe('pullProjectTasks', () => {
+  const monday = new Date(2025, 5, 16, 12, 0, 0).toISOString();
+
+  it('dates each pulled task and undoes the whole batch as one action', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: 'p2', deferUntil: monday }),
+      ],
+    });
+
+    useTaskStore.getState().pullProjectTasks([
+      { id: 'a', updates: { dueDate: monday, deferUntil: null } },
+      { id: 'b', updates: { dueDate: monday, deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks pulled in');
+    expect(useTaskStore.getState().tasks.map(t => t.dueDate)).toEqual([monday, monday]);
+
+    useTaskStore.getState().undoLastAction();
+
+    const [a, b] = useTaskStore.getState().tasks;
+    expect(a.dueDate).toBeNull();
+    expect(b.dueDate).toBeNull();
+    // Both fields are snapshotted, so an undo restores the defer too.
+    expect(b.deferUntil).toBe(monday);
+  });
+
+  it('ignores moves for tasks that no longer exist and labels the rest', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().pullProjectTasks([
+      { id: 'a', updates: { dueDate: monday, deferUntil: null } },
+      { id: 'gone', updates: { dueDate: monday, deferUntil: null } },
+    ]);
+
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task pulled in');
+  });
+
+  it('records no action for an empty batch', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a' })], lastAction: null });
+    useTaskStore.getState().pullProjectTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+describe('dripStalledProjects', () => {
+  const quietProject = (overrides = {}) =>
+    makeProject({
+      id: 'p1',
+      autoSchedule: true,
+      nudgeCadenceDays: 14,
+      createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+      ...overrides,
+    });
+
+  it('dates the top-ranked task of an opted-in quiet project', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 0 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 1 }),
+      ],
+      lastAction: null,
+    });
+
+    useTaskStore.getState().dripStalledProjects();
+
+    const [a, b] = useTaskStore.getState().tasks;
+    expect(a.dueDate).not.toBeNull();
+    expect(b.dueDate).toBeNull();
+  });
+
+  // The whole point of deriving "stalled" rather than storing a flag: the
+  // second call finds the project already has a dated member.
+  it('is a no-op on a second call — only ever one task in flight', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 0 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 1 }),
+      ],
+    });
+
+    useTaskStore.getState().dripStalledProjects();
+    useTaskStore.getState().dripStalledProjects();
+
+    expect(useTaskStore.getState().tasks.filter(t => t.dueDate !== null)).toHaveLength(1);
+  });
+
+  it('skips projects that have not opted in', () => {
+    useProjectStore.setState({ projects: [quietProject({ autoSchedule: false })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().dripStalledProjects();
+
+    expect(useTaskStore.getState().tasks[0].dueDate).toBeNull();
+  });
+
+  // An unattended background write must not occupy the undo slot for something
+  // the user never saw happen.
+  it('leaves the undo slot alone', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })], lastAction: null });
+
+    useTaskStore.getState().dripStalledProjects();
+
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });

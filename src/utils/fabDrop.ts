@@ -1,6 +1,8 @@
 /**
- * Pure geometry for dropping the add button into the Today list — which row it
- * landed on, and what creating a task there should mean.
+ * Pure geometry for dropping the add button into a list — which row it landed
+ * on, and what creating something there should mean. Today uses every kind
+ * below; Projects, whose list is the same category-sectioned shape minus stacks
+ * and pinning, uses `header` and `task`.
  *
  * Kept out of the component (like reorder.ts and paintSelect.ts) so the
  * hit-testing can be tested without a running gesture. Every coordinate here is
@@ -21,6 +23,7 @@
  * resolveDrop reading the new row's spliced-in position, so the two can't drift.
  */
 export type DropZone =
+  /** An ordinary row that splits into above/below — a task on Today, a project on Projects. */
   | { kind: 'task'; key: string; category: string | null }
   /** A category header. Its own label is its category. */
   | { kind: 'header'; key: string; category: string | null }
