@@ -81,7 +81,13 @@ function distToSegment(px, py, ax, ay, bx, by) {
 
 /**
  * The checkmark: two round-capped strokes. `scale` shrinks it about the icon
- * center so the Android adaptive foreground can sit inside the 66% safe zone.
+ * center, so the same mark can be drawn at the size each target wants.
+ *
+ * The comparison is against `stroke / 2` in the *unscaled* space, which makes
+ * the stroke shrink along with the skeleton. Dividing by `scale` here instead
+ * would hold the stroke at a constant width while the mark shrinks around it,
+ * rendering a visibly stubbier check at smaller scales than the one on the iOS
+ * icon — the two targets have to look like the same logo.
  */
 function checkCoverage(x, y, scale, stroke) {
   const px = (x - 0.5) / scale + 0.5;
@@ -90,7 +96,7 @@ function checkCoverage(x, y, scale, stroke) {
     distToSegment(px, py, 0.265, 0.53, 0.425, 0.685),
     distToSegment(px, py, 0.425, 0.685, 0.745, 0.325)
   );
-  return d <= stroke / 2 / scale ? 1 : 0;
+  return d <= stroke / 2 ? 1 : 0;
 }
 
 // ------------------------------------------------------------------ painting
@@ -147,9 +153,15 @@ fs.mkdirSync(assetsDir, { recursive: true });
 const files = [
   // Full-bleed iOS / default icon. iOS applies its own rounded-rect mask.
   ['icon.png', { size: 1024, background: true, scale: 1 }],
-  // Android adaptive foreground: transparent, and kept inside the 66% safe zone
-  // so the launcher's mask can't clip the mark.
-  ['adaptive-icon.png', { size: 1024, background: false, scale: 0.62 }],
+  // Android adaptive foreground: transparent. The launcher shows only the
+  // central ~2/3 of this canvas, so 0.66 makes the mark fill that visible area
+  // in the same proportion it fills the iOS icon, and leaves it inside the 66%
+  // safe zone the mask is allowed to clip to.
+  ['adaptive-icon.png', { size: 1024, background: false, scale: 0.66 }],
+  // Splash art, drawn over the black splash background. `resizeMode: contain`
+  // fits this square image to the screen width on a portrait phone, so the
+  // mark lands at ~32% of screen width.
+  ['splash-icon.png', { size: 512, background: false, scale: 0.54 }],
 ];
 
 for (const [name, opts] of files) {
