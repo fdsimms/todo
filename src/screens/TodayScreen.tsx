@@ -719,7 +719,10 @@ export function TodayScreen() {
   };
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
-    setQuickAddVisible(false);
+    // The draft carries everything the sheet had, including the seeded
+    // category; only the placement is let go of, and the editor has no notion
+    // of one anyway.
+    closeQuickAdd();
     setEditingTask(null);
     setEditorInitialDraft(draft);
     setEditorVisible(true);
@@ -1013,6 +1016,22 @@ export function TodayScreen() {
   const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
+
+  /**
+   * Close the quick-add sheet and forget what this opening of it was set up
+   * for. Every path out of the sheet goes through here — cancel, create, and
+   * "More details", which closes it without going through onClose. Missing one
+   * leaves the placement armed, and the next plain tap on the button inherits
+   * it: a task filed into a stack, or pinned, because of a drag two minutes
+   * ago that landed somewhere else entirely.
+   */
+  const closeQuickAdd = () => {
+    setQuickAddVisible(false);
+    setQuickAddSeed(undefined);
+    setQuickAddSeedLabel(null);
+    setQuickAddType('task');
+    pendingDropRef.current = null;
+  };
 
   // Today renders through two different list components — a plain FlatList
   // whenever anything is pinned, ReorderableList otherwise — and the button can
@@ -2258,16 +2277,7 @@ export function TodayScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => {
-            setQuickAddVisible(false);
-            // Both the cancel and the create path land here. Clearing the drop
-            // is what stops the next plain tap on the button from inheriting
-            // the last drag's placement.
-            setQuickAddSeed(undefined);
-            setQuickAddSeedLabel(null);
-            setQuickAddType('task');
-            pendingDropRef.current = null;
-          }}
+          onClose={closeQuickAdd}
           onOpenFull={handleQuickAddOpenFull}
           context={viewMode}
           onCreated={handleTaskCreated}

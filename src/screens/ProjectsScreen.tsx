@@ -115,6 +115,19 @@ export function ProjectsScreen() {
   // The drop that opened the sheet, read once when the project comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
 
+  /**
+   * Close the quick-add sheet and forget the placement it was opened with.
+   * Every path out of the sheet goes through here — cancel, create, and "More
+   * details", which closes it without going through onClose. Missing one leaves
+   * the placement armed for the next plain tap on the button.
+   */
+  const closeQuickAdd = () => {
+    setQuickAddVisible(false);
+    setQuickAddSeed(undefined);
+    setQuickAddSeedLabel(null);
+    pendingDropRef.current = null;
+  };
+
   const zoneByKey = useMemo(() => {
     const categoriesFor = categoriesByIndex(
       projectListItems.map(item => (item.type === 'header' ? item.label : null)),
@@ -199,14 +212,8 @@ export function ProjectsScreen() {
   // draft state of their own, so the row is created up front and discarded on
   // close if it never got a name — same trick TodayScreen uses for new stacks.
   const handleQuickAddOpenFull = (draft: ProjectDraft) => {
-    setQuickAddVisible(false);
-    // This path closes the sheet without going through its onClose, so the drop
-    // has to be dropped here too — otherwise the next plain tap on the button
-    // opens seeded with a placement nobody asked for. The category still rides
-    // along on the draft; only the position is let go of.
-    setQuickAddSeed(undefined);
-    setQuickAddSeedLabel(null);
-    pendingDropRef.current = null;
+    // The draft carries the seeded category; only the placement is let go of.
+    closeQuickAdd();
     animateLayout();
     const project = createProject(draft.title, draft.targetStartDate, draft.targetEndDate);
     if (draft.category) updateProject(project.id, { category: draft.category });
@@ -347,15 +354,7 @@ export function ProjectsScreen() {
 
       <QuickAddProjectModal
         visible={quickAddVisible}
-        onClose={() => {
-          setQuickAddVisible(false);
-          // Both the cancel and the create path land here. Clearing the drop is
-          // what stops the next plain tap on the button from inheriting the
-          // last drag's placement.
-          setQuickAddSeed(undefined);
-          setQuickAddSeedLabel(null);
-          pendingDropRef.current = null;
-        }}
+        onClose={closeQuickAdd}
         onOpenFull={handleQuickAddOpenFull}
         onCreated={handleProjectCreated}
         seed={quickAddSeed}
