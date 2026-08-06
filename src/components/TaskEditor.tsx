@@ -26,7 +26,7 @@ import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, interaction, animation, type Colors } from '../theme';
+import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { TARGET_COUNT_OPTIONS } from '../utils/quickAddTypes';
@@ -97,6 +97,10 @@ type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'durat
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
 const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
+
+// Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
+// whether it's read in the expanded row or in this editor.
+const SUBTASK_CHECKBOX_SIZE = 18;
 
 function formatRecurrenceSummary(type: RecurrenceType, interval: number): string {
   if (type === 'none') return '';
@@ -1976,11 +1980,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     accessibilityLabel={sub.title}
                     accessibilityState={{ checked: sub.completed }}
                   >
-                    <Ionicons
-                      name={sub.completed ? 'checkmark-circle' : 'ellipse-outline'}
-                      size={20}
-                      color={sub.completed ? colors.green : colors.bgQuaternary}
-                    />
+                    <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                      {sub.completed && (
+                        <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+                      )}
+                    </View>
                   </TouchableOpacity>
                   <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
                     {sub.title}
@@ -2499,6 +2503,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   subtaskCheck: { padding: 2 },
+  subtaskBox: {
+    width: SUBTASK_CHECKBOX_SIZE,
+    height: SUBTASK_CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
+    borderColor: colors.bgQuaternary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  subtaskBoxDone: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+  },
   subtaskTitle: {
     flex: 1, color: colors.text, fontSize: font.md,
   },

@@ -126,13 +126,16 @@ export function TaskGroupHeader({
             }}
           >
             <View style={styles.row}>
-              {/* A rounded square tile, deliberately not the circle a task
-                  row uses: this control cascades across the whole roster,
-                  and for a while it wore the exact shape, size, position and
-                  colour of a single task's checkbox while meaning something
-                  an order of magnitude bigger. It sits in the gutter to the
-                  left of the column its tasks occupy — the one filled shape
-                  in a header that is otherwise just type on the page. */}
+              {/* A filled tile, deliberately not the outlined box a task row
+                  uses: this control cascades across the whole roster, and for
+                  a while it wore the exact shape, size, position and colour of
+                  a single task's checkbox while meaning something an order of
+                  magnitude bigger. Shape alone stopped carrying that once the
+                  checkboxes became rounded squares themselves — what separates
+                  them now is that this one is bigger (30 vs 24), *filled*
+                  rather than outlined, holds a layers glyph, and sits in the
+                  gutter to the left of the column its tasks occupy. Keep at
+                  least the fill and the size if either ever changes. */}
               <TouchableOpacity
                 onPress={() => {
                   if (dismissed || dismissing) return;

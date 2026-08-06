@@ -26,7 +26,7 @@ import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
@@ -44,6 +44,9 @@ import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
+
+const CHECKBOX_SIZE = 24;
+const SUBTASK_CHECKBOX_SIZE = 18;
 
 interface Props {
   task: Task;
@@ -1379,10 +1382,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 2,
   },
   circle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: border.sm,
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.bgQuaternary,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1583,10 +1587,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 0,
   },
   subtaskCheck: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
+    width: SUBTASK_CHECKBOX_SIZE,
+    height: SUBTASK_CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(SUBTASK_CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.bgQuaternary,
     alignItems: 'center',
     justifyContent: 'center',

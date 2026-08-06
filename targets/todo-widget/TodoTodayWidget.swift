@@ -36,10 +36,12 @@ struct TaskRowView: View {
         HStack(spacing: 8) {
             Button(intent: CompleteTaskIntent(taskId: task.id)) {
                 ZStack {
-                    Circle()
+                    // Rounded square, matching the app's checkbox — .continuous
+                    // is the same superellipse RN draws with borderCurve.
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .stroke(palette.separator, lineWidth: 2)
                     if isPendingCompletion {
-                        Circle()
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(palette.accent)
                         Image(systemName: "checkmark")
                             .font(.system(size: 8, weight: .bold))
@@ -48,7 +50,7 @@ struct TaskRowView: View {
                 }
                 .frame(width: 16, height: 16)
                 // Padding here (not on the row) widens the actual tap
-                // target beyond the visible circle without affecting layout.
+                // target beyond the visible box without affecting layout.
                 .padding(6)
                 .contentShape(Rectangle())
             }
