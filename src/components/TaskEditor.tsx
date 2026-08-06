@@ -43,7 +43,7 @@ import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffse
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
-import { suggestTaskAttributes } from '../services/aiSuggestions';
+import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
@@ -784,13 +784,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setAiLoading(true);
     try {
       const result = await suggestTaskAttributes(title.trim(), notes, allTags, allCategories);
-      if (result.effort > 0 && effort === 0) { setEffort(result.effort); setEstimatedMinutes(EFFORT_MINUTES[result.effort]); }
-      const newTags = result.tags.filter(t => !tags.includes(t));
-      if (newTags.length > 0) setTags(prev => [...prev, ...newTags]);
-      if (result.category && !category) setCategory(result.category);
-      else if (result.newCategory && !category) setPendingCategory(result.newCategory);
-    } catch {
-      // silently fail — no API key or network issue
+      if (result.effort > 0) {
+        setEffort(prev => {
+          if (prev !== 0) return prev;
+          setEstimatedMinutes(EFFORT_MINUTES[result.effort]);
+          return result.effort;
+        });
+      }
+      if (result.tags.length > 0) {
+        setTags(prev => [...new Set([...prev, ...result.tags])]);
+      }
+      setCategory(prev => {
+        if (prev) return prev;
+        if (result.category) return result.category;
+        if (result.newCategory) setPendingCategory(result.newCategory);
+        return prev;
+      });
+    } catch (e) {
+      Alert.alert('AI suggestion failed', describeAIError(e));
     } finally {
       setAiLoading(false);
     }
