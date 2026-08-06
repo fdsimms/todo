@@ -70,7 +70,7 @@ interface Props {
   showProject?: boolean;
   showGroup?: boolean;
   showActions?: boolean;
-  /** Narrower than `showActions`: drops just the pin from the expanded panel, for lists where pinning (a Today concept) doesn't apply but the timer and edit actions still do. */
+  /** Narrower than `showActions`: drops just the row's pin button, for lists where pinning (a Today concept) doesn't apply but the link and timer actions still do. */
   showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
@@ -890,6 +890,28 @@ export function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && showPin && (
+        <TouchableOpacity
+          onPress={() => {
+            haptics.tap();
+            togglePin(task.id);
+          }}
+          hitSlop={8}
+          style={styles.pinBtn}
+          accessibilityRole="button"
+          accessibilityState={{ selected: task.pinned }}
+          accessibilityLabel={
+            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
+          }
+        >
+          <PinIcon
+            filled={task.pinned}
+            size={iconSize.sm}
+            color={task.pinned ? colors.orange : colors.textTertiary}
+          />
+        </TouchableOpacity>
+      )}
+
     </View>
   );
 
@@ -1180,26 +1202,6 @@ export function TaskItem({
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
                     >
                       <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                    </PressableScale>
-                  )}
-                  {showActions && showPin && (
-                    <PressableScale
-                      style={styles.iconActionBtn}
-                      onPress={async () => {
-                        await haptics.tap();
-                        togglePin(task.id);
-                      }}
-                      hitSlop={8}
-                      accessibilityState={{ selected: task.pinned }}
-                      accessibilityLabel={
-                        task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
-                      }
-                    >
-                      <PinIcon
-                        filled={task.pinned}
-                        size={iconSize.sm}
-                        color={task.pinned ? colors.orange : colors.textSecondary}
-                      />
                     </PressableScale>
                   )}
                 </View>
@@ -1573,6 +1575,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   linkBtn: {
+    padding: 4,
+  },
+  pinBtn: {
     padding: 4,
   },
   timerRunningGroup: {
