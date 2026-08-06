@@ -12,6 +12,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
+import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
@@ -24,7 +25,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { templateHasBrokenRefs } from '../utils/templateUtils';
+import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
 
 export function TemplatesScreen() {
@@ -35,6 +36,11 @@ export function TemplatesScreen() {
   const navigation = useNavigation();
 
   const templates = useTemplateStore(useShallow(s => s.templates));
+  // Flags a template whose items name a category or tag that's since been
+  // deleted or renamed — nothing rewrites templates when that happens, so this
+  // is the only place you'd find out before applying it (see findMissingRefs).
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addTemplate = useTemplateStore(s => s.addTemplate);
   const reorderTemplatesWithCategoryUpdates = useTemplateStore(s => s.reorderTemplatesWithCategoryUpdates);
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
@@ -98,6 +104,7 @@ export function TemplatesScreen() {
             <TemplateRow
               template={tpl}
               broken={templateHasBrokenRefs(tpl, templatesById)}
+              missingRefs={templateHasMissingRefs(tpl, allCategories, allTags)}
               colors={colors}
               styles={styles}
               drag={drag}
@@ -152,11 +159,13 @@ export function TemplatesScreen() {
  * TemplateEditor behind the ⋯ button.
  */
 function TemplateRow({
-  template, broken, colors, styles, drag, onPress, onEdit, onApply,
+  template, broken, missingRefs, colors, styles, drag, onPress, onEdit, onApply,
 }: {
   template: TaskTemplate;
   /** True if a template this one nests (at any depth) was deleted or is itself broken. */
   broken: boolean;
+  /** True if one of this template's own items names a category or tag that no longer exists. */
+  missingRefs: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
   drag: () => void;
@@ -172,7 +181,7 @@ function TemplateRow({
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : ''}`}
+      accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : missingRefs ? ', uses a category or tag that no longer exists' : ''}`}
       accessibilityHint="Double tap to edit template"
     >
       <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
@@ -181,12 +190,21 @@ function TemplateRow({
       <View style={styles.tplInfo}>
         <View style={styles.tplNameRow}>
           <Text style={styles.tplName}>{template.name}</Text>
-          {broken && (
+          {/* One glyph for both faults rather than two side by side — either
+              way the row is saying "open me, something in here is stale", and
+              the detail screen is where they're told apart per item. A missing
+              nested template is named first: it's the one that stops the
+              template working rather than just applying a dead name. */}
+          {(broken || missingRefs) && (
             <Ionicons
               name="alert-circle"
               size={14}
               color={colors.warning}
-              accessibilityLabel="A nested template is missing"
+              accessibilityLabel={
+                broken
+                  ? 'A nested template is missing'
+                  : 'Uses a category or tag that no longer exists'
+              }
             />
           )}
         </View>

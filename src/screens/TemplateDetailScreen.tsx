@@ -23,11 +23,13 @@ import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetLabel, getDirectBrokenRefItemIds, findMissingRefs, describeMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem } from '../types';
 
 type RootStackParamList = {
@@ -63,6 +65,11 @@ export function TemplateDetailScreen() {
   const groupItems = useTemplateStore(s => s.groupItems);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  // For flagging items that still name a category or tag which has since been
+  // deleted or renamed — nothing rewrites a template when that happens, so the
+  // stale name sits here until it's applied (see findMissingRefs).
+  const allCategories = useTaskStore(useShallow(s => s.allCategories()));
+  const allTags = useTaskStore(useShallow(s => s.allTags()));
 
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<TemplateItem | null>(null);
@@ -265,6 +272,7 @@ export function TemplateDetailScreen() {
           const categoryEmoji = item.category ? getCategoryByName(item.category)?.emoji ?? null : null;
           const resolvedRefTemplate = item.refTemplateId ? templatesById.get(item.refTemplateId) ?? null : null;
           const broken = brokenItemIds.has(item.id);
+          const missingRefsLabel = describeMissingRefs(findMissingRefs(item, allCategories, allTags));
 
           const handlePress = () => {
             if (selectionMode) {
@@ -298,6 +306,7 @@ export function TemplateDetailScreen() {
                   item={item}
                   hint={hint}
                   categoryEmoji={categoryEmoji}
+                  missingRefsLabel={missingRefsLabel}
                   resolvedRefTemplate={resolvedRefTemplate}
                   broken={broken}
                   colors={colors}
@@ -408,11 +417,13 @@ export function TemplateDetailScreen() {
 
 /** Item row: swipe left reveals Select (enters bulk mode). */
 function TemplateItemRow({
-  item, hint, categoryEmoji, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
+  item, hint, categoryEmoji, missingRefsLabel, resolvedRefTemplate, broken, colors, styles, drag, isActive, selectionMode, selected, onPress, onDelete, onSwipeSelect, onReplace,
 }: {
   item: TemplateItem;
   hint: string | null;
   categoryEmoji: string | null;
+  /** Sentence naming the categories/tags this item still points at that are gone, or null if it's fine. */
+  missingRefsLabel: string | null;
   /** The live template this item references, or null if it isn't a reference item. */
   resolvedRefTemplate: TaskTemplate | null;
   /** True if this item references a template that no longer exists. */
@@ -445,7 +456,9 @@ function TemplateItemRow({
           ? `${refTitle} was deleted, remove or replace this`
           : isRef
             ? `Nested template ${refTitle}, ${refCount} item${refCount === 1 ? '' : 's'}`
-            : `${item.title}${item.optional ? ', optional' : ''}`
+            // The warning is its own Text node, but a label set on the row
+            // overrides its children, so it has to be spelled out here too.
+            : `${item.title}${item.optional ? ', optional' : ''}${missingRefsLabel ? `, ${missingRefsLabel}` : ''}`
       }
       accessibilityHint={broken ? undefined : isRef ? 'Double tap to open the nested template' : 'Double tap to edit item'}
     >
@@ -480,7 +493,15 @@ function TemplateItemRow({
           <>
             <Text style={styles.itemTitle} numberOfLines={1}>{item.title}</Text>
             {hint && <Text style={styles.itemHintText} numberOfLines={1}>{hint}</Text>}
-            {categoryEmoji !== null || item.category ? (
+            {/* Takes the category line's place rather than sitting beside it:
+                the missing name is already quoted in this sentence, so showing
+                it twice would just be the same string with two verdicts. */}
+            {missingRefsLabel ? (
+              <View style={styles.categoryRow}>
+                <Ionicons name="alert-circle" size={iconSize.xs} color={colors.warning} />
+                <Text style={styles.itemHintBroken} numberOfLines={2}>{missingRefsLabel}</Text>
+              </View>
+            ) : categoryEmoji !== null || item.category ? (
               <View style={styles.categoryRow}>
                 <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.itemHintText} numberOfLines={1}>

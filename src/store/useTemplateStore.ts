@@ -49,6 +49,14 @@ interface TemplateStore {
   reorderTemplates: (orderedIds: string[]) => void;
   reorderTemplatesWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
   setTemplateItems: (id: string, items: TemplateItem[]) => void;
+  /**
+   * Rewrite every item pointing at a task category being renamed, so templates
+   * follow a rename the way tasks and stacks already do (see renameCategory in
+   * useTaskStore). Without this a rename silently leaves items naming something
+   * that no longer resolves — the state findMissingRefs exists to report, and
+   * which a rename has no business creating.
+   */
+  renameItemCategory: (from: string, to: string) => void;
   addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem;
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
   deleteItem: (templateId: string, itemId: string) => void;
@@ -137,6 +145,25 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   reorderTemplatesWithCategoryUpdates(orderedIds, categoryUpdates) {
     get().reorderTemplates(orderedIds);
     categoryUpdates.forEach(u => get().setTemplateCategory(u.id, u.category));
+  },
+
+  renameItemCategory(from, to) {
+    if (from === to) return;
+    // Only the templates that actually held the old name are written back —
+    // this runs on every category rename, and most templates won't mention it.
+    const touched: TaskTemplate[] = [];
+    const next = get().templates.map(t => {
+      if (!t.items.some(i => i.category === from)) return t;
+      const updated = {
+        ...t,
+        items: t.items.map(i => (i.category === from ? { ...i, category: to } : i)),
+      };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(t => dbUpdateTemplate(t));
+    set(() => ({ templates: next }));
   },
 
   setTemplateItems(id, items) {
