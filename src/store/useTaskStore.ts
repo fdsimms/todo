@@ -161,6 +161,34 @@ function reanchorReminder(reminderTime: string | null, date: Date): string | nul
 // from the source row/draft; a relative deadline recomputes against this row's
 // own date the same way it does for a new recurrence occurrence, while a fixed
 // one is a single absolute target and carries over untouched.
+// A dated series and a recurrence rule are two schedules for one task, and a
+// series row is deliberately an ordinary one-off (see Task.seriesId) — the set
+// comes back, if it comes back at all, through seriesMonthDays. Left in place,
+// a rule carried onto every row of the set and completing one date spawned an
+// extra occurrence *inside the same series*: the set grew by a row per
+// completion, and the next date edit deleted the rows it no longer recognised.
+// So forming a series clears the rule rather than trying to run both.
+type RecurrenceFields = Pick<
+  Task,
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceWeekOrdinal' | 'recurrenceEndDate' | 'recurrenceCount'
+  | 'recurrenceFromCompletion' | 'showStreak'
+>;
+
+const NO_RECURRENCE: RecurrenceFields = {
+  recurrenceType: 'none',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
+  recurrenceEndDate: null,
+  recurrenceCount: null,
+  recurrenceFromCompletion: false,
+  // Only a recurring task has a streak to show, and the editor only offers the
+  // toggle there — same reasoning as the showStreak reset in TaskEditor.
+  showStreak: false,
+};
+
 function buildSeriesRow(
   source: Partial<TaskDraft>,
   date: Date,
@@ -171,6 +199,7 @@ function buildSeriesRow(
   const base = newTaskFromDraft(source, now, 0);
   return {
     ...base,
+    ...NO_RECURRENCE,
     dueDate: date.toISOString(),
     // Each date stands on its own; a defer set on the row this was cloned
     // from would otherwise hide every date behind that one day.
@@ -633,6 +662,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesId,
       seriesMonthDays: monthDays,
       seriesRepeatMonths: repeatMonths,
+      // The anchor gives up its recurrence rule along with the rows cloned
+      // from it — the dates are the schedule now (see NO_RECURRENCE).
+      ...NO_RECURRENCE,
     });
 
     const rows = get().seriesRowsOf(seriesId);
@@ -1130,7 +1162,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is done, so ticking off the 10th doesn't conjure a third row while the
     // 15th is still outstanding. Order-independent — whichever date you
     // finish last is the one that triggers it. Series rows carry
-    // recurrenceType 'none', so this never runs alongside the spawn above.
+    // recurrenceType 'none' (enforced by NO_RECURRENCE, since the editor will
+    // happily save a repeat rule alongside extra dates), so the recurrence
+    // spawn above can never run on the same completion as this.
     const rolledOver: Task[] = [];
     if (task.seriesId && task.seriesMonthDays.length > 0) {
       const siblings = get().tasks.filter(

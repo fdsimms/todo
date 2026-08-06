@@ -4046,6 +4046,57 @@ describe('addTaskSeries', () => {
   });
 });
 
+// The editor saves recurrenceType and the extra dates independently, so a
+// repeat rule and a set of dates can arrive on the same save. They're two
+// schedules for one task, and leaving both in place meant every completed date
+// spawned an extra occurrence inside the same series.
+describe('a series and a recurrence rule never coexist', () => {
+  it('clears the rule off the anchor and every date when a series forms', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 2,
+        recurrenceCount: 5,
+        showStreak: true,
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().applyTaskDates('r1', [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.every(t => t.recurrenceType === 'none')).toBe(true);
+    expect(tasks.every(t => t.recurrenceCount === null)).toBe(true);
+    expect(tasks.every(t => t.showStreak === false)).toBe(true);
+  });
+
+  it('leaves a completed date spawning nothing at all', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().applyTaskDates('r1', [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)]);
+    useTaskStore.getState().completeTask('r1');
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.filter(t => !t.completed).map(t => new Date(t.dueDate!).getDate())).toEqual([15]);
+  });
+
+  it('drops the rule from a series built from scratch', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', recurrenceType: 'weekly', recurrenceDays: [1], showStreak: true },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    expect(rows.every(r => r.recurrenceType === 'none' && r.recurrenceDays.length === 0)).toBe(true);
+  });
+});
+
 describe('applyTaskDates', () => {
   it('turns a plain dated task into a series when it gains a date', () => {
     useTaskStore.setState({
