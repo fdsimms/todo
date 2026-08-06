@@ -8,6 +8,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions } from './src/utils/notifications';
+import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
@@ -76,6 +77,9 @@ export default function App() {
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();
+
+  // Keeps the pending daily agenda's count matching the tasks it describes.
+  useDailyAgendaSync();
 
   return (
     <ErrorBoundary>

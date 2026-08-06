@@ -40,6 +40,11 @@ interface SettingsStore {
   sortOption: SortOption;
   filterPriorities: Priority[];
   filterEfforts: Effort[];
+  // One summary notification each morning. Off by default — an app that
+  // starts notifying you daily because you installed it is the reason people
+  // turn notifications off wholesale.
+  dailyAgendaEnabled: boolean;
+  dailyAgendaTime: string; // "HH:MM"
   anthropicApiKey: string;
   vacationMode: boolean;
   vacationStart: string | null;
@@ -64,6 +69,8 @@ interface SettingsStore {
   setActiveHoursEnd: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAppFont: (fontId: AppFont) => void;
+  setDailyAgendaEnabled: (on: boolean) => void;
+  setDailyAgendaTime: (time: string) => void;
   setUse24HourTime: (on: boolean) => void;
   setWeekStartsOn: (day: WeekStart) => void;
   setHapticsEnabled: (on: boolean) => void;
@@ -94,6 +101,8 @@ const DEFAULT_SETTINGS = {
   use24HourTime: false,
   weekStartsOn: 0 as WeekStart,
   hapticsEnabled: true,
+  dailyAgendaEnabled: false,
+  dailyAgendaTime: '08:00',
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
@@ -142,6 +151,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
+  dailyAgendaEnabled: false,
+  dailyAgendaTime: '08:00',
   anthropicApiKey: '',
   vacationMode: false,
   vacationStart: null,
@@ -174,6 +185,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
     const filterPriorities = parseFilterArray<Priority>(dbGetSetting('filterPriorities'), 4);
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
+    const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
+    const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
@@ -191,7 +204,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -238,6 +251,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAppFont(fontId: AppFont) {
     dbSetSetting('appFont', fontId);
     set({ appFont: fontId });
+  },
+
+  setDailyAgendaEnabled(on: boolean) {
+    dbSetSetting('dailyAgendaEnabled', on ? 'true' : 'false');
+    set({ dailyAgendaEnabled: on });
+  },
+
+  setDailyAgendaTime(time: string) {
+    dbSetSetting('dailyAgendaTime', time);
+    set({ dailyAgendaTime: time });
   },
 
   setUse24HourTime(on: boolean) {

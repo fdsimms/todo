@@ -28,6 +28,7 @@ import {
   getNotificationPermission,
   requestNotificationPermissions,
   pendingReminderStats,
+  scheduleDailyAgenda,
   MAX_PENDING_REMINDERS,
   type NotificationPermission,
 } from '../utils/notifications';
@@ -60,7 +61,7 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
   { value: 1, label: 'Monday' },
 ];
 
-type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | null;
+type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | 'agenda' | null;
 
 /**
  * Writes a parsed backup over everything and brings the app back up on it.
@@ -113,6 +114,8 @@ export function SettingsScreen() {
     use24HourTime, setUse24HourTime,
     weekStartsOn, setWeekStartsOn,
     hapticsEnabled, setHapticsEnabled,
+    dailyAgendaEnabled, setDailyAgendaEnabled,
+    dailyAgendaTime, setDailyAgendaTime,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     vacationStart,
@@ -254,6 +257,7 @@ export function SettingsScreen() {
       : which === 'evening' ? eveningStart
       : which === 'activeStart' ? activeHoursStart
       : which === 'activeEnd' ? activeHoursEnd
+      : which === 'agenda' ? dailyAgendaTime
       : nightStart;
     setPickerDate(hhmmToDate(current!));
     setActivePicker(which);
@@ -267,7 +271,36 @@ export function SettingsScreen() {
     else if (activePicker === 'night') setNightStart(hhmm);
     else if (activePicker === 'activeStart') setActiveHoursStart(hhmm);
     else if (activePicker === 'activeEnd') setActiveHoursEnd(hhmm);
+    else if (activePicker === 'agenda') {
+      setDailyAgendaTime(hhmm);
+      // The pending agenda was scheduled against the old time.
+      scheduleDailyAgenda(useTaskStore.getState().tasks);
+    }
     setActivePicker(null);
+  };
+
+  /**
+   * Turning the agenda on is the one place the app needs notification
+   * permission for something the user just explicitly asked for, so it's the
+   * one place worth telling them when permission is missing. Everything else
+   * (reminders, timer alarms) is set up long before it fires, where a
+   * permission alert would be noise.
+   */
+  const onToggleDailyAgenda = async (next: boolean) => {
+    if (next && !(await requestNotificationPermissions())) {
+      // The Reminders row sits directly above this one and would otherwise
+      // still be showing whatever it read on focus — including the "Allow"
+      // affordance for a prompt that has now been answered.
+      refreshNotifPermission();
+      Alert.alert(
+        'Notifications are turned off',
+        'The daily agenda needs notification permission. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    setDailyAgendaEnabled(next);
+    // Reads the flag it just set, so this both schedules and cancels.
+    scheduleDailyAgenda(useTaskStore.getState().tasks);
   };
 
   const confirmResetStreaks = () => {
@@ -284,7 +317,7 @@ export function SettingsScreen() {
   const confirmResetToDefaults = () => {
     Alert.alert(
       'Reset Settings to Defaults',
-      'This resets appearance, formatting, haptics, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
+      'This resets appearance, formatting, haptics, the daily agenda, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
@@ -457,6 +490,135 @@ export function SettingsScreen() {
                 </View>
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Notifications */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Notifications</Text>
+            <View style={styles.card}>
+              {/* Nothing surfaced the permission before, so a declined prompt
+                  just looked like reminders were broken. */}
+              <TouchableOpacity
+                style={styles.row}
+                onPress={
+                  notifPermission === 'denied' ? () => Linking.openSettings()
+                  : notifPermission === 'undetermined' ? askForNotifications
+                  : undefined
+                }
+                disabled={notifPermission !== 'denied' && notifPermission !== 'undetermined'}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole={
+                  notifPermission === 'denied' || notifPermission === 'undetermined' ? 'button' : undefined
+                }
+                accessibilityLabel={
+                  notifPermission === 'granted' ? 'Reminders are allowed'
+                  : notifPermission === 'denied' ? 'Reminders are blocked. Opens the system Settings app.'
+                  : notifPermission === 'undetermined' ? 'Reminders not enabled yet. Double tap to allow.'
+                  : 'Reminder permission'
+                }
+              >
+                <Ionicons
+                  name={notifPermission === 'granted' ? 'notifications' : 'notifications-off-outline'}
+                  size={18}
+                  color={notifPermission === 'granted' ? colors.accent : notifPermission === 'denied' ? colors.warning : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Reminders</Text>
+                  <Text style={styles.rowHint}>
+                    {notifPermission === 'granted' ? 'Allowed — reminders will arrive'
+                      : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
+                      : notifPermission === 'undetermined' ? 'Not enabled yet — reminders you set won’t arrive until you allow them'
+                      : notifPermission === 'unsupported' ? 'Not available on this platform'
+                      : 'Checking…'}
+                  </Text>
+                </View>
+                {notifPermission === 'denied' && <Text style={styles.rowValue}>Open Settings</Text>}
+                {notifPermission === 'undetermined' && <Text style={styles.rowValue}>Allow</Text>}
+              </TouchableOpacity>
+
+              {/* Only worth saying once it's actually biting — the cap is
+                  invisible and irrelevant until something is being dropped. */}
+              {reminderStats.dropped > 0 && (
+                <>
+                  <View style={styles.sep} />
+                  <View style={styles.row}>
+                    <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>
+                        {reminderStats.scheduled} of {reminderStats.wanted} reminders scheduled
+                      </Text>
+                      <Text style={styles.rowHint}>
+                        iOS only holds {MAX_PENDING_REMINDERS} at once, so the {reminderStats.dropped} furthest
+                        out {reminderStats.dropped === 1 ? 'is' : 'are'} waiting. They’re scheduled
+                        automatically as nearer ones pass.
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => onToggleDailyAgenda(!dailyAgendaEnabled)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: dailyAgendaEnabled }}
+                accessibilityLabel="Daily agenda"
+              >
+                <Ionicons
+                  name="newspaper-outline"
+                  size={18}
+                  color={dailyAgendaEnabled ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Daily agenda</Text>
+                  <Text style={styles.rowHint}>
+                    {dailyAgendaEnabled
+                      ? 'One notification each morning with the day’s count'
+                      : 'Off — nothing arrives unless a task has its own reminder'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, dailyAgendaEnabled && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, dailyAgendaEnabled && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+              {dailyAgendaEnabled && (
+                <>
+                  <View style={styles.sep} />
+                  <TouchableOpacity style={styles.row} onPress={() => openPicker('agenda')}>
+                    <Ionicons name="alarm-outline" size={18} color={colors.accent} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>Send it at</Text>
+                    </View>
+                    <Text style={styles.rowValue}>{formatHHMM(dailyAgendaTime)}</Text>
+                  </TouchableOpacity>
+                  {activePicker === 'agenda' && (
+                    <>
+                      <View style={styles.sep} />
+                      <DateTimePicker
+                        value={pickerDate}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_e, d) => d && setPickerDate(d)}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        style={styles.picker}
+                      />
+                      <View style={styles.pickerButtons}>
+                        <TouchableOpacity style={styles.pickerBtn} onPress={() => setActivePicker(null)}>
+                          <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmPicker}>
+                          <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, overdue and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count.
+            </Text>
           </View>
 
           {/* Day segments */}
@@ -661,77 +823,6 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Asks for confirmation first. Undoable right after by shaking your phone.
-            </Text>
-          </View>
-
-          {/* Time-limited tasks */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Notifications</Text>
-            <View style={styles.card}>
-              {/* Nothing surfaced the permission before, so a declined prompt
-                  just looked like reminders were broken. */}
-              <TouchableOpacity
-                style={styles.row}
-                onPress={
-                  notifPermission === 'denied' ? () => Linking.openSettings()
-                  : notifPermission === 'undetermined' ? askForNotifications
-                  : undefined
-                }
-                disabled={notifPermission !== 'denied' && notifPermission !== 'undetermined'}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole={
-                  notifPermission === 'denied' || notifPermission === 'undetermined' ? 'button' : undefined
-                }
-                accessibilityLabel={
-                  notifPermission === 'granted' ? 'Reminders are allowed'
-                  : notifPermission === 'denied' ? 'Reminders are blocked. Opens the system Settings app.'
-                  : notifPermission === 'undetermined' ? 'Reminders not enabled yet. Double tap to allow.'
-                  : 'Reminder permission'
-                }
-              >
-                <Ionicons
-                  name={notifPermission === 'granted' ? 'notifications' : 'notifications-off-outline'}
-                  size={18}
-                  color={notifPermission === 'granted' ? colors.accent : notifPermission === 'denied' ? colors.warning : colors.textSecondary}
-                />
-                <View style={styles.rowContent}>
-                  <Text style={styles.rowLabel}>Reminders</Text>
-                  <Text style={styles.rowHint}>
-                    {notifPermission === 'granted' ? 'Allowed — reminders will arrive'
-                      : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
-                      : notifPermission === 'undetermined' ? 'Not enabled yet — reminders you set won’t arrive until you allow them'
-                      : notifPermission === 'unsupported' ? 'Not available on this platform'
-                      : 'Checking…'}
-                  </Text>
-                </View>
-                {notifPermission === 'denied' && <Text style={styles.rowValue}>Open Settings</Text>}
-                {notifPermission === 'undetermined' && <Text style={styles.rowValue}>Allow</Text>}
-              </TouchableOpacity>
-
-              {/* Only worth saying once it's actually biting — the cap is
-                  invisible and irrelevant until something is being dropped. */}
-              {reminderStats.dropped > 0 && (
-                <>
-                  <View style={styles.sep} />
-                  <View style={styles.row}>
-                    <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-                    <View style={styles.rowContent}>
-                      <Text style={styles.rowLabel}>
-                        {reminderStats.scheduled} of {reminderStats.wanted} reminders scheduled
-                      </Text>
-                      <Text style={styles.rowHint}>
-                        iOS only holds {MAX_PENDING_REMINDERS} at once, so the {reminderStats.dropped} furthest
-                        out {reminderStats.dropped === 1 ? 'is' : 'are'} waiting. They’re scheduled
-                        automatically as nearer ones pass.
-                      </Text>
-                    </View>
-                  </View>
-                </>
-              )}
-            </View>
-            <Text style={styles.sectionFooter}>
-              Reminders are delivered by the system, so they need its permission. Nothing here affects the in-app
-              time-limited task behaviour below.
             </Text>
           </View>
 
