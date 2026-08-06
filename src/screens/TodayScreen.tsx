@@ -55,6 +55,8 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
+import { FabDropZone, FabDropZoneProvider, type FabDropZonesHandle } from '../components/FabDropZones';
+import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -75,6 +77,7 @@ import { EmptyState } from '../components/EmptyState';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
+import { type FabDragHandlers } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -466,12 +469,23 @@ export function TodayScreen() {
   // Switch to whichever sub-view the new task actually landed in, so it's never
   // created into a view that can't show it. A quick-add with no organizing
   // metadata at all is an Inbox task, whichever view it was added from.
-  const handleTaskCreated = (task: Task) => {
+  const handleTaskCreated = (task: Task, placed = false) => {
+    // A drag of the add button chose where this goes; a plain tap didn't, and
+    // shaking the chip off in the sheet takes the choice back.
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
+
     const destination: ViewMode = isInboxTask(task)
       ? 'inbox'
       : isTaskVisible(task) ? 'today'
       : isUnscheduledTask(task) ? 'unscheduled'
       : 'later';
+    // Position it only if it actually landed in the list it was dropped on: the
+    // sheet can push a task out of Today entirely (a defer date, no date at
+    // all), and then the spot it was dropped at isn't somewhere it can go.
+    if (placed && destination === 'today' && dropped?.kind === 'insert') {
+      placeCreatedTask(task, dropped);
+    }
     if (destination !== viewMode) setViewMode(destination);
     showJustCreated(task.id);
   };
@@ -898,6 +912,164 @@ export function TodayScreen() {
     setDraggableData(data);
   }
 
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // Pulling the button off its corner and dropping it on the list creates the
+  // task where it lands: in a category section, into a stack, at a spot between
+  // two rows, or pinned. The button reports raw pointer positions and
+  // FabDropZoneProvider turns those into an intent; everything below is about
+  // what each intent means here.
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const [fabIntent, setFabIntent] = useState<FabDropIntent | null>(null);
+  const [quickAddSeed, setQuickAddSeed] = useState<
+    { category?: string | null; groupId?: string; pinned?: boolean } | undefined
+  >(undefined);
+  const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
+  // The drop that opened the sheet, read once when the task comes back.
+  const pendingDropRef = useRef<FabDropIntent | null>(null);
+
+  // Today renders through two different list components — a plain FlatList
+  // whenever anything is pinned, ReorderableList otherwise — and the button can
+  // be dropped on either, so the zones are built from whichever is on screen.
+  const todayListData = pinnedTasks.length > 0 ? data : draggableData;
+  const zoneByKey = useMemo(() => {
+    const categoriesFor = categoriesByIndex(
+      todayListData.map(item =>
+        item.type === 'header' && item.label !== LATER_TODAY_LABEL ? item.label : null,
+      ),
+    );
+    const map = new Map<string, DropZone>();
+    todayListData.forEach((item, i) => {
+      const key = listItemKey(item);
+      const category = categoriesFor[i] ?? null;
+      switch (item.type) {
+        case 'pinned-header':
+        case 'pinned-task':
+          map.set(key, { kind: 'pinned', key });
+          break;
+        case 'rest-header':
+          map.set(key, { kind: 'rest', key });
+          break;
+        case 'header':
+          // "Later Today" is a time section, not a category — there's nothing
+          // for a drop to inherit from it.
+          map.set(key, item.label === LATER_TODAY_LABEL
+            ? { kind: 'rest', key }
+            : { kind: 'header', key, category: item.label });
+          break;
+        case 'group':
+          map.set(key, {
+            kind: 'group', key, groupId: item.group.id, groupTitle: item.group.title, category,
+          });
+          break;
+        case 'task':
+          map.set(key, { kind: 'task', key, category });
+          break;
+      }
+    });
+    return map;
+  }, [todayListData]);
+
+  /**
+   * Give the freshly created task the position it was dropped at.
+   *
+   * Deliberately the same placement pass a finished row drag runs: splicing the
+   * new row into the list at the drop point and handing the result to
+   * resolveDrop means the category-from-nearest-header rule and the sortOrder
+   * renumber are the ones already in use, not a second implementation of them.
+   */
+  const placeCreatedTask = (task: Task, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    // Position only means something in the reorderable branch. With anything
+    // pinned the list isn't hand-ordered at all, and the drop's category —
+    // already seeded into the sheet — is the whole of what it can say.
+    if (pinnedTasks.length > 0) return;
+    // The category the sheet actually committed wins: changing it there means
+    // the row belongs in that section, wherever the button happened to land.
+    if ((task.category ?? null) !== intent.category) return;
+    const anchor = draggableData.findIndex(item => listItemKey(item) === intent.anchorKey);
+    if (anchor < 0) return;
+
+    const spliced = [...draggableData];
+    spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'task', task });
+    const dropped = spliced.filter(
+      (item): item is CategoryListItem =>
+        item.type === 'header' || item.type === 'task' || item.type === 'group',
+    );
+    const { taskIds, categoryUpdates, groupUpdates, settled } = resolveDrop(dropped, {
+      isUpcoming: id => upcomingTaskIds.has(id),
+      showUpcoming,
+      categoryOrder: allCategories,
+    });
+    setDraggableData(settled);
+    groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+    // No "this task or this and future occurrences?" prompt, unlike the drag
+    // path: a task created a moment ago has no other occurrences to apply to.
+    reorderWithCategoryUpdates(taskIds, categoryUpdates);
+  };
+
+  const openQuickAddForDrop = (intent: FabDropIntent) => {
+    pendingDropRef.current = intent;
+    switch (intent.kind) {
+      case 'joinGroup':
+        // Inheriting the stack's category matches what joining one by dragging
+        // an existing task does (addExistingToGroup).
+        setQuickAddSeed({ groupId: intent.groupId, category: intent.category });
+        setQuickAddSeedLabel(intent.groupTitle.trim() || 'Stack');
+        break;
+      case 'pin':
+        setQuickAddSeed({ pinned: true });
+        setQuickAddSeedLabel('Pinned');
+        break;
+      case 'insert':
+        setQuickAddSeed({ category: intent.category });
+        setQuickAddSeedLabel(
+          intent.category ? categoryLabel(intent.category, categories) : 'This spot',
+        );
+        break;
+      case 'plain':
+        setQuickAddSeed(undefined);
+        setQuickAddSeedLabel(null);
+        break;
+    }
+    setQuickAddVisible(true);
+  };
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref, and its responder is built once regardless.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setExpandedTaskId(null);
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: pageY => dropZonesRef.current?.moveTo(pageY),
+    onEnd: pageY => {
+      setFabDragging(false);
+      setFabIntent(null);
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY) ?? { kind: 'plain' });
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      setFabIntent(null);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
+  const fabDragLabel = useMemo(() => {
+    if (!fabDragging || !fabIntent) return null;
+    switch (fabIntent.kind) {
+      case 'joinGroup': return `Add to ${fabIntent.groupTitle.trim() || 'stack'}`;
+      case 'pin': return 'New pinned task';
+      case 'insert':
+        return fabIntent.category
+          ? `New task in ${categoryLabel(fabIntent.category, categories)}`
+          : 'New task here';
+      case 'plain': return null;
+    }
+  }, [fabDragging, fabIntent, categories]);
+
   // Set right before a category header's drag() starts, and cleared right
   // before any other drag starts, so onReorder below can tell whether the
   // in-flight drag is reordering categories rather than moving a task.
@@ -1061,7 +1233,7 @@ export function TodayScreen() {
     );
   };
 
-  const renderItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
+  const renderListItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
     // While a category drag is auto-collapsing every section (see
     // startCategoryDrag), hide task/group rows that sit under a real
     // category header — the same rows collapsedCategories would remove, but
@@ -1133,8 +1305,15 @@ export function TodayScreen() {
     }
     if (item.type === 'group') {
       const allChildren = childrenByGroupId.get(item.group.id) ?? [];
+      // Lit by either drag that can land in a stack: an existing task dragged
+      // onto it, or the add button aimed at it.
       return (
-        <GroupDropTarget active={joinGroupIntentId === item.group.id}>
+        <GroupDropTarget
+          active={
+            joinGroupIntentId === item.group.id ||
+            (fabIntent?.kind === 'joinGroup' && fabIntent.groupId === item.group.id)
+          }
+        >
           <TaskGroupHeader
             group={item.group}
             allChildren={allChildren}
@@ -1198,6 +1377,18 @@ export function TodayScreen() {
     }
 
     return renderTaskRow(item.task, { drag, isActive });
+  };
+
+  // Every row doubles as a target for the add button being dragged in. The
+  // wrapper only measures — it adds no styling and claims no touches — so a row
+  // behaves exactly as it did without one.
+  const renderItem = (info: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
+    const content = renderListItem(info);
+    if (content === null) return null;
+    // ReorderableList re-renders the dragged row into its floating overlay;
+    // that copy must not claim the real row's slot in the registry.
+    const zone = info.isActive ? null : zoneByKey.get(listItemKey(info.item)) ?? null;
+    return <FabDropZone zone={zone}>{content}</FabDropZone>;
   };
 
   // Revealed vacation-hidden tasks are peek-only: no drag, but they can still
@@ -1552,6 +1743,7 @@ export function TodayScreen() {
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
         <PaintSelectionProvider {...paintProps}>
+        <FabDropZoneProvider ref={dropZonesRef} onIntentChange={setFabIntent}>
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting}
@@ -1647,7 +1839,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length > 0 && (
           <FlatList
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !fabDragging}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
@@ -1669,7 +1861,7 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length === 0 && (
           <ReorderableList
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !fabDragging}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -1975,6 +2167,7 @@ export function TodayScreen() {
             ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
           />
         )}
+        </FabDropZoneProvider>
         </PaintSelectionProvider>
         </View>
 
@@ -1984,15 +2177,30 @@ export function TodayScreen() {
             disabled={spotlightActive}
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
+            // Only Today resolves a drop to anything; the other sub-views leave
+            // the button tap-only rather than accepting a drag that can't mean
+            // anything when it lands.
+            drag={viewMode === 'today' ? fabDrag : undefined}
+            dragLabel={fabDragLabel}
           />
         )}
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => setQuickAddVisible(false)}
+          onClose={() => {
+            setQuickAddVisible(false);
+            // Both the cancel and the create path land here. Clearing the drop
+            // is what stops the next plain tap on the button from inheriting
+            // the last drag's placement.
+            setQuickAddSeed(undefined);
+            setQuickAddSeedLabel(null);
+            pendingDropRef.current = null;
+          }}
           onOpenFull={handleQuickAddOpenFull}
           context={viewMode}
           onCreated={handleTaskCreated}
+          seed={quickAddSeed}
+          seedLabel={quickAddSeedLabel}
         />
 
         {/* Add from a template: pick one here, then the apply sheet below. */}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Animated } from 'react-native';
-import { FabMenu, type FabMenuItem } from './Fab';
+import { FabMenu, type FabDragHandlers, type FabMenuItem } from './Fab';
 
 export type AddTaskType = 'chain' | 'stack' | 'template' | 'task';
 
@@ -22,10 +22,14 @@ interface Props {
   disabled?: boolean;
   /** Fades the resting FAB (e.g. while a task is spotlighted). Ignored while the menu is open. */
   opacity?: Animated.AnimatedInterpolation<number> | Animated.Value;
+  /** Lets the button be dragged into the list to place a task. Omit for tap-only. */
+  drag?: FabDragHandlers;
+  /** Names the drop target beside the button while dragging. */
+  dragLabel?: string | null;
 }
 
 /** Today's add button: the shared FabMenu, typed to the four ways it adds tasks. */
-export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
+export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabel }: Props) {
   return (
     <FabMenu
       items={ITEMS}
@@ -33,6 +37,8 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity }: Props) {
       bottom={bottom}
       disabled={disabled}
       opacity={opacity}
+      drag={drag}
+      dragLabel={dragLabel}
     />
   );
 }
