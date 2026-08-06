@@ -31,22 +31,29 @@ export const SHAKE_UPDATE_INTERVAL_MS = 50;
 
 /**
  * How hard a single jolt must be, in G, *after* gravity is removed, to count
- * toward a shake. Deliberate shaking reads well over 1 G of linear
- * acceleration; picking the phone up or tossing it on a bed usually peaks
- * below this, and — crucially — does so exactly once.
+ * toward a shake. A wrist shake of a few centimetres at 3-4 Hz peaks around
+ * 1 G of linear acceleration; picking the phone up or tossing it on a bed
+ * usually peaks below this, and — crucially — does so exactly once.
+ *
+ * Note this is compared against a slightly *attenuated* reading: gravity is
+ * folded in before the subtraction, so `linear` comes out as
+ * `GRAVITY_ALPHA * (sample - previous estimate)`. The number to picture at
+ * the phone is therefore this over alpha, ~1.2 G of real deviation. That
+ * attenuation is why 1.3 here demanded a genuinely violent shake.
  */
-export const SHAKE_THRESHOLD_G = 1.3;
+export const SHAKE_THRESHOLD_G = 1.0;
 
 /**
  * Jolts in alternating directions needed to call it a shake.
  *
  * Note that one physical swing yields *two* jolts, not one: the push out,
- * then the deceleration bringing the phone back. So this is three full
- * back-and-forth swings. A real shake runs at 4-5 Hz and clears it inside
- * the window with room to spare, while a knock (one jolt) or a single flick
- * (two) can't reach it however hard it is.
+ * then the deceleration bringing the phone back. So this is two full
+ * back-and-forth swings — about half a second of shaking at 4-5 Hz, which is
+ * roughly as long as anyone shakes a phone before deciding it didn't work.
+ * A knock (one jolt) or a single flick (two) still can't reach it however
+ * hard it is, and the confirm dialog covers what's left.
  */
-export const SHAKE_JOLTS_REQUIRED = 6;
+export const SHAKE_JOLTS_REQUIRED = 4;
 
 /** All of those jolts have to land inside this window to count. */
 export const SHAKE_WINDOW_MS = 1200;
