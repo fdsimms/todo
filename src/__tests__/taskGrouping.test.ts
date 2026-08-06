@@ -531,6 +531,50 @@ describe('laterTodaySections', () => {
   });
 });
 
+describe('laterSections', () => {
+  // Noon so the day a date lands on can't flip with the wall clock.
+  const daysFromNow = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  it('orders sections by when their tasks surface', () => {
+    const far = makeTask({ id: 'far', deferUntil: daysFromNow(3) });
+    const near = makeTask({ id: 'near', deferUntil: daysFromNow(1) });
+    const sections = laterSections([far, near]);
+    expect(sections).toHaveLength(2);
+    expect(sections.flatMap(s => s.data.map(t => t.id))).toEqual(['near', 'far']);
+  });
+
+  it('collects tasks surfacing on the same day under one section', () => {
+    const a = makeTask({ id: 'a', deferUntil: daysFromNow(2) });
+    const b = makeTask({ id: 'b', deferUntil: daysFromNow(2) });
+    const sections = laterSections([a, b]);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].data.map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('lists a multi-segment task under one section per segment', () => {
+    const task = makeTask({ id: 'a', deferUntil: daysFromNow(1), timeSegments: ['morning', 'evening'] });
+    const sections = laterSections([task]);
+    expect(sections.map(s => s.title.split(' — ')[1])).toEqual(['Morning', 'Evening']);
+    expect(sections.every(s => s.data.map(t => t.id).includes('a'))).toBe(true);
+  });
+
+  // The sort works on a mapped array of (task, visibleAt) pairs rather than a
+  // defensive copy of the input — this is what keeps that safe.
+  it('does not reorder the array it was given', () => {
+    const input = [
+      makeTask({ id: 'a', deferUntil: daysFromNow(3) }),
+      makeTask({ id: 'b', deferUntil: daysFromNow(1) }),
+    ];
+    laterSections(input);
+    expect(input.map(t => t.id)).toEqual(['a', 'b']);
+  });
+});
+
 describe('visibleLaterSections', () => {
   const section = (title: string, count: number) => ({
     title,

@@ -320,9 +320,13 @@ export function laterTaskOrder(items: LaterListItem[]): string[] {
 export const SEGMENT_LABELS: Record<string, string> = { morning: 'Morning', afternoon: 'Afternoon', evening: 'Evening', night: 'Night' };
 export const SEGMENT_ORDER = ['morning', 'afternoon', 'evening', 'night'] as const;
 
-/** The Later-view section title(s) a task belongs under — a task with multiple timeSegments belongs under more than one. */
-export function laterGroupKeys(task: Task): string[] {
-  const visibleAt = getVisibleAt(task);
+/**
+ * The Later-view section title(s) a task belongs under — a task with multiple
+ * timeSegments belongs under more than one. `visibleAt` is accepted so a
+ * caller that already computed it (laterSections does, to sort by it) doesn't
+ * pay for a second getVisibleAt call per task.
+ */
+export function laterGroupKeys(task: Task, visibleAt: Date = getVisibleAt(task)): string[] {
   const dayLabel = formatGroupHeader(visibleAt.toISOString());
   if (task.timeSegments.length > 0) {
     return task.timeSegments.map(seg => `${dayLabel} — ${SEGMENT_LABELS[seg]}`);
@@ -339,10 +343,18 @@ export function laterGroupKeys(task: Task): string[] {
 /** Group deferred tasks into Later-view sections, sorted by when each becomes visible. */
 export function laterSections(deferredTasks: Task[]): { title: string; data: Task[] }[] {
   const grouped = new Map<string, Task[]>();
-  [...deferredTasks]
-    .sort((a, b) => getVisibleAt(a).getTime() - getVisibleAt(b).getTime())
-    .forEach(task => {
-      for (const key of laterGroupKeys(task)) {
+  // getVisibleAt is the expensive call in this pass — date math, a settings
+  // read and a category lookup every time — so compute it once per task and
+  // carry it through, rather than calling it from inside the comparator
+  // (~n log n times) and then again for each task's section title. It also
+  // makes the comparator consistent: getVisibleAt falls back to `new Date()`
+  // for a task with no future gate, so re-calling it mid-sort could order the
+  // same pair differently depending on when the comparison happened.
+  deferredTasks
+    .map(task => ({ task, visibleAt: getVisibleAt(task) }))
+    .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
+    .forEach(({ task, visibleAt }) => {
+      for (const key of laterGroupKeys(task, visibleAt)) {
         if (!grouped.has(key)) grouped.set(key, []);
         grouped.get(key)!.push(task);
       }
