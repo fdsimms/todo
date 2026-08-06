@@ -41,6 +41,7 @@ export default function App() {
   const initSettings = useSettingsStore(s => s.initialize);
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
+  const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
 
   useEffect(() => {
     // initTasks calls initDatabase() which creates all tables first
@@ -54,9 +55,13 @@ export default function App() {
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     checkVacationExpiry();
+    // Close out quota tasks whose day ended unfinished while the app was
+    // closed, so a day you fell short on is logged as a partial instead of
+    // sitting overdue — also needs real settings (dayResetTime) loaded first.
+    rolloverQuotas();
     // Request notification permissions
     requestNotificationPermissions();
-  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry]);
+  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

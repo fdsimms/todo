@@ -147,6 +147,65 @@ export function isTaskExpired(task: Task): boolean {
   return new Date() >= getWindowThreshold(task.windowEnd);
 }
 
+// ---- Quota tasks ---------------------------------------------------------
+// A quota task is a habit logged several times a day (8 glasses of water)
+// rather than done once. It is *hidden from Today while you're on pace* and
+// surfaces only once you've fallen behind, so a day you keep up with produces
+// no feed rows at all and a single tap (which logs one unit) usually re-hides
+// it again. Reaching targetCount completes the task like any other, so the
+// per-day reset is free: the next occurrence starts at progressCount 0.
+
+export function isQuotaTask(task: Task): boolean {
+  return task.targetCount !== null && task.targetCount > 1;
+}
+
+// The span the pace ramps across: the task's own time window when it has one,
+// otherwise the global active hours. Anchored to the current *logical* day via
+// getWindowThreshold, for the reason documented there.
+function getQuotaSpan(task: Task): { start: Date; end: Date } {
+  const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  return {
+    start: getWindowThreshold(task.windowStart ?? activeHoursStart),
+    end: getWindowThreshold(task.windowEnd ?? activeHoursEnd),
+  };
+}
+
+// How many units you'd expect to have logged by now. Ceil rather than floor so
+// the first unit is owed the moment the span opens ("start the day with one")
+// instead of only after a target-th of it has passed; the last is owed as the
+// span closes. Outside the span it's all or nothing.
+export function quotaExpectedByNow(task: Task): number {
+  if (!isQuotaTask(task)) return 0;
+  const target = task.targetCount!;
+  const { start, end } = getQuotaSpan(task);
+  const now = new Date();
+  if (now <= start) return 0;
+  // end <= start means active hours are set to a span that doesn't resolve on
+  // one logical day (e.g. crossing midnight) — treat the whole day as past due
+  // rather than dividing by zero below.
+  if (now >= end || end <= start) return target;
+  return Math.min(target, Math.ceil((target * (+now - +start)) / (+end - +start)));
+}
+
+export function isQuotaOnPace(task: Task): boolean {
+  return task.progressCount >= quotaExpectedByNow(task);
+}
+
+// The moment quotaExpectedByNow ticks up to progressCount + 1 — i.e. when the
+// next unit comes due. Places an on-pace quota task in Later's running order.
+export function quotaNextDueAt(task: Task): Date {
+  const { start, end } = getQuotaSpan(task);
+  if (end <= start) return start;
+  return new Date(+start + ((+end - +start) * task.progressCount) / task.targetCount!);
+}
+
+// True for a quota occurrence closed out without reaching its target — the
+// record rolloverQuotas leaves behind for a day you fell short. Derived from
+// the count, so a partial day needs no column of its own.
+export function isQuotaPartial(task: Task): boolean {
+  return task.completed && isQuotaTask(task) && task.progressCount < task.targetCount!;
+}
+
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
   if (task.archived) return false;
@@ -187,6 +246,11 @@ export function isTaskVisible(task: Task): boolean {
     const todayStart = getCurrentDayStart();
     if (taskDayStart > todayStart) return false;
   }
+
+  // Last of the gates, so a quota task still loses to its own date/defer/window
+  // checks first: being on pace only hides a task that would otherwise be due
+  // right now.
+  if (isQuotaTask(task) && isQuotaOnPace(task)) return false;
 
   if (!isCategoryScheduleActive(task.category)) return false;
 
@@ -362,6 +426,13 @@ export function getVisibleAt(task: Task): Date {
       const nextWindow = getNextCategoryWindowStart(cat);
       if (nextWindow && nextWindow > now) candidates.push(nextWindow);
     }
+  }
+
+  // An on-pace quota task comes back when its next unit falls due rather than
+  // at any day boundary — that's what orders it against everything else in Later.
+  if (isQuotaTask(task) && isQuotaOnPace(task)) {
+    const nextUnit = quotaNextDueAt(task);
+    if (nextUnit > now) candidates.push(nextUnit);
   }
 
   if (candidates.length === 0) return now;

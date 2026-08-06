@@ -11,6 +11,11 @@ import {
   isUnscheduledTask,
   isLiveRecurring,
   isUpcomingToday,
+  isQuotaTask,
+  quotaExpectedByNow,
+  isQuotaOnPace,
+  quotaNextDueAt,
+  isQuotaPartial,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -21,6 +26,8 @@ const mockSettingsState = {
   afternoonStart: '12:00',
   eveningStart: '18:00',
   nightStart: '21:00',
+  activeHoursStart: '08:00',
+  activeHoursEnd: '22:00',
   vacationMode: false,
 };
 
@@ -93,6 +100,8 @@ const baseTask: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   recurrenceFromCompletion: false,
+  targetCount: null,
+  progressCount: 0,
   reminderTime: null,
   parentId: null,
   groupId: null,
@@ -932,5 +941,135 @@ describe('isUnscheduledTask', () => {
   it('is false for completed tasks and subtasks', () => {
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', completed: true })).toBe(false);
     expect(isUnscheduledTask({ ...baseTask, category: 'Work', parentId: 'p1' })).toBe(false);
+  });
+});
+
+// ─── Quota tasks ──────────────────────────────────────────────────────────────
+
+// Active hours run 08:00–22:00 (840 minutes) and NOW is 10:00 AM, so 120 of
+// those minutes have passed — 1/7 of the day, which owes 2 of 8 units.
+const quotaTask: Task = {
+  ...baseTask,
+  targetCount: 8,
+  progressCount: 0,
+  recurrenceType: 'daily',
+  dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+};
+
+describe('quota tasks', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  describe('isQuotaTask', () => {
+    it('is false without a target, and for a target of one', () => {
+      expect(isQuotaTask(baseTask)).toBe(false);
+      expect(isQuotaTask({ ...quotaTask, targetCount: 1 })).toBe(false);
+    });
+
+    it('is true for a target of two or more', () => {
+      expect(isQuotaTask(quotaTask)).toBe(true);
+    });
+  });
+
+  describe('quotaExpectedByNow', () => {
+    it('owes nothing before active hours open', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 7, 0, 0));
+      expect(quotaExpectedByNow(quotaTask)).toBe(0);
+    });
+
+    it('owes the first unit the moment they open', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 8, 1, 0));
+      expect(quotaExpectedByNow(quotaTask)).toBe(1);
+    });
+
+    it('ramps across the span', () => {
+      expect(quotaExpectedByNow(quotaTask)).toBe(2);            // 10:00
+      jest.setSystemTime(new Date(2025, 5, 10, 15, 0, 0));
+      expect(quotaExpectedByNow(quotaTask)).toBe(4);            // half way
+    });
+
+    it('owes the lot once they close, and never more than the target', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+      expect(quotaExpectedByNow(quotaTask)).toBe(8);
+    });
+
+    it('uses the task\'s own time window over the global active hours', () => {
+      // 09:00–11:00, so at 10:00 exactly half the window has gone.
+      const windowed = { ...quotaTask, windowStart: '09:00', windowEnd: '11:00' };
+      expect(quotaExpectedByNow(windowed)).toBe(4);
+    });
+
+    it('owes nothing for a task that is not a quota', () => {
+      expect(quotaExpectedByNow(baseTask)).toBe(0);
+    });
+  });
+
+  describe('visibility', () => {
+    it('hides from Today while you are keeping up', () => {
+      const onPace = { ...quotaTask, progressCount: 2 };
+      expect(isQuotaOnPace(onPace)).toBe(true);
+      expect(isTaskVisible(onPace)).toBe(false);
+    });
+
+    it('surfaces on Today once you fall behind', () => {
+      const behind = { ...quotaTask, progressCount: 1 };
+      expect(isQuotaOnPace(behind)).toBe(false);
+      expect(isTaskVisible(behind)).toBe(true);
+    });
+
+    it('re-hides as soon as the next unit is logged', () => {
+      const behind = { ...quotaTask, progressCount: 1 };
+      expect(isTaskVisible(behind)).toBe(true);
+      expect(isTaskVisible({ ...behind, progressCount: 2 })).toBe(false);
+    });
+
+    it('waits in Later while on pace', () => {
+      expect(isTaskDeferred({ ...quotaTask, progressCount: 2 })).toBe(true);
+    });
+
+    it('still loses to its own date gate when due on a later day', () => {
+      const tomorrow = {
+        ...quotaTask,
+        progressCount: 0, // behind pace, but not its day yet
+        dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
+      };
+      expect(isTaskVisible(tomorrow)).toBe(false);
+    });
+  });
+
+  describe('quotaNextDueAt', () => {
+    it('is when the next unit falls due', () => {
+      // 2 of 8 logged → a quarter of the way through an 08:00–22:00 span.
+      expect(quotaNextDueAt({ ...quotaTask, progressCount: 2 })).toEqual(
+        new Date(2025, 5, 10, 11, 30, 0)
+      );
+    });
+
+    it('orders an on-pace quota in Later by that time', () => {
+      expect(getVisibleAt({ ...quotaTask, progressCount: 2 })).toEqual(
+        new Date(2025, 5, 10, 11, 30, 0)
+      );
+    });
+  });
+
+  describe('isQuotaPartial', () => {
+    it('is true for a day closed out short of its target', () => {
+      expect(isQuotaPartial({ ...quotaTask, completed: true, progressCount: 5 })).toBe(true);
+    });
+
+    it('is false for a day that hit its target, and while still open', () => {
+      expect(isQuotaPartial({ ...quotaTask, completed: true, progressCount: 8 })).toBe(false);
+      expect(isQuotaPartial({ ...quotaTask, progressCount: 5 })).toBe(false);
+    });
+
+    it('is false for an ordinary completed task', () => {
+      expect(isQuotaPartial({ ...baseTask, completed: true })).toBe(false);
+    });
   });
 });

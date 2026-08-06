@@ -30,6 +30,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
+import { isQuotaPartial } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
 interface LogbookSection {
@@ -226,14 +227,20 @@ export function LogbookScreen() {
                 accessibilityState={{ checked: true }}
                 accessibilityLabel={`Mark ${item.title} as not done`}
               >
-                <Ionicons name="checkmark" size={14} color={colors.green} />
+                <Ionicons
+                  name={isQuotaPartial(item) ? 'remove' : 'checkmark'}
+                  size={14}
+                  color={isQuotaPartial(item) ? colors.textTertiary : colors.green}
+                />
               </TouchableOpacity>
               <View
                 style={styles.rowContent}
                 accessible
                 accessibilityLabel={[
                   item.title,
-                  `completed ${formatTime(item.completedAt!)}`,
+                  isQuotaPartial(item)
+                    ? `fell short at ${item.progressCount} of ${item.targetCount}, ${formatTime(item.completedAt!)}`
+                    : `completed ${formatTime(item.completedAt!)}`,
                   item.category,
                   item.actualMinutes != null ? `timed ${formatDuration(item.actualMinutes)}` : null,
                 ].filter(Boolean).join(', ')}
@@ -241,6 +248,9 @@ export function LogbookScreen() {
                 <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
                 <View style={styles.metaRow}>
                   <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
+                  {item.targetCount !== null && (
+                    <Text style={styles.taskTime}>· {item.progressCount}/{item.targetCount}</Text>
+                  )}
                   {categoryLabel && (
                     <View style={styles.categoryChip}>
                       <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
