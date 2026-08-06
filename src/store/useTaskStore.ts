@@ -33,8 +33,8 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
-import { getNextDueDate, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal } from '../utils/visibilityUtils';
+import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 
@@ -157,6 +157,9 @@ interface TaskStore {
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
   uncompleteTask: (id: string) => void;
+  logQuotaUnit: (id: string) => void;
+  unlogQuotaUnit: (id: string) => void;
+  rolloverQuotas: () => void;
   deferTask: (id: string, until: Date) => void;
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
@@ -306,6 +309,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: draft.recurrenceEndDate ?? null,
       recurrenceCount: draft.recurrenceCount ?? null,
       recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
+      targetCount: draft.targetCount ?? null,
+      progressCount: draft.progressCount ?? 0,
       tags: draft.tags ?? [],
       category: draft.category ?? null,
       sortOrder: maxOrder + 1,
@@ -365,6 +370,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesDefaults: null,
       archived: false,
       archivedAt: null,
+      chainIndex: 0, // a duplicate starts a chain fresh, not mid-way through the original
     };
     const copy: Task = {
       ...original,
@@ -555,6 +561,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
       previousStreakCount: task.streakCount,
       previousStreakDate: task.streakDate,
+      // Completing a quota task outright (the last unit, a swipe, a bulk
+      // action) means the whole quota is done, so the row reads 8/8 rather
+      // than being logged as a partial (see isQuotaPartial).
+      progressCount: isQuotaTask(task) ? task.targetCount! : task.progressCount,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -562,6 +572,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     cancelTaskReminder(id);
 
     let nextTask: Task | null = null;
+    let nextSubtasks: Task[] = [];
     const spawnsNext = chainAdvances ? (recurs || !atChainEnd) : recurs;
     if (spawnsNext) {
       // The recurrence's schedule only decides the date at the point it
@@ -631,6 +642,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deadline: nextDeadline,
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
+          progressCount: 0, // a quota starts the new day empty
           streakCount: streakAdvances ? newStreakCount : task.streakCount,
           streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
           previousStreakCount: task.streakCount,
@@ -647,6 +659,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
+
+        // Subtasks belong to the series, not a single occurrence — carry them
+        // onto the fresh occurrence the same way duplicateTask does, reset to
+        // unchecked (a subtask always starts unchecked — see TemplateItem.subtasks).
+        // Chains spawn a new row on every step, so without this a chained
+        // task's subtasks would vanish after the first step.
+        nextSubtasks = get().subtasksOf(task.id).map(sub => ({
+          ...sub,
+          id: generateId(),
+          parentId: nextTask!.id,
+          completed: false,
+          completedAt: null,
+          createdAt: now.toISOString(),
+          seenAt: now.toISOString(),
+        }));
+        nextSubtasks.forEach(sub => {
+          dbInsertTask(sub);
+          scheduleTaskReminder(sub);
+        });
       }
     }
 
@@ -654,6 +685,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: [
         ...s.tasks.map(t => (t.id === id ? completed : t)),
         ...(nextTask ? [nextTask] : []),
+        ...nextSubtasks,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
     }));
@@ -718,6 +750,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // streak incremented for something that no longer happened.
       streakCount: task.previousStreakCount,
       streakDate: task.previousStreakDate,
+      // A re-opened quota task sits one unit short of its target rather than
+      // at a completed-looking 8/8 — undoing the last glass leaves you at 7/8.
+      progressCount: isQuotaTask(task) ? Math.max(0, task.targetCount! - 1) : task.progressCount,
     };
     dbUpdateTask(updated);
 
@@ -766,6 +801,118 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  logQuotaUnit(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || !isQuotaTask(task)) return;
+    // The unit that reaches the target isn't a count bump, it's a completion —
+    // hand off so recurrence, streaks, reminders and the Logbook all run
+    // exactly as they do for any other task.
+    if (task.progressCount + 1 >= task.targetCount!) {
+      get().completeTask(id);
+      return;
+    }
+    const updated = { ...task, progressCount: task.progressCount + 1 };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    get().setLastAction({
+      label: 'Logged',
+      undo: () => get().unlogQuotaUnit(id),
+    });
+  },
+
+  unlogQuotaUnit(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isQuotaTask(task) || task.progressCount === 0) return;
+    const updated = { ...task, progressCount: task.progressCount - 1 };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  // Close out quota occurrences left unfinished when their day ended. A quota
+  // task only completes itself by reaching its target, so a day you fall short
+  // on would otherwise leave the occurrence sitting overdue forever and the
+  // series never advancing. Each stale one is logged as a partial record (the
+  // count is kept, so isQuotaPartial can tell 5/8 from 8/8), its streak breaks,
+  // and a fresh occurrence starts today at zero.
+  //
+  // Called on foreground and at startup rather than on a timer — like
+  // checkVacationExpiry, it's "time passed while we weren't looking" cleanup,
+  // and the app may have been closed for days.
+  rolloverQuotas() {
+    const { dayResetTime } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const stale = get().tasks.filter(t =>
+      isQuotaTask(t) &&
+      !t.completed &&
+      !t.archived &&
+      // A quota with no repeat has no next day to reset into — it's a one-off
+      // ("read 8 chapters"), so it stays overdue like any other undone task
+      // rather than being closed out and silently re-spawned as a habit.
+      t.recurrenceType !== 'none' &&
+      // Vacation-paused tasks are protected from streak loss by design.
+      !isHiddenForVacation(t) &&
+      t.dueDate !== null &&
+      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+    );
+    if (stale.length === 0) return;
+
+    const closed: Task[] = [];
+    const spawned: Task[] = [];
+    const now = new Date().toISOString();
+    for (const task of stale) {
+      // Stamped at the end of the day it belonged to, not now — the partial
+      // is a record of *that* day, and the Logbook groups by completedAt.
+      const ownDayEnd = new Date(+getTaskDayStart(new Date(task.dueDate!), dayResetTime) + 24 * 60 * 60 * 1000 - 1);
+      closed.push({
+        ...task,
+        completed: true,
+        completedAt: ownDayEnd.toISOString(),
+        // progressCount deliberately left as-is — that's the record.
+        streakCount: 0,
+        streakDate: null,
+        previousStreakCount: task.streakCount,
+        previousStreakDate: task.streakDate,
+      });
+      // A series that has run out (recurrenceEndDate/recurrenceCount) gets the
+      // partial record but no successor — the schedule is consulted only for
+      // *whether* it continues, since its answer for *when* would still be in
+      // the past if the app sat closed for a week.
+      if (getNextDueDate(task, dayResetTime) === null) continue;
+      const nextDue = new Date(todayStart);
+      nextDue.setHours(12, 0, 0, 0);
+      const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+      spawned.push({
+        ...effective,
+        id: generateId(),
+        completed: false,
+        completedAt: null,
+        createdAt: now,
+        seenAt: now,
+        dueDate: nextDue.toISOString(),
+        deferUntil: null,
+        pinned: false,
+        progressCount: 0,
+        streakCount: 0,
+        streakDate: null,
+        previousStreakCount: 0,
+        previousStreakDate: null,
+        timerStartedAt: null,
+        previousOccurrenceId: task.id,
+        seriesDefaults: null,
+      });
+    }
+
+    closed.forEach(dbUpdateTask);
+    spawned.forEach(t => {
+      dbInsertTask(t);
+      scheduleTaskReminder(t);
+    });
+    const closedById = new Map(closed.map(t => [t.id, t]));
+    set(s => ({
+      tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
+    }));
+  },
+
   deferTask(id, until) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
@@ -780,6 +927,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
+    // Mirror completeTask's advancesBySchedule split: a mid-chain step never
+    // consults the recurrence schedule, so skipping one should only move the
+    // chain position — pushing dueDate/recurrenceCount here would burn a full
+    // cycle of the recurrence on a step that isn't scheduled at all.
+    const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
+    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+    if (chainAdvances && !atChainEnd) {
+      get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+      return;
+    }
     const { dayResetTime } = useSettingsStore.getState();
     const nextDue = getNextDueDate(task, dayResetTime);
     if (!nextDue) return;
@@ -790,10 +947,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
-    const nextChainIndex =
-      task.chainEnabled && task.chainItems.length > 0
-        ? (task.chainIndex + 1) % task.chainItems.length
-        : task.chainIndex;
+    const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
       dueDate: nextDue.toISOString(),
       deferUntil: null,
@@ -979,6 +1133,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       parentId,
       groupId: null,
       projectId: null,
+      targetCount: null,
+      progressCount: 0,
       reminderTime: null,
       chainEnabled: false,
       chainIndex: 0,
@@ -1094,6 +1250,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       parentId: null,
       groupId,
       projectId: null,
+      targetCount: null,
+      progressCount: 0,
       reminderTime: null,
       chainEnabled: false,
       chainIndex: 0,

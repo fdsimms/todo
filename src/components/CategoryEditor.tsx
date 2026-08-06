@@ -24,11 +24,10 @@ import { animateLayout } from '../utils/layoutAnimation';
 import {
   DAY_LABELS,
   FULL_DAY_NAMES,
-  dateToHHMM,
   formatScheduleDays,
   formatScheduleTime,
-  parseTimeToDate,
 } from '../utils/categorySchedule';
+import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
@@ -128,7 +127,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const openPicker = (which: 'start' | 'end') => {
     haptics.tap();
     animateLayout();
-    setPickerDate(parseTimeToDate(which === 'start' ? start : end));
+    setPickerDate(hhmmToDate(which === 'start' ? start : end));
     setPicker(which);
   };
 

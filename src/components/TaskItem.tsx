@@ -30,7 +30,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
@@ -138,6 +138,8 @@ export function TaskItem({
   // TaskItem is mounted once per row, not re-created per render.
   const {
     completeTask,
+    logQuotaUnit,
+    unlogQuotaUnit,
     updateTask,
     setLastAction,
     markTaskSeen,
@@ -409,6 +411,15 @@ export function TaskItem({
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
 
+  // A quota task is logged a unit at a time rather than ticked off once, so
+  // its circle becomes a fill meter and a tap logs one glass/rep/page instead
+  // of completing — except the last one, which completes for real.
+  const isQuota = isQuotaTask(task) && !task.completed;
+  const quotaProgress = isQuota ? `${task.progressCount}/${task.targetCount}` : '';
+  // Selection mode keeps the plain circle so the paint-select gutter behaves
+  // exactly as it does for every other row.
+  const showQuotaMeter = isQuota && !selectionMode && !completing;
+
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -460,6 +471,38 @@ export function TaskItem({
         easing: Easing.inOut(Easing.cubic),
       });
     });
+  };
+
+  // One tap on the meter logs one unit. The unit that reaches the target runs
+  // the normal completion path instead, so the last glass of the day gets the
+  // same pop-checkmark-and-fade every other completion gets (and the store
+  // hands off to completeTask for the recurrence/streak bookkeeping).
+  const handleQuotaTap = async () => {
+    if (completingRef.current) return;
+    if (recurrenceNotYetDue) {
+      await haptics.error();
+      return;
+    }
+    if (task.progressCount + 1 >= task.targetCount!) {
+      handleComplete();
+      return;
+    }
+    if (isNew) markTaskSeen(task.id);
+    await haptics.impactLight();
+    circleScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+    ]).start();
+    logQuotaUnit(task.id);
+  };
+
+  // Long-press takes one back off, for the mis-tap — the shake-to-undo path
+  // covers it too, but the meter is tapped often enough to want a local undo.
+  const handleQuotaUndo = async () => {
+    if (task.progressCount === 0) return;
+    await haptics.tap();
+    unlogQuotaUnit(task.id);
   };
 
   // Widget checkbox taps queue a completion and open the app (see
@@ -520,25 +563,40 @@ export function TaskItem({
       )}
 
       <TouchableOpacity
-        onPress={selectionMode ? onSelect : (completing ? handleUndoComplete : handleComplete)}
+        onPress={
+          selectionMode ? onSelect
+          : completing ? handleUndoComplete
+          : showQuotaMeter ? handleQuotaTap
+          : handleComplete
+        }
+        onLongPress={showQuotaMeter ? handleQuotaUndo : undefined}
+        delayLongPress={interaction.delayLongPress}
         hitSlop={10}
         style={styles.circleWrapper}
-        accessibilityRole="checkbox"
-        accessibilityState={{
-          checked: selectionMode ? selected : completing,
-          disabled: !selectionMode && recurrenceNotYetDue,
-        }}
+        // A meter isn't binary, so it's a button rather than a checkbox.
+        accessibilityRole={showQuotaMeter ? 'button' : 'checkbox'}
+        accessibilityState={
+          showQuotaMeter
+            ? { disabled: recurrenceNotYetDue }
+            : {
+                checked: selectionMode ? selected : completing,
+                disabled: !selectionMode && recurrenceNotYetDue,
+              }
+        }
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
             : recurrenceNotYetDue
               ? `${task.title}, not due yet`
-              : completing
-                ? `Undo complete ${task.title}`
-                : timerReady
-                  ? `${task.title}, timer done, complete`
-                  : `Complete ${task.title}`
+              : showQuotaMeter
+                ? `Log one of ${task.targetCount}, ${quotaProgress} done, ${task.title}`
+                : completing
+                  ? `Undo complete ${task.title}`
+                  : timerReady
+                    ? `${task.title}, timer done, complete`
+                    : `Complete ${task.title}`
         }
+        accessibilityHint={showQuotaMeter && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
       >
         <Animated.View style={[
           styles.circle,
@@ -547,8 +605,15 @@ export function TaskItem({
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           !selectionMode && !completing && !recurrenceNotYetDue && timerReady && styles.circleReady,
           selectionMode && selected && styles.circleSelected,
+          showQuotaMeter && styles.circleQuota,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
+          {showQuotaMeter && (
+            <View
+              style={[styles.quotaFill, { height: `${(task.progressCount / task.targetCount!) * 100}%` }]}
+              pointerEvents="none"
+            />
+          )}
           {selectionMode && selected && (
             <Ionicons name="checkmark" size={14} color={colors.onAccent} />
           )}
@@ -634,8 +699,14 @@ export function TaskItem({
             )}
           </View>
         )}
-        {(timed || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
+            {isQuota && (
+              <View style={styles.metaChip}>
+                <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quotaLabel} numberOfLines={1}>{quotaProgress}</Text>
+              </View>
+            )}
             {timed && (
               <View
                 style={styles.metaChip}
@@ -900,7 +971,7 @@ export function TaskItem({
                           key={item.id}
                           style={actualIdx === currentIdx && styles.expandMetaActive}
                         >
-                          {actualIdx > 0 ? ' → ' : ' '}{item.title}
+                          {i > 0 ? ' → ' : ' '}{item.title}
                         </Text>
                       );
                     })}
@@ -1302,6 +1373,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
     borderColor: colors.accent,
   },
+  circleQuota: {
+    borderColor: colors.accent,
+    overflow: 'hidden', // clips the fill to the circle
+  },
+  quotaFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.accent,
+  },
   content: {
     flex: 1,
     gap: 3,
@@ -1363,6 +1445,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   groupLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  quotaLabel: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   windowLabel: {
     color: colors.red,

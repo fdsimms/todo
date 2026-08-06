@@ -90,7 +90,7 @@ jest.mock('../store/useCategoryStore', () => ({
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: jest.fn(() => ({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false })),
+    getState: jest.fn(() => ({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' })),
   },
 }));
 
@@ -138,6 +138,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
+  targetCount: null,
+  progressCount: 0,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -214,7 +216,7 @@ beforeEach(() => {
   useProjectStore.setState({ projects: [], initialized: false });
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
-  useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
+  useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -510,6 +512,23 @@ describe('duplicateTask', () => {
     expect(copy.actualMinutes).toBeNull();
     expect(copy.previousOccurrenceId).toBeNull();
     expect(copy.pinned).toBe(false);
+  });
+
+  it('resets chainIndex to 0 instead of copying the mid-chain position', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 't1',
+        chainEnabled: true,
+        chainItems: [
+          { id: 'a', title: 'Step A', notes: '' },
+          { id: 'b', title: 'Step B', notes: '' },
+          { id: 'c', title: 'Step C', notes: '' },
+        ],
+        chainIndex: 2,
+      })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.chainIndex).toBe(0);
   });
 
   it('sets sortOrder to maxExisting + 1', () => {
@@ -871,6 +890,34 @@ describe('completeTask', () => {
     expect(completed.streakCount).toBe(task.streakCount);
   });
 
+  it('carries subtasks onto the spawned chain step, reset to unchecked', () => {
+    const task = makeTask({
+      id: 'chained-with-subtasks',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    const sub1 = makeTask({ id: 'sub-1', parentId: 'chained-with-subtasks', title: 'Sub A', sortOrder: 1 });
+    const sub2 = makeTask({
+      id: 'sub-2', parentId: 'chained-with-subtasks', title: 'Sub B', sortOrder: 2, completed: true,
+    });
+    useTaskStore.setState({ tasks: [task, sub1, sub2] });
+    useTaskStore.getState().completeTask('chained-with-subtasks');
+
+    const { tasks } = useTaskStore.getState();
+    const next = tasks.find(t => t.chainIndex === 1 && !t.parentId)!;
+    expect(next).toBeDefined();
+    const nextSubtasks = tasks.filter(t => t.parentId === next.id);
+    expect(nextSubtasks).toHaveLength(2);
+    expect(nextSubtasks.map(s => s.title).sort()).toEqual(['Sub A', 'Sub B']);
+    expect(nextSubtasks.every(s => !s.completed)).toBe(true);
+    // Original subtasks are untouched, still attached to the now-completed step.
+    expect(tasks.filter(t => t.parentId === 'chained-with-subtasks')).toHaveLength(2);
+  });
+
   it('does not complete a recurring task whose dueDate is a future day', () => {
     const task = makeTask({
       id: 't1',
@@ -1173,6 +1220,34 @@ describe('uncompleteTask', () => {
     expect(dbDeleteTask).not.toHaveBeenCalled();
   });
 
+  it('restores the pre-completion chainIndex when undoing a mid-chain step, and removes the spawned next step', () => {
+    const task = makeTask({
+      id: 't1',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('t1');
+
+    let tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    const spawned = tasks.find(t => t.id !== 't1')!;
+    expect(spawned.chainIndex).toBe(1);
+
+    useTaskStore.getState().uncompleteTask('t1');
+
+    tasks = useTaskStore.getState().tasks;
+    expect(tasks.map(t => t.id)).toEqual(['t1']);
+    const restored = tasks[0];
+    expect(restored.completed).toBe(false);
+    expect(restored.chainIndex).toBe(0);
+  });
+
   it('restores streakCount/streakDate to their pre-completion values', () => {
     const yesterdayStart = new Date(2025, 5, 9, 0, 0, 0).toISOString();
     const task = makeTask({
@@ -1302,6 +1377,54 @@ describe('skipNextRecurrence', () => {
     const updated = useTaskStore.getState().tasks[0];
     expect(updated.dueDate).toBe(task.dueDate);
     expect(updated.recurrenceCount).toBe(1);
+  });
+
+  it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(1);
+    // A mid-chain step never consults the recurrence schedule — skipping it
+    // shouldn't burn a cycle of the recurrence the way completing it wouldn't either.
+    expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('advances the schedule and wraps the chain back to 0 when skipping the last step', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', notes: '' },
+        { id: 'b', title: 'Step B', notes: '' },
+        { id: 'c', title: 'Step C', notes: '' },
+      ],
+      chainIndex: 2, // last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(0);
+    expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
+    expect(updated.recurrenceCount).toBe(4);
   });
 });
 
@@ -3021,5 +3144,205 @@ describe('completeTask auto-archiving a finished project', () => {
     useProjectStore.setState({ projects: [] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
     expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
+  });
+});
+
+describe('quota tasks', () => {
+  const quota = (overrides: Partial<Task> = {}) =>
+    makeTask({
+      id: 'water',
+      title: 'Drink water',
+      targetCount: 8,
+      progressCount: 0,
+      recurrenceType: 'daily',
+      dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // June 10, 2025 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  describe('logQuotaUnit', () => {
+    it('logs one unit without completing the task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.progressCount).toBe(4);
+      expect(task.completed).toBe(false);
+      expect(dbUpdateTask).toHaveBeenCalled();
+    });
+
+    it('completes the task on the unit that reaches the target', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(8);
+    });
+
+    it('spawns tomorrow\'s occurrence empty when the target is reached', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const next = useTaskStore.getState().tasks.find(t => t.id !== 'water')!;
+      expect(next).toBeDefined();
+      expect(next.progressCount).toBe(0);
+      expect(next.targetCount).toBe(8);
+      expect(next.completed).toBe(false);
+      expect(next.previousOccurrenceId).toBe('water');
+    });
+
+    it('advances the streak once for the day, not once per unit', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 5, streakCount: 4, streakDate: new Date(2025, 5, 9).toISOString() })] });
+      const store = useTaskStore.getState();
+      store.logQuotaUnit('water');
+      store.logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(4);
+
+      store.logQuotaUnit('water'); // the eighth
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(5);
+    });
+
+    it('ignores tasks that are not quotas, and completed ones', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 'plain' }), quota({ id: 'done', completed: true, progressCount: 8 })] });
+      const store = useTaskStore.getState();
+      store.logQuotaUnit('plain');
+      store.logQuotaUnit('done');
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'plain')!.progressCount).toBe(0);
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'done')!.progressCount).toBe(8);
+    });
+
+    it('is undoable a unit at a time', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 3 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(4);
+
+      useTaskStore.getState().lastAction!.undo();
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(3);
+    });
+  });
+
+  describe('unlogQuotaUnit', () => {
+    it('takes one back but never below zero', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
+      const store = useTaskStore.getState();
+      store.unlogQuotaUnit('water');
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+
+      store.unlogQuotaUnit('water');
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+  });
+
+  describe('uncompleteTask', () => {
+    it('reopens a finished quota one unit short of its target', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      useTaskStore.getState().uncompleteTask('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(7);
+    });
+  });
+
+  describe('rolloverQuotas', () => {
+    it('closes out an unfinished day as a partial record', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 5, dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const partial = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(partial.completed).toBe(true);
+      expect(partial.progressCount).toBe(5); // the record of that day
+      // Stamped on the day it belonged to, not today.
+      expect(new Date(partial.completedAt!).getDate()).toBe(9);
+    });
+
+    it('breaks the streak on a day that fell short', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 5,
+          streakCount: 12,
+          streakDate: new Date(2025, 5, 8).toISOString(),
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const partial = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(partial.streakCount).toBe(0);
+      expect(useTaskStore.getState().tasks.find(t => t.id !== 'water')!.streakCount).toBe(0);
+    });
+
+    it('starts today fresh, even after the app sat closed for a week', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 2, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const next = useTaskStore.getState().tasks.find(t => t.id !== 'water')!;
+      expect(next.progressCount).toBe(0);
+      expect(new Date(next.dueDate!).getDate()).toBe(10); // today, not June 4
+      expect(next.completed).toBe(false);
+    });
+
+    it('leaves today\'s own unfinished quota alone', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 2 })] });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('leaves a one-off quota with no repeat overdue instead of re-spawning it', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          recurrenceType: 'none',
+          progressCount: 2,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('records the partial but spawns nothing once the series has ended', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 5,
+          recurrenceCount: 1, // this was the last occurrence
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const tasks = useTaskStore.getState().tasks;
+      expect(tasks).toHaveLength(1);
+      expect(tasks[0].completed).toBe(true);
+      expect(tasks[0].progressCount).toBe(5);
+    });
+
+    it('leaves ordinary overdue tasks alone', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 'plain', dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
   });
 });
