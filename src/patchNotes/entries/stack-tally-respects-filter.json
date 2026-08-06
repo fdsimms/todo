@@ -1,0 +1,4 @@
+{
+  "message": "A stack's \"N/M done today\" badge now hides itself while a priority or effort filter is narrowing the list, instead of counting members the filter removed from view",
+  "date": "2026-08-06"
+}

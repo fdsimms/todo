@@ -23,6 +23,14 @@ interface Props {
   // currently visible — isRelevantToGroupToday would always read them as not
   // due, and the badge would never appear.
   dueTodayOverride?: Task[];
+  // True when the list this header sits in is narrowed by an active
+  // priority/effort filter. The tally is deliberately computed from the full
+  // roster (see dueTodayOverride above) rather than what's rendered below,
+  // so under a filter it can show a "3/8" badge next to two visible child
+  // rows — a count that's honest about the stack but not about what's on
+  // screen. Rather than pick a set to lie about, the badge and summary just
+  // don't render while a filter is narrowing the list underneath them.
+  filtered?: boolean;
   onToggleCollapse: () => void;
   onComplete: () => void;
   // Fires when the user taps an already-fully-done stack — stamps the group
@@ -43,6 +51,7 @@ export function TaskGroupHeader({
   group,
   allChildren,
   dueTodayOverride,
+  filtered,
   onToggleCollapse,
   onComplete,
   onDismiss,
@@ -88,8 +97,9 @@ export function TaskGroupHeader({
   // the roster ("8 tasks", in the editor) and today's work are different
   // numbers, and a bare "3/8" pill doesn't say which one it means.
   const nextUp = dueToday.find(c => !c.completed);
-  const summary = totalToday === 0 ? null
+  const summary = totalToday === 0 || filtered ? null
     : `${doneToday} of ${totalToday} done today${nextUp ? ` · Next: ${nextUp.title}` : ''}`;
+  const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
     if (dismissed || dismissing || allDone) return;
@@ -200,7 +210,7 @@ export function TaskGroupHeader({
                   // a label set here overrides the row's children, so the
                   // "3/8" pill is invisible to a screen reader on its own.
                   accessibilityLabel={
-                    totalToday > 0
+                    showTally
                       ? `${group.title} stack, ${doneToday} of ${totalToday} done today`
                       : `${group.title} stack`
                   }
@@ -217,7 +227,7 @@ export function TaskGroupHeader({
                 >
                   <View style={styles.titleRow}>
                     <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
-                    {totalToday > 0 && (
+                    {showTally && (
                       <View style={styles.progressBadge}>
                         <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
                       </View>
