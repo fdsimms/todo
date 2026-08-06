@@ -1519,7 +1519,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         {item.title}
                       </Text>
                       <TouchableOpacity
-                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        onLongPress={drag}
                         delayLongPress={150}
                         hitSlop={8}
                         style={styles.dragHandle}
@@ -2026,7 +2026,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {sub.title}
                   </Text>
                   <TouchableOpacity
-                    onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                    onLongPress={drag}
                     delayLongPress={150}
                     hitSlop={8}
                     style={styles.dragHandle}

@@ -322,7 +322,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
               return (
                 <View style={styles.childRow}>
                   <TouchableOpacity
-                    onLongPress={e => drag(e.nativeEvent.pageY)}
+                    onLongPress={drag}
                     delayLongPress={150}
                     hitSlop={8}
                     style={styles.dragHandle}

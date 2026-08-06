@@ -12,6 +12,18 @@ import { animation } from '../theme';
 
 interface Props {
   expanded: boolean;
+  /**
+   * Set false to let content draw outside these bounds. Only safe while the
+   * section is open and settled — the clip is what makes the collapse a
+   * collapse — and that is the one case where it costs nothing, since
+   * `maxHeight` then equals the content's own height and clips nothing.
+   *
+   * It exists for the floating card a drag inside the section lifts (see
+   * SortableList): the card leaves these bounds by design when a row is pulled
+   * out of the list, and clipped in half at the section's edge it reads as a
+   * rendering fault rather than as a gesture.
+   */
+  clip?: boolean;
   children: React.ReactNode;
 }
 
@@ -44,7 +56,7 @@ const UNMEASURED_MAX = 100000;
  * the section stayed pinned at zero and expanding it never brought the rows
  * back.
  */
-export function AnimatedCollapsible({ expanded, children }: Props) {
+export function AnimatedCollapsible({ expanded, clip = true, children }: Props) {
   const [contentHeight, setContentHeight] = useState<number | null>(null);
   const progress = useSharedValue(expanded ? 1 : 0);
 
@@ -71,7 +83,7 @@ export function AnimatedCollapsible({ expanded, children }: Props) {
   };
 
   return (
-    <Reanimated.View style={[style, styles.clip]}>
+    <Reanimated.View style={[style, clip && styles.clip]}>
       {/* In normal flow, so the wrapper falls back to exactly the open height
           whenever maxHeight isn't clamping it. The children keep their natural
           height regardless of the clamp above them (a View doesn't shrink
