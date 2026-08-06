@@ -45,6 +45,10 @@ import {
   rescheduleAllReminders,
   scheduleTimerAlarm,
   cancelTimerAlarm,
+  getNotificationPermission,
+  upcomingReminders,
+  pendingReminderStats,
+  MAX_PENDING_REMINDERS,
   scheduleDailyAgenda,
   cancelDailyAgenda,
 } from '../utils/notifications';
@@ -349,6 +353,122 @@ describe('cancelTimerAlarm', () => {
   it('cancels the namespaced id, leaving the task reminder alone', async () => {
     await cancelTimerAlarm('task-1');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('timer:task-1');
+  });
+});
+
+// ─── upcomingReminders / pendingReminderStats ────────────────────────────────
+
+describe('upcomingReminders', () => {
+  const NOW = new Date('2026-06-10T12:00:00.000Z');
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+
+  it('keeps only future reminders on live tasks', () => {
+    const tasks = [
+      makeTask({ id: 'keep', reminderTime: at(10) }),
+      makeTask({ id: 'no-reminder', reminderTime: null }),
+      makeTask({ id: 'past', reminderTime: at(-10) }),
+      makeTask({ id: 'done', reminderTime: at(10), completed: true }),
+      makeTask({ id: 'archived', reminderTime: at(10), archived: true }),
+    ];
+    expect(upcomingReminders(tasks, NOW).map(t => t.id)).toEqual(['keep']);
+  });
+
+  it('sorts soonest first, since that is the order the cap keeps', () => {
+    const tasks = [
+      makeTask({ id: 'later', reminderTime: at(120) }),
+      makeTask({ id: 'soonest', reminderTime: at(5) }),
+      makeTask({ id: 'middle', reminderTime: at(60) }),
+    ];
+    expect(upcomingReminders(tasks, NOW).map(t => t.id)).toEqual(['soonest', 'middle', 'later']);
+  });
+
+  it('is uncapped — the cap is applied by the caller, so the count stays honest', () => {
+    const tasks = Array.from({ length: MAX_PENDING_REMINDERS + 10 }, (_, i) =>
+      makeTask({ id: `t${i}`, reminderTime: at(i + 1) }));
+    expect(upcomingReminders(tasks, NOW)).toHaveLength(MAX_PENDING_REMINDERS + 10);
+  });
+
+  it('returns nothing for an empty list', () => {
+    expect(upcomingReminders([], NOW)).toEqual([]);
+  });
+});
+
+describe('pendingReminderStats', () => {
+  const NOW = new Date('2026-06-10T12:00:00.000Z');
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+  const nUpcoming = (n: number) =>
+    Array.from({ length: n }, (_, i) => makeTask({ id: `t${i}`, reminderTime: at(i + 1) }));
+
+  it('drops nothing while under the cap', () => {
+    expect(pendingReminderStats(nUpcoming(3), NOW)).toEqual({ wanted: 3, scheduled: 3, dropped: 0 });
+  });
+
+  it('drops nothing at exactly the cap', () => {
+    expect(pendingReminderStats(nUpcoming(MAX_PENDING_REMINDERS), NOW)).toEqual({
+      wanted: MAX_PENDING_REMINDERS,
+      scheduled: MAX_PENDING_REMINDERS,
+      dropped: 0,
+    });
+  });
+
+  it('reports the overflow past the cap — the reminders that will never fire', () => {
+    expect(pendingReminderStats(nUpcoming(MAX_PENDING_REMINDERS + 16), NOW)).toEqual({
+      wanted: MAX_PENDING_REMINDERS + 16,
+      scheduled: MAX_PENDING_REMINDERS,
+      dropped: 16,
+    });
+  });
+
+  it('counts only what would actually be scheduled, not every task with a date', () => {
+    const tasks = [
+      ...nUpcoming(2),
+      makeTask({ id: 'past', reminderTime: at(-1) }),
+      makeTask({ id: 'done', reminderTime: at(5), completed: true }),
+      makeTask({ id: 'none', reminderTime: null }),
+    ];
+    expect(pendingReminderStats(tasks, NOW)).toEqual({ wanted: 2, scheduled: 2, dropped: 0 });
+  });
+
+  it('is all zeroes with nothing scheduled', () => {
+    expect(pendingReminderStats([], NOW)).toEqual({ wanted: 0, scheduled: 0, dropped: 0 });
+  });
+});
+
+// ─── getNotificationPermission ───────────────────────────────────────────────
+
+describe('getNotificationPermission', () => {
+  it('reports granted', async () => {
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({ granted: true, status: 'granted' });
+    expect(await getNotificationPermission()).toBe('granted');
+  });
+
+  it('reports undetermined before the OS prompt has been shown', async () => {
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      granted: false, status: 'undetermined', canAskAgain: true,
+    });
+    expect(await getNotificationPermission()).toBe('undetermined');
+  });
+
+  it('reports denied once the prompt is spent — the case only system Settings can undo', async () => {
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      granted: false, status: 'denied', canAskAgain: false,
+    });
+    expect(await getNotificationPermission()).toBe('denied');
+  });
+
+  it('treats a still-askable non-granted state as undetermined, not denied', async () => {
+    // Offering "Open Settings" for a permission the app can still ask for
+    // itself would send the user on a detour it doesn't need.
+    (Notifications.getPermissionsAsync as jest.Mock).mockResolvedValue({
+      granted: false, status: 'denied', canAskAgain: true,
+    });
+    expect(await getNotificationPermission()).toBe('undetermined');
+  });
+
+  it('reports unsupported on web without touching the Notifications API', async () => {
+    (Platform as any).OS = 'web';
+    expect(await getNotificationPermission()).toBe('unsupported');
+    expect(Notifications.getPermissionsAsync).not.toHaveBeenCalled();
   });
 });
 
