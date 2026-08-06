@@ -138,6 +138,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
@@ -385,6 +388,22 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'occurrence', previousOccurrenceId: 'original-task' }));
     const [t] = dbGetAllTasks();
     expect(t.previousOccurrenceId).toBe('original-task');
+  });
+
+  it('round-trips a dated series id and its repeat rule', () => {
+    dbInsertTask(makeTask({ id: 'series-row', seriesId: 'set-1', seriesMonthDays: [10, 15], seriesRepeatMonths: 2 }));
+    const [t] = dbGetAllTasks();
+    expect(t.seriesId).toBe('set-1');
+    expect(t.seriesMonthDays).toEqual([10, 15]);
+    expect(t.seriesRepeatMonths).toBe(2);
+  });
+
+  it('defaults a task with no series to null / empty / 1', () => {
+    dbInsertTask(makeTask({ id: 'plain-row' }));
+    const [t] = dbGetAllTasks();
+    expect(t.seriesId).toBeNull();
+    expect(t.seriesMonthDays).toEqual([]);
+    expect(t.seriesRepeatMonths).toBe(1);
   });
 
   it('round-trips seriesDefaults', () => {

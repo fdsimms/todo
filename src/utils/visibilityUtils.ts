@@ -515,6 +515,40 @@ export function isRelevantToGroupToday(task: Task): boolean {
 //   - a future occurrence whose own predecessor is already in the roster,
 //     which would otherwise count one series twice on the day it's completed
 //     (tonight's finished row plus tomorrow's fresh one).
+// A dated series is several real rows standing for one commitment (see
+// Task.seriesId), so a stack holding "walk the dog" on the 10th and the 15th
+// would otherwise read as two members. Collapses each series to the row that
+// speaks for it right now — whichever is relevant to today if any is, else
+// the earliest one still to come — keeping it in the position its first row
+// held so the roster's order doesn't jump around.
+function collapseSeries(tasks: Task[]): Task[] {
+  const slotOf = new Map<string, number>();
+  const out: (Task | null)[] = [];
+
+  for (const task of tasks) {
+    if (!task.seriesId) {
+      out.push(task);
+      continue;
+    }
+    const slot = slotOf.get(task.seriesId);
+    if (slot === undefined) {
+      slotOf.set(task.seriesId, out.length);
+      out.push(task);
+      continue;
+    }
+    const held = out[slot]!;
+    const heldToday = isRelevantToGroupToday(held);
+    const taskToday = isRelevantToGroupToday(task);
+    if (taskToday && !heldToday) {
+      out[slot] = task;
+    } else if (taskToday === heldToday && (task.dueDate ?? '') < (held.dueDate ?? '')) {
+      out[slot] = task;
+    }
+  }
+
+  return out.filter((t): t is Task => t !== null);
+}
+
 export function groupRoster(children: Task[]): Task[] {
   const superseded = new Set<string>();
   const byId = new Map<string, Task>();
@@ -522,7 +556,7 @@ export function groupRoster(children: Task[]): Task[] {
     byId.set(child.id, child);
     if (child.previousOccurrenceId) superseded.add(child.previousOccurrenceId);
   }
-  return children.filter(child => {
+  const collapsed = children.filter(child => {
     // Checked first so a successor that IS due today (a chain step spawned
     // from a dated predecessor picks up today's date — see completeTask)
     // is never dropped as a duplicate of the step that spawned it.
@@ -533,6 +567,7 @@ export function groupRoster(children: Task[]): Task[] {
     if (prev && isRelevantToGroupToday(prev)) return false;
     return true;
   });
+  return collapseSeries(collapsed);
 }
 
 // True when the user has dismissed this stack for the current logical day.

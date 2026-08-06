@@ -164,6 +164,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
+  seriesId: null,
+  seriesMonthDays: [],
+  seriesRepeatMonths: 1,
   seriesDefaults: null,
   archived: false,
   archivedAt: null,
@@ -1837,6 +1840,27 @@ describe('groupRosterOf', () => {
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['live']);
   });
 
+  it('counts a dated series as one member, not one per date', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'dog-10', groupId: 'g1', seriesId: 'set-1', dueDate: today(), sortOrder: 1 }),
+        makeTask({ id: 'dog-15', groupId: 'g1', seriesId: 'set-1', dueDate: daysAhead(5), sortOrder: 2 }),
+        makeTask({ id: 'other', groupId: 'g1', dueDate: today(), sortOrder: 3 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['dog-10', 'other']);
+  });
+
+  it("lets a series' date that is due today speak for it", () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'dog-past', groupId: 'g1', seriesId: 'set-1', dueDate: daysAhead(9), sortOrder: 1 }),
+        makeTask({ id: 'dog-today', groupId: 'g1', seriesId: 'set-1', dueDate: today(), sortOrder: 2 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['dog-today']);
+  });
+
   it('stays flat as a recurring member is completed day after day', () => {
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', groupId: 'g1', dueDate: today(), recurrenceType: 'daily', recurrenceInterval: 1 })],
@@ -3344,5 +3368,270 @@ describe('quota tasks', () => {
       expect(useTaskStore.getState().tasks).toHaveLength(1);
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
+  });
+});
+
+// ─── dated series ────────────────────────────────────────────────────────────
+
+describe('addTaskSeries', () => {
+  it('creates one row per date, sharing a series id', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog' },
+      [new Date(2025, 8, 15, 12, 0, 0), new Date(2025, 8, 10, 12, 0, 0)],
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0].seriesId).toBe(rows[1].seriesId);
+    expect(rows[0].seriesId).toBeTruthy();
+    // Sorted, so the set reads earliest-first wherever it's listed.
+    expect(new Date(rows[0].dueDate!).getDate()).toBe(10);
+    expect(new Date(rows[1].dueDate!).getDate()).toBe(15);
+    expect(rows.every(r => r.title === 'Walk the dog')).toBe(true);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('gives every date its own row so each one is separately due', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    expect(new Set(rows.map(r => r.id)).size).toBe(2);
+    expect(rows.every(r => r.recurrenceType === 'none')).toBe(true);
+  });
+
+  it('re-anchors the reminder onto each date, keeping its time of day', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', reminderTime: new Date(2025, 8, 10, 8, 30, 0).toISOString() },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    const second = new Date(rows[1].reminderTime!);
+    expect(second.getDate()).toBe(15);
+    expect(second.getHours()).toBe(8);
+    expect(second.getMinutes()).toBe(30);
+  });
+
+  it('does nothing for an empty date list', () => {
+    expect(useTaskStore.getState().addTaskSeries({ title: 'x' }, [])).toEqual([]);
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+});
+
+describe('applyTaskDates', () => {
+  it('turns a plain dated task into a series when it gains a date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: new Date(2025, 8, 10, 12, 0, 0).toISOString() })],
+    });
+    useTaskStore.getState().applyTaskDates('a', [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0].seriesId).toBeTruthy();
+    expect(tasks.every(t => t.seriesId === tasks[0].seriesId)).toBe(true);
+  });
+
+  it('keeps the edited row on its own date rather than repointing it', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: new Date(2025, 8, 15, 12, 0, 0).toISOString() })],
+    });
+    useTaskStore.getState().applyTaskDates('a', [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const edited = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(new Date(edited.dueDate!).getDate()).toBe(15);
+  });
+
+  it('drops the incomplete row for a date removed from the set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const days = useTaskStore.getState().tasks.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b);
+    expect(days).toEqual([10, 20]);
+  });
+
+  it('never deletes a completed date — it is history, not schedule', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+      ),
+    });
+    // Rewrite the set to a date that doesn't include the completed one.
+    useTaskStore.getState().applyTaskDates(rows[1].id, [
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const completed = useTaskStore.getState().tasks.find(t => t.id === rows[0].id);
+    expect(completed).toBeDefined();
+    expect(completed!.completed).toBe(true);
+  });
+
+  it('dissolves the series back to a plain task when the set drops to one date', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [new Date(2025, 8, 10, 12, 0, 0)]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].seriesId).toBeNull();
+    expect(tasks[0].seriesMonthDays).toEqual([]);
+  });
+
+  it('stores the repeat rule on every row of the set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().applyTaskDates(
+      rows[0].id,
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+
+    expect(useTaskStore.getState().tasks.every(t => t.seriesMonthDays.join() === '10,15')).toBe(true);
+  });
+});
+
+describe('updateTask series fan-out', () => {
+  it("applies content edits to the set's later dates", () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { title: 'Walk the neighbour dog' });
+
+    const later = useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!;
+    expect(later.title).toBe('Walk the neighbour dog');
+  });
+
+  it('leaves earlier dates alone — "this and later", not the whole set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[1].id, { title: 'Changed' });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[0].id)!.title).toBe('Dog');
+  });
+
+  it('does not fan out an occurrence-scoped edit', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { title: 'Just today' }, { scope: 'occurrence' });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.title).toBe('Dog');
+  });
+
+  it('does not fan out the due date, which is per-row', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { dueDate: new Date(2025, 8, 11, 12, 0, 0).toISOString() });
+
+    expect(new Date(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.dueDate!).getDate()).toBe(15);
+  });
+
+  it("re-anchors a fanned-out reminder onto each date's own day", () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, {
+      reminderTime: new Date(2025, 8, 10, 7, 15, 0).toISOString(),
+    });
+
+    const later = new Date(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.reminderTime!);
+    expect(later.getDate()).toBe(15);
+    expect(later.getHours()).toBe(7);
+    expect(later.getMinutes()).toBe(15);
+  });
+});
+
+describe('deleteSeries', () => {
+  it('deletes the incomplete dates and keeps completed ones in the Logbook', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date().toISOString() } : t
+      ),
+    });
+    useTaskStore.getState().deleteSeries(rows[0].seriesId!);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe(rows[0].id);
+    expect(tasks[0].completed).toBe(true);
+  });
+});
+
+describe('completeTask — series rollover', () => {
+  const makeRepeatingSet = () =>
+    useTaskStore.getState().addTaskSeries(
+      { title: 'Dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+
+  it('does not roll over while another date is still outstanding', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
+  });
+
+  it('inserts next month\'s set once every date is done', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+    expect(live).toHaveLength(2);
+    const next = live.map(t => new Date(t.dueDate!)).sort((a, b) => +a - +b);
+    expect(next.map(d => d.getMonth())).toEqual([9, 9]); // October
+    expect(next.map(d => d.getDate())).toEqual([10, 15]);
+    expect(live.every(t => t.seriesId === rows[0].seriesId)).toBe(true);
+  });
+
+  it('rolls over regardless of the order the dates are finished in', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[1].id);
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(2);
+  });
+
+  it('ends after one pass when the set does not repeat', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(0);
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
   });
 });
