@@ -6,6 +6,7 @@ import {
   dragRange,
   rowIndexAtContentY,
   contentOriginOffset,
+  dragTranslation,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -201,5 +202,47 @@ describe('contentOriginOffset', () => {
 
   it('handles content drawn above the container origin', () => {
     expect(contentOriginOffset(170, 200)).toBe(-30);
+  });
+});
+
+describe('dragTranslation', () => {
+  // A row resting at content-Y 400 in a list scrolled to 0, no inset: the card
+  // is pinned to 400 on screen at the moment the finger takes hold of it.
+  it('is zero for a card still sitting in its own slot', () => {
+    expect(dragTranslation(400, 400, 0, 0)).toBe(0);
+  });
+
+  it('follows the card up and down', () => {
+    expect(dragTranslation(460, 400, 0, 0)).toBe(60);
+    expect(dragTranslation(330, 400, 0, 0)).toBe(-70);
+  });
+
+  it('matches finger delta + scroll delta while the layout holds still', () => {
+    // What the old finger-only math computed: dragged 60 down, list autoscrolled
+    // 25 further under it. The card's anchor doesn't move with the scroll, so
+    // the slot slides up 25 and the translation grows by the same amount.
+    const anchor = 400; // 400 - 0 (scroll at start) - 0 (origin)
+    const fingerDelta = 60;
+    const scrollDelta = 25;
+    expect(dragTranslation(anchor + fingerDelta, 400, scrollDelta, 0)).toBe(fingerDelta + scrollDelta);
+  });
+
+  it('accounts for a top content inset', () => {
+    // The row's content-Y 400 sits at 520 on screen behind a 120 inset, so a
+    // card at 520 is resting, not dragged.
+    expect(dragTranslation(520, 400, 0, 120)).toBe(0);
+  });
+
+  it('re-derives the slot when the list re-lays out under a live drag', () => {
+    // The category-header case: the finger grabs a header resting at content-Y
+    // 900 and hasn't moved, so the card is still at 900 on screen. The
+    // auto-collapse then hides every section's tasks and the header's own slot
+    // moves to 120. The card belongs to the finger, so the drop is now 780
+    // below the slot — which is what puts the gap under the card instead of
+    // leaving the card a screen away from the finger.
+    expect(dragTranslation(900, 120, 0, 0)).toBe(780);
+    // Once the finger drags back up to the collapsed run, the translation
+    // shrinks toward zero exactly as it would in a list that never moved.
+    expect(dragTranslation(160, 120, 0, 0)).toBe(40);
   });
 });
