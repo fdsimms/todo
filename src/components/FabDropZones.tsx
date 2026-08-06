@@ -3,6 +3,7 @@ import React, {
   forwardRef,
   useCallback,
   useContext,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -10,12 +11,16 @@ import React, {
 } from 'react';
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
+  AUTOSCROLL_INTERVAL_MS,
+  autoscrollStep,
   indicatorY,
   resolveFabDrop,
   targetKey,
   zoneAtY,
   zoneKey,
+  type DragScroller,
   type DropZone,
+  type FabHomeState,
   type FabDropIntent,
   type ZoneRect,
 } from '../utils/fabDrop';
@@ -40,8 +45,23 @@ import { animation, radius, spacing, type Colors } from '../theme';
  * and Today drops to a plain FlatList whenever anything is pinned. Measuring
  * separately is what lets the same gesture work across all of those.
  *
- * The snapshot is taken once, so the list must not scroll during the drag (the
- * screen suspends it) and a drop can only land on something already on screen.
+ * The user can't scroll during the drag — the button's responder has the touch
+ * and the screen suspends the list anyway — so instead the drag scrolls it,
+ * from the bands at either end of the viewport, whenever the screen supplies a
+ * `scroller`. That makes the whole list reachable rather than only the screenful
+ * the drag started on, and it costs two things:
+ *
+ * 1. **Bands are stored with the scroll offset added in** and the pointer is
+ *    queried with the same offset added, so a snapshot taken at one scroll
+ *    position still answers correctly at another. Nothing has to be re-measured
+ *    just because the list moved.
+ * 2. **Rows that mount mid-drag measure themselves as they arrive** — a row
+ *    scrolled into view was never in the opening snapshot, and without this it
+ *    would be the one row in the viewport a drop couldn't land on.
+ *
+ * Rows that unmount keep their band on purpose: it stays correct (it just
+ * describes somewhere off-screen now) and their list data is still there, so a
+ * row scrolled back into view needs no repair.
  */
 
 interface MeasurableView {
@@ -155,10 +175,16 @@ export function FabDropZone({ zone, children }: ZoneProps) {
 export interface FabDropZonesHandle {
   /** Take the snapshot. Call as the drag arms. */
   begin: () => void;
-  /** Resolve the pointer to an intent, updating the indicator. */
-  moveTo: (pageY: number) => void;
+  /**
+   * Resolve the pointer to an intent, updating the indicator and autoscrolling
+   * if the pointer has reached either end of the list. `home` overrides both:
+   * on the button's own corner the drop is a cancel (once the drag has been
+   * somewhere else first) and the list holds still, since that corner and the
+   * bottom autoscroll band overlap.
+   */
+  moveTo: (pageY: number, home?: FabHomeState) => void;
   /** Resolve one last time, clear the indicator, and hand back what was dropped. */
-  end: (pageY: number) => FabDropIntent;
+  end: (pageY: number, home?: FabHomeState) => FabDropIntent;
   /** Clear the indicator without resolving anything (cancelled drag). */
   cancel: () => void;
 }
@@ -171,29 +197,76 @@ interface Props {
    * where the rows are.
    */
   onIntentChange?: (intent: FabDropIntent | null) => void;
+  /**
+   * The list to autoscroll while dragging, in a box the screen can swap (Today
+   * renders two different lists). Read at each tick, so a null one — no list,
+   * or a screen that hasn't wired this up — simply means the drag reaches only
+   * what's already on screen, exactly as it did before.
+   */
+  scroller?: { current: DragScroller | null };
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }
 
 export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
-  function FabDropZoneProvider({ onIntentChange, style, children }, ref) {
+  function FabDropZoneProvider({ onIntentChange, scroller, style, children }, ref) {
     const colors = useColors();
     const styles = useMemo(() => makeStyles(colors), [colors]);
 
     const containerRef = useRef<View | null>(null);
     const containerYRef = useRef(0);
+    const containerHeightRef = useRef(0);
     const viewsRef = useRef<Map<string, MeasurableView>>(new Map());
     const zonesRef = useRef<Map<string, DropZone>>(new Map());
-    /** Zone bands, sorted top to bottom, snapshotted once per drag. */
+    /**
+     * Zone bands, sorted top to bottom, each with the list's scroll offset at
+     * the moment it was measured already added in (see the note up top).
+     */
     const rectsRef = useRef<ZoneRect[]>([]);
     /** targetKey of the published intent, or null between drags. */
     const targetRef = useRef<string | null>(null);
     // Bumped per drag so measurements still in flight from the last one are
     // discarded rather than mixed into this one's snapshot.
     const dragIdRef = useRef(0);
+    const draggingRef = useRef(false);
+    // Last thing the finger said, replayed by each autoscroll tick: the list
+    // moves under a finger that is holding still, so the target changes without
+    // any new pointer event to recompute it from.
+    const lastPageYRef = useRef(0);
+    const lastHomeRef = useRef<FabHomeState>('outside');
+    const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const autoscrollStepRef = useRef(0);
 
     const onIntentChangeRef = useRef(onIntentChange);
     onIntentChangeRef.current = onIntentChange;
+    const scrollerRef = useRef(scroller);
+    scrollerRef.current = scroller;
+
+    /** The list's current scroll offset, or 0 when there's nothing scrollable. */
+    const scrollOffset = useCallback(() => scrollerRef.current?.current?.getOffset() ?? 0, []);
+
+    /**
+     * Measure one row into the snapshot. The offset is read when the
+     * measurement lands rather than when it's issued: measureInWindow answers a
+     * frame or so later, and during an autoscroll that frame has moved the list.
+     */
+    const measureZone = useCallback((key: string, drag: number) => {
+      const view = viewsRef.current.get(key);
+      const zone = zonesRef.current.get(key);
+      if (!zone || typeof view?.measureInWindow !== 'function') return;
+      view.measureInWindow((_x, y, _w, h) => {
+        // A measurement from a previous drag describes where the row was
+        // then; folding it in now would leave one band pointing at the
+        // wrong place.
+        if (dragIdRef.current !== drag) return;
+        if (!Number.isFinite(y) || !(h > 0)) return;
+        const top = y + scrollOffset();
+        const next = rectsRef.current.filter(r => zoneKey(r.zone) !== key);
+        next.push({ zone, top, bottom: top + h });
+        next.sort((a, b) => a.top - b.top);
+        rectsRef.current = next;
+      });
+    }, [scrollOffset]);
 
     const indicatorTop = useRef(new Animated.Value(0)).current;
     const indicatorOpacity = useRef(new Animated.Value(0)).current;
@@ -203,12 +276,16 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
     const indicatorShownRef = useRef(false);
 
     const registerView = useCallback((key: string, view: MeasurableView | null) => {
-      if (view) viewsRef.current.set(key, view);
-      else {
+      if (view) {
+        viewsRef.current.set(key, view);
+        // Mounted mid-drag — the list has scrolled this row into view since the
+        // opening snapshot, so it measures itself now or it isn't a target.
+        if (draggingRef.current) measureZone(key, dragIdRef.current);
+      } else {
         viewsRef.current.delete(key);
         zonesRef.current.delete(key);
       }
-    }, []);
+    }, [measureZone]);
     const setZone = useCallback((key: string, zone: DropZone) => {
       zonesRef.current.set(key, zone);
     }, []);
@@ -223,17 +300,31 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
         }).start();
       };
 
-      const showIndicator = (intent: FabDropIntent) => {
+      /**
+       * Put the line on the seam the current intent names. `immediate` covers
+       * both ways an autoscroll breaks the glide below: a seam that hasn't
+       * changed but has *moved* (the list scrolled under a still finger), and a
+       * seam that changed while the content was moving anyway. Either way a
+       * spring would spend its whole duration chasing the next tick's offset,
+       * and the next tick's setValue would fight it for the frames it lived.
+       */
+      const showIndicator = (intent: FabDropIntent, immediate: boolean) => {
         if (intent.kind !== 'insert') {
           hideIndicator();
           return;
         }
         const hit = rectsRef.current.find(r => zoneKey(r.zone) === intent.anchorKey);
         if (!hit) return;
-        // Window space → this container's space, so the line lands on the seam
-        // the drop will actually use.
-        const top = indicatorY(hit, intent.before) - containerYRef.current;
+        // Band space → this container's space: take the scroll offset back out
+        // (it was added when the row was measured) so the line lands on the
+        // seam where the rows are drawn right now.
+        const top = indicatorY(hit, intent.before) - scrollOffset() - containerYRef.current;
         if (indicatorShownRef.current) {
+          if (immediate) {
+            indicatorTop.stopAnimation();
+            indicatorTop.setValue(top);
+            return;
+          }
           // Already on screen: glide to the new seam. Snapping it there reads
           // as a stutter at speed, since the jump lands on the same frame as
           // the tick and the rows the finger is passing.
@@ -249,19 +340,85 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
         }).start();
       };
 
-      const publish = (intent: FabDropIntent) => {
+      const publish = (intent: FabDropIntent, scrolled: boolean) => {
         const target = targetKey(rectsRef.current, intent);
-        if (targetRef.current === target) return;
+        const changed = targetRef.current !== target;
+        if (!changed && !scrolled) return;
         targetRef.current = target;
-        showIndicator(intent);
+        showIndicator(intent, scrolled || !changed);
+        if (!changed) return;
         // One tick per place the drop can land — rate-limited, because a flick
         // down the list crosses several between frames. A plain drop is silent:
-        // nothing was aimed at.
-        if (intent.kind !== 'plain') haptics.dragTick();
+        // nothing was aimed at. Reaching the cancel well is a firmer knock than
+        // crossing a seam, because it's the one target that undoes the drag.
+        if (intent.kind === 'cancel') haptics.impactMedium();
+        else if (intent.kind !== 'plain') haptics.dragTick();
         onIntentChangeRef.current?.(intent);
       };
 
+      /** Resolve the last reported pointer against the bands as they stand now. */
+      const resolve = (): FabDropIntent => {
+        // The pointer joins the bands' space, which carries the offset.
+        const y = lastPageYRef.current + scrollOffset();
+        return resolveFabDrop(zoneAtY(rectsRef.current, y), y, lastHomeRef.current === 'returned');
+      };
+
+      const stopAutoscroll = () => {
+        if (autoscrollTimerRef.current !== null) {
+          clearInterval(autoscrollTimerRef.current);
+          autoscrollTimerRef.current = null;
+        }
+        autoscrollStepRef.current = 0;
+      };
+
+      const maybeAutoscroll = () => {
+        // Only out over the list. The button's corner is inside the bottom
+        // band, so scrolling from anywhere near it would mean the list ran to
+        // its end while the button was being lifted, and again whenever a drag
+        // paused over the well to decide.
+        const step = lastHomeRef.current !== 'outside' ? 0 : autoscrollStep(
+          lastPageYRef.current,
+          containerYRef.current,
+          containerYRef.current + containerHeightRef.current,
+        );
+        autoscrollStepRef.current = step;
+        if (step === 0) {
+          const wasScrolling = autoscrollTimerRef.current !== null;
+          stopAutoscroll();
+          // Coming to rest, re-measure. A row measured *during* a scroll banks
+          // an offset read a frame after the native measurement, so its band
+          // can sit a step or two out; the moment the list stops, everything on
+          // screen can say exactly where it is, which is what the release will
+          // be judged against.
+          if (wasScrolling) {
+            const drag = dragIdRef.current;
+            viewsRef.current.forEach((_view, key) => measureZone(key, drag));
+          }
+          return;
+        }
+        if (autoscrollTimerRef.current !== null) return;
+        autoscrollTimerRef.current = setInterval(() => {
+          const list = scrollerRef.current?.current;
+          if (!list) {
+            stopAutoscroll();
+            return;
+          }
+          const from = list.getOffset();
+          const next = Math.max(0, Math.min(list.getMaxOffset(), from + autoscrollStepRef.current));
+          if (next === from) {
+            // Hit an end. Stop the timer rather than idling on it — the next
+            // pointer move restarts it if the finger is still in the band.
+            stopAutoscroll();
+            return;
+          }
+          list.scrollToOffset(next);
+          publish(resolve(), true);
+        }, AUTOSCROLL_INTERVAL_MS);
+      };
+
       const clear = () => {
+        stopAutoscroll();
+        draggingRef.current = false;
         targetRef.current = null;
         hideIndicator();
         onIntentChangeRef.current?.(null);
@@ -273,36 +430,35 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           const drag = dragIdRef.current;
           rectsRef.current = [];
           targetRef.current = null;
-          containerRef.current?.measureInWindow?.((_x, y) => {
+          lastHomeRef.current = 'inside';
+          draggingRef.current = true;
+          containerRef.current?.measureInWindow?.((_x, y, _w, h) => {
             if (Number.isFinite(y)) containerYRef.current = y;
+            if (h > 0) containerHeightRef.current = h;
           });
-          viewsRef.current.forEach((view, key) => {
-            const zone = zonesRef.current.get(key);
-            if (!zone || typeof view?.measureInWindow !== 'function') return;
-            view.measureInWindow((_x, y, _w, h) => {
-              // A measurement from a previous drag describes where the row was
-              // then; folding it in now would leave one band pointing at the
-              // wrong place.
-              if (dragIdRef.current !== drag) return;
-              if (!Number.isFinite(y) || !(h > 0)) return;
-              const next = rectsRef.current.filter(r => zoneKey(r.zone) !== key);
-              next.push({ zone, top: y, bottom: y + h });
-              next.sort((a, b) => a.top - b.top);
-              rectsRef.current = next;
-            });
-          });
+          viewsRef.current.forEach((_view, key) => measureZone(key, drag));
         },
-        moveTo: (pageY: number) => {
-          publish(resolveFabDrop(zoneAtY(rectsRef.current, pageY), pageY));
+        moveTo: (pageY: number, home: FabHomeState = 'outside') => {
+          lastPageYRef.current = pageY;
+          lastHomeRef.current = home;
+          publish(resolve(), false);
+          maybeAutoscroll();
         },
-        end: (pageY: number) => {
-          const intent = resolveFabDrop(zoneAtY(rectsRef.current, pageY), pageY);
+        end: (pageY: number, home: FabHomeState = 'outside') => {
+          lastPageYRef.current = pageY;
+          lastHomeRef.current = home;
+          const intent = resolve();
           clear();
           return intent;
         },
         cancel: clear,
       };
-    }, [indicatorOpacity, indicatorTop]);
+    }, [indicatorOpacity, indicatorTop, measureZone, scrollOffset]);
+
+    // A drag interrupted by this screen going away leaves the timer running.
+    useEffect(() => () => {
+      if (autoscrollTimerRef.current !== null) clearInterval(autoscrollTimerRef.current);
+    }, []);
 
     useImperativeHandle(ref, () => handle, [handle]);
 
@@ -312,8 +468,9 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           ref={containerRef}
           style={[styles.container, style]}
           onLayout={() => {
-            containerRef.current?.measureInWindow?.((_x, y) => {
+            containerRef.current?.measureInWindow?.((_x, y, _w, h) => {
               if (Number.isFinite(y)) containerYRef.current = y;
+              if (h > 0) containerHeightRef.current = h;
             });
           }}
         >
