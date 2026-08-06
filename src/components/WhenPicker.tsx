@@ -40,6 +40,7 @@ const BLANK_SNOOZE_TASK: Task = {
   recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
   recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
+  targetCount: null, progressCount: 0,
   tags: [], category: null, sortOrder: 0, pinned: false, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, linkUrl: null,
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null,

@@ -51,6 +51,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
+  targetCount: null,
+  progressCount: 0,
   tags: [],
   category: null,
   sortOrder: 1,

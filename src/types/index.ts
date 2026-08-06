@@ -129,6 +129,18 @@ export interface Task {
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
 
+  // Quota — a habit logged N times a day (8 glasses of water) rather than done
+  // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
+  // row: a quota task is *hidden from Today while you're on pace* (see
+  // isQuotaOnPace in visibilityUtils) and only surfaces when you fall behind,
+  // so a day you keep up with produces no feed rows at all. Reaching
+  // targetCount calls completeTask like any other task, so recurrence, streaks,
+  // Logbook and Stats need no special cases; the per-day reset is free because
+  // each new occurrence starts at progressCount 0. Requires daily recurrence to
+  // be meaningful — the editor turns it on with the target.
+  targetCount: number | null; // null = ordinary task; >= 2 = quota task
+  progressCount: number;      // units logged toward targetCount on this occurrence
+
   tags: string[];
   category: string | null;
   sortOrder: number;

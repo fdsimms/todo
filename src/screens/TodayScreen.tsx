@@ -496,6 +496,7 @@ export function TodayScreen() {
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
+          useTaskStore.getState().rolloverQuotas();
           forceRefresh(n => n + 1);
         }
       });

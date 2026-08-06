@@ -32,7 +32,7 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
-type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | null;
+type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | null;
 
 function hhmmToDate(hhmm: string): Date {
   const [h, m] = hhmm.split(':').map(Number);
@@ -73,6 +73,8 @@ export function SettingsScreen() {
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     nightStart, setNightStart,
+    activeHoursStart, setActiveHoursStart,
+    activeHoursEnd, setActiveHoursEnd,
     themeMode, setThemeMode,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
@@ -110,6 +112,8 @@ export function SettingsScreen() {
     const current = which === 'dayReset' ? dayResetTime
       : which === 'afternoon' ? afternoonStart
       : which === 'evening' ? eveningStart
+      : which === 'activeStart' ? activeHoursStart
+      : which === 'activeEnd' ? activeHoursEnd
       : nightStart;
     setPickerDate(hhmmToDate(current!));
     setActivePicker(which);
@@ -121,6 +125,8 @@ export function SettingsScreen() {
     else if (activePicker === 'afternoon') setAfternoonStart(hhmm);
     else if (activePicker === 'evening') setEveningStart(hhmm);
     else if (activePicker === 'night') setNightStart(hhmm);
+    else if (activePicker === 'activeStart') setActiveHoursStart(hhmm);
+    else if (activePicker === 'activeEnd') setActiveHoursEnd(hhmm);
     setActivePicker(null);
   };
 
@@ -148,6 +154,14 @@ export function SettingsScreen() {
     { key: 'afternoon', label: 'Afternoon starts', icon: 'partly-sunny', value: formatTime(afternoonStart) },
     { key: 'evening', label: 'Evening starts', icon: 'moon-outline', value: formatTime(eveningStart) },
     { key: 'night', label: 'Night starts', icon: 'moon', value: formatTime(nightStart) },
+    {
+      key: 'activeStart',
+      label: 'Awake from',
+      icon: 'speedometer-outline',
+      value: formatTime(activeHoursStart),
+      hint: 'Daily targets pace themselves across these hours',
+    },
+    { key: 'activeEnd', label: 'Awake until', icon: 'speedometer-outline', value: formatTime(activeHoursEnd) },
   ];
 
   return (

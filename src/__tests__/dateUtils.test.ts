@@ -57,6 +57,8 @@ const baseTask: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   recurrenceFromCompletion: false,
+  targetCount: null,
+  progressCount: 0,
   reminderTime: null,
   parentId: null,
   groupId: null,

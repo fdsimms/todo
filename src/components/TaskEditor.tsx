@@ -76,7 +76,12 @@ export interface TaskDraft {
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
   linkUrl?: string | null;
+  targetCount?: number | null;
 }
+
+// Offered daily targets. Small enough to tap through, and stops short of the
+// point where a quota stops being a habit and starts being a tally.
+const TARGET_COUNT_OPTIONS = [2, 3, 4, 5, 6, 8, 10, 12] as const;
 
 interface Props {
   visible: boolean;
@@ -136,6 +141,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deadlineMonthDay, setDeadlineMonthDay] = useState<number | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
+  const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [showTargetCount, setShowTargetCount] = useState(false);
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
@@ -214,6 +221,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
+      setTargetCount(task.targetCount ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
@@ -231,7 +239,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setLinkUrl(task.linkUrl ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
-      setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(initialDraft?.dueDate ?? null); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -276,6 +284,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
+      targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
@@ -383,7 +392,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay: recurrenceType === 'monthly' ? deadlineMonthDay : null,
-      timeSegments, windowStart, windowEnd, deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments, windowStart, windowEnd, targetCount, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
@@ -596,6 +605,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineMonthDay,
       timeSegments,
       windowStart, windowEnd,
+      targetCount,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
@@ -1065,6 +1075,39 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </>
                 )}
               </>
+            )}
+            <View style={styles.sep} />
+            <EditorRow
+              icon="speedometer-outline"
+              label="Daily target"
+              hint="Log it several times a day; only shows up when you fall behind"
+              value={targetCount !== null ? `${targetCount}×` : undefined}
+              expanded={showTargetCount}
+              onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
+              onClear={targetCount !== null ? () => { setTargetCount(null); setShowTargetCount(false); } : undefined}
+            />
+            {showTargetCount && (
+              <View style={styles.targetPillRow}>
+                {TARGET_COUNT_OPTIONS.map(n => (
+                  <TouchableOpacity
+                    key={n}
+                    style={[styles.timePill, styles.targetPill, targetCount === n && styles.timePillActive]}
+                    onPress={() => {
+                      setTargetCount(n);
+                      // A quota only makes sense day to day: the count resets
+                      // because each new occurrence starts at zero, so without
+                      // a daily repeat there'd be nothing to reset it.
+                      enableRecurrence();
+                      animateLayout();
+                      setShowTargetCount(false);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${n} times a day`}
+                  >
+                    <Text style={[styles.timePillText, targetCount === n && styles.timePillTextActive]}>{n}×</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             )}
             <View style={styles.sep} />
             <EditorRow
@@ -2091,6 +2134,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
+  targetPillRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  targetPill: { flexGrow: 0, flexBasis: 56 },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
