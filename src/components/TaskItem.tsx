@@ -68,6 +68,8 @@ interface Props {
   showProject?: boolean;
   showGroup?: boolean;
   showActions?: boolean;
+  /** Narrower than `showActions`: drops just the pin from the expanded panel, for lists where pinning (a Today concept) doesn't apply but the timer and edit actions still do. */
+  showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
   /** Briefly tints the row on mount to draw the eye to a task that was just created. */
@@ -128,6 +130,7 @@ export function TaskItem({
   showProject = false,
   showGroup = false,
   showActions = true,
+  showPin = true,
   indented = false,
   justCreated = false,
   autoComplete = false,
@@ -161,6 +164,7 @@ export function TaskItem({
     setLastAction,
     markTaskSeen,
     skipNextRecurrence,
+    togglePin,
     startTimer,
     stopTimer,
     discardTimer,
@@ -1138,6 +1142,26 @@ export function TaskItem({
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
                     >
                       <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
+                  {showActions && showPin && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        togglePin(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityState={{ selected: task.pinned }}
+                      accessibilityLabel={
+                        task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
+                      }
+                    >
+                      <Ionicons
+                        name={task.pinned ? 'pin' : 'pin-outline'}
+                        size={iconSize.sm}
+                        color={task.pinned ? colors.orange : colors.textSecondary}
+                      />
                     </PressableScale>
                   )}
                 </View>
