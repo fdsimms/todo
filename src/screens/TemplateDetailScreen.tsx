@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { EmptyState } from '../components/EmptyState';
 import { Fab } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
+import { TemplateEditor } from '../components/TemplateEditor';
 import { TemplateItemEditor } from '../components/TemplateItemEditor';
 import { TemplateItemQuickAdd } from '../components/TemplateItemQuickAdd';
 import { TemplateItemBulkBar } from '../components/TemplateItemBulkBar';
@@ -57,6 +58,7 @@ export function TemplateDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const templates = useTemplateStore(s => s.templates);
+  const templatesInitialized = useTemplateStore(s => s.initialized);
   const deleteItem = useTemplateStore(s => s.deleteItem);
   const updateItem = useTemplateStore(s => s.updateItem);
   const addItem = useTemplateStore(s => s.addItem);
@@ -72,6 +74,10 @@ export function TemplateDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
 
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
+  // Snapshot rather than the live row, like TemplatesScreen does: the editor
+  // seeds its fields off this object's identity, so handing it a value that
+  // changes under it would reset them mid-edit.
+  const [settingsTemplate, setSettingsTemplate] = useState<TaskTemplate | null>(null);
   const [editingItem, setEditingItem] = useState<TemplateItem | null>(null);
   const [itemEditorVisible, setItemEditorVisible] = useState(false);
   const [itemEditorDraft, setItemEditorDraft] = useState<Partial<TemplateItem> | null>(null);
@@ -117,6 +123,15 @@ export function TemplateDetailScreen() {
   };
 
   const onClose = () => navigation.goBack();
+
+  // The settings sheet can delete the template out from under this screen,
+  // which would otherwise leave an empty list under a blank title. Waits for
+  // the sheet to close first so the dismiss and the pop don't animate at once,
+  // and for the store to have loaded so a first render doesn't pop straight
+  // back out.
+  useEffect(() => {
+    if (templatesInitialized && !template && settingsTemplate === null) navigation.goBack();
+  }, [templatesInitialized, template, settingsTemplate, navigation]);
 
   const handleDeleteItem = (itemId: string) => {
     if (!templateId) return;
@@ -222,9 +237,19 @@ export function TemplateDetailScreen() {
           <View style={[styles.tplIconSm, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="copy" size={14} color={colors.accent} />
           </View>
-          <Text style={styles.detailTitleText}>{template?.name}</Text>
+          <Text style={styles.detailTitleText} numberOfLines={1}>{template?.name}</Text>
         </View>
         <View style={styles.detailHeaderActions}>
+          <TouchableOpacity
+            onPress={() => { if (!template) return; haptics.tap(); setSettingsTemplate(template); }}
+            disabled={!template}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel="Template settings"
+            accessibilityHint="Rename, categorize, or delete this template"
+          >
+            <Ionicons name="ellipsis-horizontal" size={22} color={colors.textSecondary} />
+          </TouchableOpacity>
           {!!anthropicApiKey && (
             <TouchableOpacity
               onPress={() => { haptics.tap(); setSuggestVisible(true); }}
@@ -353,6 +378,12 @@ export function TemplateDetailScreen() {
           bottomInset={insets.bottom}
         />
       )}
+
+      <TemplateEditor
+        visible={settingsTemplate !== null}
+        template={settingsTemplate}
+        onClose={() => setSettingsTemplate(null)}
+      />
 
       {template && (
         <TemplateItemQuickAdd
@@ -619,10 +650,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
   },
+  // Shrinks rather than flexes: the row is space-between, so growing it would
+  // pull the title off centre. Shrinking only bites once a long name would
+  // otherwise push the header actions off the edge.
   detailTitle: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    flexShrink: 1,
   },
   detailHeaderActions: {
     flexDirection: 'row',
@@ -633,6 +668,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: '600',
+    flexShrink: 1,
   },
   tplIconSm: {
     width: 28,
