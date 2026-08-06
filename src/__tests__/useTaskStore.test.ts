@@ -3203,6 +3203,60 @@ describe('sweepExpiredTasks', () => {
     expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['expired']);
   });
 
+  // Deleting the row of a recurring task ends the schedule: the next
+  // occurrence is only created by completing this one. Missing a window is not
+  // a decision to stop the habit.
+  it('rolls an expired recurring task forward instead of deleting it', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'gym',
+          recurrenceType: 'daily',
+          recurrenceInterval: 1,
+          dueDate: new Date(2025, 5, 10, 12).toISOString(),
+          windowStart: '06:00',
+          windowEnd: '09:00',
+        }),
+      ],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+
+    const gym = useTaskStore.getState().tasks.find(t => t.id === 'gym')!;
+    expect(gym).toBeDefined();
+    expect(new Date(gym.dueDate!).getDate()).toBe(11);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a recurring task whose schedule has already run out', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'last',
+          recurrenceType: 'daily',
+          recurrenceInterval: 1,
+          dueDate: new Date(2025, 5, 10, 12).toISOString(),
+          recurrenceEndDate: new Date(2025, 5, 10, 23).toISOString(),
+          windowStart: '06:00',
+          windowEnd: '09:00',
+        }),
+      ],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['last']);
+  });
+
   it('spares a vacation-paused expired task while vacation mode is on', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',

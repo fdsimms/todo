@@ -36,7 +36,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -514,10 +514,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // defaults — see App.tsx call order.
   sweepExpiredTasks() {
     if (!useSettingsStore.getState().autoRemoveExpiredTasks) return;
-    const expiredIds = get().tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
-    if (expiredIds.length > 0) {
-      get().bulkDeleteTasks(expiredIds);
-    }
+    const expired = get().tasks.filter(t => !t.parentId && isTaskExpired(t));
+    if (expired.length === 0) return;
+
+    // A recurring task's row *is* its schedule — the next occurrence only
+    // comes into existence when this one is completed — so deleting the row
+    // ends the series for good. Missing this morning's window is not "I'm
+    // done with this habit", and a setting about tidying away time-limited
+    // tasks must not quietly retire a daily one. An expired occurrence that
+    // still has a next date is rolled forward onto it instead, which is what
+    // skipNextRecurrence does when the user deals with an expired recurring
+    // task by hand. Only rows with nothing after them are deleted: one-offs,
+    // and series that have reached their recurrenceEndDate/recurrenceCount.
+    const rolled = expired.filter(isLiveRecurring);
+    const doomed = expired.filter(t => !isLiveRecurring(t));
+
+    rolled.forEach(t => get().skipNextRecurrence(t.id));
+    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
   },
 
   addTask(draft) {
