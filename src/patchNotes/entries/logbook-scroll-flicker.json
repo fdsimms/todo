@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Logbook flickering between two scroll positions, and losing its pinned day header, once you scrolled a long way back through completed tasks",
+  "date": "2026-08-06"
+}

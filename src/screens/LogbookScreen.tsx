@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -25,13 +25,14 @@ import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import { isQuotaPartial } from '../utils/visibilityUtils';
+import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 
 interface LogbookSection {
@@ -41,6 +42,30 @@ interface LogbookSection {
 }
 
 const CHECKBOX_SIZE = 20;
+
+// This is the only long virtualized list in the app — Today and its siblings
+// render every row into a plain ScrollView (`ReorderableList`), so nothing else
+// hits the path below.
+//
+// Both heights are pinned so `getItemLayout` can be exact. Left to measure
+// itself the list is unstable at scroll depth: RN sizes the spacer standing in
+// for the cells above the window out of `ListMetricsAggregator`, which mixes
+// offsets recorded at layout time with `_averageCellLength` guesses for cells
+// it hasn't laid out. Resizing that spacer physically shifts every mounted
+// cell, each shifted cell re-reports `onLayout`, and that reschedules the
+// window update that resizes the spacer — at some depths it settles into a
+// two-frame cycle instead of converging, and the list flips between two scroll
+// positions on its own (and loses the pinned day header, which rides along in
+// its own render region).
+//
+// Rows here vary in height for a reason that's invisible in the styles: an
+// emoji in a category label ("🏥 Health") renders taller than the surrounding
+// text unless `lineHeight` is set explicitly, so a Logbook of mixed categories
+// has several row heights and the average is never right. Every Text in a cell
+// therefore carries an explicit `lineHeight`, and the title is one line — a
+// wrapping title would put the height back out of reach of `getItemLayout`.
+const ROW_HEIGHT = spacing.sm * 2 + lineHeight.md + 2 + lineHeight.xs; // 56
+const DAY_HEADER_HEIGHT = spacing.lg + lineHeight.xs + spacing.xs; // 44
 
 function formatDayHeader(iso: string): string {
   const d = new Date(iso);
@@ -140,6 +165,15 @@ export function LogbookScreen() {
     }));
   }, [filteredTasks]);
 
+  const cellLayout = useMemo(
+    () => sectionListCellLayout(sections.map(s => s.data.length), DAY_HEADER_HEIGHT, ROW_HEIGHT),
+    [sections]
+  );
+  const getItemLayout = useCallback(
+    (_data: unknown, index: number) => cellLayout[index] ?? { length: 0, offset: 0, index },
+    [cellLayout]
+  );
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
@@ -230,6 +264,7 @@ export function LogbookScreen() {
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
+        getItemLayout={getItemLayout}
         contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -287,7 +322,7 @@ export function LogbookScreen() {
                   item.actualMinutes != null ? `timed ${formatDuration(item.actualMinutes)}` : null,
                 ].filter(Boolean).join(', ')}
               >
-                <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
+                <Text style={styles.taskTitle} numberOfLines={1}>{item.title}</Text>
                 <View style={styles.metaRow}>
                   <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
                   {item.targetCount !== null && (
@@ -466,6 +501,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
+    height: DAY_HEADER_HEIGHT,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
@@ -474,6 +510,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderText: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
@@ -481,6 +518,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sectionHeaderCount: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,
   },
   listContent: { paddingBottom: 40 },
@@ -492,8 +530,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: ROW_HEIGHT,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
@@ -513,16 +552,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   taskTitle: {
     color: colors.textSecondary,
     fontSize: font.md,
+    lineHeight: lineHeight.md,
     fontWeight: '400',
   },
   taskTime: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    flexShrink: 0,
   },
+  // No wrapping: the row is a fixed height, so a second meta line would be
+  // clipped rather than shown. The category is the one part that gives way.
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 5,
     marginTop: 2,
   },
@@ -530,10 +573,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+    flexShrink: 1,
   },
   categoryChipText: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    flexShrink: 1,
   },
   menuButton: {
     padding: 4,
