@@ -73,7 +73,10 @@ export function CategoriesScreen() {
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
-          onHoverChange={haptics.tap}
+          // dragTick, not tap: a fast drag crosses several rows between frames
+          // and unthrottled selection ticks run together into one long buzz
+          // (see haptics.ts). The lift itself is fired by ReorderableList.
+          onHoverChange={haptics.dragTick}
           onReorder={reordered => reorderCategories(reordered)}
           renderItem={({ item: cat, drag, isActive }) => {
             const count = tasksByCategory(cat).length;

@@ -78,6 +78,11 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [addingTag, setAddingTag] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
 
+  // Set while a member row is being dragged, purely to take the sheet's own
+  // ScrollView out of the running for the touch (see SortableList's
+  // onDragStateChange) — without it the scroll eats the gesture and the row
+  // never moves.
+  const [draggingChild, setDraggingChild] = useState(false);
   const [addingChild, setAddingChild] = useState(false);
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -202,7 +207,12 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          scrollEnabled={!draggingChild}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
           <TextInput
             style={styles.titleInput}
             value={title}
@@ -296,6 +306,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
               <SortableList
                 data={members}
                 onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
+                onDragStateChange={setDraggingChild}
                 renderItem={(child, _i, drag) => {
                   const subtitle = memberSchedule(child);
                   return (

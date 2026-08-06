@@ -71,6 +71,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [optional, setOptional] = useState(false);
+  // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
+  // stand down for the drag to survive the first finger move — a JS responder
+  // nested *inside* a scroll view doesn't stop it from claiming the touch (see
+  // SortableList's onDragStateChange).
+  const [draggingRow, setDraggingRow] = useState(false);
   const [anchor, setAnchor] = useState<TemplateAnchor>('start');
   const [dueOffsetDays, setDueOffsetDays] = useState<number | null>(null);
   const [deferOffsetDays, setDeferOffsetDays] = useState<number | null>(null);
@@ -256,7 +261,12 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          scrollEnabled={!draggingRow}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
           <TextInput
             style={styles.titleInput}
             value={title}
@@ -576,6 +586,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               {chainEnabled && (
                 <>
                   <SortableList
+                    onDragStateChange={setDraggingRow}
                     data={chainItems}
                     onReorder={setChainItems}
                     renderItem={(chainItem, displayIndex, drag) => (
@@ -661,6 +672,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               onToggle={() => toggleField('subtasks', subtasks.length > 0)}
             >
               <SortableList
+                onDragStateChange={setDraggingRow}
                 data={subtasks}
                 onReorder={setSubtasks}
                 renderItem={(sub, _displayIndex, drag) => (

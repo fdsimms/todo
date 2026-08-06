@@ -137,6 +137,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const [aiLoading, setAiLoading] = useState(false);
+  // True while a subtask/chain row is mid-drag. The sheet's ScrollView has to
+  // stand down for the drag to survive the first finger move — a JS responder
+  // nested *inside* a scroll view doesn't stop it from claiming the touch (see
+  // SortableList's onDragStateChange).
+  const [draggingRow, setDraggingRow] = useState(false);
   const [pendingCategory, setPendingCategory] = useState<string | null>(null);
 
   const [title, setTitle] = useState('');
@@ -923,7 +928,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           </TouchableOpacity>
         </View>
 
-        <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
+        <ScrollView
+          style={styles.scroll}
+          scrollEnabled={!draggingRow}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scrollContent}
+        >
           <View style={styles.titleWrap}>
             {parsedSchedule && (
               <Text style={[styles.titleInput, styles.titleOverlay]} pointerEvents="none">
@@ -1348,6 +1358,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               {chainEnabled && (
                 <>
                   <SortableList
+                    onDragStateChange={setDraggingRow}
                     data={chainItems}
                     onReorder={(newData) => {
                       const activeItemId = chainItems[chainIndex]?.id;
@@ -1868,6 +1879,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 onToggle={() => toggleField('subtasks', subtasks.length > 0)}
               >
                 <SortableList
+                  onDragStateChange={setDraggingRow}
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
                   renderItem={(sub, _i, drag) => (

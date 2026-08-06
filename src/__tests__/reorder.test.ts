@@ -7,6 +7,7 @@ import {
   rowIndexAtContentY,
   contentOriginOffset,
   dragTranslation,
+  reorderSubset,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -244,5 +245,29 @@ describe('dragTranslation', () => {
     // Once the finger drags back up to the collapsed run, the translation
     // shrinks toward zero exactly as it would in a list that never moved.
     expect(dragTranslation(160, 120, 0, 0)).toBe(40);
+  });
+});
+
+describe('reorderSubset', () => {
+  it('is a plain reorder when the subset is the whole list', () => {
+    expect(reorderSubset(['a', 'b', 'c'], ['c', 'a', 'b'])).toEqual(['c', 'a', 'b']);
+  });
+
+  it('leaves rows outside the subset exactly where they were', () => {
+    // b and d are hidden (not due today); dragging c above a must not move
+    // either of them off the slots they already hold.
+    expect(reorderSubset(['a', 'b', 'c', 'd'], ['c', 'a'])).toEqual(['c', 'b', 'a', 'd']);
+  });
+
+  it('keeps the untouched rows adjacent to their own neighbours', () => {
+    expect(reorderSubset(['a', 'b', 'c', 'd', 'e'], ['e', 'c', 'a'])).toEqual(['e', 'b', 'c', 'd', 'a']);
+  });
+
+  it('ignores ids that are not in the full list', () => {
+    expect(reorderSubset(['a', 'b'], ['b', 'ghost', 'a'])).toEqual(['b', 'a']);
+  });
+
+  it('returns the list unchanged for an empty subset', () => {
+    expect(reorderSubset(['a', 'b', 'c'], [])).toEqual(['a', 'b', 'c']);
   });
 });
