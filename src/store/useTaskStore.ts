@@ -390,6 +390,7 @@ interface TaskStore {
   checkVacationExpiry: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
+  bulkUncompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
@@ -2112,6 +2113,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  // Re-opens a selection of completed tasks (the Logbook's bulk bar). Unlike
+  // bulkCompleteTasks, the undo can't just be the inverse call in a loop —
+  // completeTask would recompute streaks and the next due date off "now"
+  // instead of restoring what was there. Each uncompleteTask already registers
+  // an undo that puts its own row back exactly as it was, so this collects
+  // those closures and replays them as one action (same trick as clearLogbook).
+  bulkUncompleteTasks(ids) {
+    if (ids.length === 0) return;
+    const undos: Array<() => void> = [];
+    dbTransaction(() => {
+      ids.forEach(id => {
+        if (!get().tasks.find(t => t.id === id)?.completed) return;
+        get().uncompleteTask(id);
+        const undo = get().lastAction?.undo;
+        if (undo) undos.push(undo);
+      });
+    });
+    if (undos.length === 0) return;
+    get().setLastAction({
+      label: `${undos.length} task${undos.length === 1 ? '' : 's'} uncompleted`,
+      undo: () => undos.forEach(u => u()),
     });
   },
 

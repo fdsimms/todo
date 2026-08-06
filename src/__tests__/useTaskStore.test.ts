@@ -2761,6 +2761,82 @@ describe('bulkCompleteTasks', () => {
   });
 });
 
+describe('bulkUncompleteTasks', () => {
+  it('uncompletes every specified task', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2024-01-01T10:00:00.000Z' }),
+        makeTask({ id: 'b', completed: true, completedAt: '2024-01-01T11:00:00.000Z' }),
+      ],
+    });
+    useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().tasks.every(t => !t.completed && t.completedAt === null)).toBe(true);
+  });
+
+  it('runs its writes inside a single db transaction', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2024-01-01T10:00:00.000Z' }),
+        makeTask({ id: 'b', completed: true, completedAt: '2024-01-01T11:00:00.000Z' }),
+      ],
+    });
+    useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
+    expect(dbTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips ids that are not completed', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2024-01-01T10:00:00.000Z' }),
+        makeTask({ id: 'b', completed: false }),
+      ],
+    });
+    useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task uncompleted');
+  });
+
+  // The undo replays each uncompleteTask's own restore closure, so a
+  // completion comes back with the exact timestamp and streak it had — not a
+  // fresh one recomputed off "now" the way completeTask would.
+  it('queues one undo that restores every completion as it was', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', completed: true, completedAt: '2024-01-01T10:00:00.000Z', streakCount: 4 }),
+        makeTask({ id: 'b', completed: true, completedAt: '2024-01-01T11:00:00.000Z', streakCount: 2 }),
+      ],
+    });
+    useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
+
+    const lastAction = useTaskStore.getState().lastAction;
+    expect(lastAction?.label).toBe('2 tasks uncompleted');
+    lastAction?.undo();
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')).toMatchObject({
+      completed: true,
+      completedAt: '2024-01-01T10:00:00.000Z',
+      streakCount: 4,
+    });
+    expect(tasks.find(t => t.id === 'b')).toMatchObject({
+      completed: true,
+      completedAt: '2024-01-01T11:00:00.000Z',
+      streakCount: 2,
+    });
+  });
+
+  it('does nothing for an empty id list', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', completed: true })] });
+    useTaskStore.getState().bulkUncompleteTasks([]);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('leaves no undo when nothing in the selection was completed', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', completed: false })] });
+    useTaskStore.getState().bulkUncompleteTasks(['a']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 describe('bulkSetPriority', () => {
   it('updates priority on all specified tasks', () => {
     useTaskStore.setState({
