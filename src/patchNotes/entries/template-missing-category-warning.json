@@ -1,0 +1,4 @@
+{
+  "message": "Templates now flag items that still point at a category or tag you've since deleted or renamed, instead of quietly recreating the old name the next time you apply them",
+  "date": "2026-08-06"
+}

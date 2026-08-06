@@ -278,6 +278,85 @@ export function findTemplatesReferencing(
   return templates.filter(t => refIds(t.items).includes(targetTemplateId));
 }
 
+/** A name a template item still points at that nothing resolves to any more. */
+export interface MissingTemplateRef {
+  kind: 'category' | 'tag';
+  name: string;
+}
+
+/**
+ * The categories and tags this item names that no longer exist.
+ *
+ * Deleting or renaming a category rewrites every task and stack that used it,
+ * and deleting a tag strips it from every task (see deleteCategory /
+ * renameCategory / deleteTag in useTaskStore) — but none of them touch template
+ * items, which go on holding a name that resolves to nothing. Nothing surfaces
+ * that until the template is applied, and then the name comes back as a
+ * "phantom" category (see allCategories): the one you deleted, reappearing
+ * without the schedule or vacation settings it used to carry.
+ *
+ * Matching is exact, the same way getCategoryByName resolves a name.
+ *
+ * A reference item is skipped whole: its task-shaped fields are ignored at
+ * apply time (see TemplateItem.refTemplateId), so a stale category sitting on
+ * one is genuinely inert. A missing ref *target* is templateHasBrokenRefs' job.
+ */
+export function findMissingRefs(
+  item: TemplateItem,
+  knownCategories: readonly string[],
+  knownTags: readonly string[],
+): MissingTemplateRef[] {
+  if (item.refTemplateId !== null) return [];
+  const missing: MissingTemplateRef[] = [];
+  if (item.category !== null && !knownCategories.includes(item.category)) {
+    missing.push({ kind: 'category', name: item.category });
+  }
+  for (const tag of item.tags) {
+    if (!knownTags.includes(tag)) missing.push({ kind: 'tag', name: tag });
+  }
+  return missing;
+}
+
+/**
+ * True if any of this template's *own* items names something that's gone.
+ *
+ * Deliberately not recursive, unlike templateHasBrokenRefs: a nested template's
+ * stale category is that template's problem and earns its own warning on its
+ * own row, which is also the only place it can be fixed.
+ */
+export function templateHasMissingRefs(
+  template: TaskTemplate,
+  knownCategories: readonly string[],
+  knownTags: readonly string[],
+): boolean {
+  return template.items.some(item => findMissingRefs(item, knownCategories, knownTags).length > 0);
+}
+
+/**
+ * One line naming what's missing, for the warning under a template item.
+ * Null when nothing is.
+ *
+ * Commas inside each list and "and" only between the two, so a mixed result
+ * reads as one sentence rather than two lists glued together.
+ */
+export function describeMissingRefs(missing: readonly MissingTemplateRef[]): string | null {
+  if (missing.length === 0) return null;
+  const quoted = (names: string[]) => names.map(n => `"${n}"`).join(', ');
+  const categories = missing.filter(m => m.kind === 'category').map(m => m.name);
+  const tags = missing.filter(m => m.kind === 'tag').map(m => m.name);
+
+  const parts: string[] = [];
+  if (categories.length > 0) {
+    parts.push(`${categories.length === 1 ? 'Category' : 'Categories'} ${quoted(categories)}`);
+  }
+  if (tags.length > 0) {
+    const label = tags.length === 1 ? 'tag' : 'tags';
+    // Capitalised only when it opens the sentence.
+    parts.push(`${parts.length === 0 ? label[0].toUpperCase() + label.slice(1) : label} ${quoted(tags)}`);
+  }
+  return `${parts.join(' and ')} no longer exist${missing.length === 1 ? 's' : ''}`;
+}
+
 /** One node of the tree ApplyTemplateSheet renders: a leaf item, or a ref item with its resolved (or broken) children. */
 export interface ApplyTreeNode {
   item: TemplateItem;

@@ -20,6 +20,9 @@ import {
   declaresRunPlaceholder,
   usesItemGroups,
   resolveApplyContainer,
+  findMissingRefs,
+  templateHasMissingRefs,
+  describeMissingRefs,
 } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
 
@@ -601,5 +604,136 @@ describe('usesItemGroups / resolveApplyContainer', () => {
     // The expanded list spans templates, so the check has to be per-source.
     const expanded = [...expandedOf(plain), ...expandedOf(grouped)];
     expect(resolveApplyContainer('stack', expanded, byId)).toBe('project');
+  });
+});
+
+describe('findMissingRefs', () => {
+  const categories = ['Errands', 'Home'];
+  const tags = ['travel', 'car'];
+
+  it('returns nothing when every name still resolves', () => {
+    const item = makeItem({ category: 'Errands', tags: ['travel', 'car'] });
+    expect(findMissingRefs(item, categories, tags)).toEqual([]);
+  });
+
+  it('returns nothing for an item with no category and no tags', () => {
+    expect(findMissingRefs(makeItem(), categories, tags)).toEqual([]);
+  });
+
+  it('flags a category that no longer exists', () => {
+    const item = makeItem({ category: 'Deleted' });
+    expect(findMissingRefs(item, categories, tags)).toEqual([
+      { kind: 'category', name: 'Deleted' },
+    ]);
+  });
+
+  it('flags each tag that no longer exists, keeping the item order', () => {
+    const item = makeItem({ tags: ['travel', 'gone', 'alsogone'] });
+    expect(findMissingRefs(item, categories, tags)).toEqual([
+      { kind: 'tag', name: 'gone' },
+      { kind: 'tag', name: 'alsogone' },
+    ]);
+  });
+
+  it('reports the category before the tags when both are missing', () => {
+    const item = makeItem({ category: 'Deleted', tags: ['gone'] });
+    expect(findMissingRefs(item, categories, tags)).toEqual([
+      { kind: 'category', name: 'Deleted' },
+      { kind: 'tag', name: 'gone' },
+    ]);
+  });
+
+  it('matches exactly, the way getCategoryByName resolves a name', () => {
+    // A rename to different casing leaves the old name genuinely unresolvable.
+    expect(findMissingRefs(makeItem({ category: 'errands' }), categories, tags)).toEqual([
+      { kind: 'category', name: 'errands' },
+    ]);
+  });
+
+  it('skips a reference item, whose task fields are ignored at apply time', () => {
+    const item = makeItem({
+      refTemplateId: 'tpl-2',
+      category: 'Deleted',
+      tags: ['gone'],
+    });
+    expect(findMissingRefs(item, categories, tags)).toEqual([]);
+  });
+
+  it('flags everything when nothing is registered at all', () => {
+    const item = makeItem({ category: 'Errands', tags: ['travel'] });
+    expect(findMissingRefs(item, [], [])).toEqual([
+      { kind: 'category', name: 'Errands' },
+      { kind: 'tag', name: 'travel' },
+    ]);
+  });
+});
+
+describe('templateHasMissingRefs', () => {
+  const categories = ['Home'];
+  const tags = ['travel'];
+
+  it('is false for a template whose items all resolve', () => {
+    const tpl = makeTemplate({ items: [makeItem({ category: 'Home', tags: ['travel'] })] });
+    expect(templateHasMissingRefs(tpl, categories, tags)).toBe(false);
+  });
+
+  it('is false for a template with no items', () => {
+    expect(templateHasMissingRefs(makeTemplate({ items: [] }), categories, tags)).toBe(false);
+  });
+
+  it('is true when any one item is stale', () => {
+    const tpl = makeTemplate({
+      items: [makeItem({ id: 'a', category: 'Home' }), makeItem({ id: 'b', category: 'Gone' })],
+    });
+    expect(templateHasMissingRefs(tpl, categories, tags)).toBe(true);
+  });
+
+  it('does not recurse into a nested template — that one reports for itself', () => {
+    const nested = makeTemplate({ id: 'child', items: [makeItem({ category: 'Gone' })] });
+    const parent = makeTemplate({
+      id: 'parent',
+      items: [makeItem({ refTemplateId: nested.id, refTemplateName: 'Child' })],
+    });
+    expect(templateHasMissingRefs(parent, categories, tags)).toBe(false);
+    expect(templateHasMissingRefs(nested, categories, tags)).toBe(true);
+  });
+});
+
+describe('describeMissingRefs', () => {
+  it('returns null when nothing is missing', () => {
+    expect(describeMissingRefs([])).toBeNull();
+  });
+
+  it('describes a single missing category', () => {
+    expect(describeMissingRefs([{ kind: 'category', name: 'Errands' }]))
+      .toBe('Category "Errands" no longer exists');
+  });
+
+  it('describes a single missing tag, capitalised as the start of the sentence', () => {
+    expect(describeMissingRefs([{ kind: 'tag', name: 'car' }]))
+      .toBe('Tag "car" no longer exists');
+  });
+
+  it('pluralises the verb and the noun for several missing tags', () => {
+    expect(describeMissingRefs([
+      { kind: 'tag', name: 'car' },
+      { kind: 'tag', name: 'boat' },
+    ])).toBe('Tags "car", "boat" no longer exist');
+  });
+
+  it('joins a category and tags into one sentence, lower-casing the second noun', () => {
+    expect(describeMissingRefs([
+      { kind: 'category', name: 'Errands' },
+      { kind: 'tag', name: 'car' },
+    ])).toBe('Category "Errands" and tag "car" no longer exist');
+  });
+
+  it('handles several of both', () => {
+    expect(describeMissingRefs([
+      { kind: 'category', name: 'A' },
+      { kind: 'category', name: 'B' },
+      { kind: 'tag', name: 'x' },
+      { kind: 'tag', name: 'y' },
+    ])).toBe('Categories "A", "B" and tags "x", "y" no longer exist');
   });
 });
