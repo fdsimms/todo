@@ -145,13 +145,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start',
     backgroundColor: colors.bgTertiary, borderRadius: radius.full,
   },
+  // 12 + a 20pt glyph + 12 is a 44pt key: the minimum comfortable tap target
+  // and no wider. The control's width is the two keys plus the digits.
   key: {
-    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
+    paddingHorizontal: 12, paddingVertical: spacing.sm,
     alignItems: 'center', justifyContent: 'center',
   },
   keyDisabled: { opacity: 0.4 },
   value: {
-    minWidth: 52, textAlign: 'center',
+    // Fits the widest value (99×) without the keys shifting as digits change.
+    minWidth: 40, textAlign: 'center',
     color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
     fontVariant: ['tabular-nums'],
   },
