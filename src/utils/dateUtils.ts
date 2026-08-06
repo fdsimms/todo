@@ -99,6 +99,35 @@ export function isBeforeDayReset(dayResetTime?: string): boolean {
   return getLogicalToday(dayResetTime).getTime() !== startOfDay(new Date()).getTime();
 }
 
+/**
+ * The date a task's row should *read* as, which isn't always its dueDate. A
+ * task pushed to a later day keeps its dueDate and gains a later deferUntil
+ * (see deferTask/deferGroup — deferring deliberately leaves dueDate alone so a
+ * recurring task's schedule grid doesn't rotate). It surfaces on the deferred
+ * day, so showing the dueDate would label a move the user *chose* as "2d
+ * overdue". Falls back to whichever of the two is set.
+ */
+export function getEffectiveTaskDate(
+  task: Pick<Task, 'dueDate' | 'deferUntil'>,
+  dayResetTime?: string,
+): string | null {
+  if (task.deferUntil && task.dueDate) {
+    const deferStart = getTaskDayStart(new Date(task.deferUntil), dayResetTime);
+    const dueStart = getTaskDayStart(new Date(task.dueDate), dayResetTime);
+    return deferStart > dueStart ? task.deferUntil : task.dueDate;
+  }
+  return task.deferUntil ?? task.dueDate;
+}
+
+/** formatDueDate applied to getEffectiveTaskDate — the label for a task's own date. */
+export function formatTaskDate(
+  task: Pick<Task, 'dueDate' | 'deferUntil'>,
+  dayResetTime?: string,
+): string | null {
+  const iso = getEffectiveTaskDate(task, dayResetTime);
+  return iso ? formatDueDate(iso, dayResetTime) : null;
+}
+
 export function formatDueDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
   const today = getDayStart(new Date(), dayResetTime);

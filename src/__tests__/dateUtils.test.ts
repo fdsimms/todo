@@ -11,6 +11,8 @@ import {
   getLogicalTomorrow,
   getLogicalNow,
   isBeforeDayReset,
+  getEffectiveTaskDate,
+  formatTaskDate,
 } from '../utils/dateUtils';
 import type { Task } from '../types';
 
@@ -162,6 +164,72 @@ describe('formatDueDate', () => {
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
     const dueToday = formatDueDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
     expect(dueToday).toBe('Today');
+  });
+});
+
+// ─── getEffectiveTaskDate / formatTaskDate ───────────────────────────────────
+
+describe('getEffectiveTaskDate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // Tue June 10, 2025
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const due = new Date(2025, 5, 10, 12, 0, 0).toISOString();   // today
+  const later = new Date(2025, 5, 12, 12, 0, 0).toISOString(); // Thursday
+  const earlier = new Date(2025, 5, 8, 12, 0, 0).toISOString(); // Sunday
+
+  it('prefers a deferUntil that pushes the task past its due date', () => {
+    expect(getEffectiveTaskDate({ dueDate: due, deferUntil: later })).toBe(later);
+  });
+
+  it('keeps the due date when deferUntil is earlier', () => {
+    expect(getEffectiveTaskDate({ dueDate: due, deferUntil: earlier })).toBe(due);
+  });
+
+  it('keeps the due date when both fall on the same day', () => {
+    const sameDayLater = new Date(2025, 5, 10, 23, 0, 0).toISOString();
+    expect(getEffectiveTaskDate({ dueDate: due, deferUntil: sameDayLater })).toBe(due);
+  });
+
+  it('falls back to whichever field is set', () => {
+    expect(getEffectiveTaskDate({ dueDate: due, deferUntil: null })).toBe(due);
+    expect(getEffectiveTaskDate({ dueDate: null, deferUntil: later })).toBe(later);
+    expect(getEffectiveTaskDate({ dueDate: null, deferUntil: null })).toBeNull();
+  });
+});
+
+describe('formatTaskDate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('reads as the deferred day rather than "overdue" for a task that was pushed back', () => {
+    // Due Sunday, deliberately pushed to Thursday — it surfaces Thursday, so
+    // labelling it "2d overdue" would punish a move the user chose.
+    const task = {
+      dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
+      deferUntil: new Date(2025, 5, 12, 12, 0, 0).toISOString(),
+    };
+    expect(formatTaskDate(task)).toBe('Thursday');
+  });
+
+  it('still reads as overdue when the task is genuinely late', () => {
+    const task = { dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(), deferUntil: null };
+    expect(formatTaskDate(task)).toBe('3d overdue');
+  });
+
+  it('returns null when the task has no date at all', () => {
+    expect(formatTaskDate({ dueDate: null, deferUntil: null })).toBeNull();
   });
 });
 
