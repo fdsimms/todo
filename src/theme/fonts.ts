@@ -1,39 +1,53 @@
 /**
  * The app's selectable typefaces.
  *
- * Every face listed here is **already installed on the device** — nothing is
- * bundled. That's the whole reason the set is platform-specific rather than one
- * font name per option: shipping our own `.ttf`s would mean font assets in the
- * bundle, an `expo-font` load gate before the first frame can draw text, and a
- * hand-written weight -> family map (iOS matches `fontWeight` against faces
- * registered under one family name, which bundled statics are not). Device
- * fonts cost none of that and iOS' bundled families are good ones.
+ * Apart from `system`, these are bundled — four static `.ttf` faces each, from
+ * the `@expo-google-fonts/*` packages, loaded at runtime by `AppFont.tsx`. They
+ * are bundled rather than picked from the OS because every face iOS ships is a
+ * *neutral* one: SF Pro, Avenir, Charter and Menlo are competent and say
+ * nothing. The point of this setting is to change the app's character, and that
+ * needs faces the OS doesn't have.
  *
- * `undefined` means "don't set `fontFamily` at all" — the platform UI font
- * (SF Pro on iOS, Roboto on Android), i.e. exactly what every screen rendered
- * before this setting existed. That's why `system` carries no family: the
- * default option has to be a true no-op, not a re-statement of the default,
- * so a face Apple changes under us keeps being followed.
+ * **Static faces don't respond to `fontWeight`.** Each `.ttf` registers under
+ * its own family name (`Nunito_600SemiBold`), so iOS has no family to search
+ * for a heavier member of — asking for weight 600 on `Nunito_400Regular` gets
+ * you either the regular or a synthetic smear of it. So a face is chosen by
+ * weight up front (`resolveFontFace`) and `fontWeight` is dropped from the
+ * style, which is why every family here must ship all four weights the app
+ * uses. The weight survey: 600 (56 uses), 500 (35), 700 (14), 400 (4).
  *
- * Android gets the nearest generic alias rather than a match. The named
- * families below are iOS-bundled and don't exist there, and Android's own
- * catalogue is four generics deep (`sans-serif`, `sans-serif-condensed`,
- * `serif`, `monospace`), so "Avenir" lands back on Roboto. The app is iOS-first
- * — the widget target and CI's `expo export --platform ios` both say so — and
- * this keeps Android legible instead of falling back to a missing family.
+ * `system` is the absence of all this — no family, no loading, nothing
+ * bundled, `fontWeight` handled natively by SF Pro / Roboto. It's the default
+ * and it stays a true no-op, so the OS keeps deciding what the app looks like
+ * for anyone who never opens this setting.
  */
 
-export type AppFont = 'system' | 'avenir' | 'serif' | 'mono' | 'condensed';
+export type AppFont = 'system' | 'bricolage' | 'fraunces' | 'spaceGrotesk' | 'nunito';
+
+/** The weights the app actually uses. Every bundled family ships a face for each. */
+export type FontWeightKey = 400 | 500 | 600 | 700;
+
+export const FONT_WEIGHT_KEYS: FontWeightKey[] = [400, 500, 600, 700];
 
 export type AppFontOption = {
   id: AppFont;
   label: string;
-  /** One-line description of what the face does to the app — the only in-app documentation this option has. */
+  /** One-line description of the mood it gives the app — the only in-app documentation this option has. */
   hint: string;
-  /** iOS family name, or undefined for "leave the platform default alone". */
-  ios?: string;
-  android?: string;
+  /**
+   * Weight -> registered face name. The face names are the keys `AppFont.tsx`
+   * hands to `Font.loadAsync`, so these two have to agree exactly; there is no
+   * way to ask the OS which name a `.ttf` registered under.
+   */
+  faces?: Record<FontWeightKey, string>;
 };
+
+const facesFor = (family: string): Record<FontWeightKey, string> => ({
+  400: `${family}_400Regular`,
+  500: `${family}_500Medium`,
+  600: `${family}_600SemiBold`,
+  700: `${family}_700Bold`,
+});
 
 export const APP_FONT_OPTIONS: AppFontOption[] = [
   {
@@ -42,32 +56,28 @@ export const APP_FONT_OPTIONS: AppFontOption[] = [
     hint: 'The default. SF Pro on iOS, Roboto on Android.',
   },
   {
-    id: 'avenir',
-    label: 'Avenir Next',
-    hint: 'Rounder and wider. Friendlier, and a touch less fits on a line.',
-    ios: 'Avenir Next',
-    android: 'sans-serif',
+    id: 'bricolage',
+    label: 'Bricolage',
+    hint: 'Editorial and a little wonky. Narrow enough that long titles still fit.',
+    faces: facesFor('BricolageGrotesque'),
   },
   {
-    id: 'serif',
-    label: 'Charter',
-    hint: 'A serif built for screens — reads more like a notebook than an app.',
-    ios: 'Charter',
-    android: 'serif',
+    id: 'fraunces',
+    label: 'Fraunces',
+    hint: 'A warm, soft-edged serif. Turns the list into something more like a journal.',
+    faces: facesFor('Fraunces'),
   },
   {
-    id: 'mono',
-    label: 'Menlo',
-    hint: 'Fixed-width. Numbers and times line up in columns; long titles run wide.',
-    ios: 'Menlo',
-    android: 'monospace',
+    id: 'spaceGrotesk',
+    label: 'Space Grotesk',
+    hint: 'Precise and a bit technical. Distinctive numerals for times and counts.',
+    faces: facesFor('SpaceGrotesk'),
   },
   {
-    id: 'condensed',
-    label: 'Avenir Condensed',
-    hint: 'Narrow. Fits noticeably more of a long task title before it truncates.',
-    ios: 'Avenir Next Condensed',
-    android: 'sans-serif-condensed',
+    id: 'nunito',
+    label: 'Nunito',
+    hint: 'Rounded and soft. The friendliest of the set, and the widest.',
+    faces: facesFor('Nunito'),
   },
 ];
 
@@ -82,14 +92,40 @@ export function getAppFontOption(id: AppFont): AppFontOption | undefined {
 }
 
 /**
- * The `fontFamily` to apply app-wide for `id`, or `undefined` to leave text on
- * the platform default. `os` is `Platform.OS`, passed in rather than read here
- * so this stays a pure module the tests can import without React Native.
+ * Snap any React Native `fontWeight` onto one of the four faces we ship.
+ *
+ * Anything lighter than regular rounds up and anything heavier than bold rounds
+ * down, rather than failing to resolve: a face that isn't bundled would render
+ * as the platform font and break the page mid-list. `undefined` is regular,
+ * matching React Native's own default.
  */
-export function resolveFontFamily(id: AppFont, os: string): string | undefined {
-  const option = getAppFontOption(id);
-  if (!option) return undefined;
-  if (os === 'ios') return option.ios;
-  if (os === 'android') return option.android;
-  return undefined;
+export function normalizeFontWeight(weight: string | number | undefined | null): FontWeightKey {
+  if (weight == null || weight === 'normal') return 400;
+  if (weight === 'bold') return 700;
+
+  const numeric = typeof weight === 'number' ? weight : parseInt(weight, 10);
+  if (Number.isNaN(numeric)) return 400;
+  if (numeric <= 400) return 400;
+  if (numeric < 600) return 500;
+  if (numeric < 700) return 600;
+  return 700;
+}
+
+/**
+ * The registered face name for a font at a given weight, or `undefined` to
+ * leave text on the platform font (the `system` option, or an id no longer shipped).
+ */
+export function resolveFontFace(
+  id: AppFont,
+  weight: string | number | undefined | null
+): string | undefined {
+  const faces = getAppFontOption(id)?.faces;
+  if (!faces) return undefined;
+  return faces[normalizeFontWeight(weight)];
+}
+
+/** Every face name a font needs loaded before it can render. */
+export function faceNamesFor(id: AppFont): string[] {
+  const faces = getAppFontOption(id)?.faces;
+  return faces ? FONT_WEIGHT_KEYS.map(w => faces[w]) : [];
 }

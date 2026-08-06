@@ -1,9 +1,12 @@
 import {
   APP_FONT_OPTIONS,
   DEFAULT_APP_FONT,
+  FONT_WEIGHT_KEYS,
+  faceNamesFor,
   getAppFontOption,
   isAppFont,
-  resolveFontFamily,
+  normalizeFontWeight,
+  resolveFontFace,
   type AppFont,
 } from '../theme/fonts';
 
@@ -17,39 +20,106 @@ describe('app font options', () => {
     }
   });
 
-  it('leads with the default, and the default names no family on any platform', () => {
+  it('leads with the default, and the default names no face at any weight', () => {
     expect(APP_FONT_OPTIONS[0].id).toBe(DEFAULT_APP_FONT);
-    // The default has to be a true no-op rather than a restatement of the
-    // platform font, so the OS keeps deciding what it is.
-    expect(resolveFontFamily(DEFAULT_APP_FONT, 'ios')).toBeUndefined();
-    expect(resolveFontFamily(DEFAULT_APP_FONT, 'android')).toBeUndefined();
+    // The default has to be a true no-op so the OS keeps deciding the font —
+    // and so it loads nothing.
+    for (const weight of FONT_WEIGHT_KEYS) {
+      expect(resolveFontFace(DEFAULT_APP_FONT, weight)).toBeUndefined();
+    }
+    expect(faceNamesFor(DEFAULT_APP_FONT)).toEqual([]);
   });
 
-  it('names a family on both platforms for every non-default option', () => {
+  it('ships all four weights for every bundled font', () => {
+    // A missing weight resolves to undefined and drops that text back to the
+    // platform font mid-list, so this is the invariant that keeps a page whole.
     for (const opt of APP_FONT_OPTIONS.filter(o => o.id !== DEFAULT_APP_FONT)) {
-      expect(resolveFontFamily(opt.id, 'ios')).toBeTruthy();
-      expect(resolveFontFamily(opt.id, 'android')).toBeTruthy();
+      const faces = FONT_WEIGHT_KEYS.map(w => resolveFontFace(opt.id, w));
+      expect(faces.every(Boolean)).toBe(true);
+      expect(new Set(faces).size).toBe(FONT_WEIGHT_KEYS.length);
+      expect(faceNamesFor(opt.id)).toHaveLength(FONT_WEIGHT_KEYS.length);
     }
   });
 });
 
-describe('resolveFontFamily', () => {
-  it('picks the family for the platform', () => {
-    expect(resolveFontFamily('serif', 'ios')).toBe('Charter');
-    expect(resolveFontFamily('serif', 'android')).toBe('serif');
-    expect(resolveFontFamily('mono', 'ios')).toBe('Menlo');
-    expect(resolveFontFamily('condensed', 'ios')).toBe('Avenir Next Condensed');
+// fontAssets.ts can't be imported here — Jest doesn't transform `.ttf` requires
+// — so it's checked as source text. Worth the awkwardness: a face name that
+// disagrees with the key it's registered under fails *silently*, rendering as
+// the platform font with nothing logged, and that's the whole contract between
+// these two files.
+describe('fontAssets.ts agrees with the font table', () => {
+  const fs = require('fs') as typeof import('fs');
+  const path = require('path') as typeof import('path');
+
+  const source = fs.readFileSync(path.join(__dirname, '../theme/fontAssets.ts'), 'utf8');
+  const entries = [...source.matchAll(/^\s{4}(\w+):\s*require\('([^']+)'\)/gm)];
+
+  it('registers every face the font table names', () => {
+    const registered = new Set(entries.map(([, face]) => face));
+    for (const opt of APP_FONT_OPTIONS) {
+      for (const face of faceNamesFor(opt.id)) {
+        expect(registered).toContain(face);
+      }
+    }
   });
 
-  it('falls back to the platform default on an unknown platform', () => {
-    // web/windows/macos never see these iOS family names, so they get nothing
-    // rather than a family that isn't installed.
-    expect(resolveFontFamily('serif', 'web')).toBeUndefined();
+  it('points every face at a font file that exists', () => {
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [, face, assetPath] of entries) {
+      expect(assetPath.endsWith('.ttf')).toBe(true);
+      // The file is named after the face it registers, so a mismatched pair is
+      // visible right here rather than at runtime.
+      expect(path.basename(assetPath, '.ttf')).toBe(face);
+      expect(fs.existsSync(path.join(__dirname, '../../node_modules', assetPath))).toBe(true);
+    }
+  });
+});
+
+describe('normalizeFontWeight', () => {
+  it('maps the four weights the app uses to themselves', () => {
+    expect(normalizeFontWeight('400')).toBe(400);
+    expect(normalizeFontWeight('500')).toBe(500);
+    expect(normalizeFontWeight('600')).toBe(600);
+    expect(normalizeFontWeight('700')).toBe(700);
   });
 
-  it('falls back to the platform default for an unknown id', () => {
-    // A font removed from the app but still stored in an old settings row.
-    expect(resolveFontFamily('retired-font' as AppFont, 'ios')).toBeUndefined();
+  it('treats an unset weight as regular, like React Native does', () => {
+    expect(normalizeFontWeight(undefined)).toBe(400);
+    expect(normalizeFontWeight(null)).toBe(400);
+    expect(normalizeFontWeight('normal')).toBe(400);
+  });
+
+  it('understands the keyword and numeric forms', () => {
+    expect(normalizeFontWeight('bold')).toBe(700);
+    expect(normalizeFontWeight(600)).toBe(600);
+  });
+
+  it('snaps weights we do not bundle onto the nearest face we do', () => {
+    // Rounding beats resolving to nothing: an unbundled face renders as the
+    // platform font and breaks the page mid-list.
+    expect(normalizeFontWeight('100')).toBe(400);
+    expect(normalizeFontWeight('300')).toBe(400);
+    expect(normalizeFontWeight('800')).toBe(700);
+    expect(normalizeFontWeight('900')).toBe(700);
+  });
+
+  it('falls back to regular for a weight it cannot parse', () => {
+    expect(normalizeFontWeight('heavyish')).toBe(400);
+  });
+});
+
+describe('resolveFontFace', () => {
+  it('picks the face for the weight', () => {
+    expect(resolveFontFace('nunito', '400')).toBe('Nunito_400Regular');
+    expect(resolveFontFace('nunito', '600')).toBe('Nunito_600SemiBold');
+    expect(resolveFontFace('bricolage', 'bold')).toBe('BricolageGrotesque_700Bold');
+    expect(resolveFontFace('fraunces', undefined)).toBe('Fraunces_400Regular');
+    expect(resolveFontFace('spaceGrotesk', '500')).toBe('SpaceGrotesk_500Medium');
+  });
+
+  it('falls back to the platform font for an unknown id', () => {
+    // A font dropped from the app but still stored in an old settings row.
+    expect(resolveFontFace('retired-font' as AppFont, '400')).toBeUndefined();
   });
 });
 
@@ -61,7 +131,7 @@ describe('isAppFont', () => {
   });
 
   it('rejects anything else, so a stale stored value falls back to the default', () => {
-    expect(isAppFont('comic-sans')).toBe(false);
+    expect(isAppFont('avenir')).toBe(false);
     expect(isAppFont('')).toBe(false);
     expect(isAppFont(null)).toBe(false);
     expect(isAppFont(undefined)).toBe(false);
@@ -70,7 +140,7 @@ describe('isAppFont', () => {
 
 describe('getAppFontOption', () => {
   it('finds an option by id', () => {
-    expect(getAppFontOption('mono')?.label).toBe('Menlo');
+    expect(getAppFontOption('spaceGrotesk')?.label).toBe('Space Grotesk');
   });
 
   it('returns undefined for an unknown id', () => {

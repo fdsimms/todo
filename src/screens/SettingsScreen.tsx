@@ -23,7 +23,8 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
-import { APP_FONT_OPTIONS, resolveFontFamily } from '../theme/fonts';
+import { APP_FONT_OPTIONS, resolveFontFace } from '../theme/fonts';
+import { useFontPreviewsLoaded } from '../theme/AppFont';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
 
@@ -87,6 +88,7 @@ export function SettingsScreen() {
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const [showPatchNotes, setShowPatchNotes] = useState(false);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+  const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
@@ -228,10 +230,13 @@ export function SettingsScreen() {
             <View style={styles.card}>
               {APP_FONT_OPTIONS.map((opt, i) => {
                 const selected = appFont === opt.id;
-                // Undefined for System, which flattens over the family the
-                // patched Text injects — so this row previews the real default
-                // rather than whichever font is currently selected.
-                const family = resolveFontFamily(opt.id, Platform.OS);
+                // Naming a family here is what stops the patched Text applying
+                // the *selected* font to this row, so each option previews
+                // itself. Undefined for System, which flattens over the
+                // injected family and lands back on the real platform default.
+                const family = fontPreviewsLoaded
+                  ? resolveFontFace(opt.id, '400')
+                  : undefined;
                 return (
                   <React.Fragment key={opt.id}>
                     {i > 0 && <View style={styles.sep} />}
