@@ -218,7 +218,7 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
-  useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [] });
+  useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [], quotaHoldIds: [] });
   useTaskGroupStore.setState({ groups: [], initialized: false });
   useProjectStore.setState({ projects: [], initialized: false });
   useTemplateStore.setState({ templates: [], initialized: false });
@@ -3644,6 +3644,97 @@ describe('quota tasks', () => {
 
       store.unlogQuotaUnit('water');
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(0);
+    });
+  });
+
+  // At 10:00 of an 08:00–22:00 day, 2 of 8 are owed: a task sitting at 1 is on
+  // Today, and the unit that takes it to 2 is the one that used to make the row
+  // vanish under the finger.
+  describe('holdQuotaOnToday', () => {
+    const behind = () => quota({ progressCount: 1 });
+    const ids = (tasks: Task[]) => tasks.map(t => t.id);
+
+    it('drops off Today on the catching-up unit without a hold', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+
+      useTaskStore.getState().logQuotaUnit('water');
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().deferredTasks())).toEqual(['water']);
+    });
+
+    it('keeps it on Today through the unit that puts it back on pace', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+      // And only there — the two lists are disjoint lenses over the same task.
+      expect(ids(useTaskStore.getState().deferredTasks())).toEqual([]);
+    });
+
+    it('lets the rest of a burst be logged in the same place', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+      store.logQuotaUnit('water');
+      store.logQuotaUnit('water');
+
+      expect(useTaskStore.getState().tasks[0].progressCount).toBe(4);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+    });
+
+    it('hands the task over to Later when the hold is released', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+      store.releaseQuotaHold('water');
+
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().deferredTasks())).toEqual(['water']);
+    });
+
+    it('leaves a released task that is behind pace again on Today', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+      store.unlogQuotaUnit('water'); // the long-press undo
+      store.releaseQuotaHold('water');
+
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+    });
+
+    it('gives the hold up when the target is met, rather than holding a finished row', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 6 })] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water'); // 7th, back on pace at best
+      store.logQuotaUnit('water'); // 8th — completes
+
+      expect(useTaskStore.getState().quotaHoldIds).toEqual([]);
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
+    });
+
+    it('expires on its own if the row never releases it', () => {
+      useTaskStore.setState({ tasks: [behind()] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+
+      jest.advanceTimersByTime(30000);
+      expect(useTaskStore.getState().quotaHoldIds).toEqual([]);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
+    });
+
+    it('holds nothing for a task that is not a daily target', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 'plain', dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString() })] });
+      useTaskStore.getState().holdQuotaOnToday('plain');
+
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual([]);
     });
   });
 
