@@ -468,6 +468,25 @@ function getBecameVisibleAt(task: Task): Date | null {
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
 }
 
+// The active step's title while mid a multi-step chain, else null. A
+// single-item chain reads no differently from a plain task anywhere else in
+// the UI (no badge, same behavior), so this only kicks in once there's more
+// than one step to distinguish.
+export function activeChainStepTitle(task: Task): string | null {
+  if (!task.chainEnabled || task.chainItems.length <= 1) return null;
+  return task.chainItems[task.chainIndex % task.chainItems.length]?.title ?? null;
+}
+
+// What the user should see as "the title" for a task — the active chain
+// step's title mid-chain, otherwise the task's own title. Every surface that
+// names a task (row, Logbook, Search, notification, widget, VoiceOver label)
+// should route through this rather than reading task.title directly, so a
+// chain step's identity survives everywhere it's shown, not just the
+// collapsed Today row.
+export function displayTitleFor(task: Task): string {
+  return activeChainStepTitle(task) ?? task.title;
+}
+
 // True for a visible task that hasn't been interacted with since it most
 // recently crossed a day-based visibility gate — drives the "new" dot.
 export function isTaskNew(task: Task): boolean {

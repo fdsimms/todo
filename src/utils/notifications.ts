@@ -3,6 +3,7 @@ import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
+import { displayTitleFor } from './visibilityUtils';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,7 +32,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   await Notifications.scheduleNotificationAsync({
     identifier: task.id,
     content: {
-      title: task.title || 'Task reminder',
+      title: displayTitleFor(task) || 'Task reminder',
       body: task.notes || 'You have a task coming up',
       data: { taskId: task.id },
       sound: true,
@@ -92,7 +93,7 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
     identifier: timerAlarmId(task.id),
     content: {
       title: 'Time’s up',
-      body: `${task.title || 'Your task'} — ready to complete`,
+      body: `${displayTitleFor(task) || 'Your task'} — ready to complete`,
       data: { taskId: task.id },
       sound: true,
     },
