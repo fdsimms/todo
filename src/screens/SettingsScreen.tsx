@@ -9,6 +9,8 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Alert,
+  AppState,
+  Linking,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,6 +22,14 @@ import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { formatHHMM } from '../utils/dateUtils';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
+import {
+  getNotificationPermission,
+  requestNotificationPermissions,
+  pendingReminderStats,
+  MAX_PENDING_REMINDERS,
+  type NotificationPermission,
+} from '../utils/notifications';
 import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -90,6 +100,32 @@ export function SettingsScreen() {
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const resetAllStreaks = useTaskStore(s => s.resetAllStreaks);
+
+  // Both ways reminders can quietly not happen. The permission is re-read on
+  // focus *and* on foreground: sending someone to the system Settings app to
+  // flip it doesn't unfocus this screen, so focus alone would come back and
+  // still show the stale state.
+  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const reminderStats = useMemo(() => pendingReminderStats(allTasks), [allTasks]);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | null>(null);
+  const refreshNotifPermission = React.useCallback(() => {
+    getNotificationPermission().then(setNotifPermission).catch(() => setNotifPermission(null));
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshNotifPermission();
+      const sub = AppState.addEventListener('change', state => {
+        if (state === 'active') refreshNotifPermission();
+      });
+      return () => sub.remove();
+    }, [refreshNotifPermission])
+  );
+
+  const askForNotifications = async () => {
+    await requestNotificationPermissions();
+    refreshNotifPermission();
+  };
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
@@ -526,6 +562,77 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Asks for confirmation first. Undoable right after by shaking your phone.
+            </Text>
+          </View>
+
+          {/* Time-limited tasks */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Notifications</Text>
+            <View style={styles.card}>
+              {/* Nothing surfaced the permission before, so a declined prompt
+                  just looked like reminders were broken. */}
+              <TouchableOpacity
+                style={styles.row}
+                onPress={
+                  notifPermission === 'denied' ? () => Linking.openSettings()
+                  : notifPermission === 'undetermined' ? askForNotifications
+                  : undefined
+                }
+                disabled={notifPermission !== 'denied' && notifPermission !== 'undetermined'}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole={
+                  notifPermission === 'denied' || notifPermission === 'undetermined' ? 'button' : undefined
+                }
+                accessibilityLabel={
+                  notifPermission === 'granted' ? 'Reminders are allowed'
+                  : notifPermission === 'denied' ? 'Reminders are blocked. Opens the system Settings app.'
+                  : notifPermission === 'undetermined' ? 'Reminders not enabled yet. Double tap to allow.'
+                  : 'Reminder permission'
+                }
+              >
+                <Ionicons
+                  name={notifPermission === 'granted' ? 'notifications' : 'notifications-off-outline'}
+                  size={18}
+                  color={notifPermission === 'granted' ? colors.accent : notifPermission === 'denied' ? colors.warning : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Reminders</Text>
+                  <Text style={styles.rowHint}>
+                    {notifPermission === 'granted' ? 'Allowed — reminders will arrive'
+                      : notifPermission === 'denied' ? 'Blocked. Reminders you set will never arrive until you turn them back on for this app.'
+                      : notifPermission === 'undetermined' ? 'Not enabled yet — reminders you set won’t arrive until you allow them'
+                      : notifPermission === 'unsupported' ? 'Not available on this platform'
+                      : 'Checking…'}
+                  </Text>
+                </View>
+                {notifPermission === 'denied' && <Text style={styles.rowValue}>Open Settings</Text>}
+                {notifPermission === 'undetermined' && <Text style={styles.rowValue}>Allow</Text>}
+              </TouchableOpacity>
+
+              {/* Only worth saying once it's actually biting — the cap is
+                  invisible and irrelevant until something is being dropped. */}
+              {reminderStats.dropped > 0 && (
+                <>
+                  <View style={styles.sep} />
+                  <View style={styles.row}>
+                    <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>
+                        {reminderStats.scheduled} of {reminderStats.wanted} reminders scheduled
+                      </Text>
+                      <Text style={styles.rowHint}>
+                        iOS only holds {MAX_PENDING_REMINDERS} at once, so the {reminderStats.dropped} furthest
+                        out {reminderStats.dropped === 1 ? 'is' : 'are'} waiting. They’re scheduled
+                        automatically as nearer ones pass.
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Reminders are delivered by the system, so they need its permission. Nothing here affects the in-app
+              time-limited task behaviour below.
             </Text>
           </View>
 
