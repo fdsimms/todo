@@ -30,6 +30,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project } from '../types';
+import { SheetHeaderButton } from '../components/SheetHeaderButton';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -327,9 +328,12 @@ export function ProjectDetailScreen() {
         >
           <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
             <View style={styles.detailHeader}>
-              <TouchableOpacity onPress={() => setShowExistingPicker(false)} accessibilityRole="button" accessibilityLabel="Close">
-                <Text style={styles.headerBtnText}>Cancel</Text>
-              </TouchableOpacity>
+              <SheetHeaderButton
+                label="Cancel"
+                role="cancel"
+                onPress={() => setShowExistingPicker(false)}
+                accessibilityLabel="Close"
+              />
               <Text style={styles.detailTitleText}>Add Existing Task</Text>
               <View style={{ width: 48 }} />
             </View>
@@ -431,10 +435,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
-  },
-  headerBtnText: {
-    color: colors.accent,
-    fontSize: font.md,
   },
   detailFooter: {
     paddingTop: spacing.sm,

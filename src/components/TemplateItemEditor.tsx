@@ -28,6 +28,7 @@ import { SortableList } from './SortableList';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 
@@ -243,20 +244,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       scrollEnabled={!draggingRow}
       header={
         <>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.headerBtn}>Cancel</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
             <Text style={styles.headerTitle}>{item ? 'Edit Item' : 'New Item'}</Text>
             {!!templateName && (
               <Text style={styles.headerSubtitle} numberOfLines={1}>{templateName}</Text>
             )}
           </View>
-          <TouchableOpacity onPress={handleSave} disabled={!title.trim()}>
-            <Text style={[styles.headerBtn, styles.headerSave, !title.trim() && styles.disabled]}>
-              {item ? 'Save' : 'Add'}
-            </Text>
-          </TouchableOpacity>
+          <SheetHeaderButton
+            label={item ? 'Save' : 'Add'}
+            onPress={handleSave}
+            disabled={!title.trim()}
+          />
         </>
       }
     >
@@ -987,8 +986,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitleWrap: { flex: 1, alignItems: 'center', paddingHorizontal: spacing.sm },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
   headerSubtitle: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
-  headerBtn: { color: colors.accent, fontSize: font.md },
-  headerSave: { fontWeight: '600' },
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 120 },

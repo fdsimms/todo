@@ -25,6 +25,7 @@ import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -224,13 +225,9 @@ export function WhenPicker({
         <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.headerTextBtn}>
-              <Text style={styles.headerBtnText}>Cancel</Text>
-            </TouchableOpacity>
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
             <Text style={styles.headerTitle}>{title}</Text>
-            <TouchableOpacity onPress={handleSave} hitSlop={10} style={styles.headerTextBtn}>
-              <Text style={[styles.headerBtnText, styles.headerSaveText]}>Save</Text>
-            </TouchableOpacity>
+            <SheetHeaderButton label="Save" onPress={handleSave} style={styles.headerSaveText} />
           </View>
 
           {/* Time of day — its own section, distinct from the date shortcuts */}
@@ -487,16 +484,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     fontWeight: fontWeight.semibold,
   },
-  headerTextBtn: {
-    minWidth: 28,
-  },
-  headerBtnText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-  },
+  // Right-aligned inside its own min width so the title stays centered when
+  // "Save" is wider than "Cancel".
   headerSaveText: {
-    color: colors.accent,
-    fontWeight: fontWeight.semibold,
+    minWidth: 28,
     textAlign: 'right',
   },
   sectionLabel: {

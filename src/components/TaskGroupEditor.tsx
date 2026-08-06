@@ -25,6 +25,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -202,9 +203,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       scrollEnabled={!draggingChild}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -422,7 +421,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  headerBtn: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 80 },
   titleInput: {

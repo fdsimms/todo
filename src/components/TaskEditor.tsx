@@ -48,6 +48,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
@@ -928,15 +929,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       scrollEnabled={!draggingRow}
       header={
         <>
-          <TouchableOpacity onPress={handleCancel} hitSlop={8}>
-            <Text style={styles.headerBtn}>Cancel</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
           <Text style={styles.headerTitle}>{task ? 'Edit Task' : 'New Task'}</Text>
-          <TouchableOpacity onPress={save} hitSlop={8}>
-            <Text style={[styles.headerBtn, styles.headerSave, !title.trim() && styles.disabled]}>
-              {task ? 'Save' : 'Add'}
-            </Text>
-          </TouchableOpacity>
+          <SheetHeaderButton
+            label={task ? 'Save' : 'Add'}
+            onPress={save}
+            disabled={!title.trim()}
+          />
         </>
       }
       footer={
@@ -2287,8 +2286,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  headerBtn: { color: colors.accent, fontSize: font.md },
-  headerSave: { fontWeight: '600' },
   disabled: { opacity: 0.4 },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 320 },
@@ -2365,7 +2362,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.md,
   },
   stackTitle: { flex: 1, color: colors.text, fontSize: font.md },
-  stackRemove: { color: colors.accent, fontSize: font.sm, fontWeight: '500' },
+  // Red, not accent: accent at this size and weight is exactly the disclosure
+  // value style, so "Remove" read as the row's *value* rather than as the
+  // button that unfiles the task.
+  stackRemove: { color: colors.red, fontSize: font.sm, fontWeight: '500' },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,

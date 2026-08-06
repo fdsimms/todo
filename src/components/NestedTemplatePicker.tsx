@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { wouldCreateCycle } from '../utils/templateUtils';
 import { EmptyState } from './EmptyState';
 import type { TaskTemplate } from '../types';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
   visible: boolean;
@@ -55,11 +56,10 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.headerBtn}>Cancel</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={50} />
           <Text style={styles.headerTitle}>Nest a Template</Text>
-          <View style={styles.headerBtn} />
+          {/* Balances Cancel so the title stays optically centered. */}
+          <View style={styles.headerSpacer} />
         </View>
 
         {candidates.length === 0 ? (
@@ -117,7 +117,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: '600' },
-  headerBtn: { color: colors.accent, fontSize: font.md, minWidth: 50 },
+  headerSpacer: { minWidth: 50 },
   list: { paddingVertical: spacing.sm, paddingBottom: spacing.xl },
   row: {
     flexDirection: 'row',

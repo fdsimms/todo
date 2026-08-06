@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, interaction, type Colors } from '../theme';
+import { disclosureValue } from '../theme/textStyles';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -79,5 +80,5 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   label: { color: colors.text, fontSize: font.md },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
-  value: { color: colors.accent, fontSize: font.sm, flexShrink: 1 },
+  value: { ...disclosureValue(colors), flexShrink: 1 },
 });

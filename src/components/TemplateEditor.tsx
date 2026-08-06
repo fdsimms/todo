@@ -21,6 +21,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { findTemplatesReferencing } from '../utils/templateUtils';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
 interface Props {
@@ -107,9 +108,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
           <Text style={styles.headerTitle}>Edit Template</Text>
           <TouchableOpacity
             onPress={handleDelete}
@@ -201,11 +200,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
-  },
-  headerBtn: {
-    color: colors.accent,
-    fontSize: font.md,
-    minWidth: 40,
   },
   headerTitle: {
     color: colors.text,

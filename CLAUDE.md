@@ -214,6 +214,17 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   task"), and — this is the non-obvious one — for an add button sitting at the end of a row of
   *already tinted* chips. Tag chips tint themselves `tagColor(tag) + '33'` and `tagPalette[0]` is
   the accent blue, so an accent pill there reads as one more tag rather than as a control.
+- `SheetHeaderButton` (`src/components/SheetHeaderButton.tsx`) — the Cancel / Save / Done / Add text
+  button in a sheet header, the second and last home of bare accent text. `role="confirm"` (the
+  default) is semibold, `role="cancel"` is regular — weight ranks them, the way iOS ranks nav-bar
+  buttons, and **both are accent**: two of the twelve hand-rolled copies this replaced had drifted
+  to a grey Cancel. `minWidth` reserves matching width on the light side so the title stays
+  optically centered.
+- `disclosureValue(colors)` (`src/theme/textStyles.ts`) — the right-aligned "currently set to" text
+  in `EditorRow`, `CollapsibleField` and the Settings rows. Spread it and add layout on top. It's a
+  shared style rather than four local ones because it had been written as `value` / `summary` /
+  `rowValue` / `anchorValue` in three sizes and two weights, which is most of why a value and a
+  button were hard to tell apart.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.

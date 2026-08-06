@@ -17,6 +17,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -112,9 +113,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -275,7 +274,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  headerBtn: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {

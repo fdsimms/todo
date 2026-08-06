@@ -1,0 +1,4 @@
+{
+  "message": "Tidied up the editors: Cancel is now blue everywhere (the date pickers had it grey), Save and Done are consistently bold, and the value on the right of a settings row matches the one in the task editor. Removing a task from a stack is now red, like every other remove",
+  "date": "2026-08-06"
+}

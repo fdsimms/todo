@@ -90,12 +90,12 @@ export function LogbookEntryMenu({ visible, value, onMarkIncomplete, onChangeDat
         <View style={styles.optionsCard}>
           <TouchableOpacity style={styles.optionRow} onPress={markIncomplete} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="arrow-undo-outline" size={18} color={colors.accent} />
-            <Text style={[styles.optionLabel, { color: colors.accent }]}>Mark Incomplete</Text>
+            <Text style={styles.optionLabel}>Mark Incomplete</Text>
           </TouchableOpacity>
           <View style={styles.inlineSep} />
           <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-            <Text style={[styles.optionLabel, { color: colors.accent }]}>Change Completion Date</Text>
+            <Text style={styles.optionLabel}>Change Completion Date</Text>
           </TouchableOpacity>
         </View>
 
@@ -153,6 +153,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 56,
   },
   optionLabel: {
+    color: colors.accent,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
   },
