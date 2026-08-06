@@ -218,7 +218,10 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
-  useTaskStore.setState({ tasks: [], initialized: false, lastAction: null, completionHoldIds: [] });
+  useTaskStore.setState({
+    tasks: [], initialized: false, lastAction: null,
+    completionHoldIds: [], completionCollapseIds: [],
+  });
   useTaskGroupStore.setState({ groups: [], initialized: false });
   useProjectStore.setState({ projects: [], initialized: false });
   useTemplateStore.setState({ templates: [], initialized: false });
@@ -1112,6 +1115,86 @@ describe('completeTask', () => {
 
       jest.advanceTimersByTime(1200);
       expect(useTaskStore.getState().pinnedTasks()).toHaveLength(0);
+    });
+  });
+
+  describe('completion collapse (batched gap close)', () => {
+    const collapsed = () => [...useTaskStore.getState().completionCollapseIds].sort();
+    const store = () => useTaskStore.getState();
+
+    it('calls the collapse in once completions settle', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      expect(collapsed()).toEqual([]);
+
+      jest.advanceTimersByTime(300);
+      expect(collapsed()).toEqual(['t1']);
+      // Well inside the hold, so the row is still in the list to be collapsed
+      // rather than being unmounted mid-shrink.
+      expect(useTaskStore.getState().completionHoldIds).toEqual(['t1']);
+    });
+
+    it('waits for a tap that is still animating, so a burst collapses together', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1' }), makeTask({ id: 't2' })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      // The second tap lands while t1 is waiting on its collapse — long enough
+      // after it that a settle timer of its own would already have fired.
+      store().beginCompletionAnimation('t2');
+      jest.advanceTimersByTime(400);
+      expect(collapsed()).toEqual([]);
+
+      store().completeTask('t2');
+      jest.advanceTimersByTime(300);
+      expect(collapsed()).toEqual(['t1', 't2']);
+    });
+
+    it('stops waiting on a completion the user took back', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1' }), makeTask({ id: 't2' })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      store().beginCompletionAnimation('t2');
+      jest.advanceTimersByTime(400);
+      expect(collapsed()).toEqual([]);
+
+      store().cancelCompletionAnimation('t2');
+      jest.advanceTimersByTime(300);
+      expect(collapsed()).toEqual(['t1']);
+    });
+
+    it('stops waiting on a completion that turns out to be a no-op', () => {
+      useTaskStore.setState({
+        tasks: [makeTask({ id: 't1' }), makeTask({ id: 't2', completed: true })],
+      });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      // Already completed, so completeTask returns without holding anything —
+      // it still has to let go of the batch on its way out.
+      store().beginCompletionAnimation('t2');
+      store().completeTask('t2');
+      jest.advanceTimersByTime(300);
+      expect(collapsed()).toEqual(['t1']);
+    });
+
+    it('clears the batch along with the hold', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(1200);
+      expect(collapsed()).toEqual([]);
+      expect(useTaskStore.getState().completionHoldIds).toEqual([]);
+    });
+
+    it('takes an uncompleted row back out of the batch', () => {
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1' })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(300);
+      expect(collapsed()).toEqual(['t1']);
+
+      store().uncompleteTask('t1');
+      expect(collapsed()).toEqual([]);
     });
   });
 });
