@@ -446,7 +446,7 @@ export function SettingsScreen() {
               </View>
             </View>
             <Text style={styles.sectionFooter}>
-              Get a key at console.anthropic.com. Stored locally on device only.
+              Get a key at console.anthropic.com. The key stays on this device; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic.
             </Text>
           </View>
 
