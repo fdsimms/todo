@@ -31,10 +31,11 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
+import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -446,6 +447,19 @@ export function TaskItem({
   // keeps its height and reads as "back to nothing" rather than "untracked".
   const showStreakChip = task.showStreak && task.recurrenceType !== 'none';
 
+  // Both read through the blocker index rather than scanning the task list, so
+  // a long list stays O(1) per row. The selector still runs on every store
+  // change, but returns a primitive, so an unchanged count doesn't re-render.
+  const waitingCount = useTaskStore(() => waitingCountFor(task.id));
+  const blockerTitle = useTaskStore(() => {
+    if (!task.blockedById) return undefined;
+    const blocker = resolveBlocker(task.blockedById);
+    // displayTitleFor, not .title — a chained blocker is named by its active
+    // step everywhere else, and this chip shouldn't be the one surface that
+    // disagrees.
+    return blocker ? displayTitleFor(blocker) : undefined;
+  });
+
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -731,8 +745,31 @@ export function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || showStreakChip || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
+            {/* What this task is holding back — the only place the queue is
+                visible from a list, since the waiters themselves are hidden. */}
+            {waitingCount > 0 && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={`${waitingCount} ${waitingCount === 1 ? 'task is' : 'tasks are'} waiting on this`}
+              >
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  {waitingCount} waiting
+                </Text>
+              </View>
+            )}
+            {/* The other side of the same relationship. Only reachable where a
+                blocked task is still listed — Search, and a project's own screen. */}
+            {!!blockerTitle && (
+              <View style={styles.metaChip} accessibilityLabel={`Waiting on ${blockerTitle}`}>
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  After {blockerTitle}
+                </Text>
+              </View>
+            )}
             {showStreakChip && (
               <View
                 style={styles.metaChip}
@@ -1506,6 +1543,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   groupLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  blockingLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,
   },

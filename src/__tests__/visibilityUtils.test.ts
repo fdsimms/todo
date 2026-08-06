@@ -17,9 +17,12 @@ import {
   quotaNextDueAt,
   isQuotaPartial,
   isDismissedToday,
+  isTaskBlocked,
+  isWaitingTask,
   activeChainStepTitle,
   displayTitleFor,
 } from '../utils/visibilityUtils';
+import { registerTaskSource } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
@@ -127,6 +130,7 @@ const baseTask: Task = {
   archived: false,
   archivedAt: null,
   linkUrl: null,
+  blockedById: null,
 };
 
 // June 10, 2025 at 10:00 AM
@@ -1150,5 +1154,113 @@ describe('isDismissedToday', () => {
     expect(isDismissedToday(new Date(2025, 5, 10, 1, 0, 0).toISOString())).toBe(false);
     expect(isDismissedToday(new Date(2025, 5, 10, 3, 0, 0).toISOString())).toBe(true);
     mockSettingsState.dayResetTime = '00:00';
+  });
+});
+
+// ─── Waiting on (blockedById) ─────────────────────────────────────────────────
+
+describe('blocking', () => {
+  const blocker = { ...baseTask, id: 'blocker', title: 'Cancel the internet plan' };
+  // Dated today, so "unblocked" and "visible" mean the same thing here — an
+  // undated task stays off Today for its own reasons and would mask the gate.
+  const waiter = {
+    ...baseTask,
+    id: 'waiter',
+    title: 'Return the router',
+    blockedById: 'blocker',
+    dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+  };
+  const bareWaiter = { ...waiter, dueDate: null };
+
+  // isTaskVisible resolves blockedById through the registry rather than an
+  // argument, so each test points it at the table it wants.
+  const withTasks = (tasks: Task[]) => registerTaskSource(() => tasks);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    registerTaskSource(null);
+    jest.useRealTimers();
+  });
+
+  it('hides a blocked task from Today', () => {
+    withTasks([blocker, waiter]);
+    expect(isTaskBlocked(waiter)).toBe(true);
+    expect(isTaskVisible(waiter)).toBe(false);
+  });
+
+  it('keeps a blocked task out of Later — it has no moment to sort by', () => {
+    withTasks([blocker, waiter]);
+    expect(isTaskDeferred(waiter)).toBe(false);
+  });
+
+  it('keeps a blocked task out of Inbox and Unscheduled', () => {
+    // Bare enough to be an Inbox task, and organized enough to be Unscheduled,
+    // if blocking weren't disqualifying in both.
+    withTasks([blocker, bareWaiter]);
+    expect(isInboxTask(bareWaiter)).toBe(false);
+    expect(isUnscheduledTask({ ...bareWaiter, category: 'Work' })).toBe(false);
+  });
+
+  it('still lists an undated blocked task on the Waiting screen', () => {
+    withTasks([blocker, bareWaiter]);
+    expect(isWaitingTask(bareWaiter)).toBe(true);
+  });
+
+  it('puts it on the Waiting screen instead', () => {
+    withTasks([blocker, waiter]);
+    expect(isWaitingTask(waiter)).toBe(true);
+  });
+
+  it('surfaces the task the moment its blocker is completed — with nothing written', () => {
+    withTasks([{ ...blocker, completed: true }, waiter]);
+    expect(isTaskBlocked(waiter)).toBe(false);
+    expect(isTaskVisible(waiter)).toBe(true);
+    expect(isWaitingTask(waiter)).toBe(false);
+  });
+
+  it('re-blocks when the blocker is uncompleted from the Logbook', () => {
+    withTasks([{ ...blocker, completed: true }, waiter]);
+    expect(isTaskVisible(waiter)).toBe(true);
+    withTasks([blocker, waiter]);
+    expect(isTaskVisible(waiter)).toBe(false);
+  });
+
+  it('frees the waiter when the blocker is deleted rather than stranding it', () => {
+    withTasks([waiter]);
+    expect(isTaskBlocked(waiter)).toBe(false);
+    expect(isTaskVisible(waiter)).toBe(true);
+  });
+
+  it('frees the waiter when the blocker is archived', () => {
+    withTasks([{ ...blocker, archived: true }, waiter]);
+    expect(isTaskBlocked(waiter)).toBe(false);
+    expect(isTaskVisible(waiter)).toBe(true);
+  });
+
+  it('beats a due date — a blocked task due today still does not show', () => {
+    withTasks([blocker, waiter]);
+    expect(isTaskVisible(waiter)).toBe(false);
+    expect(isWaitingTask(waiter)).toBe(true);
+  });
+
+  it('does not treat a completed or archived waiter as blocked', () => {
+    withTasks([blocker, waiter]);
+    expect(isTaskBlocked({ ...waiter, completed: true })).toBe(false);
+    expect(isTaskBlocked({ ...waiter, archived: true })).toBe(false);
+  });
+
+  it('leaves ordinary tasks alone', () => {
+    withTasks([blocker, waiter]);
+    expect(isTaskBlocked(blocker)).toBe(false);
+    expect(isTaskVisible({ ...blocker, dueDate: NOW.toISOString() })).toBe(true);
+  });
+
+  it('blocks nothing when no task source is registered', () => {
+    registerTaskSource(null);
+    expect(isTaskBlocked(waiter)).toBe(false);
   });
 });

@@ -36,7 +36,8 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 
@@ -61,6 +62,11 @@ interface UndoableAction {
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
   'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
+  // Grouped with the other visibility gates (windowStart, timeSegments) rather
+  // than the recurrence rule: "this occurrence waits on that one-off errand" is
+  // a normal thing to want, and without this a scope:'occurrence' edit would
+  // quietly become the template for every occurrence after it.
+  'blockedById',
 ];
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
@@ -129,6 +135,7 @@ function newTaskFromDraft(draft: Partial<TaskDraft>, now: string, sortOrder: num
     archived: false,
     archivedAt: null,
     linkUrl: draft.linkUrl ?? null,
+    blockedById: draft.blockedById ?? null,
   };
 }
 
@@ -401,6 +408,7 @@ interface TaskStore {
   upcomingTodayTasks: () => Task[];
   inboxTasks: () => Task[];
   unscheduledTasks: () => Task[];
+  waitingTasks: () => Task[];
   deferredTasks: () => Task[];
   expiredTasks: () => Task[];
   vacationHiddenTasks: () => Task[];
@@ -988,6 +996,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
           timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
+          // blockedById carries via ...effective too, and harmlessly: for this
+          // occurrence to have been completed its blocker was already done, so
+          // the new row inherits a pointer at a completed task and isn't blocked.
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
           seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
         };
@@ -1625,6 +1636,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archived: false,
       archivedAt: null,
       linkUrl: null,
+      blockedById: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -1746,6 +1758,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archived: false,
       archivedAt: null,
       linkUrl: null,
+      blockedById: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
@@ -2237,6 +2250,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
+  // Grouped by blocker so everything queued behind one task reads as a run,
+  // rather than by sortOrder, which says nothing about what a task is waiting on.
+  waitingTasks() {
+    return get().tasks
+      .filter(isWaitingTask)
+      .sort((a, b) => (a.blockedById ?? '').localeCompare(b.blockedById ?? '')
+        || a.sortOrder - b.sortOrder);
+  },
+
   deferredTasks() {
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
@@ -2378,3 +2400,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     return withHeldCompletions(tasks, completionHoldIds).filter(t => !t.completed && !t.archived && !t.parentId && t.category === category);
   },
 }));
+
+// Lets visibilityUtils resolve Task.blockedById without importing this store —
+// it can't, since this module pulls in expo-sqlite and already imports it. See
+// src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
+registerTaskSource(() => useTaskStore.getState().tasks);

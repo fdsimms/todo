@@ -173,6 +173,28 @@ export interface Task {
 
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 
+  // "Waiting on" — the id of another task that must be done before this one
+  // becomes actionable (e.g. "return the router" waiting on "cancel the
+  // internet plan"). The fifth reason a task can be hidden, and the only one
+  // that isn't a clock: the other four (deferUntil, timeSegments, dueDate,
+  // vacationPause) all answer "hidden until *when*".
+  //
+  // Blocked-ness is DERIVED, never stored — isTaskBlocked() asks whether that
+  // row still exists, is incomplete, and is unarchived. Nothing is written when
+  // the blocker completes. That's what makes completing, uncompleting,
+  // deleting AND archiving the blocker all do the right thing with no cascade;
+  // a stored flag would need one in each of those paths, and a missed cascade
+  // leaves a task no user action can ever surface again.
+  //
+  // Deliberately a single id rather than a list: "waiting on" is one thing in
+  // practice, and it keeps cycle detection a chain walk instead of a graph
+  // traversal. A JSON array is the upgrade path if that ever changes.
+  //
+  // Note a recurring blocker unblocks its waiter permanently: completing it
+  // spawns a new row with a NEW id, so this keeps pointing at the completed
+  // original. That's intended — "wait for trash day to happen once".
+  blockedById: string | null;
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion

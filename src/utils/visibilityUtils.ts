@@ -2,6 +2,21 @@ import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { isBlocked } from './blocking';
+import { resolveBlocker } from './blockerRegistry';
+
+/**
+ * True while this task is waiting on another task that isn't done yet — the
+ * fifth reason a task can be hidden, and the only one that isn't a clock.
+ *
+ * A blocked task is absent from Today, Later, Unscheduled and Inbox alike; the
+ * Waiting screen is where it lives until its blocker is completed (or deleted,
+ * or archived, any of which frees it — see canBlock).
+ */
+export function isTaskBlocked(task: Task): boolean {
+  if (task.completed || task.archived) return false;
+  return isBlocked(task, resolveBlocker);
+}
 
 // Anchored to the current *logical* day (getCurrentDayStart), not the literal
 // wall-clock date — otherwise, during the early-morning grace window before
@@ -214,6 +229,10 @@ export function isTaskVisible(task: Task): boolean {
 
   if (isCategoryHiddenOnVacation(task.category)) return false;
 
+  // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
+  // a clock resolves, so it shouldn't rank below one.
+  if (isTaskBlocked(task)) return false;
+
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
 
@@ -283,6 +302,11 @@ export function isTaskDeferred(task: Task): boolean {
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
   if (isTaskExpired(task)) return false;
+  // Same shape as the two below, and the reason it matters: Later is sorted and
+  // sectioned end to end by getVisibleAt(), and a blocked task has no moment to
+  // give it. Without this it would take getVisibleAt's `now` fallback and pin
+  // itself to the top of the list under a meaningless header.
+  if (isTaskBlocked(task)) return false;
   // Undated project tasks aren't visible, but they don't belong in Later
   // either — they have no date to be deferred to, so they just live in their
   // project until one is assigned.
@@ -307,6 +331,10 @@ export function isInboxTask(task: Task): boolean {
     !task.parentId &&
     !task.completed &&
     !task.archived &&
+    // A blocked task isn't untriaged — it's been given the most specific
+    // instruction there is ("after that one"), it just has no date to show for
+    // it. It waits on the Waiting screen, not here.
+    !isTaskBlocked(task) &&
     task.projectId == null &&
     task.category == null &&
     task.tags.length === 0 &&
@@ -345,10 +373,20 @@ export function isUnscheduledTask(task: Task): boolean {
     !task.parentId &&
     !task.completed &&
     !task.archived &&
+    // Unscheduled means "could be done any time"; blocked means "can't be done
+    // yet". Same absence of a date, opposite availability.
+    !isTaskBlocked(task) &&
     task.projectId == null &&
     hasNoDateSignal(task) &&
     !isInboxTask(task)
   );
+}
+
+// True when a task is held back only by another task — the Waiting screen's
+// selector. Deliberately not gated on hasNoDateSignal: a blocked task may well
+// carry a due date (blocking overrides it), and it belongs here either way.
+export function isWaitingTask(task: Task): boolean {
+  return !task.parentId && !task.completed && !task.archived && isTaskBlocked(task);
 }
 
 // True when a task is hidden solely because its time-of-day segment hasn't started yet today.
