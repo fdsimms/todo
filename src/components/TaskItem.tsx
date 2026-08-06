@@ -22,6 +22,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -1157,8 +1158,8 @@ export function TaskItem({
                         task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
                       }
                     >
-                      <Ionicons
-                        name={task.pinned ? 'pin' : 'pin-outline'}
+                      <PinIcon
+                        filled={task.pinned}
                         size={iconSize.sm}
                         color={task.pinned ? colors.orange : colors.textSecondary}
                       />

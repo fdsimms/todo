@@ -13,6 +13,7 @@ import {
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
@@ -2068,7 +2069,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           accessibilityLabel="Pin to Today"
           accessibilityState={{ checked: pinned }}
         >
-          <Ionicons name={pinned ? 'pin' : 'pin-outline'} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+          <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Pin to Today</Text>
             <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
