@@ -43,7 +43,22 @@ interface SettingsStore {
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
+  resetToDefaults: () => void;
 }
+
+const DEFAULT_SETTINGS = {
+  dayResetTime: '00:00',
+  morningStart: '06:00',
+  afternoonStart: '12:00',
+  eveningStart: '18:00',
+  nightStart: '21:00',
+  activeHoursStart: '08:00',
+  activeHoursEnd: '22:00',
+  themeMode: 'dark' as ThemeMode,
+  autoRemoveExpiredTasks: false,
+  autoArchiveProjectsOnComplete: false,
+  hideCategories: false,
+};
 
 export const useSettingsStore = create<SettingsStore>(set => ({
   dayResetTime: '00:00',
@@ -184,5 +199,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('patchNotesQaStatus', JSON.stringify(next));
       return { patchNotesQaStatus: next };
     });
+  },
+
+  resetToDefaults() {
+    Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
+      dbSetSetting(key, String(value));
+    });
+    set(DEFAULT_SETTINGS);
   },
 }));

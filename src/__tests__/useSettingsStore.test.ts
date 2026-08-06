@@ -180,6 +180,51 @@ describe('setVacationMode', () => {
   });
 });
 
+// ─── resetToDefaults ─────────────────────────────────────────────────────────
+
+describe('resetToDefaults', () => {
+  it('restores appearance and day/time settings to their defaults', () => {
+    useSettingsStore.getState().setThemeMode('light');
+    useSettingsStore.getState().setDayResetTime('06:00');
+    useSettingsStore.getState().setAfternoonStart('13:00');
+    useSettingsStore.getState().setAutoRemoveExpiredTasks(true);
+    useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
+    useSettingsStore.getState().setHideCategories(true);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.themeMode).toBe('dark');
+    expect(state.dayResetTime).toBe('00:00');
+    expect(state.morningStart).toBe('06:00');
+    expect(state.afternoonStart).toBe('12:00');
+    expect(state.eveningStart).toBe('18:00');
+    expect(state.nightStart).toBe('21:00');
+    expect(state.activeHoursStart).toBe('08:00');
+    expect(state.activeHoursEnd).toBe('22:00');
+    expect(state.autoRemoveExpiredTasks).toBe(false);
+    expect(state.autoArchiveProjectsOnComplete).toBe(false);
+    expect(state.hideCategories).toBe(false);
+  });
+
+  it('persists each default to the database', () => {
+    useSettingsStore.getState().resetToDefaults();
+    expect(dbSetSetting).toHaveBeenCalledWith('themeMode', 'dark');
+    expect(dbSetSetting).toHaveBeenCalledWith('dayResetTime', '00:00');
+  });
+
+  it('does not touch the API key or vacation mode', () => {
+    useSettingsStore.getState().setAnthropicApiKey('sk-ant-secret');
+    useSettingsStore.getState().setVacationMode(true);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.anthropicApiKey).toBe('sk-ant-secret');
+    expect(state.vacationMode).toBe(true);
+  });
+});
+
 describe('setVacationEnd', () => {
   it('updates vacationEnd independently of vacationMode', () => {
     useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');
