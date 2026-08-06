@@ -35,6 +35,7 @@ export function FilterChipBar({ items, selected, onSelect, showDot }: Props) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
+      style={styles.scroll}
       contentContainerStyle={styles.container}
     >
       <Chip
@@ -88,6 +89,11 @@ function Chip({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // ScrollView's own base style is flexGrow/flexShrink: 1, so in a column
+  // parent this row gets shrunk by whatever list sits below it — the chips
+  // end up shorter than their own padding and the labels spill out. Same
+  // reason TodayScreen's view-mode pills pin their scroll view.
+  scroll: { flexGrow: 0, flexShrink: 0 },
   container: {
     flexDirection: 'row',
     alignItems: 'center',
