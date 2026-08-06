@@ -52,7 +52,8 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
-import { suggestPinTasks, MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
+import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
+import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
@@ -451,6 +452,7 @@ export function TodayScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
+  const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -704,8 +706,7 @@ export function TodayScreen() {
     };
   }, []);
 
-  const handleSuggestPin = () => {
-    const ids = suggestPinTasks(visibleTasks, pinnedTasks, useTaskStore.getState().completedTasks());
+  const handleSuggestedPins = (ids: string[]) => {
     for (const id of ids) updateTask(id, { pinned: true });
     // Suggested pins arrive in one shot rather than one tap at a time, so the
     // grace period that protects manual multi-pin tapping doesn't apply here.
@@ -1904,7 +1905,7 @@ export function TodayScreen() {
     ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
           icon: 'sparkles' as const,
-          onPress: handleSuggestPin,
+          onPress: () => setSuggestedPinsVisible(true),
           active: pinnedTasks.length === 0,
           tint: 'orange' as const,
           accessibilityLabel: 'Suggest pin tasks',
@@ -2510,6 +2511,14 @@ export function TodayScreen() {
           visible={deloadVisible}
           todaysTasks={visibleTasks}
           onClose={() => setDeloadVisible(false)}
+        />
+
+        <SuggestedPinsSheet
+          visible={suggestedPinsVisible}
+          tasks={visibleTasks}
+          pinnedTasks={pinnedTasks}
+          onClose={() => setSuggestedPinsVisible(false)}
+          onConfirm={handleSuggestedPins}
         />
 
         <ProjectPullSheet

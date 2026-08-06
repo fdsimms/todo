@@ -198,12 +198,35 @@ function buildSeriesRow(
 // vanishing out from under them mid-burst.
 const COMPLETION_HOLD_MS = 1000;
 let completionHoldTimer: ReturnType<typeof setTimeout> | null = null;
-// The same idea for the other way a task leaves Today under its own steam: a
-// daily target that a logged unit just put back on pace. That one used to go on
-// the tap that logged it, which capped a real burst — four glasses of water at
-// once — at one unit per trip to the list, with the rest only loggable from
-// Later. So the row asks for the task to be pinned to Today while it plays
-// itself out, and lets go once it has (see handleQuotaTap in TaskItem).
+
+// The held rows shrink away as a batch, and this is how long the store waits
+// before deciding the batch is closed. Every row completed in a burst closes
+// its gap in the same frame, rather than each one closing its own the instant
+// its tap's animation happened to finish — tapping four tasks used to reflow
+// the list four times, in tap order, which is exactly what the hold above
+// exists to avoid. It's much shorter than the hold because it doesn't have to
+// guess whether the burst is over: a tap that is still playing its completion
+// animation has already registered itself as in-flight
+// (beginCompletionAnimation), and this timer isn't armed until every one of
+// those has landed. So a lone completion collapses promptly, while a run of
+// them waits for the last row to catch up. The collapse animation
+// (animation.duration.normal, 250ms) then has to finish inside the remaining
+// hold, or rows would be unmounted mid-shrink — both timers are armed by the
+// same completion, so this has to stay under COMPLETION_HOLD_MS minus that.
+const COMPLETION_COLLAPSE_MS = 300;
+let completionCollapseTimer: ReturnType<typeof setTimeout> | null = null;
+// Ids whose completion animation is playing but hasn't reached completeTask
+// yet. Only the collapse timing reads it, so it stays out of the store's state
+// — a row doesn't re-render because a *different* row was tapped.
+let pendingCompletionIds: string[] = [];
+
+// The same idea as the completion hold, for the other way a task leaves Today
+// under its own steam: a daily target that a logged unit just put back on pace.
+// That one used to go on the tap that logged it, which capped a real burst —
+// four glasses of water at once — at one unit per trip to the list, with the
+// rest only loggable from Later. So the row asks for the task to be pinned to
+// Today while it plays itself out, and lets go once it has (see handleQuotaTap
+// in TaskItem).
 //
 // Unlike the completion hold, this one is released by the row rather than by a
 // timer here: the row owns the animation whose end the release marks, and two
@@ -228,6 +251,24 @@ let pendingUnpinIds: string[] = [];
 // masked object across calls, as long as the source task hasn't actually
 // changed, lets useShallow see it as unchanged and break the loop.
 const heldMaskCache = new Map<string, { source: Task; masked: Task }>();
+
+// Arms (or re-arms) the batched collapse. Called from every completion and
+// whenever an in-flight one is cancelled; while any tap is still playing its
+// animation the timer stays down, and that tap's own completion re-arms it.
+// If an in-flight completion never lands (its row unmounted mid-animation),
+// nothing collapses and the hold above still unmounts the rows on schedule —
+// the same send-off they got before there was a collapse at all.
+function armCompletionCollapse() {
+  if (completionCollapseTimer) clearTimeout(completionCollapseTimer);
+  completionCollapseTimer = null;
+  if (pendingCompletionIds.length > 0) return;
+  completionCollapseTimer = setTimeout(() => {
+    completionCollapseTimer = null;
+    const held = useTaskStore.getState().completionHoldIds;
+    if (held.length > 0) useTaskStore.setState({ completionCollapseIds: held });
+  }, COMPLETION_COLLAPSE_MS);
+  (completionCollapseTimer as unknown as { unref?: () => void }).unref?.();
+}
 
 function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
   if (heldIds.length === 0) return tasks;
@@ -293,11 +334,23 @@ interface TaskStore {
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
+  // The subset of those rows that has been told to shrink away. Set in one
+  // go once the burst settles, so every row completed in it closes its gap
+  // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
+  // appearing here and runs its height collapse then.
+  completionCollapseIds: string[];
   // Ids of daily targets pinned to Today past the moment they went back on
   // pace, so the row can be tapped again — see QUOTA_HOLD_BACKSTOP_MS.
   quotaHoldIds: string[];
 
   initialize: () => void;
+  // Marks a completion as animating so the batched collapse waits for it.
+  // Called when the row's completion animation starts, i.e. a beat before the
+  // completeTask that follows it.
+  beginCompletionAnimation: (id: string) => void;
+  // The same animation was cancelled (the user tapped the row again to take
+  // the completion back) — stop holding the batch for it.
+  cancelCompletionAnimation: (id: string) => void;
   sweepExpiredTasks: () => void;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
@@ -426,6 +479,7 @@ interface TaskStore {
   checkVacationExpiry: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
+  bulkUncompleteTasks: (ids: string[]) => void;
   bulkDeleteTasks: (ids: string[]) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
@@ -464,7 +518,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   initialized: false,
   lastAction: null,
   completionHoldIds: [],
+  completionCollapseIds: [],
   quotaHoldIds: [],
+
+  beginCompletionAnimation(id) {
+    if (!pendingCompletionIds.includes(id)) pendingCompletionIds.push(id);
+    if (completionCollapseTimer) clearTimeout(completionCollapseTimer);
+    completionCollapseTimer = null;
+  },
+
+  cancelCompletionAnimation(id) {
+    if (!pendingCompletionIds.includes(id)) return;
+    pendingCompletionIds = pendingCompletionIds.filter(x => x !== id);
+    armCompletionCollapse();
+  },
 
   initialize() {
     initDatabase();
@@ -883,6 +950,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   completeTask(id) {
+    // The row's animation is over whatever this call decides, so release it
+    // from the collapse batch before the guards below — a completion that
+    // turns out to be a no-op would otherwise hold the batch down for good.
+    // Arming here is harmless in the normal case: the call at the end re-arms
+    // the same timer once the hold is set up.
+    if (pendingCompletionIds.includes(id)) {
+      pendingCompletionIds = pendingCompletionIds.filter(x => x !== id);
+      armCompletionCollapse();
+    }
     let task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
@@ -1152,6 +1228,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // slot cleanly without needing an extra transition here.
       set(s => ({
         completionHoldIds: [],
+        completionCollapseIds: [],
         tasks: stillPinnedIds.length > 0
           ? s.tasks.map(t => (stillPinnedIds.includes(t.id) ? { ...t, pinned: false } : t))
           : s.tasks,
@@ -1160,6 +1237,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Node (tests) returns a Timeout with unref(); React Native's timer is a
     // plain number without it — don't keep a test process alive over this.
     (completionHoldTimer as unknown as { unref?: () => void }).unref?.();
+    armCompletionCollapse();
 
     get().setLastAction({
       label: 'Task completed',
@@ -1208,6 +1286,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         .filter(t => !followUp || (t.id !== followUp.id && t.parentId !== followUp.id))
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
+      completionCollapseIds: s.completionCollapseIds.filter(x => x !== id),
     }));
 
     // Un-completing a task (e.g. from the Logbook) is itself undoable via
@@ -2173,6 +2252,30 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
+    });
+  },
+
+  // Re-opens a selection of completed tasks (the Logbook's bulk bar). Unlike
+  // bulkCompleteTasks, the undo can't just be the inverse call in a loop —
+  // completeTask would recompute streaks and the next due date off "now"
+  // instead of restoring what was there. Each uncompleteTask already registers
+  // an undo that puts its own row back exactly as it was, so this collects
+  // those closures and replays them as one action (same trick as clearLogbook).
+  bulkUncompleteTasks(ids) {
+    if (ids.length === 0) return;
+    const undos: Array<() => void> = [];
+    dbTransaction(() => {
+      ids.forEach(id => {
+        if (!get().tasks.find(t => t.id === id)?.completed) return;
+        get().uncompleteTask(id);
+        const undo = get().lastAction?.undo;
+        if (undo) undos.push(undo);
+      });
+    });
+    if (undos.length === 0) return;
+    get().setLastAction({
+      label: `${undos.length} task${undos.length === 1 ? '' : 's'} uncompleted`,
+      undo: () => undos.forEach(u => u()),
     });
   },
 

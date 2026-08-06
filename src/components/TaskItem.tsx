@@ -196,6 +196,8 @@ export const TaskItem = React.memo(function TaskItem({
   // TaskItem is mounted once per row, not re-created per render.
   const {
     completeTask,
+    beginCompletionAnimation,
+    cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
     holdQuotaOnToday,
@@ -276,16 +278,25 @@ export const TaskItem = React.memo(function TaskItem({
   // Washes the fill from accent to green over the last of that rise, so the
   // meter lands on the colour every other completion ends on.
   const quotaDone = useRef(new Animated.Value(0)).current;
-  // Drives the whole row's height to 0 once the completion fade finishes, so
-  // the space it took up collapses right away instead of sitting there
-  // invisible for the rest of completeTask's completionHoldIds window (see
-  // useTaskStore) — that hold keeps the row mounted briefly so a burst of
-  // completions doesn't reflow the list after every tap, but with no
-  // visual collapse of its own it just reads as the app freezing. Runs on the
-  // UI thread for the same reason the expand panel below does: a JS-driven
-  // height change stutters once other rows have to re-layout under it.
+  // Drives the whole row's height to 0 after the completion fade, so the space
+  // it took up closes instead of sitting there invisible for the rest of
+  // completeTask's completionHoldIds window (see useTaskStore) — that hold
+  // keeps the row mounted briefly, and with no visual collapse of its own it
+  // just reads as the app freezing. The store says *when*
+  // (completionCollapseIds), not this row: tap four tasks and all four gaps
+  // close in one frame, rather than each closing whenever that row's own
+  // animation happened to finish, which staggered the list into reflowing once
+  // per tap in tap order. Runs on the UI thread for the same reason the expand
+  // panel below does: a JS-driven height change stutters once other rows have
+  // to re-layout under it.
   const collapseProgress = useSharedValue(1);
   const collapseStartedRef = useRef(false);
+  // This row played its own completion animation and is waiting for the batch,
+  // as opposed to one completed elsewhere (a swipe, the bulk bar, the editor):
+  // those never faded, so shrinking them would yank a fully-visible row away.
+  // It also stops taking touches while it waits — it's invisible by then, and
+  // during a burst it keeps its full height for as long as the tapping goes on.
+  const [awaitingCollapse, setAwaitingCollapse] = useState(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
   // Tints the row briefly right after it mounts as the result of task
   // creation, so the user can tell which row is the one that just appeared.
@@ -371,6 +382,28 @@ export const TaskItem = React.memo(function TaskItem({
   const handleItemLayout = (e: LayoutChangeEvent) => {
     if (!collapseStartedRef.current) setRowHeight(e.nativeEvent.layout.height);
   };
+
+  // The store flips this on for every row of a burst in the same commit, which
+  // is what makes their gaps close together. A plain boolean, so a row only
+  // re-renders when its *own* completion is the one being called in.
+  const collapseSignal = useTaskStore(s => s.completionCollapseIds.includes(task.id));
+  useEffect(() => {
+    if (!collapseSignal || !awaitingCollapse) return;
+    setAwaitingCollapse(false);
+    collapseStartedRef.current = true;
+    collapseProgress.value = withTiming(0, {
+      duration: animation.duration.normal,
+      easing: Easing.inOut(Easing.cubic),
+    });
+  }, [collapseSignal, awaitingCollapse]);
+
+  // A row unmounted mid-animation (screen change, filter change) never reaches
+  // completeTask, so it has to let the batch go — otherwise the collapse it was
+  // waiting on would never be called and the other rows would sit invisible
+  // until the hold unmounted them.
+  useEffect(() => () => {
+    if (completingRef.current) cancelCompletionAnimation(task.id);
+  }, []);
 
   useEffect(() => {
     if (isActive) {
@@ -586,6 +619,10 @@ export const TaskItem = React.memo(function TaskItem({
       quotaSendOffRef.current = null;
     }
     completingRef.current = true;
+    // Told up front, not at the end: the batched collapse holds for a row that
+    // is still animating, so tapping the next task keeps the previous one's gap
+    // open even though it finished a moment ago.
+    beginCompletionAnimation(task.id);
     await haptics.success();
     setCompleting(true);
     setQuotaCompleting(viaMeter);
@@ -593,9 +630,10 @@ export const TaskItem = React.memo(function TaskItem({
     // invisible but keeps its place in the list — completeTask holds it
     // there (see useTaskStore's completionHoldIds) so completing several
     // tasks in a row doesn't reflow the list after every tap. The row only
-    // collapses once completions pause for about a second. The task isn't
-    // actually marked complete in the store until this sequence finishes,
-    // so a tap during the window (handleUndoComplete) can cancel it outright.
+    // collapses once the whole burst has landed, alongside every other row in
+    // it (completionCollapseIds). The task isn't actually marked complete in
+    // the store until this sequence finishes, so a tap during the window
+    // (handleUndoComplete) can cancel it outright.
     if (viaMeter) {
       // Runs alongside the sequence below rather than inside it, because the
       // ring can only go green once the fill has covered it — and a mid-
@@ -629,13 +667,11 @@ export const TaskItem = React.memo(function TaskItem({
       setQuotaCompleting(false);
       setQuotaToppedOut(false);
       completingRef.current = false;
+      // Leaves the row invisible but full height; the store calls the collapse
+      // in once the burst settles (see the collapseSignal effect above).
+      setAwaitingCollapse(true);
       completeTask(task.id);
       endQuotaHold();
-      collapseStartedRef.current = true;
-      collapseProgress.value = withTiming(0, {
-        duration: animation.duration.normal,
-        easing: Easing.inOut(Easing.cubic),
-      });
     });
   };
 
@@ -804,6 +840,8 @@ export const TaskItem = React.memo(function TaskItem({
     completeAnimRef.current?.stop();
     completeAnimRef.current = null;
     completingRef.current = false;
+    // Nothing was completed, so the batch shouldn't keep waiting on this row.
+    cancelCompletionAnimation(task.id);
     await haptics.tap();
     checkScale.setValue(0);
     circleScale.setValue(1);
@@ -815,6 +853,7 @@ export const TaskItem = React.memo(function TaskItem({
     setQuotaCompleting(false);
     setQuotaToppedOut(false);
     setCompleting(false);
+    setAwaitingCollapse(false);
     collapseStartedRef.current = false;
     collapseProgress.value = 1;
   };
@@ -1544,7 +1583,14 @@ export const TaskItem = React.memo(function TaskItem({
 
   return (
     <>
-      <Reanimated.View style={collapseStyle} onLayout={handleItemLayout}>
+      <Reanimated.View
+        style={collapseStyle}
+        onLayout={handleItemLayout}
+        // Faded out and holding its slot open for the rest of the burst — a tap
+        // that lands here is aimed at whatever was underneath it, not at a row
+        // that isn't on screen any more.
+        pointerEvents={awaitingCollapse ? 'none' : 'auto'}
+      >
         <Animated.View
           // The card itself, not the collapse wrapper above it — its frame is
           // exactly the band a finger painting down the list should hit, with

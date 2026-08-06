@@ -22,8 +22,11 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
+import { LogbookBulkBar } from '../components/LogbookBulkBar';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
+import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, lineHeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -83,6 +86,8 @@ export function LogbookScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const completedTasks = useTaskStore(useShallow(s => s.completedTasks()));
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
+  const bulkUncompleteTasks = useTaskStore(s => s.bulkUncompleteTasks);
+  const deleteTask = useTaskStore(s => s.deleteTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
@@ -94,6 +99,24 @@ export function LogbookScreen() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [filterVisible, setFilterVisible] = useState(false);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+
+  // The same bulk-selection machinery every task list uses. Its delete flow
+  // asks about recurring tasks in a mixed selection, which never fires here:
+  // isLiveRecurring is false for anything completed, so a Logbook selection
+  // always takes the plain "delete N tasks, undoable by shaking" path.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+    handleBulkDelete,
+    painting,
+    paintProps,
+  } = useTaskSelection(completedTasks);
 
   // Chip options are scoped to what's actually in the logbook, not every
   // category/tag in the app — an unused filter is just clutter here.
@@ -127,6 +150,10 @@ export function LogbookScreen() {
 
   const isFiltered = query.trim().length > 0 || selectedCategory !== null || selectedTag !== null;
 
+  // Extra bottom padding so the last rows aren't hidden behind the floating
+  // bulk bar, same as the other bulk-selecting screens.
+  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+
   const handleClearLogbook = () => {
     haptics.warning();
     Alert.alert(
@@ -144,6 +171,33 @@ export function LogbookScreen() {
         },
       ]
     );
+  };
+
+  // Deleting one entry, from its menu. Same wording as the bulk prompt below
+  // it, since both land on the same shake-to-undo.
+  const handleDeleteEntry = (task: Task) => {
+    haptics.warning();
+    Alert.alert(
+      'Delete Entry',
+      `Delete "${displayTitleFor(task)}" from the logbook? You can undo this by shaking your phone right after.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            deleteTask(task.id);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleBulkUncomplete = () => {
+    animateLayout();
+    bulkUncompleteTasks(Array.from(selectedIds));
+    exitSelection();
   };
 
   const sections = useMemo((): LogbookSection[] => {
@@ -181,8 +235,15 @@ export function LogbookScreen() {
         subtitle={`${completedTasks.length} completed`}
         actions={completedTasks.length > 0 ? [
           {
+            icon: 'checkmark-circle-outline',
+            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+            active: selectionMode,
+            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select entries',
+          },
+          {
             icon: 'trash-outline',
             onPress: handleClearLogbook,
+            disabled: selectionMode,
             accessibilityLabel: 'Clear logbook',
           },
         ] : undefined}
@@ -261,11 +322,23 @@ export function LogbookScreen() {
         </>
       )}
 
+      <PaintSelectionProvider {...paintProps}>
       <SectionList
         sections={sections}
         keyExtractor={item => item.id}
         getItemLayout={getItemLayout}
-        contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
+        // A paint gesture owns the touch for its duration — see the note in
+        // PaintSelectionProvider on why the list can't be allowed to scroll
+        // out from under it.
+        scrollEnabled={!painting}
+        // renderItem closes over the selection, and the cells are memoized on
+        // their item alone, so the list has to be told what else changed.
+        extraData={paintProps}
+        contentContainerStyle={
+          sections.length === 0
+            ? styles.emptyContainer
+            : [styles.listContent, selectionMode && { paddingBottom: selectionListPadding }]
+        }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionHeaderText}>{section.title}</Text>
@@ -274,82 +347,23 @@ export function LogbookScreen() {
         )}
         renderItem={({ item }) => {
           const categoryEmoji = item.category ? getCategoryByName(item.category)?.emoji : null;
-          const categoryLabel = item.category
-            ? (categoryEmoji ? `${categoryEmoji} ${item.category}` : item.category)
-            : null;
           return (
-          // Swipe right to move when it was completed — the same "when" slot
-          // tasks use for rescheduling. No select side: there's no bulk mode
-          // here, and "complete" would mean nothing to a completed row.
-          // Square corners: these rows are deliberately flat and full-bleed
-          // (see styles.row), so the panel shouldn't be rounded like a card.
-          <SwipeableRow
-            style={styles.rowSwipe}
-            whenAction={{
-              icon: 'calendar-outline',
-              onAction: () => setMenuTask(item),
-              accessibilityLabel: `Change when ${item.title} was completed`,
-            }}
-          >
-            <View style={styles.row}>
-              <TouchableOpacity
-                style={styles.checkCircle}
-                onPress={() => {
-                  haptics.tap();
-                  animateLayout();
-                  uncompleteTask(item.id);
-                }}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="checkbox"
-                accessibilityState={{ checked: true }}
-                accessibilityLabel={`Mark ${item.title} as not done`}
-              >
-                <Ionicons
-                  name={isQuotaPartial(item) ? 'remove' : 'checkmark'}
-                  size={12}
-                  color={isQuotaPartial(item) ? colors.textTertiary : colors.green}
-                />
-              </TouchableOpacity>
-              <View
-                style={styles.rowContent}
-                accessible
-                accessibilityLabel={[
-                  displayTitleFor(item),
-                  isQuotaPartial(item)
-                    ? `fell short at ${item.progressCount} of ${item.targetCount}, ${formatTime(item.completedAt!)}`
-                    : `completed ${formatTime(item.completedAt!)}`,
-                  item.category,
-                  item.actualMinutes != null ? `timed ${formatDuration(item.actualMinutes)}` : null,
-                ].filter(Boolean).join(', ')}
-              >
-                <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(item)}</Text>
-                <View style={styles.metaRow}>
-                  <Text style={styles.taskTime}>{formatTime(item.completedAt!)}</Text>
-                  {item.targetCount !== null && (
-                    <Text style={styles.taskTime}>· {item.progressCount}/{item.targetCount}</Text>
-                  )}
-                  {categoryLabel && (
-                    <View style={styles.categoryChip}>
-                      <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
-                      <Text style={styles.categoryChipText} numberOfLines={1}>{categoryLabel}</Text>
-                    </View>
-                  )}
-                  {item.actualMinutes != null && (
-                    <Text style={styles.taskTime}>· {formatDuration(item.actualMinutes)}</Text>
-                  )}
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.menuButton}
-                onPress={() => setMenuTask(item)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`More options for ${item.title}`}
-              >
-                <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-              </TouchableOpacity>
-            </View>
-          </SwipeableRow>
+            <LogbookRow
+              task={item}
+              categoryLabel={
+                item.category
+                  ? (categoryEmoji ? `${categoryEmoji} ${item.category}` : item.category)
+                  : null
+              }
+              styles={styles}
+              colors={colors}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(item.id)}
+              onToggleSelect={toggleSelection}
+              onEnterSelection={enterSelectionMode}
+              onUncomplete={uncompleteTask}
+              onOpenMenu={setMenuTask}
+            />
           );
         }}
         ListEmptyComponent={
@@ -370,6 +384,23 @@ export function LogbookScreen() {
           )
         }
       />
+      </PaintSelectionProvider>
+
+      {selectionMode && (
+        <LogbookBulkBar
+          selectedCount={selectedIds.size}
+          // Counted against what's on screen, not the whole logbook — with a
+          // filter applied, "Select All" can only mean the rows it left.
+          totalCount={filteredTasks.length}
+          onMarkIncomplete={handleBulkUncomplete}
+          onDelete={handleBulkDelete}
+          onSelectAll={() => selectAll(filteredTasks.map(t => t.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
 
       <LogbookEntryMenu
         visible={!!menuTask}
@@ -388,6 +419,11 @@ export function LogbookScreen() {
           }
           setMenuTask(null);
         }}
+        onDelete={() => {
+          const task = menuTask;
+          setMenuTask(null);
+          if (task) handleDeleteEntry(task);
+        }}
         onClose={() => setMenuTask(null)}
       />
 
@@ -404,6 +440,148 @@ export function LogbookScreen() {
     </View>
   );
 }
+
+interface RowProps {
+  task: Task;
+  /** Pre-resolved "🏥 Health", or null when the entry has no category. */
+  categoryLabel: string | null;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  selectionMode: boolean;
+  selected: boolean;
+  onToggleSelect: (id: string) => void;
+  onEnterSelection: (initial: string) => void;
+  onUncomplete: (id: string) => void;
+  onOpenMenu: (task: Task) => void;
+}
+
+// One Logbook entry. A component rather than an inline renderItem so it can
+// register itself with the paint gesture — and memoized, since a selection
+// change re-renders the whole list.
+//
+// Every branch below keeps the row exactly ROW_HEIGHT tall: the leading
+// control swaps its contents rather than its box, and the trailing menu button
+// only comes and goes horizontally. getItemLayout has no way to hear about a
+// row that grew (see the note on ROW_HEIGHT).
+const LogbookRow = React.memo(function LogbookRow({
+  task,
+  categoryLabel,
+  styles,
+  colors,
+  selectionMode,
+  selected,
+  onToggleSelect,
+  onEnterSelection,
+  onUncomplete,
+  onOpenMenu,
+}: RowProps) {
+  const paintRef = usePaintSelectionRow(task.id);
+  const partial = isQuotaPartial(task);
+
+  return (
+    // Swipe right to move when it was completed — the same "when" slot tasks
+    // use for rescheduling; swipe left to start bulk editing with this row
+    // picked, exactly as it does on Today. Square corners: these rows are
+    // deliberately flat and full-bleed (see styles.row), so the panel
+    // shouldn't be rounded like a card.
+    <SwipeableRow
+      style={styles.rowSwipe}
+      enabled={!selectionMode}
+      whenAction={{
+        icon: 'calendar-outline',
+        onAction: () => onOpenMenu(task),
+        accessibilityLabel: `Change when ${task.title} was completed`,
+      }}
+      selectAction={{
+        onSelect: () => onEnterSelection(task.id),
+        accessibilityLabel: `Select ${task.title}`,
+      }}
+    >
+      <View ref={paintRef} style={[styles.row, selectionMode && selected && styles.rowSelected]}>
+        <TouchableOpacity
+          style={[
+            styles.checkCircle,
+            selectionMode && styles.selectCircle,
+            selectionMode && selected && styles.selectCircleOn,
+          ]}
+          onPress={() => {
+            if (selectionMode) {
+              onToggleSelect(task.id);
+              return;
+            }
+            haptics.tap();
+            animateLayout();
+            onUncomplete(task.id);
+          }}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: selectionMode ? selected : true }}
+          accessibilityLabel={
+            selectionMode
+              ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
+              : `Mark ${task.title} as not done`
+          }
+        >
+          {selectionMode ? (
+            selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+          ) : (
+            <Ionicons
+              name={partial ? 'remove' : 'checkmark'}
+              size={12}
+              color={partial ? colors.textTertiary : colors.green}
+            />
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.rowContent}
+          // Outside selection mode the row has never been tappable — the
+          // checkbox and the ⋯ button are the affordances, and a completed
+          // entry has nothing to open.
+          disabled={!selectionMode}
+          onPress={() => onToggleSelect(task.id)}
+          activeOpacity={interaction.activeOpacity}
+          accessible
+          accessibilityLabel={[
+            displayTitleFor(task),
+            partial
+              ? `fell short at ${task.progressCount} of ${task.targetCount}, ${formatTime(task.completedAt!)}`
+              : `completed ${formatTime(task.completedAt!)}`,
+            task.category,
+            task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
+          ].filter(Boolean).join(', ')}
+        >
+          <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.taskTime}>{formatTime(task.completedAt!)}</Text>
+            {task.targetCount !== null && (
+              <Text style={styles.taskTime}>· {task.progressCount}/{task.targetCount}</Text>
+            )}
+            {categoryLabel && (
+              <View style={styles.categoryChip}>
+                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.categoryChipText} numberOfLines={1}>{categoryLabel}</Text>
+              </View>
+            )}
+            {task.actualMinutes != null && (
+              <Text style={styles.taskTime}>· {formatDuration(task.actualMinutes)}</Text>
+            )}
+          </View>
+        </TouchableOpacity>
+        {!selectionMode && (
+          <TouchableOpacity
+            style={styles.menuButton}
+            onPress={() => onOpenMenu(task)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`More options for ${task.title}`}
+          >
+            <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+      </View>
+    </SwipeableRow>
+  );
+});
 
 // An applied filter, shown next to the Filter button so the current state is
 // readable without opening the sheet. Tapping anywhere on it clears it.
@@ -548,6 +726,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     flexShrink: 0,
   },
+  // Same box, restated as a selection checkbox — matching TaskItem's circle /
+  // circleSelected so picking rows looks the same wherever you do it.
+  selectCircle: { borderColor: colors.bgQuaternary },
+  selectCircleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  // These rows are flat and separator-divided rather than cards, so a selected
+  // one is marked by tinting the whole band instead of the card treatment
+  // TaskItem uses.
+  rowSelected: { backgroundColor: colors.accent + '1A' },
   rowContent: { flex: 1 },
   taskTitle: {
     color: colors.textSecondary,

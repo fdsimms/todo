@@ -1,5 +1,5 @@
 import { differenceInCalendarDays, startOfDay } from 'date-fns';
-import type { Task, TimeOfDay } from '../types';
+import { PRIORITY_LABELS, type Task, type TimeOfDay } from '../types';
 import { getCurrentDayStart, getDeadlineCountdown, getLogicalToday } from './dateUtils';
 import { sumEstimatedMinutes } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -250,6 +250,58 @@ export function scoreTask(task: Task, listed: Task[], ctx: PinContext): number {
 }
 
 /**
+ * The tasks eligible to be suggested, in the order ties resolve in.
+ *
+ * Opted-out categories (Routines, Errands, …) are real work but poor company
+ * on a shortlist — dropping them here rather than penalising them keeps the
+ * setting meaning what it says. Manual pinning is untouched.
+ */
+function eligible(tasks: Task[], ctx: PinContext, exclude: Set<string>): Task[] {
+  return tasks
+    .filter(t =>
+      !t.pinned &&
+      !exclude.has(t.id) &&
+      !(t.category !== null && ctx.excludedCategories.has(t.category))
+    )
+    // Ties resolve by the user's own ordering, so the same board always
+    // produces the same picks — the previous implementation ran at the API's
+    // default temperature and could return a different list on a re-tap.
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
+}
+
+/**
+ * The single best task to add to `listed`, ignoring anything in `excludeIds`.
+ *
+ * This is the greedy step `suggestPins` runs in a loop, exported because the
+ * confirmation sheet needs it one pick at a time: swapping a row out means
+ * "best candidate that isn't already on screen and hasn't been rejected", with
+ * the *other* rows passed as `listed` so the batch terms still score against
+ * what the user is keeping. Returns null when the pool is exhausted.
+ */
+export function nextPinSuggestion(
+  tasks: Task[],
+  listed: Task[],
+  excludeIds: readonly string[],
+  ctx: PinContext,
+): string | null {
+  const pool = eligible(tasks, ctx, new Set(excludeIds));
+  if (pool.length === 0) return null;
+
+  let best = pool[0];
+  let bestScore = scoreTask(pool[0], listed, ctx);
+  for (let i = 1; i < pool.length; i++) {
+    const score = scoreTask(pool[i], listed, ctx);
+    // Strictly greater, so an exact tie keeps the earlier (lower sortOrder)
+    // task — the tie-break `eligible`'s sort already established.
+    if (score > bestScore) {
+      bestScore = score;
+      best = pool[i];
+    }
+  }
+  return best.id;
+}
+
+/**
  * Pick up to `MAX_SUGGESTED_PINS` tasks to pin, given what's already pinned.
  *
  * `tasks` should be the tasks in play (the Today list); already-pinned tasks
@@ -264,37 +316,71 @@ export function suggestPins(
   const needed = MAX_SUGGESTED_PINS - alreadyPinned.length;
   if (needed <= 0) return [];
 
-  // Opted-out categories (Routines, Errands, …) are real work but poor company
-  // on a shortlist — dropping them here rather than penalising them keeps the
-  // setting meaning what it says. Manual pinning is untouched.
-  const remaining = tasks
-    .filter(t => !t.pinned && !(t.category !== null && ctx.excludedCategories.has(t.category)))
-    // Ties resolve by the user's own ordering, so the same board always
-    // produces the same picks — the previous implementation ran at the API's
-    // default temperature and could return a different list on a re-tap.
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
-
+  const byId = new Map(tasks.map(t => [t.id, t]));
   const listed = [...alreadyPinned];
   const picked: string[] = [];
 
-  while (picked.length < needed && remaining.length > 0) {
-    let bestIndex = 0;
-    let bestScore = scoreTask(remaining[0], listed, ctx);
-    for (let i = 1; i < remaining.length; i++) {
-      const score = scoreTask(remaining[i], listed, ctx);
-      // Strictly greater, so an exact tie keeps the earlier (lower sortOrder)
-      // task — the tie-break the sort above already established.
-      if (score > bestScore) {
-        bestScore = score;
-        bestIndex = i;
-      }
-    }
-    const [chosen] = remaining.splice(bestIndex, 1);
-    listed.push(chosen);
-    picked.push(chosen.id);
+  while (picked.length < needed) {
+    const id = nextPinSuggestion(tasks, listed, picked, ctx);
+    if (id === null) break;
+    picked.push(id);
+    listed.push(byId.get(id)!);
   }
 
   return picked;
+}
+
+/**
+ * A short "why this one" for a suggested row — the term that contributed most
+ * to its score, phrased for someone who isn't reading the weights.
+ *
+ * Only the terms a user can act on are named: the batch terms say which task
+ * this one goes with, so the sheet can show a swap as a change of company and
+ * not just a change of row.
+ */
+export function pinReason(task: Task, listed: Task[], ctx: PinContext): string | null {
+  const candidates: { score: number; label: string }[] = [];
+
+  if (task.priority > 0) {
+    candidates.push({
+      score: task.priority * WEIGHTS.priorityPerLevel,
+      label: `${PRIORITY_LABELS[task.priority]} priority`,
+    });
+  }
+
+  const late = overdueDays(task, ctx.todayStart);
+  if (late != null && late >= 0) {
+    candidates.push({
+      score: dueScore(task, ctx),
+      label: late === 0 ? 'Due today' : `${late} day${late === 1 ? '' : 's'} overdue`,
+    });
+  }
+
+  if (task.deadline) {
+    const days = getDeadlineCountdown(task.deadline);
+    candidates.push({
+      score: deadlineScore(task),
+      label: days <= 0 ? 'Deadline reached' : `Deadline in ${days} day${days === 1 ? '' : 's'}`,
+    });
+  }
+
+  if (task.timeSegments.includes(ctx.currentSegment)) {
+    candidates.push({ score: WEIGHTS.segmentMatch, label: `Set for this ${ctx.currentSegment}` });
+  }
+
+  let bestCompanion: { score: number; other: Task } | null = null;
+  for (const other of listed) {
+    const score = affinity(task, other, ctx);
+    if (score > 0 && (bestCompanion === null || score > bestCompanion.score)) {
+      bestCompanion = { score, other };
+    }
+  }
+  if (bestCompanion) {
+    candidates.push({ score: bestCompanion.score, label: `Goes with ${bestCompanion.other.title}` });
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates.reduce((a, b) => (b.score > a.score ? b : a)).label;
 }
 
 /**
