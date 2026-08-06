@@ -20,6 +20,11 @@ interface SettingsStore {
   activeHoursEnd: string;   // "HH:MM" (default "22:00")
   themeMode: ThemeMode;
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
+  // One summary notification each morning. Off by default — an app that
+  // starts notifying you daily because you installed it is the reason people
+  // turn notifications off wholesale.
+  dailyAgendaEnabled: boolean;
+  dailyAgendaTime: string; // "HH:MM"
   anthropicApiKey: string;
   vacationMode: boolean;
   vacationStart: string | null;
@@ -44,6 +49,8 @@ interface SettingsStore {
   setActiveHoursEnd: (time: string) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAppFont: (fontId: AppFont) => void;
+  setDailyAgendaEnabled: (on: boolean) => void;
+  setDailyAgendaTime: (time: string) => void;
   setAnthropicApiKey: (key: string) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
@@ -65,6 +72,8 @@ const DEFAULT_SETTINGS = {
   activeHoursEnd: '22:00',
   themeMode: 'dark' as ThemeMode,
   appFont: DEFAULT_APP_FONT,
+  dailyAgendaEnabled: false,
+  dailyAgendaTime: '08:00',
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
@@ -80,6 +89,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   activeHoursEnd: '22:00',
   themeMode: 'dark',
   appFont: DEFAULT_APP_FONT,
+  dailyAgendaEnabled: false,
+  dailyAgendaTime: '08:00',
   anthropicApiKey: '',
   vacationMode: false,
   vacationStart: null,
@@ -102,6 +113,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const storedFont = dbGetSetting('appFont');
     const appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
+    const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
+    const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
     const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
@@ -119,7 +132,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -166,6 +179,16 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAppFont(fontId: AppFont) {
     dbSetSetting('appFont', fontId);
     set({ appFont: fontId });
+  },
+
+  setDailyAgendaEnabled(on: boolean) {
+    dbSetSetting('dailyAgendaEnabled', on ? 'true' : 'false');
+    set({ dailyAgendaEnabled: on });
+  },
+
+  setDailyAgendaTime(time: string) {
+    dbSetSetting('dailyAgendaTime', time);
+    set({ dailyAgendaTime: time });
   },
 
   setAnthropicApiKey(key: string) {

@@ -28,6 +28,7 @@ import { useFontPreviewsLoaded } from '../theme/AppFont';
 import { disclosureValue } from '../theme/textStyles';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
+import { requestNotificationPermissions, scheduleDailyAgenda } from '../utils/notifications';
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'light', label: 'Light', icon: 'sunny' },
@@ -36,7 +37,7 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
 ];
 
-type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | null;
+type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | 'agenda' | null;
 
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -70,6 +71,8 @@ export function SettingsScreen() {
     activeHoursEnd, setActiveHoursEnd,
     themeMode, setThemeMode,
     appFont, setAppFont,
+    dailyAgendaEnabled, setDailyAgendaEnabled,
+    dailyAgendaTime, setDailyAgendaTime,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     vacationStart,
@@ -110,6 +113,7 @@ export function SettingsScreen() {
       : which === 'evening' ? eveningStart
       : which === 'activeStart' ? activeHoursStart
       : which === 'activeEnd' ? activeHoursEnd
+      : which === 'agenda' ? dailyAgendaTime
       : nightStart;
     setPickerDate(hhmmToDate(current!));
     setActivePicker(which);
@@ -123,7 +127,32 @@ export function SettingsScreen() {
     else if (activePicker === 'night') setNightStart(hhmm);
     else if (activePicker === 'activeStart') setActiveHoursStart(hhmm);
     else if (activePicker === 'activeEnd') setActiveHoursEnd(hhmm);
+    else if (activePicker === 'agenda') {
+      setDailyAgendaTime(hhmm);
+      // The pending agenda was scheduled against the old time.
+      scheduleDailyAgenda(useTaskStore.getState().tasks);
+    }
     setActivePicker(null);
+  };
+
+  /**
+   * Turning the agenda on is the one place the app needs notification
+   * permission for something the user just explicitly asked for, so it's the
+   * one place worth telling them when permission is missing. Everything else
+   * (reminders, timer alarms) is set up long before it fires, where a
+   * permission alert would be noise.
+   */
+  const onToggleDailyAgenda = async (next: boolean) => {
+    if (next && !(await requestNotificationPermissions())) {
+      Alert.alert(
+        'Notifications are turned off',
+        'The daily agenda needs notification permission. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    setDailyAgendaEnabled(next);
+    // Reads the flag it just set, so this both schedules and cancels.
+    scheduleDailyAgenda(useTaskStore.getState().tasks);
   };
 
   const confirmResetStreaks = () => {
@@ -280,6 +309,74 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Changes every screen at once. These all ship with the OS, so nothing downloads.
+            </Text>
+          </View>
+
+          {/* Notifications */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Notifications</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => onToggleDailyAgenda(!dailyAgendaEnabled)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: dailyAgendaEnabled }}
+                accessibilityLabel="Daily agenda"
+              >
+                <Ionicons
+                  name="newspaper-outline"
+                  size={18}
+                  color={dailyAgendaEnabled ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Daily agenda</Text>
+                  <Text style={styles.rowHint}>
+                    {dailyAgendaEnabled
+                      ? 'One notification each morning with the day’s count'
+                      : 'Off — nothing arrives unless a task has its own reminder'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, dailyAgendaEnabled && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, dailyAgendaEnabled && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+              {dailyAgendaEnabled && (
+                <>
+                  <View style={styles.sep} />
+                  <TouchableOpacity style={styles.row} onPress={() => openPicker('agenda')}>
+                    <Ionicons name="alarm-outline" size={18} color={colors.accent} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>Send it at</Text>
+                    </View>
+                    <Text style={styles.rowValue}>{formatHHMM(dailyAgendaTime)}</Text>
+                  </TouchableOpacity>
+                  {activePicker === 'agenda' && (
+                    <>
+                      <View style={styles.sep} />
+                      <DateTimePicker
+                        value={pickerDate}
+                        mode="time"
+                        display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                        onChange={(_e, d) => d && setPickerDate(d)}
+                        themeVariant={isDark ? 'dark' : 'light'}
+                        style={styles.picker}
+                      />
+                      <View style={styles.pickerButtons}>
+                        <TouchableOpacity style={styles.pickerBtn} onPress={() => setActivePicker(null)}>
+                          <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmPicker}>
+                          <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </>
+                  )}
+                </>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              The agenda counts what's due, overdue and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count.
             </Text>
           </View>
 

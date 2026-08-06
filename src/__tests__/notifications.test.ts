@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
+import { nextAgendaTime } from '../utils/dailyAgenda';
 
 jest.mock('expo-notifications', () => ({
   setNotificationHandler: jest.fn(),
@@ -16,8 +17,21 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
+// Mutable so the daily-agenda tests can drive the settings it reads. Safe to
+// close over even though the import below is hoisted above this declaration:
+// getState is only ever called from inside a scheduling function, never while
+// the module is being imported.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mockSettings: Record<string, any> = {};
+const DEFAULT_MOCK_SETTINGS = {
+  dayResetTime: '00:00',
+  vacationMode: false,
+  dailyAgendaEnabled: false,
+  dailyAgendaTime: '08:00',
+};
+
 jest.mock('../store/useSettingsStore', () => ({
-  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+  useSettingsStore: { getState: () => mockSettings },
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
@@ -31,6 +45,8 @@ import {
   rescheduleAllReminders,
   scheduleTimerAlarm,
   cancelTimerAlarm,
+  scheduleDailyAgenda,
+  cancelDailyAgenda,
 } from '../utils/notifications';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -101,6 +117,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
 beforeEach(() => {
   jest.clearAllMocks();
   (Platform as any).OS = 'ios';
+  for (const key of Object.keys(mockSettings)) delete mockSettings[key];
+  Object.assign(mockSettings, DEFAULT_MOCK_SETTINGS);
 });
 
 // ─── requestNotificationPermissions ──────────────────────────────────────────
@@ -331,5 +349,131 @@ describe('cancelTimerAlarm', () => {
   it('cancels the namespaced id, leaving the task reminder alone', async () => {
     await cancelTimerAlarm('task-1');
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('timer:task-1');
+  });
+});
+
+// ─── daily agenda ─────────────────────────────────────────────────────────────
+
+const agendaCall = () =>
+  (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls
+    .map(c => c[0])
+    .find(a => a.identifier === 'daily-agenda');
+
+// Dated onto whichever day the next agenda actually covers — today's if the
+// send time is still ahead, otherwise tomorrow's. Anchoring the fixture to
+// `new Date()` instead made these pass or fail depending on what time of day
+// the suite ran: after the send time the agenda covers tomorrow, and a task
+// due today is correctly reported as overdue rather than due.
+const dueOnAgendaDay = (overrides: Partial<Task> = {}) =>
+  makeTask({
+    id: 'due-then',
+    dueDate: nextAgendaTime(new Date(), mockSettings.dailyAgendaTime).toISOString(),
+    ...overrides,
+  });
+
+describe('scheduleDailyAgenda', () => {
+  it('schedules nothing while the setting is off', async () => {
+    mockSettings.dailyAgendaEnabled = false;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('always clears the pending one first, so turning it off cancels', async () => {
+    mockSettings.dailyAgendaEnabled = false;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('daily-agenda');
+  });
+
+  it('schedules under a fixed id so it replaces rather than stacks', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    const agendaCalls = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls
+      .filter(c => c[0].identifier === 'daily-agenda');
+    expect(agendaCalls).toHaveLength(2);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('daily-agenda');
+  });
+
+  it('titles it Today and puts the counts in the body', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    const arg = agendaCall();
+    expect(arg.content.title).toBe('Today');
+    expect(arg.content.body).toBe('1 due');
+    expect(arg.content.data).toEqual({ dailyAgenda: true });
+  });
+
+  // The feature's central rule: no notification on a day with nothing on it.
+  it('schedules nothing when the day is empty', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([makeTask({ dueDate: null })]);
+    expect(agendaCall()).toBeUndefined();
+  });
+
+  it('schedules nothing when every dated task is already done', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([dueOnAgendaDay({ completed: true })]);
+    expect(agendaCall()).toBeUndefined();
+  });
+
+  it('schedules for a future moment', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(agendaCall().trigger.date.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('leaves a vacation-paused task out of the count while vacation mode is on', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    mockSettings.vacationMode = true;
+    await scheduleDailyAgenda([dueOnAgendaDay({ id: 'paused', vacationPause: true })]);
+    // Its only task is hidden, so there is nothing to report.
+    expect(agendaCall()).toBeUndefined();
+  });
+
+  it('counts the same task once vacation mode is off', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    mockSettings.vacationMode = false;
+    await scheduleDailyAgenda([dueOnAgendaDay({ id: 'paused', vacationPause: true })]);
+    expect(agendaCall()?.content.body).toBe('1 due');
+  });
+
+  it('handles an empty task list without error', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await expect(scheduleDailyAgenda([])).resolves.toBeUndefined();
+  });
+});
+
+describe('cancelDailyAgenda', () => {
+  it('cancels the namespaced id, leaving task reminders alone', async () => {
+    await cancelDailyAgenda();
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('daily-agenda');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+// The blanket cancelAllScheduledNotificationsAsync in rescheduleAllReminders
+// clears everything this app owns, so anything else it schedules has to be put
+// back in the same pass. That was already true of timer alarms; the agenda is
+// the second thing it's true of, and the easiest to lose silently.
+describe('rescheduleAllReminders restores the agenda it just cancelled', () => {
+  it('reschedules the agenda after the blanket cancel', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await rescheduleAllReminders([dueOnAgendaDay()]);
+    expect(Notifications.cancelAllScheduledNotificationsAsync).toHaveBeenCalledTimes(1);
+    expect(agendaCall()).toBeDefined();
+  });
+
+  it('does not resurrect the agenda when the setting is off', async () => {
+    mockSettings.dailyAgendaEnabled = false;
+    await rescheduleAllReminders([dueOnAgendaDay()]);
+    expect(agendaCall()).toBeUndefined();
+  });
+
+  it('schedules the agenda alongside reminders rather than instead of them', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await rescheduleAllReminders([dueOnAgendaDay({ id: 'with-reminder', reminderTime: FUTURE })]);
+    const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
+    expect(ids).toContain('with-reminder');
+    expect(ids).toContain('daily-agenda');
   });
 });

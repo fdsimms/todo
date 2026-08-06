@@ -3,7 +3,9 @@ import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
-import { displayTitleFor } from './visibilityUtils';
+import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
+import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -64,10 +66,64 @@ export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
     await scheduleTaskReminder(task);
   }
 
-  // cancelAllScheduledNotificationsAsync above is indiscriminate, so a timer
-  // that was running when the app was last closed loses its alarm on cold
-  // start unless we put it back.
+  // cancelAllScheduledNotificationsAsync above is indiscriminate — it clears
+  // every notification this app owns, not just the reminders this function
+  // rebuilt. Anything else the app schedules has to be put back here, and
+  // there are now two such things: a timer that was running when the app was
+  // last closed would otherwise lose its alarm on cold start, and the daily
+  // agenda would simply stop happening.
+  //
+  // If a third arrives, that's the signal to give each kind its own id prefix
+  // and cancel by prefix instead — the blanket cancel is only tenable while
+  // the put-it-back list is short enough to read.
   await rescheduleAllTimerAlarms(tasks);
+  await scheduleDailyAgenda(tasks);
+}
+
+// ─── Daily agenda ────────────────────────────────────────────────────────────
+
+// Namespaced like the timer alarms, and a fixed id rather than a per-day one:
+// scheduling the agenda always replaces the pending one instead of stacking a
+// second copy behind it.
+const DAILY_AGENDA_ID = 'daily-agenda';
+
+/**
+ * Schedules the next morning's summary, replacing any pending one.
+ *
+ * **Only ever the next one.** A repeating trigger can't carry a body that
+ * changes between scheduling and firing, and the count is the whole point of
+ * the notification — so this reschedules from live tasks every time reminders
+ * are rebuilt, and each firing covers exactly one day. The trade is that an
+ * app left unopened past the next agenda stops sending them until it's opened
+ * again, which is the right way round: a summary that's silently weeks stale
+ * is worse than no summary.
+ *
+ * Nothing is scheduled for a day with nothing on it (see agendaBody) — a daily
+ * notification that fires on empty days is the one people turn off.
+ */
+export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
+  await cancelDailyAgenda();
+
+  const { dailyAgendaEnabled, dailyAgendaTime, dayResetTime } = useSettingsStore.getState();
+  if (!dailyAgendaEnabled) return;
+
+  const when = nextAgendaTime(new Date(), dailyAgendaTime);
+  // Vacation-hidden tasks are filtered here rather than inside agendaCounts,
+  // which stays free of store reads so it can be tested directly.
+  const body = agendaBody(
+    agendaCounts(tasks.filter(t => !isHiddenForVacation(t)), when, dayResetTime)
+  );
+  if (!body) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: DAILY_AGENDA_ID,
+    content: { title: 'Today', body, data: { dailyAgenda: true }, sound: true },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+  });
+}
+
+export async function cancelDailyAgenda(): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(DAILY_AGENDA_ID).catch(() => {});
 }
 
 // Timer alarms are namespaced away from reminders, which use the bare task id as
