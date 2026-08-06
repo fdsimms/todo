@@ -1315,10 +1315,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
-  // Nests a group's expanded children visually under the group header, which
-  // otherwise shares the exact same card treatment as a top-level task row.
+  // A group's children are inside TaskGroupTray, which already insets them by
+  // its own padding — these rows drop their card margins entirely rather than
+  // stacking a second inset on top of it. Nothing here indents them: the tray
+  // is what says they belong to the stack, so they can keep their full width.
   itemWrapperIndented: {
-    marginLeft: spacing.md + spacing.lg,
+    marginLeft: 0,
+    marginRight: 0,
   },
   // Lifted look while being dragged: elevated background so the floating card
   // reads as clearly distinct from the resting rows.
