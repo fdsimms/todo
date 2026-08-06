@@ -145,6 +145,65 @@ describe('projectProgress', () => {
     expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 1 });
   });
 
+  // Counting rows grew the denominator by one per completion forever: a
+  // project holding a single daily task read 0/1, 1/2, 2/3, 3/4 — a bar
+  // creeping toward a 100% it could never reach, off a total that was really a
+  // completion count.
+  it('counts a recurring member once, however many occurrences it has left behind', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+      makeTask({ id: 'r3', projectId: 'p1', completed: true, completedAt: '2025-01-03T09:00:00.000Z', previousOccurrenceId: 'r2' }),
+      makeTask({ id: 'r4', projectId: 'p1', completed: false, previousOccurrenceId: 'r3' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 0, total: 1 });
+  });
+
+  it('reads a habit as outstanding rather than done, alongside finished one-offs', () => {
+    const tasks = [
+      makeTask({ id: 'one', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: false, previousOccurrenceId: 'r1' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 2 });
+  });
+
+  it('counts a recurring member as done once its schedule has run out', () => {
+    const tasks = [
+      makeTask({ id: 'r1', projectId: 'p1', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 'r2', projectId: 'p1', completed: true, completedAt: '2025-01-02T09:00:00.000Z', previousOccurrenceId: 'r1' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 1 });
+  });
+
+  // A dated series is several rows standing for one commitment.
+  it('counts a dated series once, and done only when every date is', () => {
+    const partial = [
+      makeTask({ id: 's1', projectId: 'p1', seriesId: 'set', completed: true, completedAt: '2025-01-01T09:00:00.000Z' }),
+      makeTask({ id: 's2', projectId: 'p1', seriesId: 'set', completed: false }),
+    ];
+    expect(projectProgress('p1', partial)).toEqual({ done: 0, total: 1 });
+
+    const finished = partial.map(t => ({ ...t, completed: true, completedAt: '2025-01-01T09:00:00.000Z' }));
+    expect(projectProgress('p1', finished)).toEqual({ done: 1, total: 1 });
+  });
+
+  it('still counts a one-off finished long ago as a done member', () => {
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', completed: true, completedAt: '2024-06-01T09:00:00.000Z' }),
+      makeTask({ id: 'b', projectId: 'p1', completed: false }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 2 });
+  });
+
+  it('survives a previousOccurrenceId loop rather than spinning during render', () => {
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', previousOccurrenceId: 'b' }),
+      makeTask({ id: 'b', projectId: 'p1', previousOccurrenceId: 'a' }),
+    ];
+    expect(projectProgress('p1', tasks).total).toBeGreaterThan(0);
+  });
+
   it('includes tasks that also belong to a TaskGroup', () => {
     const tasks = [
       makeTask({ id: 'a', projectId: 'p1', groupId: 'g1', completed: false }),

@@ -10,6 +10,40 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 
+/**
+ * What one member of a project is, as far as counting goes: a task, not a row.
+ *
+ * The same problem groupRoster solves for stacks, with a different answer.
+ * Completing a recurring task leaves the completed row behind and inserts a
+ * fresh one, both carrying the projectId, so counting rows grew the
+ * denominator by one per completion forever — a project holding a single daily
+ * task read 0/1, then 1/2, 2/3, 3/4, a bar creeping toward a 100% it could
+ * never reach, and a total that was really a completion count. A dated series
+ * is several rows standing for one commitment and read as that many members.
+ *
+ * groupRoster itself is the wrong tool here: it drops old completions as
+ * tombstones, which is right for a stack (they aren't members any more) and
+ * wrong for a project, where a one-off finished last week is exactly a member
+ * and exactly done. So rows are grouped by identity instead — a shared
+ * seriesId, or the root of the previousOccurrenceId chain — and each identity
+ * counts once, done only when it has no row left outstanding. A project
+ * holding a habit therefore never reads 100%, which is the honest answer.
+ */
+function memberKey(task: Task, byId: Map<string, Task>): string {
+  if (task.seriesId) return `series:${task.seriesId}`;
+  let root = task;
+  const seen = new Set<string>([root.id]);
+  while (root.previousOccurrenceId) {
+    const prev = byId.get(root.previousOccurrenceId);
+    // The guard is for a loop that arrived some other way, not one we expect —
+    // this runs during render (see wouldCycle for the same defensiveness).
+    if (!prev || seen.has(prev.id)) break;
+    seen.add(prev.id);
+    root = prev;
+  }
+  return `task:${root.id}`;
+}
+
 // Progress is derived, never stored: every top-level (non-subtask) task
 // assigned to the project counts, including tasks that also belong to a
 // TaskGroup — groupId doesn't exclude a task from a project's progress.
@@ -17,7 +51,21 @@ import { generateId } from '../utils/id';
 // an archived-but-incomplete task can't permanently cap a project below 100%.
 export function projectProgress(projectId: string, tasks: Task[]): { done: number; total: number } {
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
-  return { done: members.filter(t => t.completed).length, total: members.length };
+  const byId = new Map(members.map(t => [t.id, t]));
+
+  const groups = new Map<string, Task[]>();
+  for (const member of members) {
+    const key = memberKey(member, byId);
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(member);
+    else groups.set(key, [member]);
+  }
+
+  let done = 0;
+  for (const rows of groups.values()) {
+    if (rows.every(r => r.completed)) done += 1;
+  }
+  return { done, total: groups.size };
 }
 
 // A project is only flagged "past its window" when it missed its target end

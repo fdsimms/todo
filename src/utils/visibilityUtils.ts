@@ -136,6 +136,28 @@ export function hasDayArrived(task: Task): boolean {
   return true;
 }
 
+function hhmmMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+// The task's closing time, or null when its window doesn't close on the task's
+// own day. Both window gates anchor to one logical day (see
+// getWindowThreshold), so an end that isn't after the start — "22:00–02:00",
+// meaning a window that runs into the small hours — compares as *already
+// past* from 02:00 onward: the task read as expired all day, including inside
+// the hours the user picked, and never became visible once.
+//
+// Treated as open-ended instead, which is what "from 10pm" means in practice,
+// so the task surfaces at windowStart and simply doesn't expire on its own.
+// Same shape as the end <= start guard in getQuotaSpan, and for the same
+// reason — a span that doesn't resolve on one day can't be divided by.
+export function effectiveWindowEnd(task: Task): string | null {
+  if (!task.windowEnd) return null;
+  if (task.windowStart && hhmmMinutes(task.windowEnd) <= hhmmMinutes(task.windowStart)) return null;
+  return task.windowEnd;
+}
+
 // True while a task with a time window is currently inside that window
 // (windowStart has passed, windowEnd hasn't) — used to surface the
 // "time-limited, act now" indicator.
@@ -146,7 +168,8 @@ export function isTaskWindowActive(task: Task): boolean {
   if (!hasDayArrived(task)) return false;
   const now = new Date();
   if (now < getWindowThreshold(task.windowStart)) return false;
-  if (task.windowEnd && now >= getWindowThreshold(task.windowEnd)) return false;
+  const end = effectiveWindowEnd(task);
+  if (end && now >= getWindowThreshold(end)) return false;
   return true;
 }
 
@@ -155,11 +178,29 @@ export function isTaskWindowActive(task: Task): boolean {
 // "deferred" — they move to their own Expired bucket and stay there until the
 // user deals with them (delete, or skip/reschedule a recurring task).
 export function isTaskExpired(task: Task): boolean {
-  if (task.completed || task.archived || !task.windowEnd) return false;
+  const end = effectiveWindowEnd(task);
+  if (task.completed || task.archived || !end) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;
+  if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
-  return new Date() >= getWindowThreshold(task.windowEnd);
+  return new Date() >= getWindowThreshold(end);
+}
+
+// True when the task has a day for its window to close on — the same two
+// placement gates isTaskVisible applies before it looks at any clock.
+// hasDayArrived() can't answer this: with no dueDate and no deferUntil it is
+// vacuously true, so a task carrying nothing but a windowEnd used to read as
+// expired from that clock time onward on *every* day, forever.
+//
+// windowEnd is deliberately not a date signal (see hasNoDateSignal) — an end
+// time alone never puts a task on Today, it just sits in Unscheduled — so
+// there is no day it can be late for, and letting it expire meant
+// autoRemoveExpiredTasks deleting a someday task the user had merely given a
+// "not after 5pm" to.
+function isPlacedOnADay(task: Task): boolean {
+  if (task.projectId) return task.dueDate !== null;
+  return !hasNoDateSignal(task);
 }
 
 // ---- Quota tasks ---------------------------------------------------------

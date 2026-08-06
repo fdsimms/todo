@@ -36,7 +36,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -157,6 +157,34 @@ function reanchorReminder(reminderTime: string | null, date: Date): string | nul
   return next.toISOString();
 }
 
+// A dated series and a recurrence rule are two schedules for one task, and a
+// series row is deliberately an ordinary one-off (see Task.seriesId) — the set
+// comes back, if it comes back at all, through seriesMonthDays. Left in place,
+// a rule carried onto every row of the set and completing one date spawned an
+// extra occurrence *inside the same series*: the set grew by a row per
+// completion, and the next date edit deleted the rows it no longer recognised.
+// So forming a series clears the rule rather than trying to run both.
+type RecurrenceFields = Pick<
+  Task,
+  | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
+  | 'recurrenceWeekOrdinal' | 'recurrenceEndDate' | 'recurrenceCount'
+  | 'recurrenceFromCompletion' | 'showStreak'
+>;
+
+const NO_RECURRENCE: RecurrenceFields = {
+  recurrenceType: 'none',
+  recurrenceInterval: 1,
+  recurrenceDays: [],
+  recurrenceMonthDay: null,
+  recurrenceWeekOrdinal: null,
+  recurrenceEndDate: null,
+  recurrenceCount: null,
+  recurrenceFromCompletion: false,
+  // Only a recurring task has a streak to show, and the editor only offers the
+  // toggle there — same reasoning as the showStreak reset in TaskEditor.
+  showStreak: false,
+};
+
 // One row of a dated series (Task.seriesId). Every field but the date comes
 // from the source row/draft; a relative deadline recomputes against this row's
 // own date the same way it does for a new recurrence occurrence, while a fixed
@@ -171,6 +199,7 @@ function buildSeriesRow(
   const base = newTaskFromDraft(source, now, 0);
   return {
     ...base,
+    ...NO_RECURRENCE,
     dueDate: date.toISOString(),
     // Each date stands on its own; a defer set on the row this was cloned
     // from would otherwise hide every date behind that one day.
@@ -179,6 +208,12 @@ function buildSeriesRow(
     seriesId,
     seriesMonthDays: repeat?.monthDays ?? [],
     seriesRepeatMonths: repeat?.repeatMonths ?? 1,
+    // Cloned from a template row, which may itself have been spawned by a
+    // completion — inheriting that pointer would make this row read as the
+    // follow-up to a completion it has nothing to do with, and uncompleting
+    // that one would delete it. Callers that do want the link (the rollover in
+    // completeTask) set it themselves on top of this.
+    previousOccurrenceId: null,
     deadline:
       base.deadlineOffsetDays !== null
         ? getDeadlineFromOffset(date, base.deadlineOffsetDays).toISOString()
@@ -514,10 +549,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // defaults — see App.tsx call order.
   sweepExpiredTasks() {
     if (!useSettingsStore.getState().autoRemoveExpiredTasks) return;
-    const expiredIds = get().tasks.filter(t => !t.parentId && isTaskExpired(t)).map(t => t.id);
-    if (expiredIds.length > 0) {
-      get().bulkDeleteTasks(expiredIds);
-    }
+    const expired = get().tasks.filter(t => !t.parentId && isTaskExpired(t));
+    if (expired.length === 0) return;
+
+    // A recurring task's row *is* its schedule — the next occurrence only
+    // comes into existence when this one is completed — so deleting the row
+    // ends the series for good. Missing this morning's window is not "I'm
+    // done with this habit", and a setting about tidying away time-limited
+    // tasks must not quietly retire a daily one. An expired occurrence that
+    // still has a next date is rolled forward onto it instead, which is what
+    // skipNextRecurrence does when the user deals with an expired recurring
+    // task by hand. Only rows with nothing after them are deleted: one-offs,
+    // and series that have reached their recurrenceEndDate/recurrenceCount.
+    const rolled = expired.filter(isLiveRecurring);
+    const doomed = expired.filter(t => !isLiveRecurring(t));
+
+    rolled.forEach(t => get().skipNextRecurrence(t.id));
+    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
   },
 
   addTask(draft) {
@@ -578,9 +626,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return;
       }
       const others = get().seriesRowsOf(anchor.seriesId).filter(t => t.id !== taskId);
-      const dropped = others.filter(t => !t.completed);
+      const dropped = others.filter(t => !t.completed && !t.archived);
       const unfiled = others
-        .filter(t => t.completed)
+        .filter(t => t.completed || t.archived)
         .map(t => ({ ...t, seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1 }));
 
       dropped.forEach(t => {
@@ -620,6 +668,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       seriesId,
       seriesMonthDays: monthDays,
       seriesRepeatMonths: repeatMonths,
+      // The anchor gives up its recurrence rule along with the rows cloned
+      // from it — the dates are the schedule now (see NO_RECURRENCE).
+      ...NO_RECURRENCE,
     });
 
     const rows = get().seriesRowsOf(seriesId);
@@ -632,8 +683,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Completed rows hold their date permanently — they're a record of a day
     // that happened, so they neither get rewritten nor count as a date the
     // set still owes. Everything below reconciles the incomplete rows only.
+    //
+    // Archived rows are held the same way, and for a sharper reason: they used
+    // to count as live, so editing the dates deleted one outright when its date
+    // was dropped from the set — filed-away data destroyed by an unrelated
+    // edit. And when its date was *kept*, the archived row satisfied it, so the
+    // set ended up with nothing actionable on a day the user had just asked
+    // for. Excluded from `live` here, they're neither deleted nor counted, and
+    // a kept date gets a real row of its own alongside them.
     const wanted = new Map(sorted.map(d => [calendarDayKey(d), d]));
-    const live = rows.filter(t => !t.completed);
+    const live = rows.filter(t => !t.completed && !t.archived);
 
     const kept: Task[] = [];
     const removed: Task[] = [];
@@ -657,7 +716,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     // The repeat rule lives on every row of the set (they share one schedule),
     // so a change to it has to reach the rows that already existed too.
-    const rewritten = [...kept, ...rows.filter(t => t.completed)].map(t => ({
+    const rewritten = [...kept, ...rows.filter(t => t.completed || t.archived)].map(t => ({
       ...t,
       seriesMonthDays: monthDays,
       seriesRepeatMonths: repeatMonths,
@@ -841,6 +900,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             // the edited time of day rather than inheriting this row's.
             ...('reminderTime' in fanOut
               ? { reminderTime: reanchorReminder(fanOut.reminderTime ?? null, new Date(t.dueDate!)) }
+              : {}),
+            // A set shares one blocker, but no row can wait on itself. Picking
+            // a later date of this same set as the blocker would otherwise
+            // hand that row a pointer at its own id, and a task waiting on
+            // itself is invisible everywhere and can never be unblocked by
+            // anything the user does to another task. wouldCycle() guards the
+            // picker against exactly this; the fan-out doesn't go through it,
+            // so it re-checks here and leaves that one row's blocker alone.
+            ...('blockedById' in fanOut && fanOut.blockedById === t.id
+              ? { blockedById: t.blockedById }
               : {}),
           }));
           patched.forEach(t => {
@@ -1077,6 +1146,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // the new row inherits a pointer at a completed task and isn't blocked.
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
           seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
+          // A spawned row is never one of the dates the user picked. Since a
+          // series carries no recurrence rule (see NO_RECURRENCE), the only
+          // way to get here from a series row is mid-chain — and a chain step
+          // spawns onto the *same day* it was completed, so inheriting the
+          // seriesId put a second row on a date the set already had. The next
+          // date edit reconciles by calendar day, so it deleted one of them
+          // and the chain's position went with it.
+          seriesId: null,
+          seriesMonthDays: [],
+          seriesRepeatMonths: 1,
         };
         dbInsertTask(nextTask);
         scheduleTaskReminder(nextTask);
@@ -1107,7 +1186,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // is done, so ticking off the 10th doesn't conjure a third row while the
     // 15th is still outstanding. Order-independent — whichever date you
     // finish last is the one that triggers it. Series rows carry
-    // recurrenceType 'none', so this never runs alongside the spawn above.
+    // recurrenceType 'none' (enforced by NO_RECURRENCE, since the editor will
+    // happily save a repeat rule alongside extra dates), so the recurrence
+    // spawn above can never run on the same completion as this.
     const rolledOver: Task[] = [];
     if (task.seriesId && task.seriesMonthDays.length > 0) {
       const siblings = get().tasks.filter(
@@ -1130,6 +1211,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               { monthDays: task.seriesMonthDays, repeatMonths: task.seriesRepeatMonths },
             ),
             sortOrder: order,
+            // Linked to the completion that produced it, exactly as a
+            // recurrence's next occurrence is, so undoing that completion
+            // takes the next set back out with it (see uncompleteTask).
+            previousOccurrenceId: id,
           };
           dbInsertTask(row);
           scheduleTaskReminder(row);
@@ -1230,17 +1315,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // that completion means it never happened, so the occurrence it
     // generated shouldn't exist either — unless the user has since
     // completed it themselves, in which case it's a real completion.
-    const followUp = get().tasks.find(t => t.previousOccurrenceId === id && !t.completed);
-    const followUpSubtasks = followUp ? get().subtasksOf(followUp.id) : [];
-    if (followUp) {
-      dbDeleteSubtasks(followUp.id);
-      dbDeleteTask(followUp.id);
-      cancelTaskReminder(followUp.id);
-    }
+    //
+    // Plural because a repeating dated series rolls over as a *set*: finishing
+    // its last outstanding date inserts every date of the next set at once
+    // (see completeTask). Matching only the first left next month on the board
+    // after the completion that conjured it had been taken back.
+    const followUps = get().tasks.filter(t => t.previousOccurrenceId === id && !t.completed);
+    const followUpIds = new Set(followUps.map(f => f.id));
+    const followUpSubtasks = followUps.flatMap(f => get().subtasksOf(f.id));
+    followUps.forEach(f => {
+      dbDeleteSubtasks(f.id);
+      dbDeleteTask(f.id);
+      cancelTaskReminder(f.id);
+    });
 
     set(s => ({
       tasks: s.tasks
-        .filter(t => !followUp || (t.id !== followUp.id && t.parentId !== followUp.id))
+        .filter(t => !followUpIds.has(t.id) && !(t.parentId && followUpIds.has(t.parentId)))
         .map(t => (t.id === id ? updated : t)),
       completionHoldIds: s.completionHoldIds.filter(x => x !== id),
       completionCollapseIds: s.completionCollapseIds.filter(x => x !== id),
@@ -1254,18 +1345,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: 'Task uncompleted',
       undo: () => {
         dbUpdateTask(original);
-        if (followUp) {
-          dbInsertTask(followUp);
-          scheduleTaskReminder(followUp);
-          followUpSubtasks.forEach(sub => {
-            dbInsertTask(sub);
-            scheduleTaskReminder(sub);
-          });
-        }
+        [...followUps, ...followUpSubtasks].forEach(t => {
+          dbInsertTask(t);
+          scheduleTaskReminder(t);
+        });
         set(s => ({
           tasks: [
             ...s.tasks.map(t => (t.id === id ? original : t)),
-            ...(followUp ? [followUp, ...followUpSubtasks] : []),
+            ...followUps,
+            ...followUpSubtasks,
           ],
         }));
       },
@@ -2015,7 +2103,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Logbook and Stats history, not stack membership, so they're only
     // unfiled (group_id cleared), never destroyed. Deleting a stack the
     // user has run nightly for a year shouldn't erase a year of completions.
-    const doomed = opts.cascade ? new Set(get().groupRosterOf(groupId).map(c => c.id)) : new Set<string>();
+    //
+    // The roster is a set of task *series*, though, so it names one row per
+    // member and a dated series has several (see Task.seriesId). Cascading
+    // over roster ids alone deleted whichever date spoke for the member and
+    // left the rest of the set behind as loose, unfiled tasks — "walk the dog
+    // on the 10th and the 15th" lost the 10th and kept the 15th, still on
+    // Later, no longer in any stack. Each roster entry is expanded back to its
+    // live sibling rows here. Completed and archived rows stay out for the
+    // same reason as above: they're history, not schedule.
+    const doomed = new Set<string>();
+    if (opts.cascade) {
+      const series = new Set<string>();
+      for (const member of get().groupRosterOf(groupId)) {
+        doomed.add(member.id);
+        if (member.seriesId) series.add(member.seriesId);
+      }
+      for (const child of children) {
+        if (child.seriesId && series.has(child.seriesId) && !child.completed && !child.archived) {
+          doomed.add(child.id);
+        }
+      }
+    }
     dbTransaction(() => {
       children.forEach(child => {
         if (doomed.has(child.id)) {
