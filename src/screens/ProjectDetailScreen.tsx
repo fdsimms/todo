@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
@@ -79,6 +80,7 @@ export function ProjectDetailScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
   // This screen is a RootStack card, not a tab screen — it covers the tab bar
   // entirely, so the bulk bar sits above the home indicator, not above a tab
   // bar. (Asking for useBottomTabBarHeight() here throws outright.)
@@ -196,10 +198,11 @@ export function ProjectDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            ref={keyboardScroll.ref}
             scrollEnabled={!painting}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
-            automaticallyAdjustKeyboardInsets
+            {...keyboardScroll.props}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);

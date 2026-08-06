@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -66,6 +67,7 @@ export function CategoryDetailScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
   // This screen is a RootStack card, not a tab screen — it covers the tab bar
   // entirely, so the bulk bar sits above the home indicator, not above a tab
   // bar. (Asking for useBottomTabBarHeight() here throws outright.)
@@ -158,10 +160,11 @@ export function CategoryDetailScreen() {
         >
         <PaintSelectionProvider {...paintProps}>
           <FlatList
+            ref={keyboardScroll.ref}
             scrollEnabled={!painting}
             data={categoryTasks}
             keyExtractor={t => t.id}
-            automaticallyAdjustKeyboardInsets
+            {...keyboardScroll.props}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
