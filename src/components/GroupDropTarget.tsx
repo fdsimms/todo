@@ -60,13 +60,16 @@ export function GroupDropTarget({ active, children }: Props) {
 
 const styles = StyleSheet.create({
   wrapper: { position: 'relative' },
+  // Traces the stack's tray (TaskGroupTray's margins and radius) — the
+  // highlight has to land on the region it is offering to drop into, and the
+  // tray is now that region's visible edge.
   highlight: {
     position: 'absolute',
-    left: spacing.sm,
-    right: spacing.sm,
-    top: 0,
-    bottom: 0,
-    borderRadius: radius.md,
+    left: spacing.md,
+    right: spacing.md,
+    top: spacing.sm,
+    bottom: spacing.sm,
+    borderRadius: radius.lg,
     borderWidth: border.sm * 2,
   },
 });

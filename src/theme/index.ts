@@ -5,6 +5,14 @@ export type Colors = {
   bgSecondary: string;
   bgTertiary: string;
   bgQuaternary: string;
+  /**
+   * A region *behind* the cards — currently the tray a stack's header and
+   * tasks share (`TaskGroupTray`). It sits below `bgSecondary` in the stack of
+   * surfaces, not above it, which is why it isn't `bgTertiary`: in dark themes
+   * that means a shade nearer the page than the card, and in light themes a
+   * shade darker than the page, since white cards are already the top.
+   */
+  bgSunken: string;
   text: string;
   textSecondary: string;
   textTertiary: string;
@@ -39,6 +47,7 @@ export const darkColors: Colors = {
   bgSecondary: '#1C1C1E',
   bgTertiary: '#2C2C2E',
   bgQuaternary: '#3A3A3C',
+  bgSunken: '#0E0E10',
   text: '#FFFFFF',
   textSecondary: '#8E8E93',
   textTertiary: '#636366',
@@ -72,6 +81,7 @@ export const darkPurpleColors: Colors = {
   bgSecondary: '#1F1A2C',
   bgTertiary: '#2A2338',
   bgQuaternary: '#3A324A',
+  bgSunken: '#1A1526',
   text: '#FFFFFF',
   textSecondary: '#9D93AD',
   textTertiary: '#6E6480',
@@ -103,6 +113,7 @@ export const lightColors: Colors = {
   bgSecondary: '#FFFFFF',
   bgTertiary: '#EFEFF4',
   bgQuaternary: '#D1D1D6',
+  bgSunken: '#E7E7EC',
   text: '#000000',
   textSecondary: '#6C6C70',
   textTertiary: '#8A8A8E',

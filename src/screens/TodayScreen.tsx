@@ -51,6 +51,7 @@ import { suggestPinTasks, MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
+import { TaskGroupTray } from '../components/TaskGroupTray';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
@@ -1354,64 +1355,66 @@ export function TodayScreen() {
           groupId={item.group.id}
           active={joinGroupIntentId === item.group.id}
         >
-          <TaskGroupHeader
-            group={item.group}
-            allChildren={allChildren}
-            filtered={groupTallyFiltered}
-            onToggleCollapse={() => {
-              if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
-              haptics.tap();
-              // No animateLayout() here: AnimatedCollapsible already owns a
-              // smooth Reanimated-driven height transition for this row, and
-              // stacking a LayoutAnimation on the same commit fights it —
-              // LayoutAnimation grabs the view's current committed frame to
-              // animate from, which can race the in-progress Reanimated
-              // value and leave the row frozen at zero height until
-              // something else (a remount) forces a fresh layout.
-              //
-              // A tap landing here means no drag is in flight, so this
-              // doubles as the recovery path if one ever ends without
-              // onDragEnd — otherwise the stack would stay bodiless no
-              // matter how many times it's collapsed and expanded.
-              setDraggingGroupId(null);
-              setGroupCollapsed(item.group.id, !item.group.collapsed);
-            }}
-            {...groupHeaderProps(item.group)}
-            onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
-          />
-          <TaskGroupBody
-            expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
-            hasChildren={item.children.length > 0}
-            // The only list where a stack can render with no children under
-            // it: everything due today is done, completed rows aren't shown
-            // individually, and the stack stays put until it's dismissed.
-            // Without this the body opened onto nothing.
-            emptyLabel={
-              item.children.length === 0
-                ? `All ${allChildren.filter(isRelevantToGroupToday).length} done for today`
-                : undefined
-            }
-          >
-            <SortableList
-              data={item.children}
-              onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
-              onDragOut={task => removeFromGroup(task.id)}
-              renderItem={(child, _displayIndex, childDrag, childIsActive) => (
-                <React.Fragment key={child.id}>
-                  {renderTaskRow(child, {
-                    indented: true,
-                    isActive: childIsActive,
-                    // Reads the long-press's pageY to seed SortableList's own
-                    // delta-based drag tracking (it has no row-layout map to
-                    // fall back on the way the outer ReorderableList does).
-                    drag: selectionMode
-                      ? undefined
-                      : (e?: GestureResponderEvent) => childDrag(e?.nativeEvent.pageY ?? 0),
-                  })}
-                </React.Fragment>
-              )}
+          <TaskGroupTray>
+            <TaskGroupHeader
+              group={item.group}
+              allChildren={allChildren}
+              filtered={groupTallyFiltered}
+              onToggleCollapse={() => {
+                if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+                haptics.tap();
+                // No animateLayout() here: AnimatedCollapsible already owns a
+                // smooth Reanimated-driven height transition for this row, and
+                // stacking a LayoutAnimation on the same commit fights it —
+                // LayoutAnimation grabs the view's current committed frame to
+                // animate from, which can race the in-progress Reanimated
+                // value and leave the row frozen at zero height until
+                // something else (a remount) forces a fresh layout.
+                //
+                // A tap landing here means no drag is in flight, so this
+                // doubles as the recovery path if one ever ends without
+                // onDragEnd — otherwise the stack would stay bodiless no
+                // matter how many times it's collapsed and expanded.
+                setDraggingGroupId(null);
+                setGroupCollapsed(item.group.id, !item.group.collapsed);
+              }}
+              {...groupHeaderProps(item.group)}
+              onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
             />
-          </TaskGroupBody>
+            <TaskGroupBody
+              expanded={!item.group.collapsed && draggingGroupId !== item.group.id}
+              hasChildren={item.children.length > 0}
+              // The only list where a stack can render with no children under
+              // it: everything due today is done, completed rows aren't shown
+              // individually, and the stack stays put until it's dismissed.
+              // Without this the body opened onto nothing.
+              emptyLabel={
+                item.children.length === 0
+                  ? `All ${allChildren.filter(isRelevantToGroupToday).length} done for today`
+                  : undefined
+              }
+            >
+              <SortableList
+                data={item.children}
+                onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
+                onDragOut={task => removeFromGroup(task.id)}
+                renderItem={(child, _displayIndex, childDrag, childIsActive) => (
+                  <React.Fragment key={child.id}>
+                    {renderTaskRow(child, {
+                      indented: true,
+                      isActive: childIsActive,
+                      // Reads the long-press's pageY to seed SortableList's own
+                      // delta-based drag tracking (it has no row-layout map to
+                      // fall back on the way the outer ReorderableList does).
+                      drag: selectionMode
+                        ? undefined
+                        : (e?: GestureResponderEvent) => childDrag(e?.nativeEvent.pageY ?? 0),
+                    })}
+                  </React.Fragment>
+                )}
+              />
+            </TaskGroupBody>
+          </TaskGroupTray>
         </GroupDropTargetRow>
       );
     }
@@ -1473,7 +1476,7 @@ export function TodayScreen() {
   const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? [];
     return (
-      <View>
+      <TaskGroupTray>
         <TaskGroupHeader
           group={group}
           allChildren={allChildren}
@@ -1492,7 +1495,7 @@ export function TodayScreen() {
             <React.Fragment key={child.id}>{renderHiddenTask(child, { indented: true })}</React.Fragment>
           ))}
         </TaskGroupBody>
-      </View>
+      </TaskGroupTray>
     );
   };
 
@@ -1537,7 +1540,7 @@ export function TodayScreen() {
   const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
     const allChildren = childrenByGroupId.get(group.id) ?? [];
     return (
-      <View>
+      <TaskGroupTray>
         <TaskGroupHeader
           group={group}
           allChildren={allChildren}
@@ -1554,7 +1557,7 @@ export function TodayScreen() {
             <React.Fragment key={child.id}>{renderInboxTask(child, { indented: true })}</React.Fragment>
           ))}
         </TaskGroupBody>
-      </View>
+      </TaskGroupTray>
     );
   };
 

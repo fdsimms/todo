@@ -23,14 +23,11 @@ interface Props {
  * **There is no rail.** A hairline used to hang from the centre of the
  * header's glyph and run down the left of these rows, because back when the
  * header was itself a card, nothing but indentation said the rows below it
- * belonged to it — and indentation alone is ambiguous when a stack is the
- * last thing in a category. That line paid for itself then and doesn't now:
- * the header is a caption band on the page background rather than a card
- * (see TaskGroupHeader), so "the indented cards under the band" is already an
- * unambiguous read, and the rail was left tracing the edge of a card that no
- * longer exists. The grouping is carried by three things instead — the band
- * itself, children inset to start exactly at its title (`STACK_CHILD_INSET`),
- * and the closing gap below.
+ * belonged to it — and indentation alone is ambiguous when a stack is the last
+ * thing in a category. `TaskGroupTray` answers that question outright now: the
+ * rows and their header are inside one region with a visible edge, so a line
+ * pointing at the relationship is redundant, and it was drawn against the side
+ * of a card the header no longer has.
  */
 export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: Props) {
   const colors = useColors();
@@ -48,11 +45,13 @@ export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: P
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  // Closes the block. Children sit 2pt apart, so without this the first row
-  // after a stack is exactly as far from the last child as the children are
-  // from each other, and the stack has no visible end. Collapsed this is
-  // inert — AnimatedCollapsible clamps the wrapper to zero height and clips.
+  // The tray's vertical padding, kept on this side of the collapse so it
+  // folds away with the children — a collapsed stack should be a tray the
+  // height of its header, not one with an empty band under it. The top gap is
+  // the smaller of the two: the header is a caption for these rows, so it
+  // wants to sit nearer them than the tray's floor does.
   content: {
+    paddingTop: spacing.xs,
     paddingBottom: spacing.sm,
   },
   empty: {

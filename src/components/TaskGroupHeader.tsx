@@ -279,47 +279,34 @@ export function TaskGroupHeader({
 // The stack's leading tile, and the gap between it and the title.
 const GLYPH_SIZE = 30;
 const GLYPH_GAP = 10;
-/**
- * Left inset of a stack's child rows, measured from the screen edge — TaskItem
- * indents by exactly this so the cards start where the header's title starts.
- * The tile then hangs alone in the gutter beside them, and the title reads as
- * the head of the column rather than as a label floating near it. That
- * alignment is the whole grouping cue now (see the note in TaskGroupBody about
- * the rail that used to be), so it has to be one number, not two that agree.
- */
-export const STACK_CHILD_INSET = spacing.md + GLYPH_SIZE + GLYPH_GAP;
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   /**
-   * A caption band on the page, not a card.
+   * A caption, not a card — the one row in the app that isn't one.
    *
-   * Every previous version of this header was a filled rounded rectangle the
-   * same width and shape as the task rows below it — first on the card
-   * surface, then stepped up to bgTertiary to read as a "lid" over them. The
-   * problem with the lid is that a row that looks exactly like its neighbours
-   * but is a shade brighter doesn't read as *higher*, it reads as *selected*:
-   * bgTertiary is the surface this app uses for a pressed row and a dragged
-   * one. So the stack always looked like it was in some transient state.
+   * Every earlier version of this header was a filled rounded rectangle the
+   * same width and shape as the task rows below it: first on the card surface,
+   * then stepped up to bgTertiary to read as a "lid" over them. The lid is the
+   * trap. A row that looks exactly like its neighbours but a shade brighter
+   * doesn't read as *higher*, it reads as *selected* — bgTertiary is the
+   * surface this app uses for a pressed row and a dragged one, so a resting
+   * stack looked permanently mid-interaction.
    *
-   * The fix isn't another shade — it's leaving the card vocabulary. Nothing
-   * here is filled or rounded except the tile: the header is type on the page
-   * background, which is a thing no task row can ever be, at any tint. That
-   * also puts three unambiguous levels on the screen at once — the category
-   * caption (tiny, uppercase, tertiary), the stack band (17pt bold + tile),
-   * and the task cards.
+   * No amount of re-tinting fixes that; the header has to leave the card
+   * vocabulary. Nothing here is filled or rounded except the tile. What keeps
+   * it attached to its tasks is TaskGroupTray, the region both sit in — which
+   * is also why this can be transparent enough to work: the grouping doesn't
+   * depend on the header resembling anything.
    *
-   * The row still needs an opaque background, though it's the same colour as
-   * what's behind it: SwipeableRow renders its action panels *under* the row
-   * and slides the row off them, so a truly transparent header would show the
-   * orange panel straight through its own text.
+   * Three unambiguous levels end up on screen: category caption (tiny,
+   * uppercase, tertiary), stack caption (17pt bold + tile), task card.
    */
   band: {
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    // The gap the header was deliberately denied while it was a lid. A band
-    // has to stand off its content — pressed right up against the first card
-    // it goes back to looking like one more row in the run.
-    marginBottom: spacing.sm,
+    // Geometry belongs to the tray. The one thing kept here is an opaque
+    // background — SwipeableRow renders its action panels *under* the row and
+    // slides the row off them, so a truly transparent header would show the
+    // orange panel straight through its own text. It matches the tray exactly.
+    backgroundColor: colors.bgSunken,
   },
   cardClip: {
     borderRadius: radius.md,
@@ -329,11 +316,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 48,
-    backgroundColor: colors.bg,
+    backgroundColor: colors.bgSunken,
   },
   glyphWrapper: {
     // No padding: the tile's leading edge lines up with the left edge of the
-    // cards above and below it, hitSlop does the finger-target work.
+    // cards below it, hitSlop does the finger-target work.
     marginRight: GLYPH_GAP,
   },
   glyph: {

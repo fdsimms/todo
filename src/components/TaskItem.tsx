@@ -43,7 +43,6 @@ import { usePaintSelectionRow } from './PaintSelection';
 import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
-import { STACK_CHILD_INSET } from './TaskGroupHeader';
 import { ProgressBar } from './ProgressBar';
 
 interface Props {
@@ -1313,13 +1312,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
-  // Nests a group's expanded children under its header. The exact inset comes
-  // from the header, where it's the x of the stack's title: the cards line up
-  // under the words that name them, with the stack's tile alone in the gutter
-  // to their left. Since the rail was dropped, this alignment is what says
-  // these rows belong to the stack, so it can't be an approximation of it.
+  // A group's children are inside TaskGroupTray, which already insets them by
+  // its own padding — these rows drop their card margins entirely rather than
+  // stacking a second inset on top of it. Nothing here indents them: the tray
+  // is what says they belong to the stack, so they can keep their full width.
   itemWrapperIndented: {
-    marginLeft: STACK_CHILD_INSET,
+    marginLeft: 0,
+    marginRight: 0,
   },
   // Lifted look while being dragged: elevated background so the floating card
   // reads as clearly distinct from the resting rows.
