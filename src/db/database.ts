@@ -252,6 +252,9 @@ export function initDatabase(): void {
     // Nullable rather than defaulted: null *is* the meaningful value here
     // ("waiting on nothing"), and every existing row wants it.
     'ALTER TABLE tasks ADD COLUMN blocked_by_id TEXT',
+    // Nullable for the same reason, and read through parseTimeSegments so it
+    // shares the tasks column's tolerance for the legacy plain-string format.
+    'ALTER TABLE categories ADD COLUMN default_time_segments TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -700,6 +703,20 @@ export function dbBulkSetWhen(ids: string[], dueDate: string | null, timeSegment
   });
 }
 
+// Deliberately not dbBulkSetWhen with a null date: that one writes due_date
+// too, so reusing it to change a time-of-day would unschedule every task it
+// touched. The whole point of this one is that it moves the segment and
+// nothing else.
+export function dbBulkSetTimeSegments(ids: string[], timeSegments: TimeOfDay[]): void {
+  if (ids.length === 0) return;
+  const timeOfDay = timeSegments.length ? JSON.stringify(timeSegments) : null;
+  db.withTransactionSync(() => {
+    for (const id of ids) {
+      db.runSync('UPDATE tasks SET time_of_day = ? WHERE id = ?', [timeOfDay, id]);
+    }
+  });
+}
+
 export function dbBulkSetCategory(ids: string[], category: string | null): void {
   if (ids.length === 0) return;
   db.withTransactionSync(() => {
@@ -780,6 +797,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     scheduleEnd: (row.schedule_end as string) ?? null,
     hideOnVacation: Boolean(row.hide_on_vacation),
     excludeFromPinSuggestions: Boolean(row.exclude_from_pin_suggestions),
+    defaultTimeSegments: parseTimeSegments(row.default_time_segments),
     sortOrder: row.sort_order as number,
     emoji: (row.emoji as string | null) ?? null,
   };
@@ -795,7 +813,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromPinSuggestions: false, sortOrder, emoji: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromPinSuggestions: false, defaultTimeSegments: [], sortOrder, emoji: null };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -816,6 +834,15 @@ export function dbSetCategoryExcludeFromPinSuggestions(id: string, exclude: bool
 
 export function dbSetCategoryEmoji(id: string, emoji: string | null): void {
   db.runSync('UPDATE categories SET emoji = ? WHERE id = ?', [emoji, id]);
+}
+
+// Stored as null rather than '[]' when empty, matching how tasks.time_of_day
+// spells "no segment" — so parseTimeSegments reads both columns the same way.
+export function dbSetCategoryDefaultTimeSegments(id: string, segments: TimeOfDay[]): void {
+  db.runSync(
+    'UPDATE categories SET default_time_segments = ? WHERE id = ?',
+    [segments.length ? JSON.stringify(segments) : null, id]
+  );
 }
 
 export function dbUpdateCategory(id: string, updates: Partial<Pick<Category, 'scheduleDays' | 'scheduleStart' | 'scheduleEnd'>>): void {
@@ -843,7 +870,7 @@ export function dbDeleteCategory(name: string): void {
 // the schedule/vacation fields a deleted category carried.
 export function dbInsertCategoryRow(category: Category): void {
   db.runSync(
-    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, default_time_segments, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?,?)',
     [
       category.id,
       category.name,
@@ -852,6 +879,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.scheduleEnd,
       category.hideOnVacation ? 1 : 0,
       category.excludeFromPinSuggestions ? 1 : 0,
+      category.defaultTimeSegments.length ? JSON.stringify(category.defaultTimeSegments) : null,
       category.sortOrder,
       category.emoji,
     ]

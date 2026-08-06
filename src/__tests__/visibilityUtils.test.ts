@@ -23,6 +23,7 @@ import {
   isWaitingTask,
   activeChainStepTitle,
   displayTitleFor,
+  sameTimeSegments,
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -70,6 +71,7 @@ const workCategory: Category = {
   scheduleEnd: '18:00',
   hideOnVacation: false,
   excludeFromPinSuggestions: false,
+  defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
 };
@@ -775,6 +777,7 @@ const errandsCategory: Category = {
   scheduleEnd: null,
   hideOnVacation: true,
   excludeFromPinSuggestions: false,
+  defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
 };
@@ -1353,5 +1356,26 @@ describe('blocking', () => {
   it('blocks nothing when no task source is registered', () => {
     registerTaskSource(null);
     expect(isTaskBlocked(waiter)).toBe(false);
+  });
+});
+
+// ─── sameTimeSegments ────────────────────────────────────────────────────────
+
+describe('sameTimeSegments', () => {
+  it('matches equal sets', () => {
+    expect(sameTimeSegments(['night'], ['night'])).toBe(true);
+    expect(sameTimeSegments([], [])).toBe(true);
+  });
+
+  it('does not match different sets', () => {
+    expect(sameTimeSegments(['evening'], ['night'])).toBe(false);
+    expect(sameTimeSegments([], ['night'])).toBe(false);
+    expect(sameTimeSegments(['morning', 'night'], ['night'])).toBe(false);
+  });
+
+  // parseTaskInput and the templates can produce several segments at once, and
+  // nothing guarantees the order two equal sets were written in.
+  it('ignores order', () => {
+    expect(sameTimeSegments(['morning', 'night'], ['night', 'morning'])).toBe(true);
   });
 });

@@ -20,6 +20,8 @@ import {
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
+  dbBulkSetTimeSegments,
+  dbSetCategoryDefaultTimeSegments,
   dbBulkAddTags,
   dbRemoveTagFromAllTasks,
   dbGetTagRegistry,
@@ -739,6 +741,44 @@ describe('dbBulkSetDefer', () => {
   });
 });
 
+describe('dbBulkSetTimeSegments', () => {
+  it('sets time_of_day on the specified tasks only', () => {
+    dbInsertTask(makeTask({ id: 'a', timeSegments: ['evening'] }));
+    dbInsertTask(makeTask({ id: 'b', timeSegments: ['evening'] }));
+
+    dbBulkSetTimeSegments(['a'], ['night']);
+
+    const tasks = dbGetAllTasks();
+    expect(tasks.find((t) => t.id === 'a')?.timeSegments).toEqual(['night']);
+    expect(tasks.find((t) => t.id === 'b')?.timeSegments).toEqual(['evening']);
+  });
+
+  // The point of having this alongside dbBulkSetWhen: that one writes
+  // due_date in the same statement, so it can't move a segment without
+  // unscheduling the task.
+  it('leaves due_date alone', () => {
+    dbInsertTask(makeTask({ id: 'a', dueDate: '2025-06-20T00:00:00.000Z', timeSegments: ['evening'] }));
+
+    dbBulkSetTimeSegments(['a'], ['night']);
+
+    expect(dbGetAllTasks()[0].dueDate).toBe('2025-06-20T00:00:00.000Z');
+  });
+
+  it('writes null rather than an empty array when the set is cleared', () => {
+    dbInsertTask(makeTask({ id: 'a', timeSegments: ['evening'] }));
+
+    dbBulkSetTimeSegments(['a'], []);
+
+    expect(dbGetAllTasks()[0].timeSegments).toEqual([]);
+  });
+
+  it('is a no-op for an empty array', () => {
+    dbInsertTask(makeTask({ id: 'a', timeSegments: ['evening'] }));
+    dbBulkSetTimeSegments([], ['night']);
+    expect(dbGetAllTasks()[0].timeSegments).toEqual(['evening']);
+  });
+});
+
 describe('dbBulkAddTags', () => {
   it('merges new tags with existing tags', () => {
     dbInsertTask(makeTask({ id: 'a', tags: ['work'] }));
@@ -1026,6 +1066,21 @@ describe('Categories', () => {
     ...overrides,
   });
 
+  it('dbSetCategoryDefaultTimeSegments round-trips, and clears back to empty', () => {
+    const { id } = dbInsertCategory('Evening tasks');
+    expect(dbGetAllCategories()[0].defaultTimeSegments).toEqual([]);
+
+    dbSetCategoryDefaultTimeSegments(id, ['night']);
+    expect(dbGetAllCategories()[0].defaultTimeSegments).toEqual(['night']);
+
+    dbSetCategoryDefaultTimeSegments(id, []);
+    expect(dbGetAllCategories()[0].defaultTimeSegments).toEqual([]);
+
+    // This describe has no per-test cleanup and the two tests below assert on
+    // the whole categories table, so put the row back.
+    dbDeleteCategory('Evening tasks');
+  });
+
   it('dbDeleteCategory removes the row and nulls category on both tasks and stacks', () => {
     dbInsertCategory('Home');
     dbInsertTask(makeTask({ id: 't1', category: 'Home' }));
@@ -1047,6 +1102,7 @@ describe('Categories', () => {
       scheduleEnd: '17:00',
       hideOnVacation: true,
       excludeFromPinSuggestions: true,
+      defaultTimeSegments: ['evening'],
       sortOrder: 3,
       emoji: '🏠',
     };

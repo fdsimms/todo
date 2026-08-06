@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Category } from '../types';
+import type { Category, TimeOfDay } from '../types';
 import {
   dbGetAllCategories,
   dbInsertCategory,
@@ -10,6 +10,7 @@ import {
   dbSetCategoryHideOnVacation,
   dbSetCategoryExcludeFromPinSuggestions,
   dbSetCategoryEmoji,
+  dbSetCategoryDefaultTimeSegments,
   dbBatchUpdateCategorySortOrders,
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
@@ -30,6 +31,10 @@ interface CategoryStore {
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   setCategoryExcludeFromPinSuggestions: (name: string, exclude: boolean) => void;
   setCategoryEmoji: (name: string, emoji: string | null) => void;
+  // Only what *new* tasks in this category start with. Retroactively moving
+  // the tasks that already exist is a separate, explicit act — see
+  // useTaskStore.setCategoryTimeSegments.
+  setCategoryDefaultTimeSegments: (name: string, segments: TimeOfDay[]) => void;
   getCategoryByName: (name: string) => Category | null;
   reorderCategories: (orderedNames: string[]) => void;
 }
@@ -129,6 +134,17 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     set(s => ({
       categories: s.categories.map(c =>
         c.name === name ? { ...c, emoji: single } : c
+      ),
+    }));
+  },
+
+  setCategoryDefaultTimeSegments(name, segments) {
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return;
+    dbSetCategoryDefaultTimeSegments(cat.id, segments);
+    set(s => ({
+      categories: s.categories.map(c =>
+        c.name === name ? { ...c, defaultTimeSegments: segments } : c
       ),
     }));
   },
