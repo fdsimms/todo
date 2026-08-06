@@ -560,6 +560,9 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 <TouchableOpacity
                   style={[styles.toggle, chainEnabled && styles.toggleOn]}
                   onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Chain"
+                  accessibilityState={{ checked: chainEnabled }}
                 >
                   <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
                 </TouchableOpacity>
@@ -586,6 +589,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           delayLongPress={150}
                           hitSlop={8}
                           style={styles.dragHandle}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Reorder chain step ${chainItem.title}`}
                         >
                           <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                         </TouchableOpacity>
@@ -593,6 +598,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           onPress={() => setChainItems(prev => prev.filter(c => c.id !== chainItem.id))}
                           hitSlop={8}
                           style={styles.chainItemDelete}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Remove chain step ${chainItem.title}`}
                         >
                           <Ionicons name="close" size={14} color={colors.textTertiary} />
                         </TouchableOpacity>
