@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
-import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
+import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -75,6 +75,10 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { DeloadSheet } from '../components/DeloadSheet';
+import { ProjectPullSheet } from '../components/ProjectPullSheet';
+import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
+import { findProjectStalls } from '../utils/projectPull';
+import { useProjectStore } from '../store/useProjectStore';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -415,6 +419,7 @@ export function TodayScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
+  const [pullVisible, setPullVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -574,6 +579,9 @@ export function TodayScreen() {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
           useTaskStore.getState().rolloverQuotas();
+          // After rolloverQuotas: a rollover can complete and spawn members,
+          // which changes what a project counts as scheduled.
+          useTaskStore.getState().dripStalledProjects();
           forceRefresh(n => n + 1);
         }
       });
@@ -684,6 +692,9 @@ export function TodayScreen() {
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectNudgeDismissedAt = useSettingsStore(s => s.projectNudgeDismissedAt);
+  const setProjectNudgeDismissedAt = useSettingsStore(s => s.setProjectNudgeDismissedAt);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
@@ -1671,6 +1682,19 @@ export function TodayScreen() {
     openEditor(task);
   };
 
+  // Projects that have gone quiet. One bucketing pass inside a memo, not a
+  // filter per project — this screen re-renders on every store change plus a
+  // 30s tick.
+  const projectStalls = useMemo(
+    () => findProjectStalls(projects, allTasks).filter(s => !s.project.autoSchedule),
+    [projects, allTasks]
+  );
+  const nudgeDismissed = isDismissedToday(projectNudgeDismissedAt);
+  const dismissProjectNudge = () => {
+    animateLayout();
+    setProjectNudgeDismissedAt(new Date().toISOString());
+  };
+
   const today = format(new Date(), 'EEEE, MMMM d');
 
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
@@ -1796,6 +1820,15 @@ export function TodayScreen() {
 
         {viewMode === 'today' && newTasks.length > 0 && (
           <NewTasksBanner tasks={newTasks} onSelectTask={openNewTask} onDismiss={dismissNewTasksBanner} />
+        )}
+
+        {/* "What's new" leads; "what's gone quiet" follows. */}
+        {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
+          <ProjectNudgeBanner
+            stalls={projectStalls}
+            onReview={() => setPullVisible(true)}
+            onDismiss={dismissProjectNudge}
+          />
         )}
 
         <SpotlightOverlay
@@ -2327,12 +2360,23 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
+          onPullFromProjects={() => {
+            setOptionsMenuVisible(false);
+            setPullVisible(true);
+          }}
+          quietProjectCount={projectStalls.length}
         />
 
         <DeloadSheet
           visible={deloadVisible}
           todaysTasks={visibleTasks}
           onClose={() => setDeloadVisible(false)}
+        />
+
+        <ProjectPullSheet
+          visible={pullVisible}
+          todaysTasks={visibleTasks}
+          onClose={() => setPullVisible(false)}
         />
 
         <TaskGroupEditor

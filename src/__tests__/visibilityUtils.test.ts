@@ -16,6 +16,7 @@ import {
   isQuotaOnPace,
   quotaNextDueAt,
   isQuotaPartial,
+  isDismissedToday,
 } from '../utils/visibilityUtils';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -1076,5 +1077,39 @@ describe('quota tasks', () => {
     it('is false for an ordinary completed task', () => {
       expect(isQuotaPartial({ ...baseTask, completed: true })).toBe(false);
     });
+  });
+});
+
+describe('isDismissedToday', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false with no stamp at all', () => {
+    expect(isDismissedToday(null)).toBe(false);
+  });
+
+  it('is true for a stamp from earlier on the current logical day', () => {
+    expect(isDismissedToday(new Date(2025, 5, 10, 8, 0, 0).toISOString())).toBe(true);
+  });
+
+  // The self-expiry the whole idiom rests on: nothing clears the stamp, it
+  // simply stops matching once the day rolls over.
+  it('is false for yesterday’s stamp', () => {
+    expect(isDismissedToday(new Date(2025, 5, 9, 23, 59, 0).toISOString())).toBe(false);
+  });
+
+  it('respects a non-midnight day reset', () => {
+    mockSettingsState.dayResetTime = '02:00';
+    // 01:00 today is still "yesterday" under a 2am reset, so a stamp from then
+    // belongs to the previous logical day and no longer suppresses anything.
+    expect(isDismissedToday(new Date(2025, 5, 10, 1, 0, 0).toISOString())).toBe(false);
+    expect(isDismissedToday(new Date(2025, 5, 10, 3, 0, 0).toISOString())).toBe(true);
+    mockSettingsState.dayResetTime = '00:00';
   });
 });

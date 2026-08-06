@@ -3,6 +3,7 @@ import {
   projectProgress,
   isProjectPastWindow,
 } from '../store/useProjectStore';
+import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -91,6 +92,8 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   archived: false,
   archivedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
+  nudgeCadenceDays: 14,
+  autoSchedule: false,
   ...overrides,
 });
 
@@ -208,6 +211,25 @@ describe('createProject / updateProject / getProjectById', () => {
   it('is a no-op when updating a project that does not exist', () => {
     useProjectStore.getState().updateProject('missing', { title: 'New' });
     expect(dbUpdateProject).not.toHaveBeenCalled();
+  });
+
+  it('gives a new project the default nudge cadence, with auto-scheduling off', () => {
+    const project = useProjectStore.getState().createProject('Kitchen remodel', null, null);
+    expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
+    expect(project.autoSchedule).toBe(false);
+  });
+
+  // Regression test for the narrow patch whitelist: these two are only
+  // writable because updateProject's Pick was widened to include them.
+  it('writes the nudge settings through updateProject', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+
+    useProjectStore.getState().updateProject('p1', { nudgeCadenceDays: 3, autoSchedule: true });
+
+    const updated = useProjectStore.getState().getProjectById('p1');
+    expect(updated?.nudgeCadenceDays).toBe(3);
+    expect(updated?.autoSchedule).toBe(true);
+    expect(dbUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ nudgeCadenceDays: 3, autoSchedule: true }));
   });
 });
 

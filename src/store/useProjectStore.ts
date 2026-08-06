@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Project, Task } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -33,7 +34,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule'>>) => void;
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
   reorderProjectsWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
@@ -67,6 +68,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       archived: false,
       archivedAt: null,
       createdAt: new Date().toISOString(),
+      nudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS,
+      autoSchedule: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

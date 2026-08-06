@@ -30,6 +30,7 @@ import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
+import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
@@ -307,6 +308,16 @@ interface TaskStore {
   // utils/deloadPlan) under one undo entry — each move carries its own field
   // updates, since a recurring task defers while a one-off reschedules.
   deloadTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  // Applies a batch of approved "pull from projects" picks (see
+  // utils/projectPull) under one undo entry — the mirror of deloadTasks, and
+  // simpler because a pull candidate is undated, so there's no existing date to
+  // protect and every move is a plain reschedule.
+  pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  // Layer B of the same feature: projects the user opted into auto-scheduling
+  // date their own next task when they run dry. Idempotent by construction —
+  // dating a member makes the project non-stalled, so a second call in the same
+  // session finds nothing, exactly as rolloverQuotas' condition self-clears.
+  dripStalledProjects: () => void;
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
   // Hides a recurring task indefinitely (unlike vacationPause, not tied to
@@ -1303,6 +1314,59 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil })
       ),
     });
+  },
+
+  pullProjectTasks(moves) {
+    const byId = new Map(get().tasks.map(t => [t.id, t]));
+    const applied = moves.filter(m => byId.has(m.id));
+    if (applied.length === 0) return;
+
+    const snapshots = applied.map(m => {
+      const t = byId.get(m.id)!;
+      return { id: m.id, dueDate: t.dueDate, deferUntil: t.deferUntil };
+    });
+
+    dbTransaction(() => {
+      applied.forEach(m => get().updateTask(m.id, m.updates));
+    });
+
+    get().setLastAction({
+      label: `${applied.length} task${applied.length === 1 ? '' : 's'} pulled in`,
+      undo: () => snapshots.forEach(s =>
+        get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil })
+      ),
+    });
+  },
+
+  dripStalledProjects() {
+    const projects = useProjectStore.getState().projects.filter(p => p.autoSchedule);
+    if (projects.length === 0) return;
+
+    const tasks = get().tasks;
+    const picks = projects
+      .map(p => {
+        const task = dripCandidate(p, tasks);
+        if (!task) return null;
+        // Today, not a suggested future day: the whole point is that an
+        // opted-in project puts its next thing in front of you without being
+        // asked, and a date a week out would leave it invisible until then.
+        const today = new Date();
+        today.setHours(12, 0, 0, 0);
+        return { id: task.id, updates: projectPullUpdates(today) };
+      })
+      .filter((p): p is { id: string; updates: Partial<Task> } => p !== null);
+
+    if (picks.length === 0) return;
+
+    dbTransaction(() => {
+      picks.forEach(p => get().updateTask(p.id, p.updates));
+    });
+
+    // Deliberately no setLastAction: an unattended background write must not
+    // occupy the undo slot for an action the user never saw. It surfaces
+    // through machinery that already exists instead — the newly dated task has
+    // an old seenAt and a dueDate of today, so isTaskNew is true and it shows
+    // up in the existing NewTasksBanner with a new dot.
   },
 
   skipNextRecurrence(id) {

@@ -225,6 +225,20 @@ describe('resetToDefaults', () => {
   });
 });
 
+describe('setProjectNudgeDismissedAt', () => {
+  it('stores and persists the stamp', () => {
+    useSettingsStore.getState().setProjectNudgeDismissedAt('2026-08-06T09:00:00.000Z');
+    expect(useSettingsStore.getState().projectNudgeDismissedAt).toBe('2026-08-06T09:00:00.000Z');
+    expect(dbSetSetting).toHaveBeenCalledWith('projectNudgeDismissedAt', '2026-08-06T09:00:00.000Z');
+  });
+
+  it('clears back to null through an empty string', () => {
+    useSettingsStore.getState().setProjectNudgeDismissedAt(null);
+    expect(useSettingsStore.getState().projectNudgeDismissedAt).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('projectNudgeDismissedAt', '');
+  });
+});
+
 describe('setVacationEnd', () => {
   it('updates vacationEnd independently of vacationMode', () => {
     useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');
