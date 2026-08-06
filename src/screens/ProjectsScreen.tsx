@@ -128,7 +128,7 @@ export function ProjectsScreen() {
           contentContainerStyle={styles.list}
           ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
           placeholderStyle={styles.dropSlot}
-          onHoverChange={haptics.tap}
+          onHoverChange={haptics.dragTick}
           onReorder={reordered => {
             const { projectIds, categoryUpdates } = resolveProjectDrop(reordered, projectCategoryOrder);
             reorderProjectsWithCategoryUpdates(projectIds, categoryUpdates);

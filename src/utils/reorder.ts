@@ -177,4 +177,24 @@ export function dragTranslation(
   return cardTop - (rowContentY - scrollOffset + contentOrigin);
 }
 
+/**
+ * Fold a reordering of *some* of a list's ids back into the full order.
+ *
+ * A list that only shows part of a set can still be dragged — a stack on Today
+ * renders just the members due today, not the whole roster — and renumbering
+ * only what was on screen (1..n over the visible rows) throws away where the
+ * rows nobody could see were sitting. `ordered` is laid back into the exact
+ * slots those ids already occupied in `all`, so every other id keeps its
+ * neighbours.
+ *
+ * Ids in `ordered` that aren't in `all` are ignored; ids in `all` that aren't
+ * in `ordered` don't move.
+ */
+export function reorderSubset(all: string[], ordered: string[]): string[] {
+  const moving = ordered.filter(id => all.includes(id));
+  const slots = new Set(moving);
+  let next = 0;
+  return all.map(id => (slots.has(id) ? moving[next++]! : id));
+}
+
 

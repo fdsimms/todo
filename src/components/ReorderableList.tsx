@@ -21,6 +21,7 @@ import {
   contentOriginOffset,
 } from '../utils/reorder';
 import { useTheme } from '../theme/ThemeContext';
+import { haptics } from '../utils/haptics';
 
 const ROW_SHIFT_DURATION = 180;
 
@@ -606,6 +607,11 @@ export function ReorderableList<T>({
     overlayScale.setValue(1.03);
     overlayOpacity.setValue(1);
     setActiveIndex(index);
+    // Fired here rather than left to each caller: the lift is the only
+    // confirmation that a long-press became a drag, and callers that forgot it
+    // (the categories screen) felt broken next to the ones that didn't. Callers
+    // must NOT add their own on top — see startCategoryDrag in TodayScreen.
+    haptics.impactMedium();
     onDragBegin?.();
   };
 
