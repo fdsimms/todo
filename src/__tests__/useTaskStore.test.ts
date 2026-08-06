@@ -2640,6 +2640,40 @@ describe('bulkSetPriority', () => {
   });
 });
 
+describe('bulkTogglePin', () => {
+  it('pins the whole selection when only some of it is pinned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: false }),
+        makeTask({ id: 'b', pinned: true }),
+        makeTask({ id: 'c', pinned: false }),
+      ],
+    });
+    useTaskStore.getState().bulkTogglePin(['a', 'b']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'b')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'c')?.pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a', 'b'], true);
+  });
+
+  it('unpins the selection when every task in it is already pinned', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true }), makeTask({ id: 'b', pinned: true })],
+    });
+    useTaskStore.getState().bulkTogglePin(['a', 'b']);
+    expect(useTaskStore.getState().tasks.every(t => !t.pinned)).toBe(true);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a', 'b'], false);
+  });
+
+  it('does nothing for an empty selection', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkTogglePin([]);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+  });
+});
+
 describe('bulkDefer', () => {
   it('sets deferUntil on all specified tasks', () => {
     const until = new Date(2025, 5, 20);

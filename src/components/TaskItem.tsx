@@ -65,8 +65,6 @@ interface Props {
   showProject?: boolean;
   showGroup?: boolean;
   showActions?: boolean;
-  /** Narrower than `showActions`: drops just the pin, for lists where pinning (a Today concept) doesn't apply but the link and timer actions still do. */
-  showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
   /** Briefly tints the row on mount to draw the eye to a task that was just created. */
@@ -127,7 +125,6 @@ export function TaskItem({
   showProject = false,
   showGroup = false,
   showActions = true,
-  showPin = true,
   indented = false,
   justCreated = false,
   autoComplete = false,
@@ -161,7 +158,6 @@ export function TaskItem({
     setLastAction,
     markTaskSeen,
     skipNextRecurrence,
-    togglePin,
     startTimer,
     stopTimer,
     discardTimer,
@@ -844,28 +840,6 @@ export function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && (
-        <TouchableOpacity
-          onPress={() => {
-            haptics.tap();
-            togglePin(task.id);
-          }}
-          hitSlop={8}
-          style={styles.starBtn}
-          accessibilityRole="button"
-          accessibilityState={{ selected: task.pinned }}
-          accessibilityLabel={
-            task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
-          }
-        >
-          <Ionicons
-            name={task.pinned ? 'pin' : 'pin-outline'}
-            size={iconSize.sm}
-            color={task.pinned ? colors.orange : colors.textTertiary}
-          />
-        </TouchableOpacity>
-      )}
-
     </View>
   );
 
@@ -1522,9 +1496,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   windowLabelExpired: {
     color: colors.textTertiary,
     fontSize: font.xs,
-  },
-  starBtn: {
-    padding: 4,
   },
   linkBtn: {
     padding: 4,
