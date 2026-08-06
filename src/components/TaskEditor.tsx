@@ -197,6 +197,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customLinkText, setCustomLinkText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
+  const [showStreak, setShowStreak] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
   // an explicit tap, so the form reads as a list of named fields rather than a
@@ -271,6 +272,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
       setVacationPause(task.vacationPause ?? false);
+      setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
@@ -287,6 +289,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
+      setShowStreak(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
     }
     setShowLinkPicker(false); setCustomLinkText('');
@@ -342,6 +345,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
       vacationPause: task?.vacationPause ?? false,
+      showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
     });
   }, [visible, task]);
@@ -445,6 +449,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainItems,
       chainIndex,
       vacationPause,
+      // Only a recurring task has a streak to show, and the toggle is only
+      // offered there — don't strand a stale `true` on a task that stopped
+      // recurring, or the chip would be waiting if it ever recurs again.
+      showStreak: recurrenceType !== 'none' && showStreak,
       linkUrl: resolveLinkUrl(),
     };
 
@@ -686,6 +694,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
+      showStreak,
       linkUrl,
     });
     if (current !== initialStateRef.current) {
@@ -2209,6 +2218,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </TouchableOpacity>
               </View>
             )}
+          </>
+        )}
+        {/* Keyed off the draft's recurrence, not the saved task's, so it shows
+            up the moment a repeat is picked on a brand new task too. */}
+        {recurrenceType !== 'none' && (
+          <>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                haptics.tap();
+                setShowStreak(v => !v);
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Show streak on row"
+              accessibilityState={{ checked: showStreak }}
+            >
+              <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Show streak on row</Text>
+                <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+              </View>
+              <View style={[styles.toggle, showStreak && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
           </>
         )}
       </View>

@@ -437,6 +437,11 @@ export function TaskItem({
   // exactly as it does for every other row.
   const showQuotaMeter = isQuota && !selectionMode && !completing;
 
+  // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
+  // a habit whose streak just broke doesn't silently lose a chip — the row
+  // keeps its height and reads as "back to nothing" rather than "untracked".
+  const showStreakChip = task.showStreak && task.recurrenceType !== 'none';
+
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -717,8 +722,27 @@ export function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
+            {showStreakChip && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  task.streakCount > 0
+                    ? `${task.streakCount} day streak`
+                    : 'No streak yet'
+                }
+              >
+                <Ionicons
+                  name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
+                  size={iconSize.xs}
+                  color={task.streakCount > 0 ? colors.orange : colors.textTertiary}
+                />
+                <Text style={[styles.streakChipText, task.streakCount > 0 && styles.streakChipTextActive]} numberOfLines={1}>
+                  {task.streakCount}
+                </Text>
+              </View>
+            )}
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
@@ -1481,6 +1505,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
+  },
+  streakChipText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  streakChipTextActive: {
+    color: colors.orange,
   },
   windowLabel: {
     color: colors.red,

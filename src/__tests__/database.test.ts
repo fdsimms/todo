@@ -125,6 +125,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  showStreak: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -427,6 +428,21 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [t] = dbGetAllTasks();
     expect(t.previousStreakCount).toBe(4);
     expect(t.previousStreakDate).toBe('2025-06-09T00:00:00.000Z');
+  });
+
+  it('round-trips showStreak', () => {
+    dbInsertTask(makeTask({ id: 'habit', showStreak: true }));
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'habit')!.showStreak).toBe(true);
+    expect(tasks.find(t => t.id === 'plain')!.showStreak).toBe(false);
+  });
+
+  it('persists showStreak through an update', () => {
+    dbInsertTask(makeTask({ id: 'habit-upd' }));
+    const [before] = dbGetAllTasks();
+    dbUpdateTask({ ...before, showStreak: true });
+    expect(dbGetAllTasks()[0].showStreak).toBe(true);
   });
 
   it('round-trips seenAt', () => {

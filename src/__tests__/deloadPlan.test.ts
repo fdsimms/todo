@@ -50,6 +50,7 @@ const BASE: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  showStreak: false,
   reminderTime: null,
   parentId: null,
   groupId: null,
