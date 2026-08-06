@@ -129,17 +129,33 @@ export function resolveFabDrop(hit: ZoneRect | null, y: number): FabDropIntent {
 }
 
 /**
- * Whether two intents mean the same drop — the drag fires a haptic and moves
- * its indicator only when this says they differ, so a finger resting between
- * two samples doesn't buzz on every pointer event.
+ * Identity of the *place* an intent points at. The drag ticks its haptic and
+ * moves its line only when this string changes, so a finger resting between two
+ * samples doesn't buzz on every pointer event.
+ *
+ * Insert intents collapse to the gap they name rather than the row they name it
+ * from: "below this row" and "above the next one" are one seam, and "first under
+ * this header" is that same seam again. Comparing the wording instead — which is
+ * what an anchorKey/before pair does — fired two ticks for every row the finger
+ * crossed and bounced the line across the 4px gutter between the two cards,
+ * because both spellings of one position look like two different targets.
  */
-export function sameIntent(a: FabDropIntent, b: FabDropIntent): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'insert' && b.kind === 'insert') {
-    return a.anchorKey === b.anchorKey && a.before === b.before;
+export function targetKey(rects: ZoneRect[], intent: FabDropIntent): string {
+  switch (intent.kind) {
+    case 'plain':
+      return 'plain';
+    case 'pin':
+      return 'pin';
+    case 'joinGroup':
+      return `group:${intent.groupId}`;
+    case 'insert': {
+      const i = rects.findIndex(r => zoneKey(r.zone) === intent.anchorKey);
+      // An anchor that isn't in this snapshot can't be placed on the seam
+      // scale; fall back to its own wording rather than colliding with slot 0.
+      if (i < 0) return `anchor:${intent.anchorKey}:${intent.before}`;
+      return `seam:${i + (intent.before ? 0 : 1)}`;
+    }
   }
-  if (a.kind === 'joinGroup' && b.kind === 'joinGroup') return a.groupId === b.groupId;
-  return true;
 }
 
 /**

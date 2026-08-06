@@ -2,7 +2,7 @@ import {
   categoriesByIndex,
   indicatorY,
   resolveFabDrop,
-  sameIntent,
+  targetKey,
   zoneAtY,
   zoneKey,
   type DropZone,
@@ -113,31 +113,55 @@ describe('resolveFabDrop', () => {
   });
 });
 
-describe('sameIntent', () => {
+describe('targetKey', () => {
+  const at = (hit: ZoneRect, y: number) => targetKey(RECTS, resolveFabDrop(hit, y));
+
   it('separates the two halves of one row', () => {
-    const a = resolveFabDrop(RECTS[2]!, 200);
-    const b = resolveFabDrop(RECTS[2]!, 240);
-    expect(sameIntent(a, a)).toBe(true);
-    expect(sameIntent(a, b)).toBe(false);
+    expect(at(RECTS[2]!, 200)).toBe(at(RECTS[2]!, 210));
+    expect(at(RECTS[2]!, 200)).not.toBe(at(RECTS[2]!, 240));
   });
 
   it('separates two different anchors on the same side', () => {
-    expect(sameIntent(resolveFabDrop(RECTS[2]!, 200), resolveFabDrop(RECTS[5]!, 520))).toBe(false);
+    expect(at(RECTS[2]!, 200)).not.toBe(at(RECTS[5]!, 520));
+  });
+
+  it('reads below a row and above the next one as a single seam', () => {
+    // The one crossing the finger actually makes between t-report and the
+    // stack below it — two spellings of the same gap, so one tick, not two.
+    const belowLoose = at(RECTS[0]!, 140);
+    const aboveWorkHeader = targetKey(RECTS, {
+      kind: 'insert', anchorKey: 'h-Work', before: true, category: 'Work',
+    });
+    expect(belowLoose).toBe(aboveWorkHeader);
+  });
+
+  it('reads a header and the first row under it as a single seam', () => {
+    // "First thing under Work" and "above the Work report" are one position.
+    expect(at(RECTS[1]!, 160)).toBe(at(RECTS[2]!, 200));
+  });
+
+  it('keeps a header apart from the seam above it', () => {
+    expect(at(RECTS[1]!, 160)).not.toBe(at(RECTS[0]!, 140));
   });
 
   it('separates two different stacks but not one stack sampled twice', () => {
-    const errands = resolveFabDrop(RECTS[3]!, 300);
     const other = zone(
       { kind: 'group', key: 'g-2', groupId: 'g2', groupTitle: 'Reading', category: 'Home' },
       600, 700,
     );
-    expect(sameIntent(errands, resolveFabDrop(RECTS[3]!, 400))).toBe(true);
-    expect(sameIntent(errands, resolveFabDrop(other, 650))).toBe(false);
+    expect(at(RECTS[3]!, 300)).toBe(at(RECTS[3]!, 400));
+    expect(at(RECTS[3]!, 300)).not.toBe(targetKey(RECTS, resolveFabDrop(other, 650)));
   });
 
-  it('treats every plain drop as the same drop', () => {
-    expect(sameIntent({ kind: 'plain' }, { kind: 'plain' })).toBe(true);
-    expect(sameIntent({ kind: 'plain' }, { kind: 'pin' })).toBe(false);
+  it('treats every plain drop as the same target, apart from a pin', () => {
+    expect(targetKey(RECTS, { kind: 'plain' })).toBe(targetKey(RECTS, { kind: 'plain' }));
+    expect(targetKey(RECTS, { kind: 'plain' })).not.toBe(targetKey(RECTS, { kind: 'pin' }));
+  });
+
+  it('falls back to the anchor when it is not in the snapshot', () => {
+    const gone = { kind: 'insert', anchorKey: 't-gone', before: true, category: null } as const;
+    expect(targetKey(RECTS, gone)).not.toBe(at(RECTS[0]!, 110));
+    expect(targetKey([], gone)).toBe(targetKey(RECTS, gone));
   });
 });
 

@@ -17,7 +17,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort } from '../types';
+import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
 import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
@@ -55,7 +55,14 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { ReorderableList } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
-import { FabDropZone, FabDropZoneProvider, type FabDropZonesHandle } from '../components/FabDropZones';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
 import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
@@ -155,6 +162,55 @@ function SectionHeader({
       {scrim}
     </TouchableOpacity>
   );
+}
+
+// The two readers of the add button's drag target. Both exist as components
+// purely so a target change re-renders them and nothing else — reading the
+// intent as screen state re-ran every row's renderItem on each crossing, which
+// is what made the drag stutter as it passed over tasks. Children arrive as an
+// untouched prop, so the row underneath doesn't re-render with the wrapper.
+
+// A stack row, lit by either drag that can land in it: an existing task dragged
+// onto it (`active`), or the add button aimed at it.
+function GroupDropTargetRow({
+  channel,
+  groupId,
+  active,
+  children,
+}: {
+  channel: FabIntentChannel;
+  groupId: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const aimed = useFabIntentSelector(
+    channel,
+    intent => intent?.kind === 'joinGroup' && intent.groupId === groupId,
+  );
+  return <GroupDropTarget active={active || aimed}>{children}</GroupDropTarget>;
+}
+
+// The add button, naming what a release right now would do.
+function AddTaskFabWithDropLabel({
+  channel,
+  categories,
+  ...props
+}: {
+  channel: FabIntentChannel;
+  categories: Category[];
+} & Omit<React.ComponentProps<typeof AddTaskFab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    switch (intent?.kind) {
+      case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
+      case 'pin': return 'New pinned task';
+      case 'insert':
+        return intent.category
+          ? `New task in ${categoryLabel(intent.category, categories)}`
+          : 'New task here';
+      default: return null;
+    }
+  });
+  return <AddTaskFab {...props} dragLabel={label} />;
 }
 
 // Collapsible reveal for tasks hidden by vacation mode (vacation-paused tasks
@@ -924,7 +980,11 @@ export function TodayScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
-  const [fabIntent, setFabIntent] = useState<FabDropIntent | null>(null);
+  // What the drag is currently aimed at goes through a channel rather than
+  // state: it changes as the finger crosses each row, and re-rendering this
+  // screen re-runs every row's renderItem. The two things that do change with
+  // it — the label on the button, the highlight on a stack — subscribe.
+  const fabIntentChannel = useFabIntentChannel();
   const [quickAddSeed, setQuickAddSeed] = useState<
     { category?: string | null; groupId?: string; pinned?: boolean } | undefined
   >(undefined);
@@ -1049,28 +1109,15 @@ export function TodayScreen() {
     onMove: pageY => dropZonesRef.current?.moveTo(pageY),
     onEnd: pageY => {
       setFabDragging(false);
-      setFabIntent(null);
+      // end()/cancel() publish a null intent themselves, which is what clears
+      // the label and any lit stack.
       openQuickAddForDrop(dropZonesRef.current?.end(pageY) ?? { kind: 'plain' });
     },
     onCancel: () => {
       setFabDragging(false);
-      setFabIntent(null);
       dropZonesRef.current?.cancel();
     },
   };
-
-  const fabDragLabel = useMemo(() => {
-    if (!fabDragging || !fabIntent) return null;
-    switch (fabIntent.kind) {
-      case 'joinGroup': return `Add to ${fabIntent.groupTitle.trim() || 'stack'}`;
-      case 'pin': return 'New pinned task';
-      case 'insert':
-        return fabIntent.category
-          ? `New task in ${categoryLabel(fabIntent.category, categories)}`
-          : 'New task here';
-      case 'plain': return null;
-    }
-  }, [fabDragging, fabIntent, categories]);
 
   // Set right before a category header's drag() starts, and cleared right
   // before any other drag starts, so onReorder below can tell whether the
@@ -1143,16 +1190,6 @@ export function TodayScreen() {
   // so onDragMove can tell which row is in flight without ReorderableList
   // needing to expose that itself.
   const activeDragIndexRef = useRef<number | null>(null);
-
-  // A fast drag can cross several rows between frames; spacing the selection
-  // ticks out keeps them from piling up into one long buzz.
-  const lastDragHapticRef = useRef(0);
-  const dragHaptic = () => {
-    const now = Date.now();
-    if (now - lastDragHapticRef.current < 80) return;
-    lastDragHapticRef.current = now;
-    haptics.tap();
-  };
 
   const subtasksByParent = useMemo(() => {
     const map = new Map<string, Task[]>();
@@ -1307,14 +1344,11 @@ export function TodayScreen() {
     }
     if (item.type === 'group') {
       const allChildren = childrenByGroupId.get(item.group.id) ?? [];
-      // Lit by either drag that can land in a stack: an existing task dragged
-      // onto it, or the add button aimed at it.
       return (
-        <GroupDropTarget
-          active={
-            joinGroupIntentId === item.group.id ||
-            (fabIntent?.kind === 'joinGroup' && fabIntent.groupId === item.group.id)
-          }
+        <GroupDropTargetRow
+          channel={fabIntentChannel}
+          groupId={item.group.id}
+          active={joinGroupIntentId === item.group.id}
         >
           <TaskGroupHeader
             group={item.group}
@@ -1374,7 +1408,7 @@ export function TodayScreen() {
               )}
             />
           </TaskGroupBody>
-        </GroupDropTarget>
+        </GroupDropTargetRow>
       );
     }
 
@@ -1748,7 +1782,7 @@ export function TodayScreen() {
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
         <PaintSelectionProvider {...paintProps}>
-        <FabDropZoneProvider ref={dropZonesRef} onIntentChange={setFabIntent}>
+        <FabDropZoneProvider ref={dropZonesRef} onIntentChange={fabIntentChannel.publish}>
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting}
@@ -1796,7 +1830,7 @@ export function TodayScreen() {
               );
             }}
             onDragBegin={() => setExpandedTaskId(null)}
-            onHoverChange={dragHaptic}
+            onHoverChange={haptics.dragTick}
             dragRange={(data, idx) => dragRange(data, idx, isLaterHeader)}
             placeholderStyle={styles.dropSlot}
             onReorder={reordered => {
@@ -1909,7 +1943,7 @@ export function TodayScreen() {
                 setAutoCollapseForDrag(false);
               }, 0);
             }}
-            onHoverChange={dragHaptic}
+            onHoverChange={haptics.dragTick}
             onDragMove={({ dx, overIndex }) => {
               // Only a plain loose task can be dragged right to join a group —
               // headers and groups themselves use the same horizontal offset
@@ -2177,7 +2211,9 @@ export function TodayScreen() {
         </View>
 
         {!selectionMode && (
-          <AddTaskFab
+          <AddTaskFabWithDropLabel
+            channel={fabIntentChannel}
+            categories={categories}
             bottom={insets.bottom + 64}
             disabled={spotlightActive}
             opacity={fabOpacity}
@@ -2186,7 +2222,6 @@ export function TodayScreen() {
             // the button tap-only rather than accepting a drag that can't mean
             // anything when it lands.
             drag={viewMode === 'today' ? fabDrag : undefined}
-            dragLabel={fabDragLabel}
           />
         )}
 
