@@ -5,7 +5,7 @@
  */
 import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
-import type { TaskDraft, TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
+import type { TaskDraft, TaskTemplate, TemplateAnchor, TemplateContainer, TemplateItem } from '../types';
 import { generateId } from './id';
 
 /** The two anchor dates a template can be applied with. */
@@ -360,4 +360,136 @@ export function expandSelectionWithAncestors(
   };
   tree.forEach(visit);
   return result;
+}
+
+/**
+ * Placeholders — `{what}` tokens in an item's title/notes, filled in at apply
+ * time.
+ *
+ * The run's container (see TemplateContainer) already supplies context to
+ * everything shown inside it, so these are deliberately *not* the primary fix
+ * for "Put in for PTO — for what?". They're for the titles that travel alone:
+ * a notification, the widget, a Search hit, a Logbook row. Two or three per
+ * template, not all of them.
+ */
+
+/** Bound to the run name, so `{run}` never needs an input of its own. */
+export const RUN_PLACEHOLDER = 'run';
+
+// Letters first so `{2}` and `{}` aren't mistaken for placeholders — a title
+// can legitimately contain braces.
+const PLACEHOLDER_PATTERN = /\{([a-zA-Z][a-zA-Z0-9 _-]*)\}/g;
+
+/** Placeholder names in `text`, lowercased, in order of first appearance (duplicates collapsed). */
+function placeholdersIn(text: string): string[] {
+  const found: string[] = [];
+  for (const match of text.matchAll(PLACEHOLDER_PATTERN)) {
+    const name = match[1].trim().toLowerCase();
+    if (name && !found.includes(name)) found.push(name);
+  }
+  return found;
+}
+
+/**
+ * Every distinct placeholder the given items declare across their titles,
+ * notes, subtasks and chain steps — in first-appearance order, so the apply
+ * sheet's inputs read in the same order as the checklist. `run` is excluded:
+ * it's bound to the run name rather than filled by hand.
+ */
+export function extractPlaceholders(items: TemplateItem[]): string[] {
+  const found: string[] = [];
+  const add = (text: string) => {
+    for (const name of placeholdersIn(text)) {
+      if (name !== RUN_PLACEHOLDER && !found.includes(name)) found.push(name);
+    }
+  };
+  for (const item of items) {
+    add(item.title);
+    add(item.notes);
+    item.subtasks.forEach(s => add(s.title));
+    item.chainItems.forEach(c => { add(c.title); add(c.notes); });
+  }
+  return found;
+}
+
+/** True if any of these items references `{run}` — i.e. wants the run name inlined into a title, not just used to name the container. */
+export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
+  const hasRun = (text: string) => placeholdersIn(text).includes(RUN_PLACEHOLDER);
+  return items.some(item =>
+    hasRun(item.title) ||
+    hasRun(item.notes) ||
+    item.subtasks.some(s => hasRun(s.title)) ||
+    item.chainItems.some(c => hasRun(c.title) || hasRun(c.notes))
+  );
+}
+
+/**
+ * Replace every `{name}` in `text` with its value (matched case-insensitively).
+ * A name with no value — or a blank one — is dropped rather than left as a
+ * literal `{what}` in a real task title.
+ *
+ * Text containing no placeholders is returned byte for byte: the tidy-up pass
+ * below only runs when something was actually substituted, so ordinary titles
+ * can never be reformatted behind the user's back.
+ */
+export function substitutePlaceholders(text: string, values: Record<string, string>): string {
+  if (!PLACEHOLDER_PATTERN.test(text)) {
+    PLACEHOLDER_PATTERN.lastIndex = 0; // `g` regexes are stateful across .test()
+    return text;
+  }
+  PLACEHOLDER_PATTERN.lastIndex = 0;
+  const substituted = text.replace(PLACEHOLDER_PATTERN, (_, rawName: string) =>
+    (values[rawName.trim().toLowerCase()] ?? '').trim()
+  );
+  return substituted
+    .replace(/[ \t]{2,}/g, ' ')          // "PTO for  " once the value vanished
+    .replace(/[ \t]+([,.;:!?])/g, '$1')  // "Pack , then go"
+    .replace(/[\s\-–—:,·]+$/, '')        // "Put in for PTO for —"
+    .trim();
+}
+
+/** Apply `substitutePlaceholders` to every user-visible string on a draft built from a template item. */
+export function substituteDraftPlaceholders(
+  draft: Partial<TaskDraft>,
+  values: Record<string, string>,
+): Partial<TaskDraft> {
+  return {
+    ...draft,
+    title: draft.title === undefined ? draft.title : substitutePlaceholders(draft.title, values),
+    notes: draft.notes === undefined ? draft.notes : substitutePlaceholders(draft.notes, values),
+    chainItems: draft.chainItems?.map(c => ({
+      ...c,
+      title: substitutePlaceholders(c.title, values),
+      notes: substitutePlaceholders(c.notes, values),
+    })),
+  };
+}
+
+/** True if any expanded item is filed under an itemGroup that still resolves in its own source template. */
+export function usesItemGroups(
+  expanded: ExpandedTemplateItem[],
+  templatesById: Map<string, TaskTemplate>,
+): boolean {
+  return expanded.some(({ item, sourceTemplateId }) =>
+    item.groupId !== null &&
+    (templatesById.get(sourceTemplateId)?.itemGroups.some(g => g.id === item.groupId) ?? false)
+  );
+}
+
+/**
+ * The container a run actually lands in.
+ *
+ * A stack can't hold a stack, and a template's own itemGroups already become
+ * stacks at apply time — so a run asking for 'stack' while its items carry
+ * item groups is upgraded to 'project', the one container that can hold both.
+ * Checked against the *expanded* items rather than the top-level template,
+ * since a nested template can contribute item groups of its own.
+ */
+export function resolveApplyContainer(
+  container: TemplateContainer,
+  expanded: ExpandedTemplateItem[],
+  templatesById: Map<string, TaskTemplate>,
+): TemplateContainer {
+  if (container === 'stack' && usesItemGroups(expanded, templatesById)) return 'project';
+  return container;
 }

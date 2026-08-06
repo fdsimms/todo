@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -234,6 +234,11 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN timed_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN show_streak INTEGER NOT NULL DEFAULT 0',
+    // Existing templates default to 'stack' rather than 'none': the setting is
+    // inert until the user names a run in the apply sheet, so this changes
+    // nothing for anyone until they opt in, and 'stack' is the right answer
+    // for most templates when they do.
+    "ALTER TABLE templates ADD COLUMN apply_container TEXT NOT NULL DEFAULT 'stack'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -905,7 +910,13 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
     category: (row.category as string) ?? null,
+    applyContainer: parseApplyContainer(row.apply_container),
   };
+}
+
+/** Tolerates a null (pre-migration row) or an unknown value from a newer app version, same as parseTimeSegments. */
+function parseApplyContainer(raw: unknown): TemplateContainer {
+  return raw === 'none' || raw === 'project' ? raw : 'stack';
 }
 
 export function dbGetAllTemplates(): TaskTemplate[] {
@@ -917,15 +928,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category) VALUES (?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category]
+    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category, template.applyContainer]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.applyContainer, template.id]
   );
 }
 

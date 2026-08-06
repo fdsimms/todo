@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, TaskTemplate, TemplateItem, TemplateItemGroup } from '../types';
+import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateItemGroup } from '../types';
 import {
   dbGetAllTemplates,
   dbInsertTemplate,
@@ -8,13 +8,30 @@ import {
   dbTransaction,
 } from '../db/database';
 import { useTaskStore } from './useTaskStore';
+import { useTaskGroupStore } from './useTaskGroupStore';
+import { useProjectStore } from './useProjectStore';
 import { generateId } from '../utils/id';
 import {
   normalizeTemplateItem,
   expandTemplateItems,
   buildDraftsFromTemplateTree,
+  resolveApplyContainer,
+  substituteDraftPlaceholders,
+  substitutePlaceholders,
+  RUN_PLACEHOLDER,
   type TemplateAnchors,
 } from '../utils/templateUtils';
+
+/** Everything the apply sheet collects beyond the item selection and anchors. */
+export interface ApplyTemplateOptions {
+  /**
+   * Names this run. Non-blank is what turns the template's applyContainer on —
+   * an unnamed run creates loose tasks exactly as it always did.
+   */
+  runName?: string;
+  /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
+  placeholders?: Record<string, string>;
+}
 
 interface TemplateStore {
   templates: TaskTemplate[];
@@ -23,6 +40,7 @@ interface TemplateStore {
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
+  setTemplateContainer: (id: string, container: TemplateContainer) => void;
   // Deletion's undo lives in useTaskStore, mirroring restoreProject/restoreGroup —
   // these are the low-level row operations it calls, kept here so this store
   // never has to import useTaskStore.
@@ -39,7 +57,12 @@ interface TemplateStore {
   renameItemGroup: (templateId: string, groupId: string, title: string) => void;
   deleteItemGroup: (templateId: string, groupId: string) => void;
   groupItems: (templateId: string, itemIds: string[], title: string) => TemplateItemGroup;
-  applyTemplate: (templateId: string, selectedItemIds: Set<string>, anchors: TemplateAnchors) => Task[];
+  applyTemplate: (
+    templateId: string,
+    selectedItemIds: Set<string>,
+    anchors: TemplateAnchors,
+    options?: ApplyTemplateOptions,
+  ) => Task[];
 }
 
 export const useTemplateStore = create<TemplateStore>((set, get) => ({
@@ -61,6 +84,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       sortOrder: maxOrder + 1,
       category: null,
+      applyContainer: 'stack',
     };
     dbInsertTemplate(template);
     set(s => ({ templates: [...s.templates, template] }));
@@ -79,6 +103,14 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const template = get().templates.find(t => t.id === id);
     if (!template) return;
     const updated = { ...template, category };
+    dbUpdateTemplate(updated);
+    set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  setTemplateContainer(id, container) {
+    const template = get().templates.find(t => t.id === id);
+    if (!template) return;
+    const updated = { ...template, applyContainer: container };
     dbUpdateTemplate(updated);
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
   },
@@ -199,19 +231,53 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     return group;
   },
 
-  applyTemplate(templateId, selectedItemIds, anchors) {
+  applyTemplate(templateId, selectedItemIds, anchors, options) {
     const templatesById = new Map(get().templates.map(t => [t.id, t]));
     const template = templatesById.get(templateId);
     if (!template) return [];
     const expanded = expandTemplateItems(template.items, templateId, selectedItemIds, templatesById);
-    const drafts = buildDraftsFromTemplateTree(expanded, anchors);
+
+    // `{run}` is bound rather than collected, so a template only needs the one
+    // field filled in to get its context into the titles that travel alone.
+    const runName = (options?.runName ?? '').trim();
+    const placeholders = { ...(options?.placeholders ?? {}), [RUN_PLACEHOLDER]: runName };
+    const drafts = buildDraftsFromTemplateTree(expanded, anchors)
+      .map(d => substituteDraftPlaceholders(d, placeholders));
+
+    // An unnamed run has nothing to call a container, so it stays loose —
+    // which is also exactly the behavior every apply had before this existed.
+    const container = runName
+      ? resolveApplyContainer(template.applyContainer, expanded, templatesById)
+      : 'none';
+
     const addTask = useTaskStore.getState().addTask;
     const addSubtask = useTaskStore.getState().addSubtask;
     const groupTasks = useTaskStore.getState().groupTasks;
 
     let createdTasks: Task[] = [];
     dbTransaction(() => {
-      createdTasks = drafts.map(d => addTask(d));
+      // The container is created first so its id can ride in on the drafts;
+      // item-group stacks still happen in the second pass below, since those
+      // need ids addTask hasn't handed out yet. A project and an item-group
+      // stack coexist fine (projectId and groupId are independent), and
+      // resolveApplyContainer guarantees a run *stack* never collides with
+      // one — it upgrades that case to a project.
+      const runGroup = container === 'stack'
+        ? useTaskGroupStore.getState().createGroup(runName, null)
+        : null;
+      const runProject = container === 'project'
+        ? useProjectStore.getState().createProject(
+            runName,
+            anchors.start?.toISOString() ?? null,
+            anchors.end?.toISOString() ?? null,
+          )
+        : null;
+
+      createdTasks = drafts.map(d => addTask({
+        ...d,
+        ...(runGroup ? { groupId: runGroup.id } : {}),
+        ...(runProject ? { projectId: runProject.id } : {}),
+      }));
 
       // Second pass: subtasks and groups need ids that don't exist until
       // addTask returns, so they can't be part of the draft itself. Group keys
@@ -222,7 +288,9 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         const createdTask = createdTasks[index];
         if (!createdTask) return;
 
-        item.subtasks.forEach(stub => addSubtask(createdTask.id, stub.title));
+        item.subtasks.forEach(stub =>
+          addSubtask(createdTask.id, substitutePlaceholders(stub.title, placeholders))
+        );
 
         if (item.groupId) {
           const key = `${sourceTemplateId}:${item.groupId}`;
