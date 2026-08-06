@@ -23,6 +23,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import type { ThemeMode } from '../theme';
+import { APP_FONT_OPTIONS, resolveFontFamily } from '../theme/fonts';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
 
@@ -66,6 +67,7 @@ export function SettingsScreen() {
     activeHoursStart, setActiveHoursStart,
     activeHoursEnd, setActiveHoursEnd,
     themeMode, setThemeMode,
+    appFont, setAppFont,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     vacationStart,
@@ -218,6 +220,61 @@ export function SettingsScreen() {
                 ))}
               </View>
             </View>
+          </View>
+
+          {/* Typeface */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Typeface</Text>
+            <View style={styles.card}>
+              {APP_FONT_OPTIONS.map((opt, i) => {
+                const selected = appFont === opt.id;
+                // Undefined for System, which flattens over the family the
+                // patched Text injects — so this row previews the real default
+                // rather than whichever font is currently selected.
+                const family = resolveFontFamily(opt.id, Platform.OS);
+                return (
+                  <React.Fragment key={opt.id}>
+                    {i > 0 && <View style={styles.sep} />}
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={() => setAppFont(opt.id)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${opt.label} typeface`}
+                    >
+                      <Text
+                        style={[
+                          styles.fontSample,
+                          selected && styles.fontSampleActive,
+                          { fontFamily: family },
+                        ]}
+                      >
+                        Aa
+                      </Text>
+                      <View style={styles.rowContent}>
+                        <Text
+                          style={[
+                            styles.fontName,
+                            selected && styles.fontNameActive,
+                            { fontFamily: family },
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                        <Text style={styles.rowHint}>{opt.hint}</Text>
+                      </View>
+                      {selected && (
+                        <Ionicons name="checkmark" size={18} color={colors.accent} />
+                      )}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Changes every screen at once. These all ship with the OS, so nothing downloads.
+            </Text>
           </View>
 
           {/* Day segments */}
@@ -613,6 +670,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
+  // Fixed width so the "Aa" specimens line up down the column even though the
+  // faces are different widths — a condensed sample is much narrower than a mono one.
+  fontSample: {
+    width: 34, color: colors.textSecondary, fontSize: font.xl, textAlign: 'center',
+  },
+  fontSampleActive: { color: colors.accent },
+  fontName: { color: colors.text, fontSize: font.md },
+  fontNameActive: { color: colors.accent, fontWeight: '600' },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md, flex: 1 },
   rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
