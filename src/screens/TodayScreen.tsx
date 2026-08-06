@@ -67,6 +67,7 @@ import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/f
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { QuickSearchModal } from '../components/QuickSearchModal';
 import type { QuickAddType } from '../utils/quickAddTypes';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -408,7 +409,8 @@ export function TodayScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
-  const [pullingToAdd, setPullingToAdd] = useState(false);
+  const [pullingToSearch, setPullingToSearch] = useState(false);
+  const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
@@ -692,14 +694,21 @@ export function TodayScreen() {
   const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
 
   // Today stays current on its own (see the tick effect above), so pulling
-  // down no longer refreshes anything — it opens quick add instead, which
-  // is otherwise a reach to the FAB.
-  const handlePullToAdd = useCallback(() => {
-    setPullingToAdd(true);
+  // down doesn't refresh anything — it opens quick search. It used to open
+  // quick add, but the FAB and its add menu already cover adding; searching
+  // had no gesture of its own.
+  const handlePullToSearch = useCallback(() => {
+    setPullingToSearch(true);
     haptics.impactLight();
-    setQuickAddVisible(true);
-    setPullingToAdd(false);
+    setQuickSearchVisible(true);
+    setPullingToSearch(false);
   }, []);
+
+  // Anything the card's five slots couldn't answer goes to the real Search
+  // screen, carrying the query so it isn't typed twice.
+  const handleOpenFullSearch = useCallback((query: string) => {
+    navigation.navigate({ name: 'Search', params: { query, at: Date.now() } } as never);
+  }, [navigation]);
 
   const openEditor = (task?: Task) => {
     setEditingTask(task ?? null);
@@ -1906,8 +1915,8 @@ export function TodayScreen() {
             contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             refreshControl={
               <RefreshControl
-                refreshing={pullingToAdd}
-                onRefresh={handlePullToAdd}
+                refreshing={pullingToSearch}
+                onRefresh={handlePullToSearch}
                 tintColor={colors.textSecondary}
               />
             }
@@ -2095,8 +2104,8 @@ export function TodayScreen() {
             }
             refreshControl={
               <RefreshControl
-                refreshing={pullingToAdd}
-                onRefresh={handlePullToAdd}
+                refreshing={pullingToSearch}
+                onRefresh={handlePullToSearch}
                 tintColor={colors.textSecondary}
               />
             }
@@ -2261,6 +2270,14 @@ export function TodayScreen() {
           seed={quickAddSeed}
           seedLabel={quickAddSeedLabel}
           initialType={quickAddType}
+        />
+
+        {/* Opened by pulling the Today list down. */}
+        <QuickSearchModal
+          visible={quickSearchVisible}
+          onClose={() => setQuickSearchVisible(false)}
+          onSelectTask={openEditor}
+          onOpenFullSearch={handleOpenFullSearch}
         />
 
         {/* Add from a template: pick one here, then the apply sheet below. */}
