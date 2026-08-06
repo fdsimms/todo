@@ -60,6 +60,7 @@ import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/f
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
+import type { QuickAddType } from '../utils/quickAddTypes';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
@@ -344,6 +345,7 @@ export function TodayScreen() {
 
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [quickAddType, setQuickAddType] = useState<QuickAddType>('task');
   const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
   const justCreatedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
@@ -659,15 +661,17 @@ export function TodayScreen() {
   const handleAddMenuSelect = (type: AddTaskType) => {
     switch (type) {
       case 'task':
+        setQuickAddType('task');
         setQuickAddVisible(true);
         break;
       case 'template':
         setTemplatePickerVisible(true);
         break;
+      // Quick add builds a chain end to end now, so this no longer has to
+      // open the full editor just to reach a step list.
       case 'chain':
-        setEditingTask(null);
-        setEditorInitialDraft({ chainEnabled: true });
-        setEditorVisible(true);
+        setQuickAddType('chain');
+        setQuickAddVisible(true);
         break;
       case 'stack': {
         const group = createTaskGroup('', null);
@@ -2199,6 +2203,7 @@ export function TodayScreen() {
             // the last drag's placement.
             setQuickAddSeed(undefined);
             setQuickAddSeedLabel(null);
+            setQuickAddType('task');
             pendingDropRef.current = null;
           }}
           onOpenFull={handleQuickAddOpenFull}
@@ -2206,6 +2211,7 @@ export function TodayScreen() {
           onCreated={handleTaskCreated}
           seed={quickAddSeed}
           seedLabel={quickAddSeedLabel}
+          initialType={quickAddType}
         />
 
         {/* Add from a template: pick one here, then the apply sheet below. */}
