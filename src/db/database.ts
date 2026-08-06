@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 
@@ -234,6 +235,17 @@ export function initDatabase(): void {
     'ALTER TABLE tasks ADD COLUMN timed_minutes INTEGER',
     'ALTER TABLE tasks ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN show_streak INTEGER NOT NULL DEFAULT 0',
+    // Existing templates default to 'stack' rather than 'none': the setting is
+    // inert until the user names a run in the apply sheet, so this changes
+    // nothing for anyone until they opt in, and 'stack' is the right answer
+    // for most templates when they do.
+    "ALTER TABLE templates ADD COLUMN apply_container TEXT NOT NULL DEFAULT 'stack'",
+    // Defaulted rather than nullable so every project that predates the nudge
+    // feature gets a cadence in one statement — the alternative is a feature
+    // that stays inert until each project is configured by hand, which is the
+    // micromanagement it exists to remove.
+    'ALTER TABLE projects ADD COLUMN nudge_cadence_days INTEGER NOT NULL DEFAULT 14',
+    'ALTER TABLE projects ADD COLUMN auto_schedule INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -830,6 +842,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
     createdAt: row.created_at as string,
+    nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
+    autoSchedule: Boolean(row.auto_schedule),
   };
 }
 
@@ -840,20 +854,22 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
-      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.id,
+      project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.id,
     ]
   );
 }
@@ -905,7 +921,13 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     createdAt: row.created_at as string,
     sortOrder: row.sort_order as number,
     category: (row.category as string) ?? null,
+    applyContainer: parseApplyContainer(row.apply_container),
   };
+}
+
+/** Tolerates a null (pre-migration row) or an unknown value from a newer app version, same as parseTimeSegments. */
+function parseApplyContainer(raw: unknown): TemplateContainer {
+  return raw === 'none' || raw === 'project' ? raw : 'stack';
 }
 
 export function dbGetAllTemplates(): TaskTemplate[] {
@@ -917,15 +939,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category) VALUES (?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category]
+    'INSERT INTO templates (id, name, items, item_groups, created_at, sort_order, category, apply_container) VALUES (?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.createdAt, template.sortOrder, template.category, template.applyContainer]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, sort_order = ?, category = ?, apply_container = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), template.sortOrder, template.category, template.applyContainer, template.id]
   );
 }
 

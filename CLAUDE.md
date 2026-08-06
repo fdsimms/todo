@@ -263,6 +263,19 @@ Two fixes that look unrelated to the widget but are load-bearing for *any* secon
 
 `enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it forces `@react-navigation`'s `ScreenFallback` → `ResourceSavingView` path instead of the native `react-native-screens` implementation, and `ResourceSavingView` never forwards `freezeOnBlur` — it only moves blurred children `FAR_FAR_AWAY`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
 
+That `FAR_FAR_AWAY` is `top: 30000`, which is also why **`automaticallyAdjustKeyboardInsets` must never be
+passed bare** — use `useKeyboardInsetScroll` (`src/hooks/`), which is already wired into `ReorderableList`
+and every screen-level `FlatList` that had it. RN registers a keyboard listener on *every* mounted
+`RCTScrollView` and gates it on that prop alone, then sizes the inset from the scroll view's position in the
+window — so a blurred tab parked at y=30000 picks up a ~30,000pt bottom `contentInset`, and the keyboard
+*hiding* recomputes the same 30,000 rather than clearing it. Switch to that tab and there's a screenful of
+content above thirty thousand points of nothing. The hook passes the screen's own focus state, so a
+backgrounded list doesn't listen. It also re-clamps on `keyboardDidHide`, because shrinking an inset never
+re-clamps `contentOffset` (RN's own `scrollToOffset:` call short-circuits when the offset didn't change) —
+a list left resting inside an inset that goes away has no scroll range left to get back up. Same failure
+mode as the content-shrink clamp in `ReorderableList.onContentSizeChange`; math and tests in
+`src/utils/scrollClamp.ts`.
+
 ## Key conventions
 
 - **Path alias**: `@/` maps to `src/` (configured in `tsconfig.json` and `package.json` Jest `moduleNameMapper`).

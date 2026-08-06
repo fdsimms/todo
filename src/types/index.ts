@@ -91,7 +91,22 @@ export interface Project {
   archived: boolean;
   archivedAt: string | null;
   createdAt: string;
+  // Days of quiet before this project offers up its next task (see
+  // utils/projectPull.ts). 0 = never ask, for a project deliberately parked.
+  // Quiet is measured from the last member completed, so a project actually
+  // being worked on never nudges — there's nothing to store or clear.
+  nudgeCadenceDays: number;
+  // Opt-in: when this project runs dry, date its next task automatically
+  // instead of offering it in the pull sheet. Deliberately per-project rather
+  // than global — silently rescheduling is a bigger promise than suggesting,
+  // and it's the right call for a chore list and the wrong one for a wishlist.
+  autoSchedule: boolean;
 }
+
+// Fallback cadence for a project row written before the nudge columns existed,
+// and the default for a newly created project. Two weeks is long enough that an
+// ordinary lull doesn't trigger it.
+export const DEFAULT_NUDGE_CADENCE_DAYS = 14;
 
 export interface Task {
   id: string;
@@ -321,6 +336,18 @@ export interface TemplateItemGroup {
   sortOrder: number;
 }
 
+// Where one apply of a template puts the tasks it creates. Item titles are
+// written to be read next to the template's name ("Buy tickets" under "Plan an
+// activity"), so loose in Today they lose the thing they were about — a
+// container carries that context once instead of repeating it in every title.
+//   'none'    — loose tasks, the original behavior
+//   'stack'   — one TaskGroup named after the run
+//   'project' — one Project named after the run, the apply's two anchor dates
+//               becoming its targetStartDate/targetEndDate
+// Only consulted when the user actually names the run; a blank name always
+// means 'none'.
+export type TemplateContainer = 'none' | 'stack' | 'project';
+
 export interface TaskTemplate {
   id: string;
   name: string;
@@ -331,6 +358,7 @@ export interface TaskTemplate {
   // Name of a TemplateCategory, purely for grouping templates on the
   // Templates page. Independent of task Category and ProjectCategory.
   category: string | null;
+  applyContainer: TemplateContainer;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;

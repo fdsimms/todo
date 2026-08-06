@@ -570,15 +570,22 @@ export function groupRoster(children: Task[]): Task[] {
   return collapseSeries(collapsed);
 }
 
-// True when the user has dismissed this stack for the current logical day.
+// True when a "user dismissed this" stamp belongs to the current logical day.
 // Self-expiring by construction: the stamp is compared against today rather
-// than just checked for existence, so a daily stack comes back on its own at
-// the day rollover and nothing has to remember to clear it. Callers pair this
-// with "every member due today is done" (see TaskGroupHeader) so a stack that
-// gains live work again after being dismissed can't stay hidden.
+// than just checked for existence, so whatever it hides comes back on its own
+// at the day rollover and nothing has to remember to clear it. Callers pair it
+// with a live condition (see isGroupHiddenToday) so the thing re-surfaces early
+// if the circumstances that justified hiding it stop holding.
+export function isDismissedToday(stamp: string | null): boolean {
+  if (!stamp) return false;
+  return +getDayStart(new Date(stamp)) === +getCurrentDayStart();
+}
+
+// True when the user has dismissed this stack for the current logical day.
+// Callers pair this with "every member due today is done" (see TaskGroupHeader)
+// so a stack that gains live work again after being dismissed can't stay hidden.
 export function isGroupDismissedToday(completedAt: string | null): boolean {
-  if (!completedAt) return false;
-  return +getDayStart(new Date(completedAt)) === +getCurrentDayStart();
+  return isDismissedToday(completedAt);
 }
 
 // Whether a dismissed stack should actually stay hidden right now. `dueToday`

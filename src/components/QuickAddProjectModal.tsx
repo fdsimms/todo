@@ -20,11 +20,12 @@ import { spacing, radius, font, fontWeight, animation, interaction, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { TITLE_MAX_LENGTH } from '../types';
+import { TITLE_MAX_LENGTH, type Project } from '../types';
 
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
@@ -38,6 +39,20 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   onOpenFull: (draft: ProjectDraft) => void;
+  /**
+   * Called right after a new project is created (not on the "restore archived"
+   * path). `placed` is false when there was no seed, or when the chip shook it
+   * off — a caller that also wanted to position the row shouldn't.
+   */
+  onCreated?: (project: Project, placed: boolean) => void;
+  /**
+   * Placement handed in by a drag of the add button onto the list. `category`
+   * seeds the form's own category field, so it shows and can be changed like
+   * any other.
+   */
+  seed?: { category?: string | null };
+  /** Names the seed on a removable chip, e.g. "Home". No chip without one. */
+  seedLabel?: string | null;
 }
 
 type ActivePanel = 'category' | null;
@@ -47,7 +62,9 @@ type ActivePanel = 'category' | null;
  * shape, with the three fields worth setting before a project exists (category,
  * start date, target date). Anything else is a trip to the full editor.
  */
-export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
+export function QuickAddProjectModal({
+  visible, onClose, onOpenFull, onCreated, seed, seedLabel,
+}: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -55,7 +72,7 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const updateProject = useProjectStore(s => s.updateProject);
-  const unarchiveProject = useProjectStore(s => s.unarchiveProject);
+  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -77,6 +94,11 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
   const [newCategory, setNewCategory] = useState('');
   const [startPickerVisible, setStartPickerVisible] = useState(false);
   const [endPickerVisible, setEndPickerVisible] = useState(false);
+  const [seedActive, setSeedActive] = useState(false);
+  // Read only when the sheet opens: a seed that changes identity mid-edit must
+  // not reset the fields under the person typing.
+  const seedRef = useRef(seed);
+  seedRef.current = seed;
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -105,7 +127,8 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
   useEffect(() => {
     if (!visible) return;
     setTitle('');
-    setCategory(null);
+    setCategory(seedRef.current?.category ?? null);
+    setSeedActive(!!seedRef.current);
     setTargetStartDate(null);
     setTargetEndDate(null);
     setActivePanel(null);
@@ -149,6 +172,9 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
       targetEndDate ? targetEndDate.toISOString() : null,
     );
     if (category) updateProject(project.id, { category });
+    // createProject doesn't take a category, so hand the caller the row as it
+    // now stands rather than the one it returned a line ago.
+    onCreated?.({ ...project, category }, seedActive);
     dismiss();
   };
 
@@ -230,6 +256,29 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
             },
           ]}
         >
+          {/* Where the button was dropped. Removable: the drop chose a place,
+              it didn't commit you to one. */}
+          {seedActive && seedLabel ? (
+            <View style={styles.seedRow}>
+              <View style={styles.seedChip}>
+                <Ionicons name="return-down-forward" size={13} color={colors.accent} />
+                <Text style={styles.seedChipText} numberOfLines={1}>{seedLabel}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    haptics.tap();
+                    if (seed?.category && category === seed.category) setCategory(null);
+                    setSeedActive(false);
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove placement ${seedLabel}`}
+                >
+                  <Ionicons name="close" size={13} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+
           {/* Name input row */}
           <View style={styles.row}>
             <TextInput
@@ -388,6 +437,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  seedRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
+  },
+  seedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent + '1A',
+    maxWidth: '100%',
+  },
+  seedChipText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
   input: {
     flex: 1,

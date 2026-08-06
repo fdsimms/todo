@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   SectionList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -22,9 +23,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { SwipeableRow } from '../components/SwipeableRow';
-import { FilterChipBar } from '../components/FilterChipBar';
+import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, border, checkboxRadius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, border, checkboxRadius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
@@ -67,6 +68,7 @@ export function LogbookScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [filterVisible, setFilterVisible] = useState(false);
 
   // Chip options are scoped to what's actually in the logbook, not every
   // category/tag in the app — an unused filter is just clutter here.
@@ -173,17 +175,55 @@ export function LogbookScreen() {
               </TouchableOpacity>
             )}
           </View>
-          <FilterChipBar
-            items={categoryChipItems}
-            selected={selectedCategory}
-            onSelect={setSelectedCategory}
-          />
-          <FilterChipBar
-            items={tagChipItems}
-            selected={selectedTag}
-            onSelect={setSelectedTag}
-            showDot
-          />
+          {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              // ScrollView's base style is flexGrow/flexShrink: 1, so in this
+              // column the SectionList's overflowing content height would
+              // otherwise shrink this row until the pills are shorter than
+              // their own padding. Same reason TodayScreen pins its pill row.
+              style={styles.filterBarScroll}
+              contentContainerStyle={styles.filterBar}
+            >
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => {
+                  haptics.tap();
+                  setFilterVisible(true);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Filter logbook"
+              >
+                <Ionicons name="funnel-outline" size={13} color={colors.text} />
+                <Text style={styles.filterButtonText}>Filter</Text>
+                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
+              </TouchableOpacity>
+              {selectedCategory && (
+                <ActiveFilterPill
+                  label={categoryChipItems.find(c => c.key === selectedCategory)?.label ?? selectedCategory}
+                  color={colors.accent}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedCategory(null);
+                  }}
+                  styles={styles}
+                />
+              )}
+              {selectedTag && (
+                <ActiveFilterPill
+                  label={selectedTag}
+                  color={tagColor(selectedTag)}
+                  onRemove={() => {
+                    animateLayout();
+                    setSelectedTag(null);
+                  }}
+                  styles={styles}
+                />
+              )}
+            </ScrollView>
+          )}
         </>
       )}
 
@@ -315,7 +355,51 @@ export function LogbookScreen() {
         }}
         onClose={() => setMenuTask(null)}
       />
+
+      <LogbookFilterSheet
+        visible={filterVisible}
+        onClose={() => setFilterVisible(false)}
+        categories={categoryChipItems}
+        tags={tagChipItems}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+        selectedTag={selectedTag}
+        onSelectTag={setSelectedTag}
+      />
     </View>
+  );
+}
+
+// An applied filter, shown next to the Filter button so the current state is
+// readable without opening the sheet. Tapping anywhere on it clears it.
+function ActiveFilterPill({
+  label,
+  color,
+  onRemove,
+  styles,
+}: {
+  label: string;
+  color: string;
+  onRemove: () => void;
+  styles: ReturnType<typeof makeStyles>;
+}) {
+  return (
+    <TouchableOpacity
+      // Tinted rather than filled, and colored text rather than onAccent —
+      // the same treatment every other removable tag chip uses (TaskEditor,
+      // QuickAddModal). A filled pill would put white text on a yellow tag.
+      style={[styles.activePill, { backgroundColor: color + '33' }]}
+      onPress={() => {
+        haptics.tap();
+        onRemove();
+      }}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`Remove filter ${label}`}
+    >
+      <Text style={[styles.activePillText, { color }]} numberOfLines={1}>{label}</Text>
+      <Ionicons name="close" size={13} color={color} />
+    </TouchableOpacity>
   );
 }
 
@@ -333,6 +417,43 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   searchIcon: { marginRight: 2 },
+  filterBarScroll: { flexGrow: 0, flexShrink: 0 },
+  filterBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  filterButtonText: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: 220,
+    paddingLeft: spacing.md,
+    paddingRight: 10,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+  },
+  activePillText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
+  },
   searchInput: {
     flex: 1,
     color: colors.text,

@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
-import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask } from '../utils/visibilityUtils';
+import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -42,6 +42,7 @@ import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -75,6 +76,10 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { DeloadSheet } from '../components/DeloadSheet';
+import { ProjectPullSheet } from '../components/ProjectPullSheet';
+import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
+import { findProjectStalls } from '../utils/projectPull';
+import { useProjectStore } from '../store/useProjectStore';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -416,6 +421,7 @@ export function TodayScreen() {
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
+  const [pullVisible, setPullVisible] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -430,6 +436,11 @@ export function TodayScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+  // One per view mode: only ever one of these lists is mounted at a time, but
+  // each needs its own ref and its own record of where it last settled.
+  const pinnedScroll = useKeyboardInsetScroll<FlatList>();
+  const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
+  const inboxScroll = useKeyboardInsetScroll<FlatList>();
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
   const [restExpanded, setRestExpanded] = useState(false);
@@ -575,6 +586,9 @@ export function TodayScreen() {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
           useTaskStore.getState().rolloverQuotas();
+          // After rolloverQuotas: a rollover can complete and spawn members,
+          // which changes what a project counts as scheduled.
+          useTaskStore.getState().dripStalledProjects();
           forceRefresh(n => n + 1);
         }
       });
@@ -685,6 +699,9 @@ export function TodayScreen() {
   const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectNudgeDismissedAt = useSettingsStore(s => s.projectNudgeDismissedAt);
+  const setProjectNudgeDismissedAt = useSettingsStore(s => s.setProjectNudgeDismissedAt);
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
@@ -719,7 +736,10 @@ export function TodayScreen() {
   };
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
-    setQuickAddVisible(false);
+    // The draft carries everything the sheet had, including the seeded
+    // category; only the placement is let go of, and the editor has no notion
+    // of one anyway.
+    closeQuickAdd();
     setEditingTask(null);
     setEditorInitialDraft(draft);
     setEditorVisible(true);
@@ -1013,6 +1033,22 @@ export function TodayScreen() {
   const [quickAddSeedLabel, setQuickAddSeedLabel] = useState<string | null>(null);
   // The drop that opened the sheet, read once when the task comes back.
   const pendingDropRef = useRef<FabDropIntent | null>(null);
+
+  /**
+   * Close the quick-add sheet and forget what this opening of it was set up
+   * for. Every path out of the sheet goes through here — cancel, create, and
+   * "More details", which closes it without going through onClose. Missing one
+   * leaves the placement armed, and the next plain tap on the button inherits
+   * it: a task filed into a stack, or pinned, because of a drag two minutes
+   * ago that landed somewhere else entirely.
+   */
+  const closeQuickAdd = () => {
+    setQuickAddVisible(false);
+    setQuickAddSeed(undefined);
+    setQuickAddSeedLabel(null);
+    setQuickAddType('task');
+    pendingDropRef.current = null;
+  };
 
   // Today renders through two different list components — a plain FlatList
   // whenever anything is pinned, ReorderableList otherwise — and the button can
@@ -1672,6 +1708,19 @@ export function TodayScreen() {
     openEditor(task);
   };
 
+  // Projects that have gone quiet. One bucketing pass inside a memo, not a
+  // filter per project — this screen re-renders on every store change plus a
+  // 30s tick.
+  const projectStalls = useMemo(
+    () => findProjectStalls(projects, allTasks).filter(s => !s.project.autoSchedule),
+    [projects, allTasks]
+  );
+  const nudgeDismissed = isDismissedToday(projectNudgeDismissedAt);
+  const dismissProjectNudge = () => {
+    animateLayout();
+    setProjectNudgeDismissedAt(new Date().toISOString());
+  };
+
   const today = format(new Date(), 'EEEE, MMMM d');
 
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
@@ -1799,6 +1848,15 @@ export function TodayScreen() {
           <NewTasksBanner tasks={newTasks} onSelectTask={openNewTask} onDismiss={dismissNewTasksBanner} />
         )}
 
+        {/* "What's new" leads; "what's gone quiet" follows. */}
+        {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
+          <ProjectNudgeBanner
+            stalls={projectStalls}
+            onReview={() => setPullVisible(true)}
+            onDismiss={dismissProjectNudge}
+          />
+        )}
+
         <SpotlightOverlay
           visible={spotlightActive}
           onPress={() => setExpandedTaskId(null)}
@@ -1909,12 +1967,13 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length > 0 && (
           <FlatList
+            ref={pinnedScroll.ref}
             scrollEnabled={!painting && !fabDragging && !draggingStackChild}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            automaticallyAdjustKeyboardInsets
+            {...pinnedScroll.props}
             renderItem={({ item }) => renderItem({ item })}
             contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             refreshControl={
@@ -2125,10 +2184,11 @@ export function TodayScreen() {
 
         {viewMode === 'unscheduled' && (
           <FlatList
+            ref={unscheduledScroll.ref}
             scrollEnabled={!painting}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
-            automaticallyAdjustKeyboardInsets
+            {...unscheduledScroll.props}
             renderItem={({ item }) => {
               const subs = subtasksByParent.get(item.id) ?? [];
               return (
@@ -2198,10 +2258,11 @@ export function TodayScreen() {
             Today (see inboxData). */}
         {viewMode === 'inbox' && (
           <FlatList
+            ref={inboxScroll.ref}
             scrollEnabled={!painting}
             data={inboxData}
             keyExtractor={listItemKey}
-            automaticallyAdjustKeyboardInsets
+            {...inboxScroll.props}
             renderItem={({ item }) =>
               item.type === 'group'
                 ? renderInboxGroup(item.group, item.children)
@@ -2258,16 +2319,7 @@ export function TodayScreen() {
 
         <QuickAddModal
           visible={quickAddVisible}
-          onClose={() => {
-            setQuickAddVisible(false);
-            // Both the cancel and the create path land here. Clearing the drop
-            // is what stops the next plain tap on the button from inheriting
-            // the last drag's placement.
-            setQuickAddSeed(undefined);
-            setQuickAddSeedLabel(null);
-            setQuickAddType('task');
-            pendingDropRef.current = null;
-          }}
+          onClose={closeQuickAdd}
           onOpenFull={handleQuickAddOpenFull}
           context={viewMode}
           onCreated={handleTaskCreated}
@@ -2328,12 +2380,23 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
+          onPullFromProjects={() => {
+            setOptionsMenuVisible(false);
+            setPullVisible(true);
+          }}
+          quietProjectCount={projectStalls.length}
         />
 
         <DeloadSheet
           visible={deloadVisible}
           todaysTasks={visibleTasks}
           onClose={() => setDeloadVisible(false)}
+        />
+
+        <ProjectPullSheet
+          visible={pullVisible}
+          todaysTasks={visibleTasks}
+          onClose={() => setPullVisible(false)}
         />
 
         <TaskGroupEditor
