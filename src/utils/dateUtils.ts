@@ -14,6 +14,7 @@ import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
+import { hhmmToDate } from './clockTime';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 /**
@@ -59,23 +60,9 @@ export function getTaskDayStart(date: Date, dayResetTime?: string): Date {
   return result;
 }
 
-/** Applies an "HH:MM" clock time to today's (or a given base) date. */
-export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
-  const [h, m] = hhmm.split(':').map(Number);
-  const d = new Date(base);
-  d.setHours(h, m, 0, 0);
-  return d;
-}
-
-/** Formats an "HH:MM" clock time for display, e.g. "8:00 AM". */
-export function formatHHMM(hhmm: string): string {
-  return format(hhmmToDate(hhmm), 'h:mm a');
-}
-
-/** Inverse of hhmmToDate — extracts "HH:MM" from a Date's clock time. */
-export function dateToHHMM(d: Date): string {
-  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
+// The "HH:MM" clock helpers live in the store-free clockTime module; re-exported
+// here because most callers reach for them alongside the rest of the date math.
+export { hhmmToDate, formatHHMM, dateToHHMM } from './clockTime';
 
 /**
  * The calendar date of the current logical day — i.e. the date a task needs
