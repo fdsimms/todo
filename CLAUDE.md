@@ -276,6 +276,14 @@ a list left resting inside an inset that goes away has no scroll range left to g
 mode as the content-shrink clamp in `ReorderableList.onContentSizeChange`; math and tests in
 `src/utils/scrollClamp.ts`.
 
+**That clamp is judged against the inset the list still has, never against the bare content height.**
+Focus-gating the prop means a list blurred while the keyboard was up never hears the dismissal and keeps
+its inset for good — and resting inside a live inset is where iOS *put* the list, not a strand. Compared
+against content alone, every rubber-band at the end of such a list settled "past" its content and got
+yanked up by the width of the inset the moment the bounce finished, which reads as layout shift. So the
+settled-scroll clamp passes the inset from the scroll event and the `keyboardDidHide` one passes 0 (the
+inset is what just went away) — that asymmetry is the whole design, don't collapse it to one value.
+
 ## Key conventions
 
 - **Path alias**: `@/` maps to `src/` (configured in `tsconfig.json` and `package.json` Jest `moduleNameMapper`).

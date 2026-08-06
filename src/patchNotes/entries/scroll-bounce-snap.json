@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a list jumping a few pixels after bouncing back from the end of a scroll",
+  "date": "2026-08-06"
+}
