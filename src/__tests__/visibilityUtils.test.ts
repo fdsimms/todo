@@ -14,6 +14,7 @@ import {
   isQuotaTask,
   quotaExpectedByNow,
   isQuotaOnPace,
+  quotaLeavesTodayAfterLog,
   quotaNextDueAt,
   isQuotaPartial,
   isDismissedToday,
@@ -1053,6 +1054,32 @@ describe('quota tasks', () => {
         dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
       };
       expect(isTaskVisible(tomorrow)).toBe(false);
+    });
+  });
+
+  describe('quotaLeavesTodayAfterLog', () => {
+    it('is true for the unit that puts a behind-pace task back on pace', () => {
+      // 2 owed at 10:00: logging the 2nd catches up, so the row goes.
+      expect(quotaLeavesTodayAfterLog({ ...quotaTask, progressCount: 1 })).toBe(true);
+    });
+
+    it('is false when the unit still leaves the task behind', () => {
+      // Nothing logged at 15:00, where 4 are owed — one unit doesn't catch up.
+      jest.setSystemTime(new Date(2025, 5, 10, 15, 0, 0));
+      expect(quotaLeavesTodayAfterLog({ ...quotaTask, progressCount: 0 })).toBe(false);
+    });
+
+    it('is false for a task that is already hidden', () => {
+      expect(quotaLeavesTodayAfterLog({ ...quotaTask, progressCount: 2 })).toBe(false);
+    });
+
+    it('is false for the unit that meets the target — that one completes it', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+      expect(quotaLeavesTodayAfterLog({ ...quotaTask, progressCount: 7 })).toBe(false);
+    });
+
+    it('is false for an ordinary task', () => {
+      expect(quotaLeavesTodayAfterLog(baseTask)).toBe(false);
     });
   });
 

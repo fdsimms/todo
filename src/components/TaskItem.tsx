@@ -28,10 +28,10 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -50,6 +50,14 @@ import { ProgressBar } from './ProgressBar';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
+// How long the meter takes to run up to the brim on the unit that meets the
+// target. Slower than a logged unit (duration.fast) — this rise is the payoff,
+// and the pop that follows it waits this out.
+const QUOTA_TOPPING_MS = animation.duration.normal;
+
+// The daily-target meter's level as a 0–1 fraction of the target.
+const quotaFraction = (task: Task) =>
+  task.targetCount ? Math.min(1, task.progressCount / task.targetCount) : 0;
 
 interface Props {
   task: Task;
@@ -84,6 +92,8 @@ interface Props {
   justCreated?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
+  /** True where the list drops a row the moment it stops being visible — i.e. Today's own list, and only for rows it holds on visibility (a pinned row stays whether or not it's due). Logging a unit that puts a daily target back on pace does exactly that, so the row plays itself out before it goes instead of blinking away mid-tap. */
+  hidesWhenOnPace?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -155,6 +165,7 @@ export const TaskItem = React.memo(function TaskItem({
   indented = false,
   justCreated = false,
   autoComplete = false,
+  hidesWhenOnPace = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -216,6 +227,17 @@ export const TaskItem = React.memo(function TaskItem({
   const reduceMotion = useReduceMotion();
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [completing, setCompleting] = useState(false);
+  // A completion that started from the daily-target meter rather than the
+  // checkbox: the row keeps its meter for the animation instead of swapping in
+  // a checkmark, and `toppedOut` marks the moment the fill reaches the brim.
+  const [quotaCompleting, setQuotaCompleting] = useState(false);
+  const [quotaToppedOut, setQuotaToppedOut] = useState(false);
+  // The other way a daily target leaves Today: the logged unit didn't meet the
+  // target, it just put the task back on pace, so the row is about to stop
+  // being visible until the next unit falls due. Same send-off, minus the
+  // green — nothing was finished.
+  const [pacingOut, setPacingOut] = useState(false);
+  const pacingOutRef = useRef(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
@@ -232,6 +254,15 @@ export const TaskItem = React.memo(function TaskItem({
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
+  // The daily-target meter's level, 0–1. An Animated.Value rather than a height
+  // computed straight from progressCount so a logged unit slides up instead of
+  // jumping, and so the unit that meets the target can run the fill all the way
+  // to the brim — that top-out is this row's completion animation, standing in
+  // for the checkmark (see handleComplete).
+  const quotaFill = useRef(new Animated.Value(quotaFraction(task))).current;
+  // Washes the fill from accent to green over the last of that rise, so the
+  // meter lands on the colour every other completion ends on.
+  const quotaDone = useRef(new Animated.Value(0)).current;
   // Drives the whole row's height to 0 once the completion fade finishes, so
   // the space it took up collapses right away instead of sitting there
   // invisible for the rest of completeTask's completionHoldIds window (see
@@ -465,10 +496,25 @@ export const TaskItem = React.memo(function TaskItem({
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
   const isQuota = isQuotaTask(task) && !task.completed;
-  const quotaProgress = isQuota ? `${task.progressCount}/${task.targetCount}` : '';
+  // Both send-offs hold the store back until the row is gone, so the count is
+  // read forward for the length of the animation — otherwise the chip still
+  // says 2/8 while the meter shows the third unit going in.
+  const quotaLogged = quotaCompleting
+    ? task.targetCount!
+    : task.progressCount + (pacingOut ? 1 : 0);
+  const quotaProgress = isQuota ? `${quotaLogged}/${task.targetCount}` : '';
+  // When it comes back. Shown for the moment the row is leaving, so a target
+  // that goes quiet at 2/8 reads as scheduled rather than as swallowed.
+  const quotaReturnAt = pacingOut
+    ? formatHHMM(dateToHHMM(quotaNextDueAt({ ...task, progressCount: task.progressCount + 1 })))
+    : '';
   // Selection mode keeps the plain circle so the paint-select gutter behaves
-  // exactly as it does for every other row.
-  const showQuotaMeter = isQuota && !selectionMode && !completing;
+  // exactly as it does for every other row. A completion that came from the
+  // meter keeps it — the fill topping out *is* that row's animation.
+  const showQuotaMeter = isQuota && !selectionMode && (!completing || quotaCompleting);
+  // Shown but no longer a meter to tap: once the run-up starts, the control
+  // does what a completing row's checkbox does — undo.
+  const meterInteractive = showQuotaMeter && !completing && !pacingOut;
 
   // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
   // a habit whose streak just broke doesn't silently lose a chip — the row
@@ -505,15 +551,22 @@ export const TaskItem = React.memo(function TaskItem({
     otherSeriesDates !== '';
 
   const handleComplete = async () => {
-    if (completingRef.current) return;
+    if (completingRef.current || pacingOutRef.current) return;
     if (recurrenceNotYetDue) {
       await haptics.error();
       return;
     }
     if (isNew) markTaskSeen(task.id);
+    // A quota row completes through its meter, so it plays the same beats with
+    // the fill topping out where the checkmark would be: the circle is a level,
+    // not a box, and a checkmark stamped over it reads as a different control
+    // appearing at the last moment. Any completion of a row that's currently
+    // showing a meter takes this path, the widget's included.
+    const viaMeter = isQuota && !selectionMode;
     completingRef.current = true;
     await haptics.success();
     setCompleting(true);
+    setQuotaCompleting(viaMeter);
     // Checkmark springs in while the circle pops, then the row fades to
     // invisible but keeps its place in the list — completeTask holds it
     // there (see useTaskStore's completionHoldIds) so completing several
@@ -521,9 +574,26 @@ export const TaskItem = React.memo(function TaskItem({
     // collapses once completions pause for about a second. The task isn't
     // actually marked complete in the store until this sequence finishes,
     // so a tap during the window (handleUndoComplete) can cancel it outright.
-    checkScale.setValue(0);
-    Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    if (viaMeter) {
+      // Runs alongside the sequence below rather than inside it, because the
+      // ring can only go green once the fill has covered it — and a mid-
+      // sequence animation has no callback of its own to hang that on. The
+      // sequence waits the same span out with a matching delay.
+      Animated.parallel([
+        Animated.timing(quotaFill, { toValue: 1, duration: QUOTA_TOPPING_MS, useNativeDriver: false }),
+        // Held back so most of the rise is still the meter's own colour and the
+        // green arrives with the brim — washing it in from the start just makes
+        // the level look muddy on the way up.
+        Animated.timing(quotaDone, { toValue: 1, duration: QUOTA_TOPPING_MS * 0.45, delay: QUOTA_TOPPING_MS * 0.55, useNativeDriver: false }),
+      ]).start(({ finished }) => {
+        if (finished) setQuotaToppedOut(true);
+      });
+    } else {
+      checkScale.setValue(0);
+      Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
     const sequence = Animated.sequence([
+      ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
       Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.delay(120),
@@ -534,6 +604,8 @@ export const TaskItem = React.memo(function TaskItem({
       completeAnimRef.current = null;
       if (!finished) return;
       setCompleting(false);
+      setQuotaCompleting(false);
+      setQuotaToppedOut(false);
       completingRef.current = false;
       completeTask(task.id);
       collapseStartedRef.current = true;
@@ -544,12 +616,28 @@ export const TaskItem = React.memo(function TaskItem({
     });
   };
 
+  // Every change to the count — a tap here, the long-press undo, the shake
+  // undo, a fresh occurrence at zero — slides the fill to its new level from
+  // this one place, so nothing has to remember to animate it. The completion
+  // run-up owns the value while it's playing and is left alone.
+  useEffect(() => {
+    if (!isQuota || completingRef.current || pacingOutRef.current) return;
+    const level = quotaFraction(task);
+    if (reduceMotion) { quotaFill.setValue(level); return; }
+    Animated.timing(quotaFill, {
+      toValue: level,
+      duration: animation.duration.fast,
+      useNativeDriver: false,
+    }).start();
+  }, [isQuota, task.progressCount, task.targetCount, reduceMotion]);
+
   // One tap on the meter logs one unit. The unit that reaches the target runs
   // the normal completion path instead, so the last glass of the day gets the
-  // same pop-checkmark-and-fade every other completion gets (and the store
-  // hands off to completeTask for the recurrence/streak bookkeeping).
+  // same pop-hold-and-fade every other completion gets — with the fill running
+  // up to the brim in place of the checkmark (and the store hands off to
+  // completeTask for the recurrence/streak bookkeeping).
   const handleQuotaTap = async () => {
-    if (completingRef.current) return;
+    if (completingRef.current || pacingOutRef.current) return;
     if (recurrenceNotYetDue) {
       await haptics.error();
       return;
@@ -561,11 +649,63 @@ export const TaskItem = React.memo(function TaskItem({
     if (isNew) markTaskSeen(task.id);
     await haptics.impactLight();
     circleScale.setValue(1);
-    Animated.sequence([
+    const pop = Animated.sequence([
       Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]).start();
+    ]);
+    // Most units leave the row where it is (it was already behind pace, and one
+    // unit didn't catch it up), and those keep the plain pop — the effect above
+    // slides the fill as the count lands.
+    if (!hidesWhenOnPace || !quotaLeavesTodayAfterLog(task)) {
+      pop.start();
+      logQuotaUnit(task.id);
+      return;
+    }
+    // This one does put the task back on pace, so the row is leaving. It gets
+    // the same beats a completion gets — level up, pop, hold, fade, collapse —
+    // and only then is the unit logged: holding the store back is what keeps
+    // the row mounted long enough to play, exactly as completionHoldIds does
+    // for a completion. Nothing turns green, because nothing was finished.
+    pacingOutRef.current = true;
+    setPacingOut(true);
+    Animated.sequence([
+      Animated.parallel([
+        Animated.timing(quotaFill, {
+          toValue: (task.progressCount + 1) / task.targetCount!,
+          duration: animation.duration.fast,
+          useNativeDriver: false,
+        }),
+        pop,
+      ]),
+      Animated.delay(90),
+      Animated.timing(rowOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+    ]).start(({ finished }) => {
+      if (!finished) return;
+      collapseStartedRef.current = true;
+      collapseProgress.value = withTiming(
+        0,
+        { duration: animation.duration.normal, easing: Easing.inOut(Easing.cubic) },
+        done => {
+          if (done) runOnJS(finishPacingOut)();
+        },
+      );
+    });
+  };
+
+  // Logs the held-back unit, then puts the row back on the next frame in case
+  // it's still here — the pace check ran ~700ms earlier, and a target whose
+  // next unit falls due inside that window stays on the list. The restore is a
+  // no-op when the row does leave (it's unmounted by then); without it, that
+  // one row would sit invisible and zero-height until the screen remounted.
+  const finishPacingOut = () => {
     logQuotaUnit(task.id);
+    requestAnimationFrame(() => {
+      pacingOutRef.current = false;
+      setPacingOut(false);
+      rowOpacity.setValue(1);
+      collapseStartedRef.current = false;
+      collapseProgress.value = 1;
+    });
   };
 
   // Long-press takes one back off, for the mis-tap — the shake-to-undo path
@@ -593,6 +733,12 @@ export const TaskItem = React.memo(function TaskItem({
     checkScale.setValue(0);
     circleScale.setValue(1);
     rowOpacity.setValue(1);
+    // setValue stops the run-up mid-rise, so the meter drops back to the level
+    // the store still has it at — the last unit was never logged.
+    quotaFill.setValue(quotaFraction(task));
+    quotaDone.setValue(0);
+    setQuotaCompleting(false);
+    setQuotaToppedOut(false);
     setCompleting(false);
     collapseStartedRef.current = false;
     collapseProgress.value = 1;
@@ -640,7 +786,7 @@ export const TaskItem = React.memo(function TaskItem({
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }
-        onLongPress={showQuotaMeter ? handleQuotaUndo : undefined}
+        onLongPress={meterInteractive ? handleQuotaUndo : undefined}
         delayLongPress={interaction.delayLongPress}
         // The circle is 20pt in a 24pt box, so it needs most of this to reach a
         // 44pt target. Left covers the whole leading gutter out to the card edge
@@ -651,10 +797,12 @@ export const TaskItem = React.memo(function TaskItem({
         // whatever it claims on this side is taken out of the checkbox.
         hitSlop={{ top: 12, bottom: 12, left: spacing.md, right: 12 }}
         style={styles.circleWrapper}
-        // A meter isn't binary, so it's a button rather than a checkbox.
-        accessibilityRole={showQuotaMeter ? 'button' : 'checkbox'}
+        // A meter isn't binary, so it's a button rather than a checkbox — until
+        // it tops out, at which point the row is completing and the control is
+        // the same "tap to undo" every other completing row offers.
+        accessibilityRole={meterInteractive ? 'button' : 'checkbox'}
         accessibilityState={
-          showQuotaMeter
+          meterInteractive
             ? { disabled: recurrenceNotYetDue }
             : {
                 checked: selectionMode ? selected : completing,
@@ -666,36 +814,53 @@ export const TaskItem = React.memo(function TaskItem({
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
             : recurrenceNotYetDue
               ? `${task.title}, not due yet`
-              : showQuotaMeter
-                ? `Log one of ${task.targetCount}, ${quotaProgress} done, ${task.title}`
-                : completing
-                  ? `Undo complete ${task.title}`
+              : completing
+                ? `Undo complete ${task.title}`
+                : meterInteractive
+                  ? `Log one of ${task.targetCount}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
                     : `Complete ${task.title}`
         }
-        accessibilityHint={showQuotaMeter && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
+        accessibilityHint={meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
       >
         <Animated.View style={[
           styles.circle,
-          !selectionMode && completing && styles.circleCompleting,
+          !selectionMode && completing && !quotaCompleting && styles.circleCompleting,
           !selectionMode && recurrenceNotYetDue && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
           !selectionMode && !completing && !recurrenceNotYetDue && timerReady && styles.circleReady,
           selectionMode && selected && styles.circleSelected,
           showQuotaMeter && styles.circleQuota,
+          // The ring can only follow the fill once the fill has reached it —
+          // swapped rather than animated because this node's transform is on
+          // the native driver, and a JS-driven colour on the same node throws.
+          quotaToppedOut && styles.circleQuotaDone,
           { transform: selectionMode ? [] : [{ scale: circleScale }] },
         ]}>
           {showQuotaMeter && (
-            <View
-              style={[styles.quotaFill, { height: `${(task.progressCount / task.targetCount!) * 100}%` }]}
+            <Animated.View
+              style={[
+                styles.quotaFill,
+                {
+                  height: quotaFill.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0%', '100%'],
+                    extrapolate: 'clamp',
+                  }),
+                  backgroundColor: quotaDone.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [colors.accent, colors.green],
+                  }),
+                },
+              ]}
               pointerEvents="none"
             />
           )}
           {selectionMode && selected && (
             <Ionicons name="checkmark" size={12} color={colors.onAccent} />
           )}
-          {!selectionMode && completing && (
+          {!selectionMode && completing && !quotaCompleting && (
             <Animated.View style={{ transform: [{ scale: checkScale }] }}>
               <Ionicons name="checkmark" size={12} color={colors.onAccent} />
             </Animated.View>
@@ -829,7 +994,9 @@ export const TaskItem = React.memo(function TaskItem({
             {isQuota && (
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.quotaLabel} numberOfLines={1}>{quotaProgress}</Text>
+                <Text style={styles.quotaLabel} numberOfLines={1}>
+                  {quotaProgress}{quotaReturnAt ? ` · back at ${quotaReturnAt}` : ''}
+                </Text>
               </View>
             )}
             {timed && (
@@ -1521,12 +1688,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.accent,
     overflow: 'hidden', // clips the fill to the circle
   },
+  // The brim. Matches circleCompleting so a met target ends on the same green a
+  // ticked checkbox does, with the fill already that colour underneath it.
+  circleQuotaDone: {
+    borderColor: colors.green,
+  },
+  // Height and colour both come from Animated values at the call site — see
+  // quotaFill / quotaDone.
   quotaFill: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: colors.accent,
   },
   content: {
     flex: 1,

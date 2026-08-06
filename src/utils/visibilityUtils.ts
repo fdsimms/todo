@@ -214,6 +214,23 @@ export function quotaNextDueAt(task: Task): Date {
   return new Date(+start + ((+end - +start) * task.progressCount) / task.targetCount!);
 }
 
+// True when logging one more unit would take this task off Today: it's showing
+// now, and one unit further along puts it back on pace. Sits here rather than
+// in the row because it's the pace boundary — the row plays a send-off before
+// the store catches up (see TaskItem), and getting this wrong means either a
+// row that blinks away or one that fades and then stays.
+//
+// The unit that *meets* the target is not this: that one completes the task,
+// which has its own animation.
+export function quotaLeavesTodayAfterLog(task: Task): boolean {
+  if (!isQuotaTask(task)) return false;
+  if (task.progressCount + 1 >= task.targetCount!) return false;
+  return (
+    isTaskVisible(task) &&
+    !isTaskVisible({ ...task, progressCount: task.progressCount + 1 })
+  );
+}
+
 // True for a quota occurrence closed out without reaching its target — the
 // record rolloverQuotas leaves behind for a day you fell short. Derived from
 // the count, so a partial day needs no column of its own.
