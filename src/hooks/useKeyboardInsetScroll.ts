@@ -35,6 +35,19 @@ import { strandedScrollOffset } from '../utils/scrollClamp';
  * The clamp is deliberately not run while the keyboard is up — resting inside
  * the inset is the entire point of it while it's there — and only on a settled
  * scroll, so it can't fight iOS's own rubber-band at the end of the content.
+ *
+ * It is also judged against the inset the list still has, not against the bare
+ * content height. `Keyboard.isVisible()` is not the same question as "is there
+ * a bottom inset": RN gates its keyboard handler on
+ * `automaticallyAdjustKeyboardInsets`, which we tie to screen focus, so a list
+ * that was blurred while the keyboard was up never hears the dismissal and
+ * keeps that inset for good. Against a bare content height, every bounce at
+ * the end of such a list settles "past" its content and got yanked up by the
+ * width of the inset the instant the rubber-band finished — a visible snap
+ * after an otherwise smooth return. Resting inside a *live* inset is not
+ * stranded: iOS put the list there and will scroll it back. Stranding is
+ * resting below the content with no inset left to justify it, which is what
+ * the keyboard-dismissal clamp (inset 0) tests for.
  */
 
 /** The two list flavours we scroll: FlatList exposes scrollToOffset, ScrollView scrollTo. */
@@ -51,11 +64,16 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
   // viewport and content heights alongside the offset, so the three can never
   // describe different moments (and VirtualizedList fires the caller's
   // onLayout with the empty component's frame, not the list's).
-  const lastScroll = useRef({ offset: 0, contentHeight: 0, viewportHeight: 0 });
+  const lastScroll = useRef({ offset: 0, contentHeight: 0, viewportHeight: 0, insetBottom: 0 });
 
-  const unstrand = useCallback((animated: boolean) => {
+  /**
+   * `insetBottom` is the inset the list is entitled to at the moment we look:
+   * whatever it last reported for a settled scroll, or 0 once the keyboard —
+   * the only thing that puts one there — has gone.
+   */
+  const unstrand = useCallback((animated: boolean, insetBottom: number) => {
     const { offset, contentHeight, viewportHeight } = lastScroll.current;
-    const y = strandedScrollOffset(offset, contentHeight, viewportHeight);
+    const y = strandedScrollOffset(offset, contentHeight, viewportHeight, insetBottom);
     if (y === null) return;
     lastScroll.current = { ...lastScroll.current, offset: y };
     const list = ref.current;
@@ -64,24 +82,30 @@ export function useKeyboardInsetScroll<T extends ScrollHandle>() {
   }, []);
 
   const record = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    const { contentOffset, contentSize, layoutMeasurement, contentInset } = e.nativeEvent;
     lastScroll.current = {
       offset: contentOffset.y,
       contentHeight: contentSize.height,
       viewportHeight: layoutMeasurement.height,
+      insetBottom: contentInset?.bottom ?? 0,
     };
   }, []);
 
   const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     record(e);
-    if (!Keyboard.isVisible()) unstrand(false);
+    if (!Keyboard.isVisible()) unstrand(false, lastScroll.current.insetBottom);
   }, [record, unstrand]);
 
   useEffect(() => {
     // Not gated on focus: a list that picked up an inset while its screen was
     // focused still has to be pulled back once the keyboard goes, whether or
     // not the user has since moved on.
-    const sub = Keyboard.addListener('keyboardDidHide', () => unstrand(true));
+    // Inset 0: the keyboard's inset is precisely what just went away, and it's
+    // the only thing that puts one on these lists (nothing passes RN's own
+    // `contentInset` prop). Judging against the pre-dismissal inset we last
+    // recorded would decide the list was fine exactly where the inset used to
+    // hold it, which is the stranding this whole hook exists to undo.
+    const sub = Keyboard.addListener('keyboardDidHide', () => unstrand(true, 0));
     return () => sub.remove();
   }, [unstrand]);
 
