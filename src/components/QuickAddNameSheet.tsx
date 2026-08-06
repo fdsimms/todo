@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
+import { EmojiPickerSheet } from './EmojiPickerSheet';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -19,7 +20,7 @@ import { haptics } from '../utils/haptics';
 interface Props {
   visible: boolean;
   placeholder: string;
-  /** Adds a small emoji field ahead of the name — for things that carry one. */
+  /** Adds a small emoji button ahead of the name — for things that carry one. */
   withEmoji?: boolean;
   /** Label for the secondary "open the full editor" button; omit to hide it. */
   moreLabel?: string;
@@ -56,6 +57,7 @@ export function QuickAddNameSheet({
 
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('');
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -78,6 +80,7 @@ export function QuickAddNameSheet({
     if (!visible) return;
     setName('');
     setEmoji('');
+    setEmojiPickerOpen(false);
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
@@ -145,17 +148,20 @@ export function QuickAddNameSheet({
         >
           <View style={styles.row}>
             {withEmoji && (
-              <View style={styles.emojiWell}>
-                <TextInput
-                  style={styles.emojiInput}
-                  value={emoji}
-                  onChangeText={setEmoji}
-                  placeholder="🙂"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={4}
-                  accessibilityLabel="Emoji"
-                />
-              </View>
+              <TouchableOpacity
+                style={styles.emojiWell}
+                onPress={() => { haptics.tap(); Keyboard.dismiss(); setEmojiPickerOpen(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={emoji ? `Emoji, ${emoji}` : 'Emoji, none set'}
+                accessibilityHint="Opens the emoji picker"
+              >
+                {emoji ? (
+                  <Text style={styles.emojiGlyph}>{emoji}</Text>
+                ) : (
+                  <Ionicons name="happy-outline" size={18} color={colors.textTertiary} />
+                )}
+              </TouchableOpacity>
             )}
             <TextInput
               ref={inputRef}
@@ -195,6 +201,17 @@ export function QuickAddNameSheet({
           )}
         </Animated.View>
       </View>
+
+      {withEmoji && (
+        <EmojiPickerSheet
+          visible={emojiPickerOpen}
+          value={emoji || null}
+          title="Emoji"
+          hint="Optional — it stands in for this everywhere it's shown."
+          onSelect={picked => setEmoji(picked ?? '')}
+          onClose={() => { setEmojiPickerOpen(false); inputRef.current?.focus(); }}
+        />
+      )}
     </Modal>
   );
 }
@@ -222,13 +239,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
     alignItems: 'center', justifyContent: 'center',
   },
-  // No lineHeight on a TextInput — RN maps it onto the iOS paragraph style
-  // and the glyphs sink below the caret. Fixed height keeps the row steady.
-  emojiInput: {
-    width: 38, height: 38,
-    color: colors.text, fontSize: font.lg, textAlign: 'center',
-    paddingVertical: 0,
-  },
+  emojiGlyph: { fontSize: font.xl, lineHeight: 26, textAlign: 'center' },
   input: {
     flex: 1,
     fontSize: font.md,
