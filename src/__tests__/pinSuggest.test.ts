@@ -8,6 +8,8 @@
 
 import {
   suggestPins,
+  nextPinSuggestion,
+  pinReason,
   scoreTask,
   overdueDays,
   buildCoOccurrenceIndex,
@@ -416,6 +418,100 @@ describe('suggestPins', () => {
 
   it('handles an empty board', () => {
     expect(suggestPins([], [], ctx)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// nextPinSuggestion — the swap step behind the confirmation sheet
+// ---------------------------------------------------------------------------
+
+describe('nextPinSuggestion', () => {
+  const ctx = makeCtx();
+
+  it('returns the same first pick suggestPins would make', () => {
+    const tasks = [
+      makeTask({ id: 'quiet', sortOrder: 10 }),
+      makeTask({ id: 'urgent', sortOrder: 20, priority: 4 }),
+    ];
+    expect(nextPinSuggestion(tasks, [], [], ctx)).toBe('urgent');
+    expect(suggestPins(tasks, [], ctx)[0]).toBe('urgent');
+  });
+
+  it('skips excluded ids — what the sheet already shows or the user rejected', () => {
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 10, priority: 4 }),
+      makeTask({ id: 'b', sortOrder: 20, priority: 3 }),
+      makeTask({ id: 'c', sortOrder: 30, priority: 2 }),
+    ];
+    expect(nextPinSuggestion(tasks, [], ['a'], ctx)).toBe('b');
+    expect(nextPinSuggestion(tasks, [], ['a', 'b'], ctx)).toBe('c');
+  });
+
+  it('scores the replacement against the rows being kept', () => {
+    const kept = makeTask({ id: 'kept', category: 'Work', tags: ['deck'], priority: 1 });
+    const tasks = [
+      kept,
+      makeTask({ id: 'loner', sortOrder: 20, priority: 2 }),
+      makeTask({ id: 'colleague', sortOrder: 30, priority: 1, category: 'Work', tags: ['deck'] }),
+    ];
+    // Alone, 'loner' outranks 'colleague' by a priority level (24 > 12), but
+    // the shared category and tag (8 + 6) flip the order once 'kept' is
+    // company — which is the whole reason swap re-runs the scorer.
+    expect(nextPinSuggestion(tasks, [], ['kept'], ctx)).toBe('loner');
+    expect(nextPinSuggestion(tasks, [kept], ['kept'], ctx)).toBe('colleague');
+  });
+
+  it('drops opted-out categories and already-pinned tasks', () => {
+    const tasks = [
+      makeTask({ id: 'routine', sortOrder: 10, priority: 4, category: 'Routine' }),
+      makeTask({ id: 'pinned', sortOrder: 20, priority: 4, pinned: true }),
+      makeTask({ id: 'open', sortOrder: 30 }),
+    ];
+    const excluded = makeCtx({ excludedCategories: new Set(['Routine']) });
+    expect(nextPinSuggestion(tasks, [], [], excluded)).toBe('open');
+  });
+
+  it('returns null once the pool is exhausted', () => {
+    const tasks = [makeTask({ id: 'only' })];
+    expect(nextPinSuggestion(tasks, [], ['only'], ctx)).toBeNull();
+    expect(nextPinSuggestion([], [], [], ctx)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// pinReason — the "why this one" line on each suggested row
+// ---------------------------------------------------------------------------
+
+describe('pinReason', () => {
+  const ctx = makeCtx();
+
+  it('names the term that earned the task its place', () => {
+    expect(pinReason(makeTask({ priority: 4 }), [], ctx)).toBe('Urgent priority');
+    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 15) }), [], ctx)).toBe('Due today');
+    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 14) }), [], ctx)).toBe('1 day overdue');
+    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 10) }), [], ctx)).toBe('5 days overdue');
+  });
+
+  it('prefers the highest-scoring term when several apply', () => {
+    // Low priority (12) against a deadline that has arrived (25).
+    const task = makeTask({ priority: 1, deadline: storedDate(2026, 2, 15) });
+    expect(pinReason(task, [], ctx)).toBe('Deadline reached');
+  });
+
+  it('names the segment when the task is set for the one in progress', () => {
+    expect(pinReason(makeTask({ timeSegments: ['morning'] }), [], ctx)).toBe('Set for this morning');
+    // A mismatched segment is a penalty, never a reason.
+    expect(pinReason(makeTask({ timeSegments: ['evening'] }), [], ctx)).toBeNull();
+  });
+
+  it('names the task a suggestion is keeping company with', () => {
+    const other = makeTask({ id: 'other', title: 'Draft the deck', category: 'Work' });
+    const task = makeTask({ id: 'task', category: 'Work' });
+    expect(pinReason(task, [other], ctx)).toBe('Goes with Draft the deck');
+  });
+
+  it('says nothing when a task has no reason to be there', () => {
+    expect(pinReason(makeTask(), [], ctx)).toBeNull();
   });
 });
 
