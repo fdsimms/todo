@@ -610,6 +610,12 @@ export function TodayScreen() {
 
   const activeFilterCount =
     (sort !== 'default' ? 1 : 0) + filterPriorities.length + filterEfforts.length;
+  // Only priority/effort filters narrow which tasks render — sort just
+  // reorders them — so only those should suppress a stack's "N/M" tally (see
+  // the filtered prop on TaskGroupHeader). Later Today and Inbox groups don't
+  // go through this filter at all (deferredTasks/inboxTasks are unfiltered),
+  // so this only applies to the main Today list's group rows below.
+  const groupTallyFiltered = filterPriorities.length > 0 || filterEfforts.length > 0;
 
   // Today stays current on its own (see the tick effect above), so pulling
   // down no longer refreshes anything — it opens quick add instead, which
@@ -1132,6 +1138,7 @@ export function TodayScreen() {
           <TaskGroupHeader
             group={item.group}
             allChildren={allChildren}
+            filtered={groupTallyFiltered}
             onToggleCollapse={() => {
               if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
               haptics.tap();
