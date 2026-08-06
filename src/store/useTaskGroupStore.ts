@@ -15,7 +15,6 @@ interface TaskGroupStore {
   createGroup: (title: string, category: string | null) => TaskGroup;
   updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
-  setGroupCompletedAt: (id: string, completedAt: string | null) => void;
   getGroupById: (id: string) => TaskGroup | null;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
   // are the low-level row operations it calls once children are handled.
@@ -42,7 +41,6 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
       category,
       sortOrder: maxOrder + 1,
       collapsed: true,
-      completedAt: null,
     };
     dbInsertTaskGroup(group);
     set(s => ({ groups: [...s.groups, group] }));
@@ -61,14 +59,6 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
     const group = get().groups.find(g => g.id === id);
     if (!group || group.collapsed === collapsed) return;
     const updated = { ...group, collapsed };
-    dbUpdateTaskGroup(updated);
-    set(s => ({ groups: s.groups.map(g => (g.id === id ? updated : g)) }));
-  },
-
-  setGroupCompletedAt(id, completedAt) {
-    const group = get().groups.find(g => g.id === id);
-    if (!group || group.completedAt === completedAt) return;
-    const updated = { ...group, completedAt };
     dbUpdateTaskGroup(updated);
     set(s => ({ groups: s.groups.map(g => (g.id === id ? updated : g)) }));
   },

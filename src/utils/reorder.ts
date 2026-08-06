@@ -121,38 +121,6 @@ export function dragRange<T>(data: T[], activeIndex: number, isBoundary: (item: 
 }
 
 /**
- * Distance between a scroll view's content coordinate space and the coordinate
- * space an absolutely-positioned sibling overlay uses.
- *
- * A row's content-Y (what `onLayout` reports inside the scroll content) maps to
- * an on-screen position of `contentY - scrollOffset` ONLY when the content
- * starts flush with the top of the overlay's container. A top content inset —
- * iOS keyboard-inset adjustment, safe-area inset adjustment, a scroll view that
- * doesn't start at the container's top edge — shifts everything down by a
- * constant the JS side never sees. Measuring one row against the container
- * recovers that constant, so the floating drag card and the drop slot stay in
- * the same coordinate space instead of drifting apart by the inset.
- *
- * **`measuredTop` is a `measureLayout` result, which is NOT an on-screen
- * position.** `measureLayout` walks layout frame origins up the tree to the
- * ancestor, and a scroll view's content sits at origin 0 there however far the
- * list is scrolled — the scroll offset lives in native view geometry, which the
- * measurement never consults (`dom::measureLayout` asks for the relative layout
- * metrics with `includeTransform: false`, and that flag is what gates the
- * scroll view's content-origin offset; the old architecture's shadow-view walk
- * has no notion of it at all). So the scroll offset cancels out of this
- * entirely, and both inputs are plain layout coordinates: the gap is just the
- * distance between the two layout spaces.
- *
- * Subtracting a scroll offset here instead — reading "measured 900, derived
- * 520" as a 380px inset — is what put the floating drag card a full scroll
- * offset *below* the finger, worse the further down the list the drag started.
- */
-export function contentOriginOffset(measuredTop: number, rowContentY: number): number {
-  return measuredTop - rowContentY;
-}
-
-/**
  * How far the floating drag card has moved from the dragged row's resting slot
  * — the translation `dropIndexFromTranslation` wants.
  *
@@ -160,21 +128,40 @@ export function contentOriginOffset(measuredTop: number, rowContentY: number): n
  * row's CURRENT content-Y, rather than from how far the finger has travelled
  * since the drag began. The two agree exactly — this is `fingerDelta +
  * scrollDelta` — for as long as the list holds still, because the card's
- * anchor was pinned to `rowContentY - scrollOffset + contentOrigin` at drag
- * start. They stop agreeing the moment the list re-lays out underneath a live
- * drag: a category header's drag auto-collapses every section, so the row it
- * started from moves up by however many task rows were above it, and a finger
- * delta measured from the old layout then describes a slot that no longer
- * exists. Re-deriving each move keeps the drop gap under the card — and so
- * under the finger the card is anchored to — however far the layout shifts.
+ * anchor was pinned to `rowContentY - scrollOffset` at drag start. They stop
+ * agreeing the moment the list re-lays out underneath a live drag: a category
+ * header's drag auto-collapses every section, so the row it started from moves
+ * up by however many task rows were above it, and a finger delta measured from
+ * the old layout then describes a slot that no longer exists. Re-deriving each
+ * move keeps the drop gap under the card — and so under the finger the card is
+ * anchored to — however far the layout shifts.
+ *
+ * **`rowContentY` has to be the row's live position, and it is the one input
+ * here that JS can be wrong about.** It comes from `onLayout` bookkeeping, and
+ * the auto-collapse that makes this function necessary is exactly the event
+ * that outruns those callbacks. A stale value aims the whole drag at a slot
+ * that no longer exists — the gap opens a screenful from the card. That is why
+ * the caller overwrites it with `measureLayout`, which reports the row's
+ * position in the layout tree and so answers the same question from the shadow
+ * tree itself.
+ *
+ * There is deliberately no "content origin" term. `measureLayout` and
+ * `onLayout` report in the same layout space, and the scroll view's content
+ * starts at the drag container's own origin, so a row's content-Y needs only
+ * the scroll offset to become an on-screen position. A `contentInset` (the iOS
+ * keyboard adjustment) does NOT change that: it lives in native scroll
+ * geometry, where it moves `contentOffset` — which `onScroll` already reports,
+ * negative and all — and never touches the layout tree. An earlier version
+ * solved for an inset term out of one row's measurement, which could only ever
+ * come back non-zero when that row's content-Y was stale, then applied that
+ * staleness to every other row and kept it for the next drag.
  */
 export function dragTranslation(
   cardTop: number,
   rowContentY: number,
   scrollOffset: number,
-  contentOrigin: number,
 ): number {
-  return cardTop - (rowContentY - scrollOffset + contentOrigin);
+  return cardTop - (rowContentY - scrollOffset);
 }
 
 /**

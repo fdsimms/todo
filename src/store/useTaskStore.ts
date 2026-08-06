@@ -36,7 +36,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -372,7 +372,6 @@ interface TaskStore {
   applyGroupCategory: (groupId: string, category: string | null) => Array<{ id: string; category: string | null }>;
   completeGroup: (groupId: string) => void;
   uncompleteGroup: (groupId: string) => void;
-  dismissGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
   deleteGroup: (groupId: string, opts: { cascade: boolean }) => void;
@@ -1909,23 +1908,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${children.length} task${children.length === 1 ? '' : 's'} uncompleted`,
       undo: () => undos.forEach(fn => fn()),
-    });
-  },
-
-  // Marks a fully-done stack as dismissed for today so it drops off Today
-  // (see TaskGroupHeader/visibleGroupItems) instead of sitting there checked
-  // off forever. Distinct from uncompleteGroup: this doesn't touch any
-  // child's completed state at all, it only stamps the group itself. The
-  // stamp is read as "dismissed *today*" (isGroupDismissedToday), so it
-  // expires on its own overnight and a daily stack comes back by itself.
-  dismissGroup(groupId) {
-    const group = useTaskGroupStore.getState().getGroupById(groupId);
-    if (!group || isGroupDismissedToday(group.completedAt)) return;
-    const previous = group.completedAt;
-    useTaskGroupStore.getState().setGroupCompletedAt(groupId, new Date().toISOString());
-    get().setLastAction({
-      label: 'Stack completed',
-      undo: () => useTaskGroupStore.getState().setGroupCompletedAt(groupId, previous),
     });
   },
 

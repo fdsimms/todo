@@ -631,30 +631,18 @@ export function groupRoster(children: Task[]): Task[] {
 // Self-expiring by construction: the stamp is compared against today rather
 // than just checked for existence, so whatever it hides comes back on its own
 // at the day rollover and nothing has to remember to clear it. Callers pair it
-// with a live condition (see isGroupHiddenToday) so the thing re-surfaces early
-// if the circumstances that justified hiding it stop holding.
+// with a live condition so the thing re-surfaces early if the circumstances
+// that justified hiding it stop holding.
 export function isDismissedToday(stamp: string | null): boolean {
   if (!stamp) return false;
   return +getDayStart(new Date(stamp)) === +getCurrentDayStart();
 }
 
-// True when the user has dismissed this stack for the current logical day.
-// Callers pair this with "every member due today is done" (see TaskGroupHeader)
-// so a stack that gains live work again after being dismissed can't stay hidden.
-export function isGroupDismissedToday(completedAt: string | null): boolean {
-  return isDismissedToday(completedAt);
-}
-
-// Whether a dismissed stack should actually stay hidden right now. `dueToday`
-// is the stack's members relevant to today (roster ∩ isRelevantToGroupToday).
-//
-// The "and everything due today is still done" half is what makes the
-// dismissal safe to leave lying around: a stack that gains live work again —
-// a recurring member spawning its next occurrence, an undo, a task added to
-// it — stops satisfying this and shows itself, so nothing has to detect those
-// events and clear the stamp. The old design did clear it, from four separate
-// call sites, and missed a fifth.
-export function isGroupHiddenToday(completedAt: string | null, dueToday: Task[]): boolean {
-  if (!isGroupDismissedToday(completedAt)) return false;
-  return dueToday.length > 0 && dueToday.every(t => t.completed);
-}
+// A stack has no hidden-for-today state of its own to ask about: it renders
+// exactly while it has a live row to show, and drops off Today in the same
+// commit its last one does (see visibleGroupItems in TodayScreen). There used
+// to be a dismissal stamp here — TaskGroup.completedAt, set by tapping a
+// fully-done stack's tile — which left the stack sitting on Today saying "all
+// 6 done for today" until the user cleared it by hand. It was one extra tap
+// per stack per day to acknowledge something the finished rows had already
+// said, so both the stamp and the tap are gone.

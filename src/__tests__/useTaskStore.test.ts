@@ -25,7 +25,6 @@ import {
   cancelTaskReminder,
   rescheduleAllReminders,
 } from '../utils/notifications';
-import { isGroupHiddenToday, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import type { Task, TaskGroup } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -184,7 +183,6 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
-  completedAt: null,
   ...overrides,
 });
 
@@ -2404,104 +2402,65 @@ describe('uncompleteGroup', () => {
   });
 });
 
-describe('dismissGroup', () => {
-  it('stamps the group completedAt without touching any child', () => {
-    const today = new Date().toISOString();
+describe('a finished stack leaving Today', () => {
+  // Today renders a stack exactly while one of its members is in
+  // visibleTasks (see visibleGroupItems in TodayScreen) — there's no stack
+  // state of its own any more, so these cover the store side of "the stack
+  // goes when its last task does".
+  const groupVisible = (groupId: string) =>
+    useTaskStore.getState().visibleTasks().filter(t => t.groupId === groupId);
+
+  it('has no visible member left once every member is completed', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: today })],
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', dueDate: new Date().toISOString() }),
+        makeTask({ id: 'b', groupId: 'g1', dueDate: new Date().toISOString() }),
+      ],
     });
+    useTaskStore.getState().completeTask('a');
+    expect(groupVisible('g1').map(t => t.id)).toEqual(['a', 'b']);
+
+    useTaskStore.getState().completeTask('b');
+    // Both are still held so their rows can finish their completion
+    // animation — the stack rides that window out with them rather than
+    // disappearing a beat early.
+    expect(groupVisible('g1')).toHaveLength(2);
+    useTaskStore.setState({ completionHoldIds: [] });
+    expect(groupVisible('g1')).toHaveLength(0);
+  });
+
+  it('comes back with a member that is uncompleted again', () => {
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
-    useTaskStore.getState().dismissGroup('g1');
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).not.toBeNull();
-    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(true);
-  });
-
-  it('is undoable via lastAction', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
-    useTaskStore.getState().dismissGroup('g1');
-    useTaskStore.getState().lastAction?.undo();
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).toBeNull();
-  });
-
-  it('does nothing if the group is already dismissed today', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
-    useTaskStore.getState().dismissGroup('g1');
-    expect(useTaskStore.getState().lastAction).toBeNull();
-  });
-
-  it('re-stamps a group left dismissed on an earlier day', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: '2026-01-01T00:00:00.000Z' })] });
-    useTaskStore.getState().dismissGroup('g1');
-    expect(useTaskGroupStore.getState().getGroupById('g1')?.completedAt).not.toBe('2026-01-01T00:00:00.000Z');
-    expect(useTaskStore.getState().lastAction).not.toBeNull();
-  });
-
-  // The stamp is deliberately NOT cleared when a stack gains live work again
-  // — isGroupHiddenToday requires everything due today to still be done, so
-  // the stack un-hides itself and no event has to be intercepted. These cover
-  // the ways that used to need an explicit clearGroupDismissal call.
-  it('stays hidden when a completed daily child spawns tomorrow\'s occurrence', () => {
-    // The spawn isn't today's work, so it must not drag the stack back onto
-    // Today — the old design cleared the stamp here and it reappeared,
-    // unchecked, seconds after the user dismissed it.
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
     useTaskStore.setState({
       tasks: [makeTask({
-        id: 'a', groupId: 'g1', completed: false, dueDate: new Date().toISOString(),
+        id: 'a', groupId: 'g1', dueDate: new Date().toISOString(),
+        completed: true, completedAt: new Date().toISOString(),
+      })],
+    });
+    expect(groupVisible('g1')).toHaveLength(0);
+    useTaskStore.getState().uncompleteTask('a');
+    expect(groupVisible('g1').map(t => t.id)).toEqual(['a']);
+  });
+
+  it('comes back tomorrow via a daily member\u2019s next occurrence', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', groupId: 'g1', dueDate: new Date().toISOString(),
         recurrenceType: 'daily', recurrenceInterval: 1,
       })],
     });
     useTaskStore.getState().completeTask('a');
-    const group = useTaskGroupStore.getState().getGroupById('g1')!;
-    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
-    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(true);
-  });
-
-  it('stops hiding the stack when a member becomes due again today', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
-    useTaskStore.setState({
-      tasks: [
-        makeTask({ id: 'done', groupId: 'g1', completed: true, completedAt: new Date().toISOString() }),
-        makeTask({ id: 'now-due', groupId: 'g1', dueDate: new Date().toISOString() }),
-      ],
-    });
-    const group = useTaskGroupStore.getState().getGroupById('g1')!;
-    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
-    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
-  });
-
-  it('stops hiding the stack when an incomplete task is added to it', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
-    useTaskStore.setState({ tasks: [makeTask({ id: 'a', groupId: null, completed: false })] });
-    useTaskStore.getState().addExistingToGroup('a', 'g1');
-    const group = useTaskGroupStore.getState().getGroupById('g1')!;
-    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
-    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
-  });
-
-  it('stops hiding the stack when one of its children is uncompleted', () => {
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1', completedAt: new Date().toISOString() })] });
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: new Date().toISOString() })],
-    });
-    useTaskStore.getState().uncompleteTask('a');
-    const group = useTaskGroupStore.getState().getGroupById('g1')!;
-    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
-    expect(isGroupHiddenToday(group.completedAt, dueToday)).toBe(false);
-  });
-
-  it('hides a fully-done stack for today, then lets it back tomorrow', () => {
-    const now = new Date().toISOString();
-    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
-    useTaskStore.setState({
-      tasks: [makeTask({ id: 'a', groupId: 'g1', completed: true, completedAt: now })],
-    });
-    useTaskStore.getState().dismissGroup('g1');
-    const stamp = useTaskGroupStore.getState().getGroupById('g1')!.completedAt;
-    const dueToday = useTaskStore.getState().groupRosterOf('g1').filter(isRelevantToGroupToday);
-    expect(isGroupHiddenToday(stamp, dueToday)).toBe(true);
-    // Same stamp, read on a later day: the dismissal has expired on its own.
-    expect(isGroupHiddenToday('2026-01-01T00:00:00.000Z', dueToday)).toBe(false);
+    useTaskStore.setState({ completionHoldIds: [] });
+    // The spawned occurrence is due tomorrow, so nothing is visible today...
+    expect(groupVisible('g1')).toHaveLength(0);
+    const next = useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === 'a');
+    expect(next).toBeDefined();
+    // ...but it is a member with a date, which is all it takes for the stack
+    // to render again once that date arrives.
+    expect(next!.groupId).toBe('g1');
+    expect(next!.completed).toBe(false);
   });
 });
 

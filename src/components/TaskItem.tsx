@@ -33,6 +33,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
@@ -52,8 +53,13 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 
 interface Props {
   task: Task;
-  onPress: () => void;
-  onEdit?: () => void;
+  // The row hands its own id back to these rather than the caller closing over
+  // it. That lets a list pass one `useCallback` shared by every row instead of
+  // a fresh arrow per row per render, which is what makes the memo below
+  // actually hold (see the handlers in TodayScreen). Callers that don't need
+  // the id can keep ignoring it — a zero-argument arrow still satisfies these.
+  onPress: (id: string) => void;
+  onEdit?: (id: string) => void;
   expanded?: boolean;
   subtaskCount?: number;
   subtaskDoneCount?: number;
@@ -62,8 +68,8 @@ interface Props {
   isActive?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
-  onSelect?: () => void;
-  onSwipeSelect?: () => void;
+  onSelect?: (id: string) => void;
+  onSwipeSelect?: (id: string) => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
@@ -112,7 +118,20 @@ function describeRecurrence(task: Task): string {
   return text;
 }
 
-export function TaskItem({
+/**
+ * Memoized: a task list re-renders its rows on every store mutation, and
+ * without this each of those renders is O(all rows) rather than O(the rows
+ * that actually changed) — most visible while paint-selecting, where a drag
+ * down the checkbox column mutates the selection on every frame.
+ *
+ * The shallow prop compare this relies on is only as good as its callers.
+ * Every handler passed in has to be stable across renders (`useCallback`) and
+ * `subtasks` has to keep its identity — see NO_SUBTASKS and the memoized
+ * handlers in TodayScreen. A fresh `[]` or a fresh arrow per render defeats
+ * the compare silently: the row still works, it just goes back to re-rendering
+ * every time.
+ */
+export const TaskItem = React.memo(function TaskItem({
   task,
   onPress,
   onEdit,
@@ -414,6 +433,15 @@ export function TaskItem({
     }
   }, [expanded, isEditingTitle]);
 
+  // Everything below this line that consults the wall clock — the window
+  // state, the deadline countdown and its colour, the "N left" text in the
+  // expanded panel, the relative due-date label — is computed during render
+  // and so is only as fresh as the last render. This row is memoized, which
+  // means a passing minute is not by itself a reason for it to re-render;
+  // subscribing to the shared heartbeat makes it one. Nothing reads the
+  // returned timestamp: the re-render *is* the effect (see nowTick.ts).
+  useNowTick();
+
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
@@ -427,7 +455,7 @@ export function TaskItem({
 
   const handleContentPress = () => {
     if (isNew) markTaskSeen(task.id);
-    if (selectionMode) { onSelect?.(); } else { onPress(); }
+    if (selectionMode) { onSelect?.(task.id); } else { onPress(task.id); }
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
@@ -571,7 +599,7 @@ export function TaskItem({
   };
 
   const handleTitleTap = () => {
-    if (selectionMode) { onSelect?.(); return; }
+    if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
     setIsEditingTitle(true);
     setTimeout(() => titleInputRef.current?.focus(), 50);
@@ -607,14 +635,21 @@ export function TaskItem({
 
       <TouchableOpacity
         onPress={
-          selectionMode ? onSelect
+          selectionMode ? () => onSelect?.(task.id)
           : completing ? handleUndoComplete
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }
         onLongPress={showQuotaMeter ? handleQuotaUndo : undefined}
         delayLongPress={interaction.delayLongPress}
-        hitSlop={10}
+        // The circle is 20pt in a 24pt box, so it needs most of this to reach a
+        // 44pt target. Left covers the whole leading gutter out to the card edge
+        // (marginLeft is spacing.md, and the row clips hit-testing at its own
+        // bounds, so more than 16 is wasted); right covers the flex gap to the
+        // content column — which only works because `content` below drops its own
+        // left slop. It's the later sibling, so hit-testing reaches it first and
+        // whatever it claims on this side is taken out of the checkbox.
+        hitSlop={{ top: 12, bottom: 12, left: spacing.md, right: 12 }}
         style={styles.circleWrapper}
         // A meter isn't binary, so it's a button rather than a checkbox.
         accessibilityRole={showQuotaMeter ? 'button' : 'checkbox'}
@@ -678,10 +713,12 @@ export function TaskItem({
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
         // Content only hugs its text height, leaving the row's own vertical
-        // padding and the flex gaps to either side untappable — this slop
-        // extends the hit target out to cover that dead space so the whole
-        // card row responds, not just the text itself.
-        hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
+        // padding and the trailing flex gap untappable — this slop extends the
+        // hit target out to cover that dead space so the whole card row
+        // responds, not just the text itself. Deliberately 0 on the left: the
+        // gap on that side belongs to the checkbox, and any slop here silently
+        // wins it back (later sibling, so hit-testing reaches this first).
+        hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : { expanded }}
         accessibilityLabel={displayTitle}
@@ -951,7 +988,11 @@ export function TaskItem({
                           haptics.tap();
                           toggleSubtask(sub.id);
                         }}
-                        hitSlop={8}
+                        // Same split as the row checkbox above — the gap to the
+                        // title is this box's, so the title wrapper runs at 0 on
+                        // its left. Vertical stays at 8: the subtask row is only
+                        // ~32pt tall and hit-testing clips at its bounds.
+                        hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
                         accessibilityRole="checkbox"
                         accessibilityState={{ checked: sub.completed }}
                         accessibilityLabel={sub.title}
@@ -980,7 +1021,7 @@ export function TaskItem({
                           style={styles.subtaskTitleWrapper}
                           onPress={() => handleSubtaskTitleTap(sub)}
                           activeOpacity={interaction.activeOpacity}
-                          hitSlop={8}
+                          hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
                         >
                           <Text style={[
                             styles.subtaskTitle,
@@ -1197,7 +1238,7 @@ export function TaskItem({
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expanded) onPress();
+                        if (expanded) onPress(task.id);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
@@ -1235,7 +1276,7 @@ export function TaskItem({
                   </PressableScale>
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
-                    onPress={onEdit}
+                    onPress={() => onEdit(task.id)}
                     hitSlop={8}
                     accessibilityLabel="Edit task"
                   >
@@ -1303,7 +1344,7 @@ export function TaskItem({
             <SwipeableRow
               enabled={!spotlightDisabled}
               selectAction={onSwipeSelect ? {
-                onSelect: onSwipeSelect,
+                onSelect: () => onSwipeSelect(task.id),
                 accessibilityLabel: `Select ${task.title}`,
               } : undefined}
               whenAction={{
@@ -1318,7 +1359,7 @@ export function TaskItem({
                 {spotlightDisabled && (
                   // While another task is spotlighted this row must not react
                   // to touches itself — any tap on it just dismisses the spotlight.
-                  <Pressable style={StyleSheet.absoluteFill} onPress={onPress} />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => onPress(task.id)} />
                 )}
               </View>
             </SwipeableRow>
@@ -1377,7 +1418,7 @@ export function TaskItem({
       )}
     </>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {

@@ -69,6 +69,16 @@ describe('feedShakeSample', () => {
     expect(feed(state, shakeSamples(2), at)).toBe(0);
   });
 
+  it('ignores three jolts — a swing and a rebound still fall short', () => {
+    const { state, at } = settled();
+    expect(feed(state, shakeSamples(3), at)).toBe(0);
+  });
+
+  it('fires on a moderate wrist shake, not only a violent one', () => {
+    const { state, at } = settled();
+    expect(feed(state, shakeSamples(4, 1.2), at)).toBe(1);
+  });
+
   it('absorbs a sustained one-way push as gravity rather than counting it', () => {
     const { state, at } = settled();
     const push: ShakeSample[] = Array(30).fill({ x: 3, y: 0, z: -1 });

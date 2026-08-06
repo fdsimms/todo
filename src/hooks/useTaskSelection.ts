@@ -24,24 +24,29 @@ export function useTaskSelection(allTasks: Task[]) {
 
   // Takes a list as well as a single id: swiping a stack header selects every
   // live task in it at once (see TaskGroupHeader's onSwipeSelect).
-  const enterSelectionMode = (initial?: string | string[]) => {
+  // These two are wrapped, like setSelected below, because they end up as
+  // props on a memoized TaskItem: a fresh identity per render would defeat its
+  // shallow compare and put every row back to re-rendering on each selection
+  // change. Empty deps are safe — both reach state only through the functional
+  // form of setState, so a frozen closure can't read a stale value.
+  const enterSelectionMode = useCallback((initial?: string | string[]) => {
     haptics.impactHeavy();
     animateLayout();
     setSelectionMode(true);
     const ids = initial === undefined ? [] : Array.isArray(initial) ? initial : [initial];
     setSelectedIds(new Set(ids));
-  };
+  }, []);
 
   // Every change to the selection ticks, so adding rows one at a time feels
   // like the same mechanism as painting a run of them.
-  const toggleSelection = (id: string) => {
+  const toggleSelection = useCallback((id: string) => {
     haptics.tap();
     setSelectedIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-  };
+  }, []);
 
   // Set an explicit value rather than flipping: a paint gesture drives a whole
   // run of rows to the same state, and it fires faster than React re-renders,
