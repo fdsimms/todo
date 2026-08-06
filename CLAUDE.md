@@ -64,8 +64,8 @@ the rest of the task will.
 stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `src/store`,
 `src/db`): Jest runs in the `node` environment with
 no React renderer installed, so there are no component or screen tests. Don't add a renderer to
-cover a UI change — verify those by reasoning about the code, and say so plainly rather than
-implying you ran them.
+cover a UI change — verify those by reasoning about the code (and by mocking it, see **Mock a
+visual change** below), and say so plainly rather than implying you ran them.
 
 ## Working style
 
@@ -79,6 +79,30 @@ diff is what keeps it coherent.
 should be planned in a sentence or two first, because the constraint almost always lives
 downstream: the schema and the visibility rules decide what the UI is allowed to do, not the
 other way round.
+
+**Mock a visual change instead of describing it.** There are no component tests and no way to
+run the app from here, so a change to spacing, hierarchy, colour or a row treatment otherwise
+ships as a paragraph asking the user to imagine it. Don't do that. Build a throwaway HTML mock
+in the scratchpad using the real values from `src/theme/index.ts`, screenshot it with the
+Chromium that's already in the sandbox, **look at the screenshot yourself**, then send it
+alongside the answer:
+
+```bash
+/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell \
+  --no-sandbox --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
+  --window-size=1330,620 --screenshot=mock.png mock.html
+```
+
+Worth doing properly: before and after side by side, at a real device width (390pt), in both
+themes — a redesign that only works in dark is the usual way one of these goes wrong, and
+seeing them next to each other is most of the value. Hardcode the hex values in the mock; it's
+a throwaway file, not app code, and the tokens are what you're checking.
+
+It is a proxy, not a screenshot of the app: CSS flexbox is not Yoga, RN's text metrics differ,
+and nothing about gestures, animation or `SwipeableRow` is being exercised. It proves the layout
+numbers and the visual hierarchy and nothing else, so label it that way when you send it. Skip
+it for logic changes and one-line tweaks; reach for it whenever the question is "does this look
+right".
 
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
