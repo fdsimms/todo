@@ -231,6 +231,20 @@ export function quotaLeavesTodayAfterLog(task: Task): boolean {
   );
 }
 
+// True when the only thing keeping a daily target off Today is that you're
+// keeping up with it: every other gate — its own day, its window, its
+// category's schedule — says it's due right now. Drives Today's "on pace"
+// reveal, which is where a unit gets logged at a time nothing asked for it
+// (four glasses at once, and the fourth was never owed).
+export function isOnPaceQuota(task: Task): boolean {
+  if (!isQuotaTask(task) || task.completed || task.archived) return false;
+  if (!isQuotaOnPace(task)) return false;
+  // Asked as though it weren't a target at all: nothing else in isTaskVisible
+  // reads targetCount, so dropping it lifts the pace gate specifically and
+  // leaves every other one standing.
+  return isTaskVisible({ ...task, targetCount: null });
+}
+
 // True for a quota occurrence closed out without reaching its target — the
 // record rolloverQuotas leaves behind for a day you fell short. Derived from
 // the count, so a partial day needs no column of its own.

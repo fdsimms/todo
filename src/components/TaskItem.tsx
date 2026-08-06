@@ -548,10 +548,11 @@ export const TaskItem = React.memo(function TaskItem({
   // such reading: it lands in the store on the tap.
   const quotaLogged = quotaCompleting ? task.targetCount! : task.progressCount;
   const quotaProgress = isQuota ? `${quotaLogged}/${task.targetCount}` : '';
-  // When it comes back. Shown for as long as the row is on borrowed time, so a
-  // target that goes quiet at 2/8 reads as scheduled rather than as swallowed —
-  // and so the window in which another tap still lands is a visible thing
-  // rather than a hidden one. Each tap moves it later, being one more logged.
+  // When the next unit falls due. Shown for as long as the row is on borrowed
+  // time, so a target that goes quiet at 2/8 reads as scheduled rather than as
+  // swallowed — and so the window in which another tap still lands is a visible
+  // thing rather than a hidden one. Each tap moves it later, being one more
+  // logged.
   const quotaReturnAt = quotaSettled
     ? formatHHMM(dateToHHMM(quotaNextDueAt(task)))
     : '';
@@ -1109,7 +1110,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>
-                  {quotaProgress}{quotaReturnAt ? ` · back at ${quotaReturnAt}` : ''}
+                  {quotaProgress}{quotaReturnAt ? ` · next at ${quotaReturnAt}` : ''}
                 </Text>
               </View>
             )}

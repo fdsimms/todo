@@ -17,6 +17,7 @@ import {
   quotaLeavesTodayAfterLog,
   quotaNextDueAt,
   isQuotaPartial,
+  isOnPaceQuota,
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
@@ -1110,6 +1111,33 @@ describe('quota tasks', () => {
 
     it('is false for an ordinary completed task', () => {
       expect(isQuotaPartial({ ...baseTask, completed: true })).toBe(false);
+    });
+  });
+
+  describe('isOnPaceQuota', () => {
+    it('is true for a target held back only by your keeping up with it', () => {
+      expect(isOnPaceQuota({ ...quotaTask, progressCount: 2 })).toBe(true);
+    });
+
+    it('is false while it is behind pace — that one is on Today already', () => {
+      expect(isOnPaceQuota({ ...quotaTask, progressCount: 1 })).toBe(false);
+    });
+
+    it('is false when something other than pace is holding it back', () => {
+      const tomorrow = { ...quotaTask, progressCount: 2, dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString() };
+      expect(isOnPaceQuota(tomorrow)).toBe(false);
+
+      const laterToday = { ...quotaTask, progressCount: 2, windowStart: '18:00' };
+      expect(isOnPaceQuota(laterToday)).toBe(false);
+
+      const deferred = { ...quotaTask, progressCount: 2, deferUntil: new Date(2025, 5, 12).toISOString() };
+      expect(isOnPaceQuota(deferred)).toBe(false);
+    });
+
+    it('is false once the day is done with, and for an ordinary task', () => {
+      expect(isOnPaceQuota({ ...quotaTask, progressCount: 8, completed: true })).toBe(false);
+      expect(isOnPaceQuota({ ...quotaTask, progressCount: 2, archived: true })).toBe(false);
+      expect(isOnPaceQuota(baseTask)).toBe(false);
     });
   });
 

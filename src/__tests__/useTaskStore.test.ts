@@ -3897,6 +3897,55 @@ describe('quota tasks', () => {
     });
   });
 
+  // Today's "on pace" reveal: the targets you're keeping up with, one tap away
+  // rather than a trip to Later.
+  describe('onPaceTasks', () => {
+    const ids = (tasks: Task[]) => tasks.map(t => t.id);
+
+    it('lists a target you are keeping up with', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 2 })] });
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual(['water']);
+    });
+
+    it('leaves out one that is behind pace — that one is on Today itself', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+    });
+
+    it('leaves out a pinned one, which is on Today whether it is due or not', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 2, pinned: true })] });
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+    });
+
+    it('leaves out one still held on Today, so it is not in two places at once', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 1 })] });
+      const store = useTaskStore.getState();
+      store.holdQuotaOnToday('water');
+      store.logQuotaUnit('water');
+
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+      expect(ids(useTaskStore.getState().visibleTasks())).toEqual(['water']);
+
+      store.releaseQuotaHold('water');
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual(['water']);
+    });
+
+    it('drops one the moment it meets its target, hold or no hold', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
+      useTaskStore.getState().logQuotaUnit('water');
+      // Today's fresh occurrence starts at zero, which is behind pace at 10:00.
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+    });
+
+    it('leaves out one held back by something other than pace', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 2, dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString() })],
+      });
+      expect(ids(useTaskStore.getState().onPaceTasks())).toEqual([]);
+    });
+  });
+
   describe('uncompleteTask', () => {
     it('reopens a finished quota one unit short of its target', () => {
       useTaskStore.setState({ tasks: [quota({ progressCount: 7 })] });
