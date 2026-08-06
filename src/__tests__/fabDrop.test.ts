@@ -1,6 +1,10 @@
 import {
+  AUTOSCROLL_EDGE,
+  AUTOSCROLL_MAX_STEP,
+  autoscrollStep,
   categoriesByIndex,
   indicatorY,
+  isOverFabHome,
   resolveFabDrop,
   targetKey,
   zoneAtY,
@@ -127,6 +131,16 @@ describe('resolveFabDrop', () => {
     });
   });
 
+  it('cancels from the button\'s own corner, whatever row is under it', () => {
+    // The resting corner sits over the tail of the list, so this is exactly
+    // the case where a real row is hit at the same moment.
+    expect(resolveFabDrop(RECTS[5]!, 520, true)).toEqual({ kind: 'cancel' });
+    expect(resolveFabDrop(null, 520, true)).toEqual({ kind: 'cancel' });
+    expect(resolveFabDrop(RECTS[5]!, 520, false)).toEqual({
+      kind: 'insert', anchorKey: 't-rent', before: true, category: 'Home',
+    });
+  });
+
   it('pins from the pinned run and adds plainly from the rest run', () => {
     expect(resolveFabDrop(zone({ kind: 'pinned', key: 'p-1' }, 0, 40), 20)).toEqual({ kind: 'pin' });
     expect(resolveFabDrop(zone({ kind: 'rest', key: 'rest-header' }, 40, 80), 60)).toEqual({ kind: 'plain' });
@@ -210,5 +224,70 @@ describe('indicatorY', () => {
   it('draws on the leading edge above a row and the trailing edge below it', () => {
     expect(indicatorY(RECTS[2]!, true)).toBe(196);
     expect(indicatorY(RECTS[2]!, false)).toBe(248);
+  });
+});
+
+describe('targetKey — cancel', () => {
+  it('is its own place, so entering the well ticks once and leaving it ticks once', () => {
+    expect(targetKey(RECTS, { kind: 'cancel' })).toBe('cancel');
+    expect(targetKey(RECTS, { kind: 'cancel' })).not.toBe(targetKey(RECTS, { kind: 'plain' }));
+  });
+});
+
+describe('isOverFabHome', () => {
+  it('is true where the button has come back to where it was picked up', () => {
+    expect(isOverFabHome(0, 0)).toBe(true);
+    expect(isOverFabHome(20, -20)).toBe(true);
+  });
+
+  it('is false once the button is out over the list', () => {
+    expect(isOverFabHome(0, -200)).toBe(false);
+    expect(isOverFabHome(-120, 0)).toBe(false);
+  });
+
+  it('measures a radius, not a box — a corner at the same distance is out', () => {
+    // (40, 40) is 56.6 away: outside, though both axes are within 44.
+    expect(isOverFabHome(40, 40)).toBe(false);
+    expect(isOverFabHome(44, 0)).toBe(true);
+  });
+});
+
+describe('autoscrollStep', () => {
+  // A list filling the screen: 100 to 800.
+  const step = (y: number) => autoscrollStep(y, 100, 800);
+
+  it('is still through the middle of the list', () => {
+    expect(step(400)).toBe(0);
+    expect(step(100 + AUTOSCROLL_EDGE)).toBe(0);
+    expect(step(800 - AUTOSCROLL_EDGE)).toBe(0);
+  });
+
+  it('ramps up toward each end rather than starting at full speed', () => {
+    const justInside = step(800 - AUTOSCROLL_EDGE + 1);
+    expect(justInside).toBeGreaterThan(0);
+    expect(justInside).toBeLessThan(1);
+    expect(step(800 - AUTOSCROLL_EDGE / 2)).toBeCloseTo(AUTOSCROLL_MAX_STEP / 2);
+    expect(step(800)).toBeCloseTo(AUTOSCROLL_MAX_STEP);
+  });
+
+  it('scrolls back toward the top from the upper band', () => {
+    expect(step(100)).toBeCloseTo(-AUTOSCROLL_MAX_STEP);
+    expect(step(100 + AUTOSCROLL_EDGE / 2)).toBeCloseTo(-AUTOSCROLL_MAX_STEP / 2);
+  });
+
+  it('holds at full speed past either edge rather than accelerating away', () => {
+    expect(step(-500)).toBeCloseTo(-AUTOSCROLL_MAX_STEP);
+    expect(step(2000)).toBeCloseTo(AUTOSCROLL_MAX_STEP);
+  });
+
+  it('halves the bands on a viewport too short to hold two of them', () => {
+    // 100pt tall: 50pt bands, so the midpoint is the only still place.
+    expect(autoscrollStep(150, 100, 200)).toBe(0);
+    expect(autoscrollStep(125, 100, 200)).toBeCloseTo(-AUTOSCROLL_MAX_STEP / 2);
+    expect(autoscrollStep(175, 100, 200)).toBeCloseTo(AUTOSCROLL_MAX_STEP / 2);
+  });
+
+  it('does nothing at all with no measured viewport', () => {
+    expect(autoscrollStep(400, 0, 0)).toBe(0);
   });
 });

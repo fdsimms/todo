@@ -4,6 +4,7 @@ import type { RecurrenceType, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToToday } from '../navigation/navigationRef';
+import { displayTitleFor } from './visibilityUtils';
 
 const DEBOUNCE_MS = 300;
 const MAX_VISIBLE_TASKS = 50;
@@ -29,7 +30,7 @@ interface WidgetSnapshot {
 function toWidgetTask(task: Task): WidgetTask {
   return {
     id: task.id,
-    title: task.title,
+    title: displayTitleFor(task),
     priority: task.priority,
     pinned: task.pinned,
     dueDate: task.dueDate,

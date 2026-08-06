@@ -1,0 +1,4 @@
+{
+  "message": "Empty lists now reliably show their message instead of sometimes fading in halfway or not at all",
+  "date": "2026-08-06"
+}

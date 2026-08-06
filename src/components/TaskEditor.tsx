@@ -13,6 +13,7 @@ import {
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
@@ -51,6 +52,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
 import { recurrenceUnitLabel } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
@@ -1417,7 +1419,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           icon="hourglass-outline"
           label="Waiting on"
           hint="Stay hidden until another task is done"
-          value={blockerTask?.title ?? (blockedById ? 'Task no longer exists' : undefined)}
+          value={
+            blockerTask
+              ? displayTitleFor(blockerTask)
+              : blockedById ? 'Task no longer exists' : undefined
+          }
           onPress={() => setShowBlockerPicker(true)}
           onClear={blockedById ? () => setBlockedById(null) : undefined}
         />
@@ -1569,7 +1575,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={() => {
                       chainItemSavedRef.current = true;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setTimeout(() => {
                         chainItemSavedRef.current = false;
@@ -1579,7 +1585,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onBlur={() => {
                       if (chainItemSavedRef.current) return;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setAddingChainItem(false);
                     }}
@@ -2096,7 +2102,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           accessibilityLabel="Pin to Today"
           accessibilityState={{ checked: pinned }}
         >
-          <Ionicons name={pinned ? 'pin' : 'pin-outline'} size={18} color={pinned ? colors.orange : colors.textSecondary} />
+          <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Pin to Today</Text>
             <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>

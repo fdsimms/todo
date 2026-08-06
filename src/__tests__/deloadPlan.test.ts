@@ -160,7 +160,7 @@ describe('buildDeloadPlan', () => {
       ['running', { timerStartedAt: new Date().toISOString() }],
       ['urgent', { priority: 4 as const }],
       ['quota', { targetCount: 8 }],
-      ['chain', { chainEnabled: true, chainItems: [{ id: 'c1', title: 'a', notes: '' }], chainIndex: 1 }],
+      ['chain', { chainEnabled: true, chainItems: [{ id: 'c1', title: 'a' }], chainIndex: 1 }],
     ])('blocks a %s task outright', (blocker, overrides) => {
       const task = makeTask({ id: 'a', estimatedMinutes: 30, ...overrides });
       const plan = buildDeloadPlan([task], [task]);

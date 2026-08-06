@@ -22,6 +22,7 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
@@ -30,7 +31,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatTaskDate, formatHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
@@ -69,6 +70,8 @@ interface Props {
   showProject?: boolean;
   showGroup?: boolean;
   showActions?: boolean;
+  /** Narrower than `showActions`: drops just the pin from the expanded panel, for lists where pinning (a Today concept) doesn't apply but the timer and edit actions still do. */
+  showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
   /** Briefly tints the row on mount to draw the eye to a task that was just created. */
@@ -129,6 +132,7 @@ export function TaskItem({
   showProject = false,
   showGroup = false,
   showActions = true,
+  showPin = true,
   indented = false,
   justCreated = false,
   autoComplete = false,
@@ -162,6 +166,7 @@ export function TaskItem({
     setLastAction,
     markTaskSeen,
     skipNextRecurrence,
+    togglePin,
     startTimer,
     stopTimer,
     discardTimer,
@@ -446,19 +451,26 @@ export function TaskItem({
   // a long list stays O(1) per row. The selector still runs on every store
   // change, but returns a primitive, so an unchanged count doesn't re-render.
   const waitingCount = useTaskStore(() => waitingCountFor(task.id));
-  const blockerTitle = useTaskStore(() =>
-    task.blockedById ? resolveBlocker(task.blockedById)?.title : undefined
-  );
+  const blockerTitle = useTaskStore(() => {
+    if (!task.blockedById) return undefined;
+    const blocker = resolveBlocker(task.blockedById);
+    // displayTitleFor, not .title — a chained blocker is named by its active
+    // step everywhere else, and this chip shouldn't be the one surface that
+    // disagrees.
+    return blocker ? displayTitleFor(blocker) : undefined;
+  });
 
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
-  // A multi-step chain drives the collapsed row's title: we show the current
-  // step's title with a compact step-count badge beside it, instead of a
-  // second subtitle line, so the row stays the same height as the others.
+  // A multi-step chain drives the row's title (collapsed and expanded alike,
+  // plus its accessibility label — see displayTitleFor) with a compact
+  // step-count badge beside it, instead of a second subtitle line, so the
+  // row stays the same height as the others.
   const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
   const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
+  const displayTitle = activeChainStepTitle(task) ?? task.title;
 
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
@@ -672,7 +684,7 @@ export function TaskItem({
         hitSlop={{ top: 14, bottom: 14, left: 10, right: 10 }}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : { expanded }}
-        accessibilityLabel={task.title}
+        accessibilityLabel={displayTitle}
         accessibilityHint={
           selectionMode
             ? undefined
@@ -698,13 +710,16 @@ export function TaskItem({
           <View style={styles.titleRow}>
             {isNew && <View style={styles.newDot} />}
             {expanded ? (
-              // Only tappable for edit when already expanded — avoids intercepting expand taps
+              // Only tappable for edit when already expanded — avoids intercepting expand taps.
+              // Editing always edits the task's own title, not the chain step's
+              // (handleTitleTap/saveTitle), even though the displayed text here
+              // is the step's while one is active — matching the collapsed row.
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity}>
-                <Text style={styles.title} numberOfLines={2}>{task.title}</Text>
+                <Text style={styles.title} numberOfLines={2}>{displayTitle}</Text>
               </TouchableOpacity>
             ) : (
               <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
-                {chainStep ? chainStep.title : task.title}
+                {displayTitle}
               </Text>
             )}
             {chainStep && (
@@ -1165,6 +1180,26 @@ export function TaskItem({
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
                     >
                       <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
+                  {showActions && showPin && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        togglePin(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityState={{ selected: task.pinned }}
+                      accessibilityLabel={
+                        task.pinned ? `Unpin ${task.title}` : `Pin ${task.title}`
+                      }
+                    >
+                      <PinIcon
+                        filled={task.pinned}
+                        size={iconSize.sm}
+                        color={task.pinned ? colors.orange : colors.textSecondary}
+                      />
                     </PressableScale>
                   )}
                 </View>

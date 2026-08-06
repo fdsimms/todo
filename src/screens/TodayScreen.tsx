@@ -12,11 +12,14 @@ import {
   AppState,
   InteractionManager,
   type GestureResponderEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
 import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
@@ -66,7 +69,12 @@ import {
   type FabDropZonesHandle,
   type FabIntentChannel,
 } from '../components/FabDropZones';
-import { categoriesByIndex, type DropZone, type FabDropIntent } from '../utils/fabDrop';
+import {
+  categoriesByIndex,
+  type DragScroller,
+  type DropZone,
+  type FabDropIntent,
+} from '../utils/fabDrop';
 import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -218,6 +226,7 @@ function AddTaskFabWithDropLabel({
 } & Omit<React.ComponentProps<typeof AddTaskFab>, 'dragLabel'>) {
   const label = useFabIntentSelector(channel, intent => {
     switch (intent?.kind) {
+      case 'cancel': return 'Cancel';
       case 'joinGroup': return `Add to ${intent.groupTitle.trim() || 'stack'}`;
       case 'pin': return 'New pinned task';
       case 'insert':
@@ -1031,6 +1040,35 @@ export function TodayScreen() {
 
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
+  // The list the drag scrolls when it reaches the top or bottom of the screen.
+  // Today renders two, so which one is live depends on whether anything is
+  // pinned: the reorderable branch hands its own control over, the plain
+  // FlatList gets one built here from its scroll events.
+  const todayScrollControl = useRef<DragScroller | null>(null);
+  const pinnedScrollState = useRef({ offset: 0, contentHeight: 0, viewportHeight: 0 });
+  const pinnedScrollControl = useRef<DragScroller | null>(null);
+  if (pinnedScrollControl.current === null) {
+    pinnedScrollControl.current = {
+      getOffset: () => pinnedScrollState.current.offset,
+      getMaxOffset: () => Math.max(
+        0,
+        pinnedScrollState.current.contentHeight - pinnedScrollState.current.viewportHeight,
+      ),
+      scrollToOffset: y => {
+        // Recorded as commanded — the scroll event confirming it is a frame away.
+        pinnedScrollState.current.offset = y;
+        pinnedScroll.ref.current?.scrollToOffset?.({ offset: y, animated: false });
+      },
+    };
+  }
+  const recordPinnedScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+    pinnedScrollState.current = {
+      offset: contentOffset.y,
+      contentHeight: contentSize.height,
+      viewportHeight: layoutMeasurement.height,
+    };
+  };
   // What the drag is currently aimed at goes through a channel rather than
   // state: it changes as the finger crosses each row, and re-rendering this
   // screen re-runs every row's renderItem. The two things that do change with
@@ -1139,6 +1177,13 @@ export function TodayScreen() {
   };
 
   const openQuickAddForDrop = (intent: FabDropIntent) => {
+    // Dropped back on the button: the drag is the whole of what happened, so
+    // no sheet, and nothing left armed for the next tap (see closeQuickAdd).
+    if (intent.kind === 'cancel') {
+      pendingDropRef.current = null;
+      haptics.tap();
+      return;
+    }
     pendingDropRef.current = intent;
     switch (intent.kind) {
       case 'joinGroup':
@@ -1173,12 +1218,12 @@ export function TodayScreen() {
       setFabDragging(true);
       dropZonesRef.current?.begin();
     },
-    onMove: pageY => dropZonesRef.current?.moveTo(pageY),
-    onEnd: pageY => {
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
       setFabDragging(false);
       // end()/cancel() publish a null intent themselves, which is what clears
       // the label and any lit stack.
-      openQuickAddForDrop(dropZonesRef.current?.end(pageY) ?? { kind: 'plain' });
+      openQuickAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
     },
     onCancel: () => {
       setFabDragging(false);
@@ -1364,7 +1409,7 @@ export function TodayScreen() {
       return (
         <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
           <View style={styles.focusSectionTitleRow}>
-            <Ionicons name="pin" size={13} color={colors.orange} />
+            <PinIcon filled size={13} color={colors.orange} />
             <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
           </View>
           <View style={styles.pinnedSectionActions}>
@@ -1900,7 +1945,11 @@ export function TodayScreen() {
           onTouchEnd={spotlightActive ? handleListTouchEnd : undefined}
         >
         <PaintSelectionProvider {...paintProps}>
-        <FabDropZoneProvider ref={dropZonesRef} onIntentChange={fabIntentChannel.publish}>
+        <FabDropZoneProvider
+          ref={dropZonesRef}
+          onIntentChange={fabIntentChannel.publish}
+          scroller={pinnedTasks.length > 0 ? pinnedScrollControl : todayScrollControl}
+        >
         {viewMode === 'later' && (
           <ReorderableList
             scrollEnabled={!painting}
@@ -2003,6 +2052,11 @@ export function TodayScreen() {
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             {...pinnedScroll.props}
+            // Tracks the offset the add-button drag's autoscroll steps from;
+            // useKeyboardInsetScroll doesn't claim onScroll itself (it reads
+            // the settled events), so this is free to.
+            onScroll={recordPinnedScroll}
+            scrollEventThrottle={16}
             renderItem={({ item }) => renderItem({ item })}
             contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             refreshControl={
@@ -2019,7 +2073,11 @@ export function TodayScreen() {
 
         {viewMode === 'today' && pinnedTasks.length === 0 && (
           <ReorderableList
+            // The user can't scroll during an add-button drag (the button's
+            // responder has the touch); the drag scrolls it instead, through
+            // this control.
             scrollEnabled={!painting && !fabDragging && !draggingStackChild}
+            scrollControlRef={todayScrollControl}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}

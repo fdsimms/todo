@@ -10,6 +10,7 @@ import {
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from '../components/PinIcon';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -142,8 +143,8 @@ export function CategoryDetailScreen() {
             accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllPinned }}
             accessibilityLabel={categoryAllPinned ? `Unpin all tasks in ${category}` : `Pin all tasks in ${category}`}
           >
-            <Ionicons
-              name={categoryAllPinned ? 'pin' : 'pin-outline'}
+            <PinIcon
+              filled={categoryAllPinned}
               size={22}
               color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
             />

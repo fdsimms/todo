@@ -19,6 +19,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { wouldCycle, resolverFor } from '../utils/blocking';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
 interface Props {
@@ -191,13 +192,13 @@ export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props
                     onPress={() => handleSelect(task)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={`Wait on ${task.title}`}
+                    accessibilityLabel={`Wait on ${displayTitleFor(task)}`}
                   >
                     <View style={[styles.rowIcon, { backgroundColor: colors.accent + '22' }]}>
                       <Ionicons name="checkbox-outline" size={16} color={colors.accent} />
                     </View>
                     <View style={styles.rowInfo}>
-                      <Text style={styles.rowName} numberOfLines={1}>{task.title}</Text>
+                      <Text style={styles.rowName} numberOfLines={1}>{displayTitleFor(task)}</Text>
                       {!!task.category && <Text style={styles.rowHint}>{task.category}</Text>}
                     </View>
                     <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />

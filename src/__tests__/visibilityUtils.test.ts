@@ -19,6 +19,8 @@ import {
   isDismissedToday,
   isTaskBlocked,
   isWaitingTask,
+  activeChainStepTitle,
+  displayTitleFor,
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -1081,6 +1083,42 @@ describe('quota tasks', () => {
 
     it('is false for an ordinary completed task', () => {
       expect(isQuotaPartial({ ...baseTask, completed: true })).toBe(false);
+    });
+  });
+
+  describe('activeChainStepTitle / displayTitleFor', () => {
+    const chainItems = [
+      { id: 'c1', title: 'Stretch for five minutes', notes: '' },
+      { id: 'c2', title: 'Shower', notes: '' },
+      { id: 'c3', title: 'Brush teeth', notes: '' },
+    ];
+
+    it('returns null when the task has no chain', () => {
+      expect(activeChainStepTitle(baseTask)).toBeNull();
+      expect(displayTitleFor(baseTask)).toBe(baseTask.title);
+    });
+
+    it('returns null for a single-item chain (indistinguishable from a plain task)', () => {
+      const task = { ...baseTask, chainEnabled: true, chainItems: [chainItems[0]], chainIndex: 0 };
+      expect(activeChainStepTitle(task)).toBeNull();
+      expect(displayTitleFor(task)).toBe(task.title);
+    });
+
+    it('returns the active step title for a multi-step chain', () => {
+      const task = { ...baseTask, chainEnabled: true, chainItems, chainIndex: 1 };
+      expect(activeChainStepTitle(task)).toBe('Shower');
+      expect(displayTitleFor(task)).toBe('Shower');
+    });
+
+    it('wraps the index via modulo, matching TaskItem\'s own indexing', () => {
+      const task = { ...baseTask, chainEnabled: true, chainItems, chainIndex: 4 };
+      expect(activeChainStepTitle(task)).toBe('Shower');
+    });
+
+    it('falls back to the task title once chainEnabled is off, even with items present', () => {
+      const task = { ...baseTask, chainEnabled: false, chainItems, chainIndex: 1 };
+      expect(activeChainStepTitle(task)).toBeNull();
+      expect(displayTitleFor(task)).toBe(task.title);
     });
   });
 });

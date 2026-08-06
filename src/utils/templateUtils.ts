@@ -407,7 +407,7 @@ export function extractPlaceholders(items: TemplateItem[]): string[] {
     add(item.title);
     add(item.notes);
     item.subtasks.forEach(s => add(s.title));
-    item.chainItems.forEach(c => { add(c.title); add(c.notes); });
+    item.chainItems.forEach(c => add(c.title));
   }
   return found;
 }
@@ -419,7 +419,7 @@ export function declaresRunPlaceholder(items: TemplateItem[]): boolean {
     hasRun(item.title) ||
     hasRun(item.notes) ||
     item.subtasks.some(s => hasRun(s.title)) ||
-    item.chainItems.some(c => hasRun(c.title) || hasRun(c.notes))
+    item.chainItems.some(c => hasRun(c.title))
   );
 }
 
@@ -460,7 +460,6 @@ export function substituteDraftPlaceholders(
     chainItems: draft.chainItems?.map(c => ({
       ...c,
       title: substitutePlaceholders(c.title, values),
-      notes: substitutePlaceholders(c.notes, values),
     })),
   };
 }

@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, iconSize, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
 // Where a task lives while it's waiting on another one (see Task.blockedById).
@@ -74,10 +75,10 @@ export function WaitingScreen() {
             disabled={!section.blocker}
             onPress={() => section.blocker && openEditor(section.blocker)}
             accessibilityRole="button"
-            accessibilityLabel={`Open ${section.blocker?.title ?? 'blocking task'}`}
+            accessibilityLabel={`Open ${section.blocker ? displayTitleFor(section.blocker) : 'blocking task'}`}
           >
             <Text style={styles.sectionTitle} numberOfLines={1}>
-              After {section.blocker?.title ?? 'another task'}
+              After {section.blocker ? displayTitleFor(section.blocker) : 'another task'}
             </Text>
           </TouchableOpacity>
         )}
@@ -89,7 +90,7 @@ export function WaitingScreen() {
           >
             <Ionicons name="hourglass-outline" size={18} color={colors.textTertiary} />
             <View style={styles.rowContent}>
-              <Text style={styles.taskTitle} numberOfLines={2}>{item.title}</Text>
+              <Text style={styles.taskTitle} numberOfLines={2}>{displayTitleFor(item)}</Text>
             </View>
             <TouchableOpacity
               style={styles.releaseButton}
@@ -100,7 +101,7 @@ export function WaitingScreen() {
               }}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               accessibilityRole="button"
-              accessibilityLabel={`Stop ${item.title} waiting`}
+              accessibilityLabel={`Stop ${displayTitleFor(item)} waiting`}
             >
               <Ionicons name="play-outline" size={iconSize.sm} color={colors.accent} />
             </TouchableOpacity>

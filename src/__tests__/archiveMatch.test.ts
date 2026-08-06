@@ -1,6 +1,14 @@
 import { findArchivedMatch } from '../utils/archiveMatch';
 import type { Task } from '../types';
 
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
+}));
+
+jest.mock('../store/useCategoryStore', () => ({
+  useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
+}));
+
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: '1',
   title: 'Duolingo',

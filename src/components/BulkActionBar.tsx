@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from './PinIcon';
 import { WhenPicker } from './WhenPicker';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
@@ -190,7 +191,7 @@ export function BulkActionBar({
                   style={styles.actionBtn}
                   onPress={() => { haptics.tap(); onTogglePin(); }}
                 >
-                  <Ionicons name={allPinned ? 'pin' : 'pin-outline'} size={24} color={colors.orange} />
+                  <PinIcon filled={allPinned} size={24} color={colors.orange} />
                   <Text style={[styles.actionLabel, { color: colors.orange }]}>
                     {allPinned ? 'Unpin' : 'Pin'}
                   </Text>
