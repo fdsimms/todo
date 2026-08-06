@@ -227,14 +227,14 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   button were hard to tell apart.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
-  (task row's expanded actions, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header).
-  The **one** place the app leaves Ionicons, deliberately: Ionicons' `pin` is a *map* pin — a thin
-  needle with a round head — which reads as a location rather than "hold this at the top", and at
-  `iconSize.sm` it's visibly lighter than the icons beside it. `MaterialCommunityIcons` has a real
-  thumbtack with a matching outline variant, so the filled/outline pair carries the pinned state on
-  its own. Everything else stays on Ionicons. The second family is free in the bundle —
-  `@expo/vector-icons` exports every family's `.ttf` whether imported or not, so `expo export`
-  yields the same 45 assets either way — it just loads that font at runtime. Note the app's *other*
+  (task row's expanded actions, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
+  and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
+  is a *map* pin — thin needle, round head — which reads as a location rather than "hold this at
+  the top" and goes wispy at `iconSize.sm`. So it's drawn, as two `react-native-svg` paths on the
+  same 24-unit grid the Ionicons use, and takes `size` from `iconSize` like they do. Keep the
+  stroke at 1.8 grid units — heavier closes up the outline's counter at the 13pt the Pinned Tasks
+  header uses. `react-native-svg` is in the tree for this and is autolinked (no config plugin, but
+  it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
   `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
   purpose and stays Ionicons.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
