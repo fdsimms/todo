@@ -169,6 +169,13 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  // Opt-in per task: surface the streak as a chip on the collapsed row rather
+  // than only in the expanded panel. Off by default — a flame on every
+  // recurring row is noise, but a habit you're deliberately tracking is worth
+  // seeing the count for without tapping. Only meaningful when the task
+  // recurs, which is the only place the editor offers the toggle.
+  showStreak: boolean;
+
   // Series — one commitment that falls on several hand-picked dates (e.g.
   // walking the neighbour's dog on the 10th and the 15th). Every date is its
   // own real row sharing this id, deliberately rather than one row holding a

@@ -151,6 +151,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  showStreak: false,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -274,6 +275,7 @@ describe('addTask', () => {
     expect(task.recurrenceType).toBe('none');
     expect(task.pinned).toBe(false);
     expect(task.parentId).toBeNull();
+    expect(task.showStreak).toBe(false);
   });
 
   it('applies draft overrides', () => {
@@ -490,6 +492,15 @@ describe('duplicateTask', () => {
     expect(copy!.dueDate).toBe('2025-01-05T00:00:00.000Z');
     expect(copy!.timeSegments).toEqual(['morning']);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  it('keeps showStreak on the copy even though the streak itself resets', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', recurrenceType: 'daily', showStreak: true, streakCount: 5 })],
+    });
+    const copy = useTaskStore.getState().duplicateTask('t1')!;
+    expect(copy.showStreak).toBe(true);
+    expect(copy.streakCount).toBe(0);
   });
 
   it('resets completion, streak, timer, and occurrence bookkeeping', () => {
@@ -3023,6 +3034,15 @@ describe('timers', () => {
     expect(next.actualMinutes).toBe(10);
     expect(next.estimatedMinutes).toBe(10);
     expect(next.timerStartedAt).toBeNull();
+  });
+
+  it('carries showStreak onto the next occurrence', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', recurrenceType: 'daily', showStreak: true })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next.showStreak).toBe(true);
   });
 });
 
