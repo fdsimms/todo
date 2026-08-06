@@ -14,6 +14,12 @@ interface Props {
   hasChildren: boolean;
   /** Shown in place of the children when `hasChildren` is false. */
   emptyLabel?: string;
+  /**
+   * Set while a child row is being dragged, so the floating card that stands
+   * in for it can be pulled out of the stack without the tray slicing it in
+   * half at its edge. See AnimatedCollapsible's `clip`.
+   */
+  dragging?: boolean;
   children: React.ReactNode;
 }
 
@@ -29,12 +35,12 @@ interface Props {
  * pointing at the relationship is redundant, and it was drawn against the side
  * of a card the header no longer has.
  */
-export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: Props) {
+export function TaskGroupBody({ expanded, hasChildren, emptyLabel, dragging = false, children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   return (
-    <AnimatedCollapsible expanded={expanded}>
+    <AnimatedCollapsible expanded={expanded} clip={!dragging}>
       <View style={styles.content}>
         {hasChildren
           ? children

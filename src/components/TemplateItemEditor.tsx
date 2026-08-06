@@ -588,7 +588,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     </View>
                     <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
                     <TouchableOpacity
-                      onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                      onLongPress={drag}
                       delayLongPress={150}
                       hitSlop={8}
                       style={styles.dragHandle}
@@ -673,7 +673,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
               <View style={styles.chainItemRow}>
                 <Text style={styles.chainItemTitle}>{sub.title}</Text>
                 <TouchableOpacity
-                  onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                  onLongPress={drag}
                   delayLongPress={150}
                   hitSlop={8}
                   style={styles.dragHandle}

@@ -1019,7 +1019,7 @@ export const TaskItem = React.memo(function TaskItem({
                         </TouchableOpacity>
                       )}
                       <TouchableOpacity
-                        onLongPress={(e) => drag(e.nativeEvent.pageY)}
+                        onLongPress={drag}
                         delayLongPress={interaction.delayLongPress}
                         hitSlop={8}
                         style={styles.subtaskDragHandle}

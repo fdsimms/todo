@@ -1567,23 +1567,24 @@ export function TodayScreen() {
                   ? `All ${allChildren.filter(isRelevantToGroupToday).length} done for today`
                   : undefined
               }
+              // Lets the dragged child's floating card cross the tray's edge
+              // on its way out of the stack instead of being clipped there.
+              dragging={draggingStackChild}
             >
               <SortableList
                 data={item.children}
                 onReorder={reordered => reorderGroupChildren(item.group.id, reordered.map(t => t.id))}
                 onDragOut={task => removeFromGroup(task.id)}
                 onDragStateChange={setDraggingStackChild}
+                // The same drop slot the main list leaves behind — a stack's
+                // rows are the main list's rows, so the gap should read the same.
+                placeholderStyle={styles.stackDropSlot}
                 renderItem={(child, _displayIndex, childDrag, childIsActive) => (
                   <React.Fragment key={child.id}>
                     {renderTaskRow(child, {
                       indented: true,
                       isActive: childIsActive,
-                      // Reads the long-press's pageY to seed SortableList's own
-                      // delta-based drag tracking (it has no row-layout map to
-                      // fall back on the way the outer ReorderableList does).
-                      drag: selectionMode
-                        ? undefined
-                        : (e?: GestureResponderEvent) => childDrag(e?.nativeEvent.pageY ?? 0),
+                      drag: selectionMode ? undefined : childDrag,
                     })}
                   </React.Fragment>
                 )}
@@ -2686,6 +2687,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // card's footprint (margin + radius).
   dropSlot: {
     marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
+  },
+  // Same slot for a drag inside a stack, minus the horizontal margin: an
+  // `indented` row drops its own margins so the tray's padding is its only
+  // inset (see TaskGroupTray), and a slot 16pt narrower than the row it
+  // stands in for reads as a different, smaller thing.
+  stackDropSlot: {
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
