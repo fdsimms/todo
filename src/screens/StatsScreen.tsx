@@ -23,6 +23,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
 import { formatDuration } from '../utils/effort';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 const BAR_HEIGHT = 96;
 const HABIT_DAYS = 30;
@@ -85,10 +86,14 @@ export function StatsScreen() {
     [done],
   );
 
+  // Was hardcoded to Monday while the calendar grid and the Later labels ran
+  // Sunday-first, so a Sunday completion counted in a different week depending
+  // on which screen you asked.
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
   const weekCount = useMemo(() => {
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    const weekStart = startOfWeek(now, { weekStartsOn });
     return done.filter(t => new Date(t.completedAt!) >= weekStart).length;
-  }, [done, now]);
+  }, [done, now, weekStartsOn]);
 
   const chartBars = useMemo(() =>
     Array.from({ length: 7 }, (_, i) => {

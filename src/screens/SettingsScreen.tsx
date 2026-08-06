@@ -16,8 +16,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import Constants from 'expo-constants';
 import { format } from 'date-fns/format';
-import { dateToHHMM, formatHHMM, hhmmToDate } from '../utils/clockTime';
-import { useSettingsStore } from '../store/useSettingsStore';
+import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
+import { formatHHMM } from '../utils/dateUtils';
+import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -34,6 +35,11 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'dark', label: 'Dark', icon: 'moon' },
   { mode: 'darkPurple', label: 'Purple', icon: 'color-palette' },
   { mode: 'system', label: 'System', icon: 'phone-portrait' },
+];
+
+const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
 ];
 
 type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | null;
@@ -70,6 +76,9 @@ export function SettingsScreen() {
     activeHoursEnd, setActiveHoursEnd,
     themeMode, setThemeMode,
     appFont, setAppFont,
+    use24HourTime, setUse24HourTime,
+    weekStartsOn, setWeekStartsOn,
+    hapticsEnabled, setHapticsEnabled,
     anthropicApiKey, setAnthropicApiKey,
     vacationMode, setVacationMode,
     vacationStart,
@@ -140,7 +149,7 @@ export function SettingsScreen() {
   const confirmResetToDefaults = () => {
     Alert.alert(
       'Reset Settings to Defaults',
-      'This resets appearance, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
+      'This resets appearance, formatting, haptics, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
@@ -283,6 +292,38 @@ export function SettingsScreen() {
             </Text>
           </View>
 
+          {/* Feedback */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Feedback</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setHapticsEnabled(!hapticsEnabled)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: hapticsEnabled }}
+                accessibilityLabel="Haptic feedback"
+              >
+                <Ionicons
+                  name="phone-portrait-outline"
+                  size={18}
+                  color={hapticsEnabled ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Haptic feedback</Text>
+                  <Text style={styles.rowHint}>
+                    {hapticsEnabled
+                      ? 'On — the phone taps back on completions, drags and swipes'
+                      : 'Off — nothing in the app vibrates'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, hapticsEnabled && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, hapticsEnabled && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Day segments */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>Day</Text>
@@ -331,6 +372,68 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Default day start is midnight (12:00 AM). Set it to 2:00 AM or later if you're often up past midnight and don't want your "today" tasks to vanish before you're done. Tasks with a time category only appear once their part of the day begins.
+            </Text>
+          </View>
+
+          {/* Formatting */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Formatting</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={() => setUse24HourTime(!use24HourTime)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: use24HourTime }}
+                accessibilityLabel="24-hour time"
+              >
+                <Ionicons
+                  name="time-outline"
+                  size={18}
+                  color={use24HourTime ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>24-hour time</Text>
+                  <Text style={styles.rowHint}>
+                    {use24HourTime ? 'Times read as 17:30' : 'Times read as 5:30 PM'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, use24HourTime && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, use24HourTime && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+              <View style={styles.sep} />
+              <View style={[styles.row, { paddingBottom: spacing.xs }]}>
+                <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Week starts on</Text>
+                  <Text style={styles.rowHint}>Used by the calendars, Later and Stats</Text>
+                </View>
+              </View>
+              <View style={[styles.themeRow, { paddingTop: 0 }]}>
+                {WEEK_START_OPTIONS.map(opt => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.themeBtn, weekStartsOn === opt.value && styles.themeBtnActive]}
+                    onPress={() => setWeekStartsOn(opt.value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: weekStartsOn === opt.value }}
+                    accessibilityLabel={`Week starts on ${opt.label}`}
+                  >
+                    <Text
+                      style={[
+                        styles.themeBtnText,
+                        weekStartsOn === opt.value && styles.themeBtnTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Week start decides which day the month grids begin on and what "this week" counts in Stats — those disagreed with each other until now.
             </Text>
           </View>
 

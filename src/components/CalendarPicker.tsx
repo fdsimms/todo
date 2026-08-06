@@ -19,7 +19,8 @@ import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
-import { buildCalendarGrid } from '../utils/calendarGrid';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -45,7 +46,6 @@ interface Props {
 /** Calendar identity of a date — the day the user tapped, ignoring its time. */
 const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
-const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2 - spacing.xs * 6) / 7);
 
@@ -84,7 +84,12 @@ export function CalendarPicker({
     setNlText('');
   }, [visible]);
 
-  const calendarDays = useMemo(() => buildCalendarGrid(displayMonth), [displayMonth]);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const calendarDays = useMemo(
+    () => buildCalendarGrid(displayMonth, weekStartsOn),
+    [displayMonth, weekStartsOn]
+  );
+  const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
   const onNlChange = (text: string) => {
     setNlText(text);
@@ -191,7 +196,7 @@ export function CalendarPicker({
 
         {/* Day-of-week headers */}
         <View style={styles.dayHeaders}>
-          {DAY_HEADERS.map((d, i) => (
+          {dayHeaders.map((d, i) => (
             <View key={i} style={styles.dayHeaderCell}>
               <Text style={styles.dayHeaderText}>{d}</Text>
             </View>

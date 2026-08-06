@@ -1,4 +1,4 @@
-import { hhmmToDate, formatHHMM, dateToHHMM } from '../utils/clockTime';
+import { hhmmToDate, formatHHMM, dateToHHMM, clockTimeToken } from '../utils/clockTime';
 
 const NOW = new Date(2025, 5, 10, 14, 30, 0); // Tue Jun 10 2025, 2:30 PM
 
@@ -55,6 +55,35 @@ describe('formatHHMM', () => {
   it('formats midnight and noon', () => {
     expect(formatHHMM('00:00')).toBe('12:00 AM');
     expect(formatHHMM('12:00')).toBe('12:00 PM');
+  });
+
+  it('formats 24-hour when asked, zero-padded', () => {
+    expect(formatHHMM('08:00', true)).toBe('08:00');
+    expect(formatHHMM('13:00', true)).toBe('13:00');
+    expect(formatHHMM('23:59', true)).toBe('23:59');
+  });
+
+  // The two times 12-hour notation handles specially are the two a 24-hour
+  // clock renders most plainly, so they're the ones worth pinning.
+  it('formats midnight as 00:00 and noon as 12:00 in 24-hour', () => {
+    expect(formatHHMM('00:00', true)).toBe('00:00');
+    expect(formatHHMM('12:00', true)).toBe('12:00');
+  });
+
+  it('stays 12-hour when the preference is not passed', () => {
+    expect(formatHHMM('13:00')).toBe('1:00 PM');
+    expect(formatHHMM('13:00', false)).toBe('1:00 PM');
+  });
+});
+
+describe('clockTimeToken', () => {
+  it('picks the format string matching the preference', () => {
+    expect(clockTimeToken(false)).toBe('h:mm a');
+    expect(clockTimeToken(true)).toBe('HH:mm');
+  });
+
+  it('defaults to 12-hour', () => {
+    expect(clockTimeToken()).toBe('h:mm a');
   });
 });
 

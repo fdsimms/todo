@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import { buildCalendarGrid } from '../utils/calendarGrid';
+import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 
@@ -88,5 +88,74 @@ describe('buildCalendarGrid', () => {
     const morning = buildCalendarGrid(new Date(2025, 7, 6, 0, 0, 0));
     const evening = buildCalendarGrid(new Date(2025, 7, 6, 23, 59, 59));
     expect(morning.map(iso)).toEqual(evening.map(iso));
+  });
+
+  describe('weekStartsOn', () => {
+    it('starts every row on Monday when asked', () => {
+      const days = buildCalendarGrid(new Date(2025, 7, 6), 1);
+      expect(days).toHaveLength(42);
+      for (let i = 0; i < 42; i += 7) {
+        expect(days[i].getDay()).toBe(1);
+      }
+    });
+
+    it('still covers the whole month it was asked for', () => {
+      // August 2025 starts on a Friday, so a Monday grid has to reach further
+      // back than a Sunday one to pick the 1st up.
+      const days = buildCalendarGrid(new Date(2025, 7, 6), 1).map(iso);
+      expect(days).toContain('2025-08-01');
+      expect(days).toContain('2025-08-31');
+    });
+
+    it('keeps 42 consecutive unique days for every month of a year', () => {
+      for (let m = 0; m < 12; m++) {
+        const days = buildCalendarGrid(new Date(2025, m, 1), 1);
+        expect(days).toHaveLength(42);
+        expect(new Set(days.map(iso)).size).toBe(42);
+      }
+    });
+
+    it('shifts the grid by exactly one day versus a Sunday start', () => {
+      // The Monday grid for a month beginning mid-week starts a day later than
+      // the Sunday one — not a week earlier, which is the off-by-seven this
+      // guards against.
+      const sunday = buildCalendarGrid(new Date(2025, 7, 6), 0);
+      const monday = buildCalendarGrid(new Date(2025, 7, 6), 1);
+      expect(iso(sunday[0])).toBe('2025-07-27');
+      expect(iso(monday[0])).toBe('2025-07-28');
+    });
+
+    it('defaults to Sunday', () => {
+      const days = buildCalendarGrid(new Date(2025, 7, 6));
+      expect(days.map(iso)).toEqual(buildCalendarGrid(new Date(2025, 7, 6), 0).map(iso));
+    });
+  });
+});
+
+describe('weekdayHeaders', () => {
+  it('reads Sunday-first by default', () => {
+    expect(weekdayHeaders()).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+    expect(weekdayHeaders(0)).toEqual(['S', 'M', 'T', 'W', 'T', 'F', 'S']);
+  });
+
+  it('rotates to Monday-first', () => {
+    expect(weekdayHeaders(1)).toEqual(['M', 'T', 'W', 'T', 'F', 'S', 'S']);
+  });
+
+  it('always returns seven labels', () => {
+    expect(weekdayHeaders(0)).toHaveLength(7);
+    expect(weekdayHeaders(1)).toHaveLength(7);
+  });
+
+  // The headers label the grid's columns, so if the two disagree every date in
+  // the calendar is displayed under the wrong day name — silently.
+  it('labels each column of the grid it sits above', () => {
+    for (const weekStart of [0, 1] as const) {
+      const headers = weekdayHeaders(weekStart);
+      const days = buildCalendarGrid(new Date(2025, 7, 6), weekStart);
+      for (let col = 0; col < 7; col++) {
+        expect(headers[col]).toBe(format(days[col], 'EEEEE'));
+      }
+    }
   });
 });

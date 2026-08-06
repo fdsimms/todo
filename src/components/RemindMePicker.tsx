@@ -20,7 +20,8 @@ import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { buildCalendarGrid } from '../utils/calendarGrid';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 
 interface Props {
@@ -31,7 +32,6 @@ interface Props {
   onCancel: () => void;
 }
 
-const DAY_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
@@ -66,7 +66,12 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
     setNlText('');
   }, [visible]);
 
-  const calendarDays = useMemo(() => buildCalendarGrid(displayMonth), [displayMonth]);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  const calendarDays = useMemo(
+    () => buildCalendarGrid(displayMonth, weekStartsOn),
+    [displayMonth, weekStartsOn]
+  );
+  const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
   const onNlChange = (text: string) => {
     setNlText(text);
@@ -162,7 +167,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
               </View>
 
               <View style={styles.dayHeaders}>
-                {DAY_HEADERS.map((d, i) => (
+                {dayHeaders.map((d, i) => (
                   <View key={i} style={styles.dayHeaderCell}>
                     <Text style={styles.dayHeaderText}>{d}</Text>
                   </View>

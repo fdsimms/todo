@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
+import type { Task, TaskGroup, TaskTemplate, Category } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
@@ -729,10 +729,14 @@ export function TodayScreen() {
     });
   };
 
-  // Sort & filter state
-  const [sort, setSort] = useState<SortOption>('default');
-  const [filterPriorities, setFilterPriorities] = useState<Priority[]>([]);
-  const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
+  // Sort & filter state. Persisted, like hideCategories below — the three are
+  // set from the same sheet, and only one of them used to survive a launch.
+  const sort = useSettingsStore(s => s.sortOption);
+  const setSort = useSettingsStore(s => s.setSortOption);
+  const filterPriorities = useSettingsStore(useShallow(s => s.filterPriorities));
+  const setFilterPriorities = useSettingsStore(s => s.setFilterPriorities);
+  const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
+  const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const projects = useProjectStore(useShallow(s => s.projects));
