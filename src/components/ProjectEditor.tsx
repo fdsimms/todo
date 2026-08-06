@@ -20,11 +20,21 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
+import { CountStepper } from './CountStepper';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import {
+  CADENCE_UNITS,
+  CADENCE_UNIT_MAX,
+  cadenceUnitLabel,
+  describeCadence,
+  fromCadenceParts,
+  toCadenceParts,
+  withCadenceUnit,
+} from '../utils/nudgeCadence';
 
 interface Props {
   visible: boolean;
@@ -33,15 +43,6 @@ interface Props {
   isNew?: boolean;
   onClose: () => void;
 }
-
-/** Cadence presets. 0 is a real choice — a deliberately parked project. */
-const CADENCE_OPTIONS = [
-  { days: 0, label: 'Never' },
-  { days: 3, label: '3 days' },
-  { days: 7, label: '1 week' },
-  { days: 14, label: '2 weeks' },
-  { days: 30, label: '1 month' },
-] as const;
 
 export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const colors = useColors();
@@ -83,7 +84,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   }, [project]);
 
   const closeCategory = () => { animateLayout(); setCategoryOpen(false); };
-  const closeCadence = () => { animateLayout(); setCadenceOpen(false); };
+
+  // The cadence is stored in days; the picker shows it as a count and a unit.
+  const cadence = toCadenceParts(nudgeCadenceDays);
 
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
@@ -255,23 +258,44 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
         <CollapsibleField
           label="Nudge me"
-          summary={CADENCE_OPTIONS.find(o => o.days === nudgeCadenceDays)?.label ?? `${nudgeCadenceDays} days`}
-          hint="How long this project can sit with nothing scheduled before it offers you the next thing."
+          summary={describeCadence(nudgeCadenceDays)}
+          hint="How long this project can sit with nothing scheduled before it offers you the next thing. Take it to zero for Never."
           expanded={cadenceOpen}
           onToggle={() => setCadenceOpen(v => !v)}
         >
-          <View style={styles.pillRow}>
-            {CADENCE_OPTIONS.map(option => (
-              <TouchableOpacity
-                key={option.days}
-                style={[styles.pill, nudgeCadenceDays === option.days && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setNudgeCadenceDays(option.days); closeCadence(); }}
-              >
-                <Text style={[styles.pillText, nudgeCadenceDays === option.days && styles.pillTextActive]}>
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={cadence.count}
+              onChange={next => setNudgeCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
+              min={1}
+              max={CADENCE_UNIT_MAX[cadence.unit]}
+              allowNull
+              emptyLabel="Never"
+              label="Nudge cadence"
+              describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
+            />
+            <View style={styles.pillRow}>
+              {CADENCE_UNITS.map(unit => {
+                // Never has no unit — leaving all three unlit is what says so.
+                const active = cadence.count !== null && cadence.unit === unit;
+                return (
+                  <TouchableOpacity
+                    key={unit}
+                    style={[styles.pill, active && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: active }}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                      {cadenceUnitLabel(unit)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
         </CollapsibleField>
       </View>
@@ -370,6 +394,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     overflow: 'hidden',
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  // The unit pills stay one group: at a narrow width the whole set drops to a
+  // second line rather than splitting "Months" off on its own.
+  cadenceRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, marginTop: spacing.md,
+  },
   pill: {
     paddingHorizontal: 14, paddingVertical: 8,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,

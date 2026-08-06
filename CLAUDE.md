@@ -228,12 +228,15 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   `rowValue` / `anchorValue` in three sizes and two weights, which is most of why a value and a
   button were hard to tell apart.
 - `CountStepper` (`src/components/CountStepper.tsx`) — the `− value +` control for a small integer
-  (Daily target, in both the editor and quick add). Reach for it instead of a row of preset chips
+  (Daily target, in both the editor and quick add; a project's nudge cadence). Reach for it instead of a row of preset chips
   whenever the value is an open-ended number: chips have to pick a granularity *and* a ceiling for
   everyone, and Daily target's ([2..6, 8, 10, 12]) made 7 unsayable and 20 unreachable. `allowNull`
   lets − at the floor clear the value, which is how the editor offers "not a quota" without the
   row's × being the only way out. Holding a key repeats after a pause; the arithmetic and the ramp
-  are in `src/utils/stepper.ts` (tested), the press handling in the component.
+  are in `src/utils/stepper.ts` (tested), the press handling in the component. When the number needs
+  a unit, pair it with a row of unit pills rather than multiplying the presets out — the nudge
+  cadence stores days and converts in `src/utils/nudgeCadence.ts`, so switching Weeks→Months keeps
+  the count and only the stored day total changes.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row's expanded actions, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
