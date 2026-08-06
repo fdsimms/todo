@@ -292,11 +292,15 @@ function VacationHiddenSection({
   );
 }
 
-// Collapsible reveal for tasks deferred to later today (a time segment or
-// window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
-// deemphasized by default, expands in place to show the tasks, sub-grouped by
-// time segment (Morning/Afternoon/Evening) the same way the Later screen
-// sub-groups by segment within a day.
+// Collapsible reveal for tasks that aren't due yet today — a time segment or
+// window that hasn't opened, or a daily target you're keeping up with (which
+// is also how a unit gets logged at a moment nothing asked for it: the rows
+// here keep their meters, and one tap logs without sending the row anywhere).
+// Mirrors ExpiredSection below: collapsed and deemphasized by default, expands
+// in place to show the tasks, sub-grouped by time segment
+// (Morning/Afternoon/Evening) the same way the Later screen sub-groups by
+// segment within a day. A target has no segment, so it sits in the headerless
+// bucket at the end.
 function LaterTodaySection({
   sections,
   expanded,

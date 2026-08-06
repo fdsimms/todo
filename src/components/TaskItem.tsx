@@ -31,7 +31,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -54,6 +54,12 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 // target. Slower than a logged unit (duration.fast) — this rise is the payoff,
 // and the pop that follows it waits this out.
 const QUOTA_TOPPING_MS = animation.duration.normal;
+// How long a daily-target row stays on Today after a logged unit put it back on
+// pace. The point is the burst: four glasses of water drunk at once are four
+// taps in one place, rather than one tap here and three more from Later once
+// the row has gone. Every further tap pushes this out again, so the window is
+// the gap between taps, not a budget for the whole burst.
+const QUOTA_LINGER_MS = 4000;
 
 // The daily-target meter's level as a 0–1 fraction of the target.
 const quotaFraction = (task: Task) =>
@@ -194,6 +200,8 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    holdQuotaOnToday,
+    releaseQuotaHold,
     updateTask,
     setLastAction,
     markTaskSeen,
@@ -237,9 +245,14 @@ export const TaskItem = React.memo(function TaskItem({
   // The other way a daily target leaves Today: the logged unit didn't meet the
   // target, it just put the task back on pace, so the row is about to stop
   // being visible until the next unit falls due. Same send-off, minus the
-  // green — nothing was finished.
+  // green — nothing was finished. It plays when the tapping stops rather than
+  // on the tap itself; `quotaSettled` is the window in between, where the row
+  // is on borrowed time (it says when it's back) but still logs a tap.
   const [pacingOut, setPacingOut] = useState(false);
   const pacingOutRef = useRef(false);
+  const [quotaSettled, setQuotaSettled] = useState(false);
+  const quotaHeldRef = useRef(false);
+  const quotaSendOffRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
@@ -532,17 +545,19 @@ export const TaskItem = React.memo(function TaskItem({
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
   const isQuota = isQuotaTask(task) && !task.completed;
-  // Both send-offs hold the store back until the row is gone, so the count is
-  // read forward for the length of the animation — otherwise the chip still
-  // says 2/8 while the meter shows the third unit going in.
-  const quotaLogged = quotaCompleting
-    ? task.targetCount!
-    : task.progressCount + (pacingOut ? 1 : 0);
+  // The completion send-off holds the store back until the row is gone, so the
+  // count is read forward for the length of the animation — otherwise the chip
+  // still says 7/8 while the meter runs up to the brim. A logged unit needs no
+  // such reading: it lands in the store on the tap.
+  const quotaLogged = quotaCompleting ? task.targetCount! : task.progressCount;
   const quotaProgress = isQuota ? `${quotaLogged}/${task.targetCount}` : '';
-  // When it comes back. Shown for the moment the row is leaving, so a target
-  // that goes quiet at 2/8 reads as scheduled rather than as swallowed.
-  const quotaReturnAt = pacingOut
-    ? formatHHMM(dateToHHMM(quotaNextDueAt({ ...task, progressCount: task.progressCount + 1 })))
+  // When the next unit falls due. Shown for as long as the row is on borrowed
+  // time, so a target that goes quiet at 2/8 reads as scheduled rather than as
+  // swallowed — and so the window in which another tap still lands is a visible
+  // thing rather than a hidden one. Each tap moves it later, being one more
+  // logged.
+  const quotaReturnAt = quotaSettled
+    ? formatHHMM(dateToHHMM(quotaNextDueAt(task)))
     : '';
   // Selection mode keeps the plain circle so the paint-select gutter behaves
   // exactly as it does for every other row. A completion that came from the
@@ -599,6 +614,14 @@ export const TaskItem = React.memo(function TaskItem({
     // appearing at the last moment. Any completion of a row that's currently
     // showing a meter takes this path, the widget's included.
     const viaMeter = isQuota && !selectionMode;
+    // The unit that meets the target can land inside a linger window (log the
+    // seventh, then the eighth). The completion owns the row from here, so the
+    // send-off queued behind that seventh unit must not fire over it — the hold
+    // itself is given back at the end, once completeTask has taken over.
+    if (quotaSendOffRef.current) {
+      clearTimeout(quotaSendOffRef.current);
+      quotaSendOffRef.current = null;
+    }
     completingRef.current = true;
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
@@ -652,6 +675,7 @@ export const TaskItem = React.memo(function TaskItem({
       // in once the burst settles (see the collapseSignal effect above).
       setAwaitingCollapse(true);
       completeTask(task.id);
+      endQuotaHold();
     });
   };
 
@@ -688,34 +712,69 @@ export const TaskItem = React.memo(function TaskItem({
     if (isNew) markTaskSeen(task.id);
     await haptics.impactLight();
     circleScale.setValue(1);
-    const pop = Animated.sequence([
+    Animated.sequence([
       Animated.spring(circleScale, { toValue: 1.25, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-    ]);
+    ]).start();
     // Most units leave the row where it is (it was already behind pace, and one
-    // unit didn't catch it up), and those keep the plain pop — the effect above
+    // unit didn't catch it up), and those are just the pop — the effect above
     // slides the fill as the count lands.
-    if (!hidesWhenOnPace || !quotaLeavesTodayAfterLog(task)) {
-      pop.start();
-      logQuotaUnit(task.id);
+    //
+    // This one puts the task back on pace, so Today is done with it. Letting it
+    // go on this tap is what capped a burst at one unit: four glasses drunk at
+    // once meant logging one here and the other three from Later, because the
+    // row was gone before the second tap. So the store is asked to keep it
+    // (holdQuotaOnToday), the chip says when it's due back, and the send-off
+    // waits for the tapping to stop — every further tap pushes it out again.
+    if (hidesWhenOnPace && (quotaHeldRef.current || quotaLeavesTodayAfterLog(task))) {
+      if (!quotaHeldRef.current) {
+        quotaHeldRef.current = true;
+        setQuotaSettled(true);
+        // Before the log, so the row is pinned by the time the pace gate closes
+        // on it and it never drops out of visibleTasks between the two.
+        holdQuotaOnToday(task.id);
+      }
+      scheduleQuotaSendOff();
+    }
+    logQuotaUnit(task.id);
+  };
+
+  // Pushed out by every tap; when it finally lapses the row plays the beats a
+  // completion gets — hold, fade, collapse — minus the green, because nothing
+  // was finished.
+  const scheduleQuotaSendOff = () => {
+    if (quotaSendOffRef.current) clearTimeout(quotaSendOffRef.current);
+    quotaSendOffRef.current = setTimeout(() => runQuotaSendOff(), QUOTA_LINGER_MS);
+  };
+
+  // Giving the hold back is what actually takes the row off Today, so nothing
+  // else may call it while the send-off is still playing.
+  const endQuotaHold = () => {
+    if (quotaSendOffRef.current) {
+      clearTimeout(quotaSendOffRef.current);
+      quotaSendOffRef.current = null;
+    }
+    if (!quotaHeldRef.current) return;
+    quotaHeldRef.current = false;
+    setQuotaSettled(false);
+    releaseQuotaHold(task.id);
+  };
+
+  const runQuotaSendOff = () => {
+    quotaSendOffRef.current = null;
+    // Read through the store rather than the render's `task`: the whole point
+    // of the window is that the count changed during it. A row that's due again
+    // by now — the long-press undo took a unit back, or enough of the day
+    // passed that the next one fell due — isn't going anywhere, so it just
+    // gives the hold back and stays put instead of fading in place.
+    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    if (!current || current.completed || isTaskVisible(current)) {
+      endQuotaHold();
       return;
     }
-    // This one does put the task back on pace, so the row is leaving. It gets
-    // the same beats a completion gets — level up, pop, hold, fade, collapse —
-    // and only then is the unit logged: holding the store back is what keeps
-    // the row mounted long enough to play, exactly as completionHoldIds does
-    // for a completion. Nothing turns green, because nothing was finished.
     pacingOutRef.current = true;
     setPacingOut(true);
     Animated.sequence([
-      Animated.parallel([
-        Animated.timing(quotaFill, {
-          toValue: (task.progressCount + 1) / task.targetCount!,
-          duration: animation.duration.fast,
-          useNativeDriver: false,
-        }),
-        pop,
-      ]),
       Animated.delay(90),
       Animated.timing(rowOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(({ finished }) => {
@@ -731,13 +790,13 @@ export const TaskItem = React.memo(function TaskItem({
     });
   };
 
-  // Logs the held-back unit, then puts the row back on the next frame in case
-  // it's still here — the pace check ran ~700ms earlier, and a target whose
-  // next unit falls due inside that window stays on the list. The restore is a
-  // no-op when the row does leave (it's unmounted by then); without it, that
-  // one row would sit invisible and zero-height until the screen remounted.
+  // Releases the hold, then puts the row back on the next frame in case it's
+  // still here — releasing only removes it if it's still on pace, and the check
+  // above ran a beat earlier. The restore is a no-op when the row does leave
+  // (it's unmounted by then); without it, that one row would sit invisible and
+  // zero-height until the screen remounted.
   const finishPacingOut = () => {
-    logQuotaUnit(task.id);
+    endQuotaHold();
     requestAnimationFrame(() => {
       pacingOutRef.current = false;
       setPacingOut(false);
@@ -746,6 +805,23 @@ export const TaskItem = React.memo(function TaskItem({
       collapseProgress.value = 1;
     });
   };
+
+  // The long-press undo takes a unit back off, which puts the task behind pace
+  // and makes it Today's again — so the row isn't leaving any more. Drop the
+  // hold on the spot rather than letting the chip keep promising to be back at
+  // a time that has stopped meaning anything until the timer catches up.
+  useEffect(() => {
+    if (!quotaHeldRef.current || pacingOutRef.current || completingRef.current) return;
+    if (isTaskVisible(task)) endQuotaHold();
+  }, [task]);
+
+  // A row that goes away mid-window — screen change, filter, a bulk action —
+  // has to hand the hold back itself, since the release it was going to get is
+  // wired to an animation that will never run now.
+  useEffect(() => () => {
+    if (quotaSendOffRef.current) clearTimeout(quotaSendOffRef.current);
+    if (quotaHeldRef.current) useTaskStore.getState().releaseQuotaHold(task.id);
+  }, [task.id]);
 
   // Long-press takes one back off, for the mis-tap — the shake-to-undo path
   // covers it too, but the meter is tapped often enough to want a local undo.
@@ -1037,7 +1113,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>
-                  {quotaProgress}{quotaReturnAt ? ` · back at ${quotaReturnAt}` : ''}
+                  {quotaProgress}{quotaReturnAt ? ` · next at ${quotaReturnAt}` : ''}
                 </Text>
               </View>
             )}

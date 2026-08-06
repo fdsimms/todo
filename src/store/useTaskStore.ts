@@ -254,6 +254,22 @@ let completionCollapseTimer: ReturnType<typeof setTimeout> | null = null;
 // yet. Only the collapse timing reads it, so it stays out of the store's state
 // — a row doesn't re-render because a *different* row was tapped.
 let pendingCompletionIds: string[] = [];
+
+// The same idea as the completion hold, for the other way a task leaves Today
+// under its own steam: a daily target that a logged unit just put back on pace.
+// That one used to go on the tap that logged it, which capped a real burst —
+// four glasses of water at once — at one unit per trip to the list, with the
+// rest only loggable from Later. So the row asks for the task to be pinned to
+// Today while it plays itself out, and lets go once it has (see handleQuotaTap
+// in TaskItem).
+//
+// Unlike the completion hold, this one is released by the row rather than by a
+// timer here: the row owns the animation whose end the release marks, and two
+// timers racing over one row is how it would start blinking. The backstop below
+// only catches a hold whose row went away without releasing it — a screen
+// change or a filter mid-window — where the release would otherwise never come.
+const QUOTA_HOLD_BACKSTOP_MS = 30000;
+let quotaHoldTimer: ReturnType<typeof setTimeout> | null = null;
 // Ids of tasks completed while pinned, whose pin should be cleared once the
 // completion hold above expires — keeps a pinned row from vanishing out of
 // the Pinned section instantly on tap, same grace period as everywhere else.
@@ -299,10 +315,36 @@ function withHeldCompletions(tasks: Task[], heldIds: string[]): Task[] {
     if (!held.has(t.id)) return t;
     const cached = heldMaskCache.get(t.id);
     if (cached && cached.source === t) return cached.masked;
-    const masked = { ...t, completed: false };
+    // "Wherever it would be if it were still incomplete" has to include the
+    // count for a daily target, because completion *is* the count reaching the
+    // target: a mask left at 8/8 reads as a target on pace rather than as the
+    // row that was there before the tap, and lands it in whichever list it
+    // hadn't been in. One finished on Today would jump into Later Today's
+    // on-pace run for the length of the hold; one finished from that run would
+    // drop out of it and skip the batched collapse. A unit short is also what
+    // uncompleteTask restores, for the same reason.
+    const masked = isQuotaTask(t)
+      ? { ...t, completed: false, progressCount: Math.max(0, t.targetCount! - 1) }
+      : { ...t, completed: false };
     heldMaskCache.set(t.id, { source: t, masked });
     return masked;
   });
+}
+
+// A daily target whose row is still playing out its send-off (see
+// QUOTA_HOLD_BACKSTOP_MS) counts as on Today even though the pace gate has
+// closed on it — and correspondingly isn't in Later yet, since the two lists
+// are disjoint lenses and a task can't be waiting in one while it's still in
+// the other.
+function isQuotaHeld(task: Task, heldIds: string[]): boolean {
+  if (heldIds.length === 0) return false;
+  return (
+    heldIds.includes(task.id) &&
+    !task.parentId &&
+    !task.completed &&
+    !task.archived &&
+    isQuotaTask(task)
+  );
 }
 
 // O(n) task-array patch shared by every "apply a change to N ids" call site
@@ -342,6 +384,9 @@ interface TaskStore {
   // together (see COMPLETION_COLLAPSE_MS) — TaskItem watches for its own id
   // appearing here and runs its height collapse then.
   completionCollapseIds: string[];
+  // Ids of daily targets pinned to Today past the moment they went back on
+  // pace, so the row can be tapped again — see QUOTA_HOLD_BACKSTOP_MS.
+  quotaHoldIds: string[];
 
   initialize: () => void;
   // Marks a completion as animating so the batched collapse waits for it.
@@ -396,6 +441,9 @@ interface TaskStore {
   uncompleteTask: (id: string) => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
+  /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
+  holdQuotaOnToday: (id: string) => void;
+  releaseQuotaHold: (id: string) => void;
   rolloverQuotas: () => void;
   deferTask: (id: string, until: Date) => void;
   // Applies a batch of approved "lighten this day" moves (see
@@ -516,6 +564,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   lastAction: null,
   completionHoldIds: [],
   completionCollapseIds: [],
+  quotaHoldIds: [],
 
   beginCompletionAnimation(id) {
     if (!pendingCompletionIds.includes(id)) pendingCompletionIds.push(id);
@@ -1231,6 +1280,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...rolledOver,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
+      // A daily target that completes mid-hold hands over to the completion
+      // hold, which masks it as incomplete for its own window. Leaving it in
+      // both would keep the finished row on Today past that.
+      quotaHoldIds: s.quotaHoldIds.filter(x => x !== id),
     }));
 
     // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
@@ -1385,6 +1438,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const updated = { ...task, progressCount: task.progressCount - 1 };
     dbUpdateTask(updated);
     set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  holdQuotaOnToday(id) {
+    if (!get().quotaHoldIds.includes(id)) {
+      set(s => ({ quotaHoldIds: [...s.quotaHoldIds, id] }));
+    }
+    // One timer for all of them, pushed back by each new hold, exactly as the
+    // completion hold does — it's a leak catcher, not the thing that ends a
+    // hold, so it doesn't need to be per-id.
+    if (quotaHoldTimer) clearTimeout(quotaHoldTimer);
+    quotaHoldTimer = setTimeout(() => {
+      quotaHoldTimer = null;
+      set({ quotaHoldIds: [] });
+    }, QUOTA_HOLD_BACKSTOP_MS);
+    (quotaHoldTimer as unknown as { unref?: () => void }).unref?.();
+  },
+
+  releaseQuotaHold(id) {
+    if (!get().quotaHoldIds.includes(id)) return;
+    set(s => ({ quotaHoldIds: s.quotaHoldIds.filter(x => x !== id) }));
   },
 
   // Close out quota occurrences left unfinished when their day ended. A quota
@@ -2432,16 +2505,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   visibleTasks() {
-    const { tasks, completionHoldIds } = get();
+    const { tasks, completionHoldIds, quotaHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isTaskVisible(t))
+      .filter(t => !t.parentId && (isTaskVisible(t) || isQuotaHeld(t, quotaHoldIds)))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
+  // Feeds Today's "later today" reveal, which is where a daily target lives
+  // while you're keeping up with it (isUpcomingToday). A target inside its hold
+  // window is left out: it's still on Today proper for those few seconds, and
+  // the two lists can't both be showing it.
   upcomingTodayTasks() {
-    const { tasks, completionHoldIds } = get();
+    const { tasks, completionHoldIds, quotaHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isUpcomingToday(t))
+      .filter(t => !t.parentId && isUpcomingToday(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
@@ -2467,9 +2544,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deferredTasks() {
-    const { tasks, completionHoldIds } = get();
+    const { tasks, completionHoldIds, quotaHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && isTaskDeferred(t))
+      .filter(t => !t.parentId && isTaskDeferred(t) && !isQuotaHeld(t, quotaHoldIds))
       .sort((a, b) => a.sortOrder - b.sortOrder);
   },
 
