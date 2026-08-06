@@ -24,7 +24,7 @@ import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { FilterChipBar } from '../components/FilterChipBar';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, border, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
@@ -38,6 +38,8 @@ interface LogbookSection {
   dateKey: string;
   data: Task[];
 }
+
+const CHECKBOX_SIZE = 20;
 
 function formatDayHeader(iso: string): string {
   const d = new Date(iso);
@@ -229,7 +231,7 @@ export function LogbookScreen() {
               >
                 <Ionicons
                   name={isQuotaPartial(item) ? 'remove' : 'checkmark'}
-                  size={14}
+                  size={12}
                   color={isQuotaPartial(item) ? colors.textTertiary : colors.green}
                 />
               </TouchableOpacity>
@@ -376,10 +378,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   checkCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderCurve: 'continuous',
+    borderWidth: border.md,
     borderColor: colors.green,
     alignItems: 'center',
     justifyContent: 'center',
