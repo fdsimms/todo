@@ -25,6 +25,11 @@ interface SettingsStore {
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  // When the user last dismissed the quiet-projects banner. Read only through
+  // isProjectNudgeDismissedToday, which compares it against today rather than
+  // testing it for existence — so it expires at the day rollover on its own and
+  // nothing ever has to clear it (same idiom as TaskGroup.completedAt).
+  projectNudgeDismissedAt: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   initialized: boolean;
   initialize: () => void;
@@ -42,6 +47,7 @@ interface SettingsStore {
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
+  setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
 }
@@ -76,6 +82,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   initialized: false,
 
@@ -95,6 +102,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -104,7 +112,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -171,6 +179,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setVacationEnd(endDate: string | null) {
     dbSetSetting('vacationEnd', endDate ?? '');
     set({ vacationEnd: endDate });
+  },
+
+  setProjectNudgeDismissedAt(at: string | null) {
+    dbSetSetting('projectNudgeDismissedAt', at ?? '');
+    set({ projectNudgeDismissedAt: at });
   },
 
   setAutoRemoveExpiredTasks(on: boolean) {

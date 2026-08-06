@@ -91,7 +91,22 @@ export interface Project {
   archived: boolean;
   archivedAt: string | null;
   createdAt: string;
+  // Days of quiet before this project offers up its next task (see
+  // utils/projectPull.ts). 0 = never ask, for a project deliberately parked.
+  // Quiet is measured from the last member completed, so a project actually
+  // being worked on never nudges — there's nothing to store or clear.
+  nudgeCadenceDays: number;
+  // Opt-in: when this project runs dry, date its next task automatically
+  // instead of offering it in the pull sheet. Deliberately per-project rather
+  // than global — silently rescheduling is a bigger promise than suggesting,
+  // and it's the right call for a chore list and the wrong one for a wishlist.
+  autoSchedule: boolean;
 }
+
+// Fallback cadence for a project row written before the nudge columns existed,
+// and the default for a newly created project. Two weeks is long enough that an
+// ordinary lull doesn't trigger it.
+export const DEFAULT_NUDGE_CADENCE_DAYS = 14;
 
 export interface Task {
   id: string;

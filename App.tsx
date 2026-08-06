@@ -42,6 +42,7 @@ export default function App() {
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
+  const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
 
   useEffect(() => {
     // initTasks calls initDatabase() which creates all tables first
@@ -59,9 +60,14 @@ export default function App() {
     // closed, so a day you fell short on is logged as a partial instead of
     // sitting overdue — also needs real settings (dayResetTime) loaded first.
     rolloverQuotas();
+    // Let projects the user opted into auto-scheduling date their own next
+    // task if they've run dry. After rolloverQuotas, which can complete and
+    // spawn members and so change what a project counts as scheduled; and
+    // after initSettings, since "quiet" is measured in logical days.
+    dripStalledProjects();
     // Request notification permissions
     requestNotificationPermissions();
-  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas]);
+  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
