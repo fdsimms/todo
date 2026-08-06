@@ -51,11 +51,11 @@ export interface ChainItem {
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
 // streak, or reminder, so it can never itself be "not due yet" and desync
 // from children on mismatched cadences (see completeGroup/deferGroup in
-// useTaskStore). Whether all children are currently done is derived live,
-// not stored — but completedAt is a separate, explicit "user dismissed this
-// stack" stamp (see completeGroup/TaskGroupHeader) that controls whether it
-// disappears from Today; it's cleared automatically if a child becomes
-// incomplete again so a dismissed stack never hides live work.
+// useTaskStore). It has no completion state of its own either, stored or
+// derived: a stack is on Today exactly while one of its members is, and goes
+// when the last one does. (There was a `completedAt` "user dismissed this
+// stack" stamp here; the `completed_at` column it wrote to is still on
+// task_groups, unread.)
 export interface TaskGroup {
   id: string;
   title: string;
@@ -64,7 +64,6 @@ export interface TaskGroup {
   category: string | null; // which category section it renders under
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state
-  completedAt: string | null; // set when the user dismisses a fully-done stack
 }
 
 // A themed, long-running collection of loosely-dated tasks the user tracks

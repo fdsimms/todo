@@ -1,10 +1,10 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, animation, type Colors } from '../theme';
-import { isRelevantToGroupToday, isGroupHiddenToday } from '../utils/visibilityUtils';
+import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
@@ -33,10 +33,6 @@ interface Props {
   filtered?: boolean;
   onToggleCollapse: () => void;
   onComplete: () => void;
-  // Fires when the user taps an already-fully-done stack — stamps the group
-  // dismissed so it drops off Today, rather than toggling any child's
-  // completed state (see dismissGroup in useTaskStore).
-  onDismiss: () => void;
   onDefer: (date: Date) => void;
   // Swipe left enters bulk editing with the stack's live roster selected —
   // see the roster note in TodayScreen. Omitted on a list with no bulk bar,
@@ -54,7 +50,6 @@ export function TaskGroupHeader({
   filtered,
   onToggleCollapse,
   onComplete,
-  onDismiss,
   onDefer,
   onSwipeSelect,
   onPressEdit,
@@ -63,12 +58,6 @@ export function TaskGroupHeader({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showDefer, setShowDefer] = useState(false);
-  // Mirrors TaskItem's completion animation so dismissing a fully-done stack
-  // shows the same pop-checkmark beat as completing an individual task,
-  // instead of the row just vanishing the instant it's tapped.
-  const [dismissing, setDismissing] = useState(false);
-  const circleScale = useRef(new Animated.Value(1)).current;
-  const checkScale = useRef(new Animated.Value(0)).current;
 
   const dueToday = useMemo(
     () => dueTodayOverride ?? allChildren.filter(isRelevantToGroupToday),
@@ -76,20 +65,11 @@ export function TaskGroupHeader({
   );
   const doneToday = dueToday.filter(c => c.completed).length;
   const totalToday = dueToday.length;
+  // Only guards complete-all from re-running on a stack with nothing left to
+  // complete. There's no done *state* for this header to show: a stack whose
+  // work for today is finished has no visible rows left, so Today stops
+  // rendering it entirely (see visibleGroupItems in TodayScreen).
   const allDone = totalToday > 0 && doneToday === totalToday;
-  // The circle only shows checked once the user has explicitly dismissed a
-  // fully-done stack — allDone alone used to drive this and made the
-  // checkmark appear the instant the last child finished, with no way to
-  // actually clear the stack out of Today. Now allDone just makes the circle
-  // tappable-to-dismiss; it stays visually empty until then.
-  //
-  // Requiring allDone alongside the stamp is what keeps a dismissed stack
-  // honest: the moment it gains live work again (a spawn, an undo, a task
-  // added to it) allDone goes false and the stack shows itself, with no
-  // separate bookkeeping to clear the stamp. And the stamp itself only
-  // counts for the logical day it was made, so a nightly stack returns on
-  // its own tomorrow.
-  const dismissed = isGroupHiddenToday(group.completedAt, dueToday);
 
   // Collapsed, the stack has to speak for itself: the children that would
   // have answered "how much is left, and what's next" aren't on screen. This
@@ -102,7 +82,7 @@ export function TaskGroupHeader({
   const showTally = totalToday > 0 && !filtered;
 
   const completeAll = () => {
-    if (dismissed || dismissing || allDone) return;
+    if (allDone) return;
     haptics.impactMedium();
     onComplete();
   };
@@ -137,63 +117,28 @@ export function TaskGroupHeader({
                   gutter to the left of the column its tasks occupy. Keep at
                   least the fill and the size if either ever changes. */}
               <TouchableOpacity
-                onPress={() => {
-                  if (dismissed || dismissing) return;
-                  // Tap on a stack that still has work in it is just the
-                  // row's own expand/collapse — completing every child is a
-                  // long-press instead. Tap used to cascade, which put an
-                  // N-task completion (with its recurrence spawns, chain
-                  // advances and streak writes) one stray tap away from the
-                  // child checkboxes directly below it.
-                  if (!allDone) {
-                    onToggleCollapse();
-                    return;
-                  }
-                  haptics.success();
-                  setDismissing(true);
-                  checkScale.setValue(0);
-                  Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
-                  Animated.sequence([
-                    Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
-                    Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-                    Animated.delay(120),
-                  ]).start(({ finished }) => {
-                    if (finished) onDismiss();
-                  });
-                }}
+                // Tap is just the row's own expand/collapse — completing every
+                // child is a long-press instead. Tap used to cascade, which put
+                // an N-task completion (with its recurrence spawns, chain
+                // advances and streak writes) one stray tap away from the child
+                // checkboxes directly below it.
+                onPress={onToggleCollapse}
                 onLongPress={completeAll}
                 delayLongPress={interaction.delayLongPress}
                 hitSlop={10}
                 style={styles.glyphWrapper}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  dismissed ? `${group.title} cleared for today` : `Clear completed ${group.title} stack`
-                }
-                // Until the stack is finished this glyph does nothing the
-                // row itself doesn't (tap collapses either way), and its
-                // one unique function — complete-all — is a long-press,
-                // which VoiceOver can't reach. So it stays out of the
-                // accessibility tree until it becomes the dismiss control,
-                // and complete-all rides on the row as a rotor action
-                // instead of as a second element saying the same thing.
-                accessibilityElementsHidden={!allDone && !dismissed}
-                importantForAccessibility={!allDone && !dismissed ? 'no-hide-descendants' : 'yes'}
+                // This glyph does nothing the row itself doesn't (tap collapses
+                // either way), and its one unique function — complete-all — is
+                // a long-press, which VoiceOver can't reach. So it stays out of
+                // the accessibility tree entirely, and complete-all rides on
+                // the row as a rotor action instead of as a second element
+                // saying the same thing.
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
               >
-                <Animated.View style={[
-                  styles.glyph,
-                  (dismissed || dismissing) && styles.glyphDone,
-                  { transform: [{ scale: circleScale }] },
-                ]}>
-                  {dismissed ? (
-                    <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
-                  ) : dismissing ? (
-                    <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-                      <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
-                    </Animated.View>
-                  ) : (
-                    <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
-                  )}
-                </Animated.View>
+                <View style={styles.glyph}>
+                  <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
+                </View>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -220,7 +165,7 @@ export function TaskGroupHeader({
                 // Complete-all is a long-press on the glyph, which VoiceOver
                 // has no gesture for — it's offered here as a rotor action so
                 // it isn't sighted-only.
-                accessibilityActions={allDone || dismissed ? undefined : [{ name: 'longpress', label: 'Complete all' }]}
+                accessibilityActions={allDone ? undefined : [{ name: 'longpress', label: 'Complete all' }]}
                 onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
               >
                 <View style={styles.titleRow}>
@@ -340,10 +285,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.separator,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  glyphDone: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
   },
   content: {
     flex: 1,
