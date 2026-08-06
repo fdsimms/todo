@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   AppState,
+  InteractionManager,
   type GestureResponderEvent,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
@@ -116,6 +117,14 @@ const VIEW_TITLES: Record<ViewMode, string> = {
   unscheduled: 'Unscheduled',
   inbox: 'Inbox',
 };
+
+// Task budgets for the Later list (see the laterTaskLimit block below for why
+// it has one at all). INITIAL is about a screenful — it's what the tap into
+// Later has to mount before anything paints; SETTLED is topped up once that
+// commit is done, and PAGE_SIZE is what each scroll to the bottom adds.
+const LATER_INITIAL_TASK_LIMIT = 15;
+const LATER_SETTLED_TASK_LIMIT = 60;
+const LATER_TASK_PAGE_SIZE = 60;
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -1732,9 +1741,29 @@ export function TodayScreen() {
   // growing that budget as the user scrolls near the bottom (see the Later
   // ReorderableList's onEndReached below). Whole sections are always included
   // together so a header never renders without at least one of its tasks.
-  const LATER_INITIAL_TASK_LIMIT = 60;
-  const LATER_TASK_PAGE_SIZE = 60;
+  //
+  // The budget starts at one screenful rather than at its settled size because
+  // switching to Later mounts every row it's handed in the same blocking
+  // commit as the tab switch, and a TaskItem is not a cheap row (four store
+  // subscriptions, a PanResponder and several animated values each) — sixty of
+  // them is a visible stall between the tap and the switch. The rest is topped
+  // up right after that commit lands, so it's already there by the time anyone
+  // can scroll to it.
   const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
+
+  useEffect(() => {
+    // Leaving Later drops the budget back: the list unmounts and returns
+    // scrolled to the top, so anything it had paged in is just rows the next
+    // switch would pay to mount off-screen.
+    if (viewMode !== 'later') {
+      setLaterTaskLimit(LATER_INITIAL_TASK_LIMIT);
+      return;
+    }
+    const handle = InteractionManager.runAfterInteractions(() => {
+      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+    });
+    return () => handle.cancel();
+  }, [viewMode]);
 
   const visibleLaterSections = useMemo(
     () => computeVisibleLaterSections(laterSections, laterTaskLimit),
