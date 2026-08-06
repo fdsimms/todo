@@ -35,7 +35,8 @@ import { generateId } from '../utils/id';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isInboxTask, isUnscheduledTask, isRelevantToGroupToday, groupRoster, isGroupDismissedToday, hasNoDateSignal } from '../utils/visibilityUtils';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
+import { isTimedTask, timerElapsed } from '../utils/timer';
 
 interface UndoableAction {
   label: string;
@@ -57,7 +58,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
 ];
 
 function captureField<K extends keyof Task>(target: Partial<Task>, source: Task, key: K): void {
@@ -172,6 +173,10 @@ interface TaskStore {
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
+  // Timed tasks only: pause banks the running segment without logging it, so
+  // the countdown can be resumed later; reset throws the banked time away.
+  pauseTimer: (id: string) => void;
+  resetTimer: (id: string) => void;
   logManualTime: (id: string, minutes: number) => void;
   reorderTasks: (orderedIds: string[]) => void;
   reorderWithCategoryUpdates: (
@@ -322,6 +327,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: draft.vacationPause ?? false,
       timerStartedAt: draft.timerStartedAt ?? null,
       actualMinutes: draft.actualMinutes ?? null,
+      timedMinutes: draft.timedMinutes ?? null,
+      timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
       previousOccurrenceId: draft.previousOccurrenceId ?? null,
       seriesDefaults: null,
       archived: false,
@@ -352,6 +359,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       previousStreakDate: null,
       timerStartedAt: null,
       actualMinutes: null,
+      // The duplicate keeps the duration but starts its countdown fresh.
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
       seriesDefaults: null,
       archived: false,
@@ -423,6 +432,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
       }
+      // Archiving out from under a running countdown would otherwise leave its
+      // alarm to fire for a task the user can no longer see.
+      if (updated.archived && updated.timerStartedAt !== null) cancelTimerAlarm(id);
       return updated;
     });
     set({ tasks });
@@ -466,6 +478,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
+    if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     set(s => ({ tasks: s.tasks.filter(t => t.id !== id && t.parentId !== id) }));
 
     get().setLastAction({
@@ -491,8 +504,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // tasks have no such next-occurrence math, so early completion is fine.
     if (isRecurrenceNotYetDue(task)) return;
 
-    // If a timer is still running, stop it first so the session's time is saved.
-    if (task.timerStartedAt !== null) {
+    // If a timer is still running — or a countdown was paused with time banked
+    // on it — stop it first so the session's time is saved.
+    if (task.timerStartedAt !== null || task.timerElapsedSeconds > 0) {
       get().stopTimer(id);
       task = get().tasks.find(t => t.id === id)!;
     }
@@ -626,6 +640,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           recurrenceCount:
             advancesBySchedule && task.recurrenceCount !== null ? task.recurrenceCount - 1 : task.recurrenceCount,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
+          timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
           previousOccurrenceId: task.id, // lets uncompleting `task` remove this occurrence again
           seriesDefaults: null, // fresh occurrence starts with no pending "this task only" overrides
@@ -832,24 +847,52 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   startTimer(id) {
-    // Only one task times at a time — stop any other running timer first.
+    // Only one task times at a time — stop any other running timer first. A
+    // timed task gets paused rather than stopped, so its countdown progress is
+    // banked instead of being logged as a finished measurement.
     const running = get().tasks.find(t => t.timerStartedAt !== null && t.id !== id);
-    if (running) get().stopTimer(running.id);
+    if (running) {
+      if (isTimedTask(running)) get().pauseTimer(running.id);
+      else get().stopTimer(running.id);
+    }
     get().updateTask(id, { timerStartedAt: new Date().toISOString() });
+    const started = get().tasks.find(t => t.id === id);
+    if (started) scheduleTimerAlarm(started);
   },
 
   stopTimer(id) {
     const task = get().tasks.find(t => t.id === id);
-    if (!task || task.timerStartedAt === null) return;
-    const elapsedMs = Date.now() - new Date(task.timerStartedAt).getTime();
-    const minutes = elapsedMs / 60000;
-    get().updateTask(id, { timerStartedAt: null, ...applyMeasuredTime(minutes, task.estimatedMinutes) });
+    // Finish and log: banked time from earlier segments counts too, so pausing
+    // a countdown and then completing the task still records the full session.
+    if (!task || (task.timerStartedAt === null && task.timerElapsedSeconds <= 0)) return;
+    const minutes = timerElapsed(task) / 60;
+    cancelTimerAlarm(id);
+    get().updateTask(id, {
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      ...applyMeasuredTime(minutes, task.estimatedMinutes),
+    });
   },
 
   discardTimer(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.timerStartedAt === null) return;
+    cancelTimerAlarm(id);
     get().updateTask(id, { timerStartedAt: null });
+  },
+
+  pauseTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.timerStartedAt === null) return;
+    cancelTimerAlarm(id);
+    get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: timerElapsed(task) });
+  },
+
+  resetTimer(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task) return;
+    cancelTimerAlarm(id);
+    get().updateTask(id, { timerStartedAt: null, timerElapsedSeconds: 0 });
   },
 
   logManualTime(id, minutes) {
@@ -943,6 +986,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
+      timedMinutes: null,
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
       seriesDefaults: null,
       archived: false,
@@ -1056,6 +1101,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
+      timedMinutes: null,
+      timerElapsedSeconds: 0,
       previousOccurrenceId: null,
       seriesDefaults: null,
       archived: false,
@@ -1398,6 +1445,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // see the same predicate in rescheduleAllReminders.
     deleted.forEach(t => {
       if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
+      if (idSet.has(t.id) && t.timerStartedAt !== null) cancelTimerAlarm(t.id);
     });
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),

@@ -98,6 +98,9 @@ jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
+  scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
+  rescheduleAllTimerAlarms: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('react-native', () => ({
@@ -155,6 +158,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainItems: [],
   vacationPause: false,
   timerStartedAt: null,
+  timedMinutes: null,
+  timerElapsedSeconds: 0,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
@@ -2756,6 +2761,101 @@ describe('timers', () => {
     expect(next).toBeDefined();
     expect(next.actualMinutes).toBe(10);
     expect(next.estimatedMinutes).toBe(10);
+    expect(next.timerStartedAt).toBeNull();
+  });
+});
+
+// ─── countdowns on timed tasks ───────────────────────────────────────────────
+
+describe('timed tasks', () => {
+  it('pauseTimer banks the elapsed time without logging it as measured', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started })] });
+    useTaskStore.getState().pauseTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('resuming after a pause continues from the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().startTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerStartedAt).not.toBeNull();
+    expect(task.timerElapsedSeconds).toBe(300); // untouched — the new segment runs on top
+  });
+
+  it('resetTimer throws away the banked time', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 300 })],
+    });
+    useTaskStore.getState().resetTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.timerElapsedSeconds).toBe(0);
+    expect(task.timerStartedAt).toBeNull();
+    expect(task.actualMinutes).toBeNull();
+  });
+
+  it('starting one timer pauses a running countdown rather than logging it', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', timedMinutes: 15, timerStartedAt: started }),
+        makeTask({ id: 'b' }),
+      ],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.timerStartedAt).toBeNull();
+    expect(displaced.timerElapsedSeconds).toBeCloseTo(300, 0);
+    expect(displaced.actualMinutes).toBeNull(); // banked, not measured
+  });
+
+  it('starting one timer still stops (and logs) a plain stopwatch', () => {
+    const started = new Date(Date.now() - 5 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timerStartedAt: started }), makeTask({ id: 'b' })],
+    });
+    useTaskStore.getState().startTimer('b');
+    const displaced = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(displaced.actualMinutes).toBe(5);
+  });
+
+  it('completing a task logs time banked by a paused countdown', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 8 * 60 })],
+    });
+    useTaskStore.getState().completeTask('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.completed).toBe(true);
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('stopTimer sums banked time and the live segment', () => {
+    const started = new Date(Date.now() - 3 * 60000).toISOString();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', timedMinutes: 15, timerElapsedSeconds: 5 * 60, timerStartedAt: started })],
+    });
+    useTaskStore.getState().stopTimer('a');
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a')!;
+    expect(task.actualMinutes).toBe(8);
+    expect(task.timerElapsedSeconds).toBe(0);
+  });
+
+  it('the next occurrence keeps the duration but restarts its countdown', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', recurrenceType: 'daily', timedMinutes: 15, timerElapsedSeconds: 9 * 60 }),
+      ],
+    });
+    useTaskStore.getState().completeTask('a');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(next.timedMinutes).toBe(15);
+    expect(next.timerElapsedSeconds).toBe(0);
     expect(next.timerStartedAt).toBeNull();
   });
 });

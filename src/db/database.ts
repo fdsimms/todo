@@ -226,6 +226,8 @@ export function initDatabase(): void {
     'ALTER TABLE task_groups ADD COLUMN completed_at TEXT',
     'ALTER TABLE categories ADD COLUMN exclude_from_pin_suggestions INTEGER NOT NULL DEFAULT 0',
     'CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks(parent_id)',
+    'ALTER TABLE tasks ADD COLUMN timed_minutes INTEGER',
+    'ALTER TABLE tasks ADD COLUMN timer_elapsed_seconds INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -393,6 +395,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
+    timedMinutes: (row.timed_minutes as number | null) ?? null,
+    timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
@@ -418,8 +422,9 @@ export function dbInsertTask(task: Task): void {
       recurrence_type, recurrence_interval, recurrence_days, recurrence_month_day, recurrence_week_ordinal, recurrence_end_date, recurrence_count, recurrence_from_completion,
       tags, category, sort_order, pinned, priority, effort, estimated_minutes, streak_count, streak_date, parent_id, reminder_time,
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
-      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
+      timed_minutes, timer_elapsed_seconds
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -439,6 +444,7 @@ export function dbInsertTask(task: Task): void {
       task.archived ? 1 : 0, task.archivedAt ?? null,
       task.projectId ?? null,
       task.linkUrl ?? null,
+      task.timedMinutes ?? null, task.timerElapsedSeconds ?? 0,
     ]
   );
 }
@@ -453,7 +459,7 @@ export function dbUpdateTask(task: Task): void {
       streak_count=?, streak_date=?, parent_id=?, reminder_time=?,
       cycle_enabled=?, cycle_index=?, cycle_items=?, vacation_pause=?, timer_started_at=?, actual_minutes=?,
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
-      archived=?, archived_at=?, project_id=?, link_url=?
+      archived=?, archived_at=?, project_id=?, link_url=?, timed_minutes=?, timer_elapsed_seconds=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -474,6 +480,7 @@ export function dbUpdateTask(task: Task): void {
       task.archived ? 1 : 0, task.archivedAt ?? null,
       task.projectId ?? null,
       task.linkUrl ?? null,
+      task.timedMinutes ?? null, task.timerElapsedSeconds ?? 0,
       task.id,
     ]
   );
