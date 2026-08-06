@@ -30,7 +30,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { TARGET_COUNT_OPTIONS } from '../utils/quickAddTypes';
+import { MAX_TARGET_COUNT, MIN_TARGET_COUNT } from '../utils/quickAddTypes';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -51,6 +51,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { CountStepper } from './CountStepper';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
@@ -1383,26 +1384,29 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           onClear={targetCount !== null ? () => { setTargetCount(null); setShowTargetCount(false); } : undefined}
         />
         {showTargetCount && (
-          <View style={styles.targetPillRow}>
-            {TARGET_COUNT_OPTIONS.map(n => (
-              <TouchableOpacity
-                key={n}
-                style={[styles.timePill, styles.targetPill, targetCount === n && styles.timePillActive]}
-                onPress={() => {
-                  setTargetCount(n);
-                  // A quota only makes sense day to day: the count resets
-                  // because each new occurrence starts at zero, so without
-                  // a daily repeat there'd be nothing to reset it.
-                  enableRecurrence();
-                  animateLayout();
-                  setShowTargetCount(false);
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`${n} times a day`}
-              >
-                <Text style={[styles.timePillText, targetCount === n && styles.timePillTextActive]}>{n}×</Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.targetStepperRow}>
+            <CountStepper
+              value={targetCount}
+              onChange={next => {
+                setTargetCount(next);
+                // A quota only makes sense day to day: the count resets
+                // because each new occurrence starts at zero, so without
+                // a daily repeat there'd be nothing to reset it.
+                if (next !== null) enableRecurrence();
+              }}
+              min={MIN_TARGET_COUNT}
+              max={MAX_TARGET_COUNT}
+              // The floor clears it, so the row's × isn't the only way out of
+              // being a quota once you've opened this.
+              allowNull
+              emptyLabel="Off"
+              format={n => `${n}×`}
+              label="Daily target"
+              describeValue={n => (n === null ? 'off' : `${n} times a day`)}
+            />
+            <Text style={styles.targetStepperCaption}>
+              {targetCount === null ? 'Not a daily target' : 'a day'}
+            </Text>
           </View>
         )}
         <View style={styles.sep} />
@@ -2474,11 +2478,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
-  targetPillRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
+  targetStepperRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
-  targetPill: { flexGrow: 0, flexBasis: 56 },
+  targetStepperCaption: { color: colors.textTertiary, fontSize: font.sm },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
