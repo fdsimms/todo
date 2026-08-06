@@ -381,7 +381,43 @@ describe('isTaskExpired', () => {
   });
 
   it('is true exactly at windowEnd', () => {
-    expect(isTaskExpired({ ...baseTask, windowEnd: '10:00' })).toBe(true);
+    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '10:00' })).toBe(true);
+  });
+
+  // A window that runs into the small hours ("22:00–02:00"). Both gates anchor
+  // to one logical day, so taken literally the task is past 02:00 from 02:00
+  // onward — expired before it ever opened, and never visible once.
+  it('is false all day for a window whose end is not after its start', () => {
+    const nightly = { ...baseTask, windowStart: '22:00', windowEnd: '02:00' };
+    expect(isTaskExpired(nightly)).toBe(false);
+    jest.setSystemTime(new Date(2025, 5, 10, 23, 30, 0));
+    expect(isTaskExpired(nightly)).toBe(false);
+    expect(isTaskVisible(nightly)).toBe(true);
+    expect(isTaskWindowActive(nightly)).toBe(true);
+  });
+
+  it('is false for a window with identical start and end', () => {
+    expect(isTaskExpired({ ...baseTask, windowStart: '09:00', windowEnd: '09:00' })).toBe(false);
+  });
+
+  // windowEnd alone never puts a task on Today (see hasNoDateSignal) — it sits
+  // in Unscheduled — so there's no day for it to be late for. It used to read
+  // as expired from that clock time onward on every day forever, which handed
+  // it to autoRemoveExpiredTasks.
+  it('is false for a task carrying only a windowEnd, today and years later', () => {
+    const someday = { ...baseTask, priority: 3 as const, windowEnd: '09:00' };
+    expect(isTaskExpired(someday)).toBe(false);
+    expect(isUnscheduledTask(someday)).toBe(true);
+    jest.setSystemTime(new Date(2030, 5, 10, 18, 0, 0));
+    expect(isTaskExpired(someday)).toBe(false);
+  });
+
+  it('is false for an undated project task with a windowEnd', () => {
+    expect(isTaskExpired({ ...baseTask, projectId: 'p1', windowEnd: '09:00' })).toBe(false);
+  });
+
+  it('still expires an undated task once it has a windowStart to place it', () => {
+    expect(isTaskExpired({ ...baseTask, windowStart: '07:00', windowEnd: '09:00' })).toBe(true);
   });
 
   it('is false for a completed task', () => {

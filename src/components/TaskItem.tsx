@@ -31,7 +31,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animat
 import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
-import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -522,6 +522,9 @@ export const TaskItem = React.memo(function TaskItem({
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
+  // Not task.windowEnd: a window that runs into the small hours has no closing
+  // time on this day, so there's no countdown to show (see effectiveWindowEnd).
+  const windowEnd = effectiveWindowEnd(task);
   const deadlineDays = task.deadline ? getDeadlineCountdown(task.deadline) : null;
   const deadlineColor =
     deadlineDays === null ? colors.textTertiary
@@ -1148,11 +1151,11 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {windowActive && task.windowEnd && (
+            {windowActive && windowEnd && (
               <View style={styles.metaChip}>
                 <Ionicons name="time" size={iconSize.xs} color={colors.red} />
                 <Text style={styles.windowLabel} numberOfLines={1}>
-                  {formatWindowRemaining(task.windowEnd)}
+                  {formatWindowRemaining(windowEnd)}
                 </Text>
               </View>
             )}
@@ -1615,8 +1618,21 @@ export const TaskItem = React.memo(function TaskItem({
               (Separate from itemWrapper: overflow hidden there would clip the
               card shadow on iOS.) */}
           <View style={styles.cardClip}>
+          {/* The row is wrapped bare, with no corner radius of its own. It
+              slides sideways over the swipe panels, so its leading and
+              trailing edges are *interior seams* against a panel whenever one
+              is open — not card corners. This wrapper used to carry radius.md
+              + overflow:hidden, which rounded them regardless, and the whole
+              of the defer button's ragged look came from that: the revealed
+              panel met the card across a 12pt notch, and the priority bar
+              riding that edge was clipped to a lens that read as a spike torn
+              out of the panel rather than as an urgency marker. On a 48pt row
+              the notch ate half the bar's height. The same clip pinched the
+              bar to nothing where an expanded row meets its panel, breaking
+              the strip the two halves are meant to form. cardClip above
+              rounds the card at the one place its corners are real. */}
           {selectionMode ? (
-            <View style={styles.swipeContainer}>
+            <View>
               {rowBody}
             </View>
           ) : (
@@ -1641,7 +1657,7 @@ export const TaskItem = React.memo(function TaskItem({
                 accessibilityLabel: `Reschedule ${task.title}`,
               }}
             >
-              <View style={styles.swipeContainer}>
+              <View>
                 <View pointerEvents={spotlightDisabled ? 'none' : 'auto'}>
                   {rowBody}
                 </View>
@@ -1744,10 +1760,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: colors.accent,
   },
-  swipeContainer: {
-    borderRadius: radius.md,
-    overflow: 'hidden',
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1760,6 +1772,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // overflow:hidden + borderRadius round it off wherever it meets a true
   // card corner, so it never needs manual insets to avoid overflowing —
   // and it matches the full-height defer button revealed behind it on swipe.
+  // Nothing between here and cardClip may round its corners; the bar is 3pt
+  // against a 12pt radius, so any clip it doesn't share with the card slices
+  // it into a taper. See the note by the row wrapper.
   priorityBar: {
     position: 'absolute',
     left: 0,

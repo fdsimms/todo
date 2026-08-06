@@ -2715,6 +2715,43 @@ describe('deleteGroup', () => {
     expect(tasks[0].groupId).toBeNull();
     expect(tasks[0].completed).toBe(true);
   });
+
+  // The roster names one row per member and a dated series has several, so
+  // cascading over roster ids alone deleted the date that spoke for the member
+  // and left the rest of the set behind, loose and unfiled.
+  it('cascade-deletes every live date of a series member, not just the one in the roster', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog', groupId: 'g1' },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    expect(useTaskStore.getState().groupRosterOf('g1')).toHaveLength(1);
+
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(useTaskStore.getState().tasks).toEqual([]);
+  });
+
+  it('still keeps a series member’s completed and archived dates as history', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({ tasks: [] });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog', groupId: 'g1' },
+      [new Date(2025, 5, 1, 12), new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    useTaskStore.setState({
+      tasks: useTaskStore.getState().tasks.map(t =>
+        t.id === rows[0].id ? { ...t, completed: true, completedAt: new Date(2025, 5, 1, 13).toISOString() }
+        : t.id === rows[1].id ? { ...t, archived: true, archivedAt: new Date(2025, 5, 9).toISOString() }
+        : t
+      ),
+    });
+
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.map(t => t.id).sort()).toEqual([rows[0].id, rows[1].id].sort());
+    expect(tasks.every(t => t.groupId === null)).toBe(true);
+  });
 });
 
 // ─── bulk operations ─────────────────────────────────────────────────────────
@@ -3137,21 +3174,21 @@ describe('expiredTasks', () => {
   it('returns non-subtask tasks whose time window has closed, sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', sortOrder: 2, windowEnd: '13:00' }),
-        makeTask({ id: 'b', sortOrder: 1, windowEnd: '13:00' }),
+        makeTask({ id: 'a', sortOrder: 2, windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'b', sortOrder: 1, windowStart: '08:00', windowEnd: '13:00' }),
       ],
     });
     expect(useTaskStore.getState().expiredTasks().map(t => t.id)).toEqual(['b', 'a']);
   });
 
   it('excludes tasks whose window has not closed yet', () => {
-    useTaskStore.setState({ tasks: [makeTask({ id: 't1', windowEnd: '18:00' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', windowStart: '08:00', windowEnd: '18:00' })] });
     expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
   });
 
   it('excludes subtasks', () => {
     useTaskStore.setState({
-      tasks: [makeTask({ id: 't1', parentId: 'parent', windowEnd: '13:00' })],
+      tasks: [makeTask({ id: 't1', parentId: 'parent', windowStart: '08:00', windowEnd: '13:00' })],
     });
     expect(useTaskStore.getState().expiredTasks()).toHaveLength(0);
   });
@@ -3179,7 +3216,7 @@ describe('sweepExpiredTasks', () => {
       autoRemoveExpiredTasks: false,
       vacationMode: false,
     });
-    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowEnd: '13:00' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })] });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
@@ -3194,13 +3231,67 @@ describe('sweepExpiredTasks', () => {
     });
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'expired', windowEnd: '13:00' }),
-        makeTask({ id: 'active', windowEnd: '18:00' }),
+        makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' }),
+        makeTask({ id: 'active', windowStart: '08:00', windowEnd: '18:00' }),
       ],
     });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['active']);
     expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['expired']);
+  });
+
+  // Deleting the row of a recurring task ends the schedule: the next
+  // occurrence is only created by completing this one. Missing a window is not
+  // a decision to stop the habit.
+  it('rolls an expired recurring task forward instead of deleting it', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'gym',
+          recurrenceType: 'daily',
+          recurrenceInterval: 1,
+          dueDate: new Date(2025, 5, 10, 12).toISOString(),
+          windowStart: '06:00',
+          windowEnd: '09:00',
+        }),
+      ],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+
+    const gym = useTaskStore.getState().tasks.find(t => t.id === 'gym')!;
+    expect(gym).toBeDefined();
+    expect(new Date(gym.dueDate!).getDate()).toBe(11);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('still deletes a recurring task whose schedule has already run out', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: true,
+      vacationMode: false,
+    });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'last',
+          recurrenceType: 'daily',
+          recurrenceInterval: 1,
+          dueDate: new Date(2025, 5, 10, 12).toISOString(),
+          recurrenceEndDate: new Date(2025, 5, 10, 23).toISOString(),
+          windowStart: '06:00',
+          windowEnd: '09:00',
+        }),
+      ],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['last']);
   });
 
   it('spares a vacation-paused expired task while vacation mode is on', () => {
@@ -3211,7 +3302,7 @@ describe('sweepExpiredTasks', () => {
       vacationMode: true,
     });
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'paused', windowEnd: '13:00', vacationPause: true })],
+      tasks: [makeTask({ id: 'paused', windowStart: '08:00', windowEnd: '13:00', vacationPause: true })],
     });
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['paused']);
@@ -3681,6 +3772,25 @@ describe('completeTask auto-archiving a finished project', () => {
     expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
   });
 
+  // The fresh occurrence a recurring completion spawns is real outstanding
+  // work, so ticking tonight's habit must not archive the project out from
+  // under tomorrow's.
+  it('does not archive a project whose only member is a recurring task', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'habit',
+        projectId: 'p1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date().toISOString(),
+      })],
+    });
+    useTaskStore.getState().completeTask('habit');
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+  });
+
   it('ignores tasks with no projectId', () => {
     useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
     useProjectStore.setState({ projects: [] });
@@ -4112,6 +4222,72 @@ describe('addTaskSeries', () => {
   });
 });
 
+// The editor saves recurrenceType and the extra dates independently, so a
+// repeat rule and a set of dates can arrive on the same save. They're two
+// schedules for one task, and leaving both in place meant every completed date
+// spawned an extra occurrence inside the same series.
+describe('a series and a recurrence rule never coexist', () => {
+  it('clears the rule off the anchor and every date when a series forms', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 2,
+        recurrenceCount: 5,
+        showStreak: true,
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().applyTaskDates('r1', [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)]);
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.every(t => t.recurrenceType === 'none')).toBe(true);
+    expect(tasks.every(t => t.recurrenceCount === null)).toBe(true);
+    expect(tasks.every(t => t.showStreak === false)).toBe(true);
+  });
+
+  it('leaves a completed date spawning nothing at all', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'r1',
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: new Date(2025, 5, 10, 12).toISOString(),
+      })],
+    });
+    useTaskStore.getState().applyTaskDates('r1', [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)]);
+    useTaskStore.getState().completeTask('r1');
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.filter(t => !t.completed).map(t => new Date(t.dueDate!).getDate())).toEqual([15]);
+  });
+
+  // A chain step spawns onto the same day it was completed, so inheriting the
+  // seriesId put a second row on a date the set already had — and the next
+  // date edit, which reconciles by calendar day, deleted one of the pair.
+  it('leaves the set when a chain step spawns from one of its dates', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Meal prep', chainEnabled: true, chainItems: [{ id: 'a', title: 'Shop' }, { id: 'b', title: 'Cook' }] },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    useTaskStore.getState().completeTask(rows[0].id);
+
+    const spawned = useTaskStore.getState().tasks.find(t => t.chainIndex === 1)!;
+    expect(spawned.seriesId).toBeNull();
+    expect(useTaskStore.getState().seriesRowsOf(rows[0].seriesId!)).toHaveLength(2);
+  });
+
+  it('drops the rule from a series built from scratch', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', recurrenceType: 'weekly', recurrenceDays: [1], showStreak: true },
+      [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
+    );
+    expect(rows.every(r => r.recurrenceType === 'none' && r.recurrenceDays.length === 0)).toBe(true);
+  });
+});
+
 describe('applyTaskDates', () => {
   it('turns a plain dated task into a series when it gains a date', () => {
     useTaskStore.setState({
@@ -4174,6 +4350,55 @@ describe('applyTaskDates', () => {
     const completed = useTaskStore.getState().tasks.find(t => t.id === rows[0].id);
     expect(completed).toBeDefined();
     expect(completed!.completed).toBe(true);
+  });
+
+  // Archived rows counted as live, so a date edit deleted a filed-away row
+  // outright when its date was dropped from the set.
+  it('never deletes an archived date either', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+
+    const archived = useTaskStore.getState().tasks.find(t => t.id === rows[1].id);
+    expect(archived).toBeDefined();
+    expect(archived!.archived).toBe(true);
+  });
+
+  // ...and when the date was kept, the archived row satisfied it, leaving the
+  // set with nothing actionable on a day the user had just asked for.
+  it('gives a kept date a live row of its own rather than letting an archived one stand for it', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.archived);
+    expect(live.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b)).toEqual([10, 15]);
+    expect(useTaskStore.getState().tasks.filter(t => t.archived)).toHaveLength(1);
+  });
+
+  it('keeps an archived date out of the set when it dissolves back to a plain task', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().archiveTask(rows[1].id);
+    useTaskStore.getState().applyTaskDates(rows[0].id, [new Date(2025, 8, 10, 12, 0, 0)]);
+
+    const archived = useTaskStore.getState().tasks.find(t => t.id === rows[1].id);
+    expect(archived).toBeDefined();
+    expect(archived!.seriesId).toBeNull();
   });
 
   it('dissolves the series back to a plain task when the set drops to one date', () => {
@@ -4260,6 +4485,35 @@ describe('updateTask series fan-out', () => {
     expect(later.getHours()).toBe(7);
     expect(later.getMinutes()).toBe(15);
   });
+
+  it('fans a blocker out to the whole set', () => {
+    const errand = useTaskStore.getState().addTask({ title: 'Collect the key' });
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { blockedById: errand.id });
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.blockedById).toBe(errand.id);
+  });
+
+  // wouldCycle() keeps the picker from offering a blocker that would close a
+  // loop, but the fan-out doesn't go through the picker: naming a later date of
+  // the same set handed that row a pointer at its own id, and a task waiting on
+  // itself is invisible everywhere with no user action able to free it.
+  it('never blocks a date on itself when the blocker is a later date of the same set', () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+      new Date(2025, 8, 20, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, { blockedById: rows[2].id });
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.every(t => t.blockedById !== t.id)).toBe(true);
+    expect(tasks.find(t => t.id === rows[1].id)!.blockedById).toBe(rows[2].id);
+    expect(tasks.find(t => t.id === rows[2].id)!.blockedById).toBeNull();
+  });
 });
 
 describe('deleteSeries', () => {
@@ -4329,6 +4583,64 @@ describe('completeTask — series rollover', () => {
 
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(0);
     expect(useTaskStore.getState().tasks).toHaveLength(2);
+  });
+
+  // A recurrence's next occurrence is removed when its completion is undone;
+  // the set a rollover inserts is the same thing, several rows at a time, and
+  // was being left behind after the completion that conjured it was taken back.
+  it('takes the whole next set back out when the completion is undone', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+    expect(useTaskStore.getState().tasks).toHaveLength(4);
+
+    useTaskStore.getState().undoLastAction();
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    expect(tasks.map(t => t.id).sort()).toEqual(rows.map(r => r.id).sort());
+    expect(tasks.find(t => t.id === rows[1].id)!.completed).toBe(false);
+  });
+
+  it('re-inserts the next set when the uncomplete is itself undone', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    useTaskStore.getState().uncompleteTask(rows[1].id);
+    useTaskStore.getState().lastAction!.undo();
+
+    const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+    expect(live.map(t => new Date(t.dueDate!).getDate()).sort((a, b) => a - b)).toEqual([10, 15]);
+    expect(live.every(t => new Date(t.dueDate!).getMonth() === 9)).toBe(true);
+  });
+
+  it('keeps a date the user completed themselves out of the undo', () => {
+    const rows = makeRepeatingSet();
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+    const next = useTaskStore.getState().tasks.filter(t => !t.completed);
+    useTaskStore.getState().completeTask(next[0].id);
+
+    useTaskStore.getState().uncompleteTask(rows[1].id);
+
+    // The October date the user actually ticked survives; only the untouched
+    // one goes back out with the completion that created it.
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toContain(next[0].id);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).not.toContain(next[1].id);
+  });
+
+  it('collapses to one roster entry for a stack after a rollover', () => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Dog', groupId: 'g1' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+      { monthDays: [10, 15], repeatMonths: 1 },
+    );
+    useTaskStore.getState().completeTask(rows[0].id);
+    useTaskStore.getState().completeTask(rows[1].id);
+
+    expect(useTaskStore.getState().groupRosterOf('g1')).toHaveLength(1);
   });
 });
 

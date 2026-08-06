@@ -84,6 +84,8 @@ export interface TaskDraft {
   chainItems?: ChainItem[];
   /** Drops a brand-new task straight into a project — set when the editor is opened from one. */
   projectId?: string | null;
+  /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
+  groupId?: string | null;
   linkUrl?: string | null;
   targetCount?: number | null;
 }
@@ -98,7 +100,7 @@ interface Props {
 type PickerMode = 'none' | 'reminder';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -137,8 +139,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addCategory = useTaskStore(s => s.addCategory);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
+  const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
+  const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
-  const taskGroup = useTaskGroupStore(s => (task?.groupId ? s.groups.find(g => g.id === task.groupId) ?? null : null));
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const colors = useColors();
   const { isDark } = useTheme();
@@ -155,6 +158,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
+  // Which stack the task will belong to once saved. Local like every other
+  // field here, so Cancel actually cancels — the membership change is applied
+  // in commitSave (see the groupId handling there), not as the pill is tapped.
+  const [groupId, setGroupId] = useState<string | null>(null);
+  // Derived from the local pick, not from task.groupId, so the locked Category
+  // row below reflects the stack you just chose rather than the one you're
+  // still saved into.
+  const selectedGroup = allGroups.find(g => g.id === groupId) ?? null;
   const [project, setProject] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
@@ -253,6 +264,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (!visible) return;
     if (task) {
       setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags);
+      setGroupId(task.groupId ?? null);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       // The set's other live dates. Completed ones are left out: they're
       // history, and showing them as editable schedule would invite deleting
@@ -293,6 +305,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setBlockedById(task.blockedById ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
+      setGroupId(initialDraft?.groupId ?? null);
       setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
@@ -488,23 +501,38 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       haptics.success();
       if (task) {
         const snapshot = { ...task };
-        setLastAction({
-          label: 'Edit saved',
-          undo: () => updateTask(snapshot.id, snapshot),
-        });
         updateTask(task.id, data, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+        // Membership after the field write, not before: addExistingToGroup
+        // places the task at the end of its new stack, and `data` still carries
+        // the sortOrder the task had before the move — writing that second
+        // would put the placement straight back.
+        if (groupId !== (task.groupId ?? null)) {
+          if (groupId) addExistingToGroup(task.id, groupId);
+          else removeFromGroup(task.id);
+        }
         // Schedule second, and only when a set is actually in play: it adds,
         // drops and repoints sibling rows, none of which a plain single-date
         // task has.
         if (allDates.length >= 2 || task.seriesId) {
           applyTaskDates(task.id, allDates, repeat);
         }
+        // Last of all, so it replaces the narrower undo addExistingToGroup
+        // registers for itself — this snapshot puts the whole task back,
+        // stack membership and category included.
+        setLastAction({
+          label: 'Edit saved',
+          undo: () => updateTask(snapshot.id, snapshot),
+        });
       } else {
         animateLayout();
+        // groupId only rides along on the create path; for an existing task the
+        // store methods above own the move, since they place it in the stack's
+        // order and cascade the category as well as setting the field.
+        const newData = { ...data, groupId };
         if (allDates.length >= 2) {
-          addTaskSeries(data, allDates, repeat);
+          addTaskSeries(newData, allDates, repeat);
         } else {
-          addTask(data);
+          addTask(newData);
         }
       }
       onClose();
@@ -1623,20 +1651,43 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             out were the stack editor's ✕ and dragging the row out of the
             group on Today. It leads the section because it's what the
             locked Category row below points at. */}
-        {taskGroup && (
+        {/* Only when there's something to pick. An empty picker would teach
+            nothing — stacks are created from the + menu on Today, not here. */}
+        {allGroups.length > 0 && (
           <>
-            <View style={styles.stackRow}>
-              <Ionicons name="layers-outline" size={16} color={colors.textTertiary} />
-              <Text style={styles.stackTitle} numberOfLines={1}>{taskGroup.title}</Text>
-              <TouchableOpacity
-                onPress={() => { haptics.tap(); removeFromGroup(task!.id); }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove from the ${taskGroup.title} stack`}
-              >
-                <Text style={styles.stackRemove}>Remove</Text>
-              </TouchableOpacity>
-            </View>
+            <CollapsibleField
+              label="Stack"
+              summary={selectedGroup ? selectedGroup.title : undefined}
+              hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
+              expanded={fieldOpen('stack')}
+              onToggle={() => toggleField('stack')}
+            >
+              <View style={styles.pillRow}>
+                <TouchableOpacity
+                  style={[styles.pill, !groupId && styles.pillActiveNeutral]}
+                  onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
+                >
+                  <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
+                </TouchableOpacity>
+                {allGroups.map(g => (
+                  <TouchableOpacity
+                    key={g.id}
+                    style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
+                    onPress={() => {
+                      haptics.tap();
+                      setGroupId(g.id);
+                      // A stack owns its members' category (see addExistingToGroup),
+                      // so adopt it here rather than letting the locked row keep
+                      // showing a value the save is about to overwrite.
+                      setCategory(g.category);
+                      closeField('stack');
+                    }}
+                  >
+                    <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </CollapsibleField>
             <View style={styles.cardSep} />
           </>
         )}
@@ -1650,8 +1701,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // here while the task is in one — the value would be overwritten
           // by the next cascade. Changing it means changing the stack's,
           // or leaving the stack.
-          locked={taskGroup !== null}
-          lockedHint={taskGroup ? `From the ${taskGroup.title} stack.` : undefined}
+          locked={selectedGroup !== null}
+          lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
         >
           <View style={styles.pillRow}>
             <TouchableOpacity
@@ -2395,15 +2446,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
-  stackRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
-  },
-  stackTitle: { flex: 1, color: colors.text, fontSize: font.md },
-  // Red, not accent: accent at this size and weight is exactly the disclosure
-  // value style, so "Remove" read as the row's *value* rather than as the
-  // button that unfiles the task.
-  stackRemove: { color: colors.red, fontSize: font.sm, fontWeight: '500' },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,

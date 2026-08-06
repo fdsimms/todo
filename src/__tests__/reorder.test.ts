@@ -7,6 +7,7 @@ import {
   rowIndexAtContentY,
   dragTranslation,
   reorderSubset,
+  clampCardToSlots,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -83,6 +84,58 @@ describe('dropIndexFromTranslation', () => {
     expect(dropIndexFromTranslation(uniform, 0, 124)).toBe(2);
     expect(dropIndexFromTranslation(uniform, 0, 126)).toBe(3);
     expect(dropIndexFromTranslation(uniform, 5, -126)).toBe(2);
+  });
+
+  describe('with zero-height rows (a category drag hides every task row)', () => {
+    // Four category headers, each followed by the task rows it owns — which
+    // render as nothing for the duration of the drag, so they measure 0.
+    const collapsed = [40, 0, 0, 40, 0, 40, 0, 0, 0, 40];
+
+    it('never lands on one', () => {
+      // Dragging the last header up: every stop is a header, so each crossing
+      // is one the user can actually see (and one drag tick, not two).
+      const stops = [-1, -19, -20, -39, -40, -59, -60, -79, -80, -100].map(t =>
+        dropIndexFromTranslation(collapsed, 9, t),
+      );
+      expect(stops).toEqual([9, 9, 5, 5, 5, 5, 3, 3, 3, 0]);
+    });
+
+    it('crosses a collapsed section in one step going down', () => {
+      // Header 0 reaches header 3 at its midpoint (40 - 20), and nothing in
+      // between: the three zero-height rows are all at the same edge.
+      expect(dropIndexFromTranslation(collapsed, 0, 1)).toBe(0);
+      expect(dropIndexFromTranslation(collapsed, 0, 19)).toBe(0);
+      expect(dropIndexFromTranslation(collapsed, 0, 20)).toBe(3);
+      expect(dropIndexFromTranslation(collapsed, 0, 59)).toBe(3);
+      expect(dropIndexFromTranslation(collapsed, 0, 60)).toBe(5);
+    });
+
+    it('still clamps at the ends', () => {
+      expect(dropIndexFromTranslation(collapsed, 0, 5000)).toBe(9);
+      expect(dropIndexFromTranslation(collapsed, 9, -5000)).toBe(0);
+    });
+  });
+});
+
+describe('clampCardToSlots', () => {
+  it('leaves a card between the slots alone', () => {
+    expect(clampCardToSlots(120, 40, 300)).toBe(120);
+  });
+
+  it('holds a card dragged past either end at that end', () => {
+    expect(clampCardToSlots(900, 40, 300)).toBe(300);
+    expect(clampCardToSlots(-500, 40, 300)).toBe(40);
+  });
+
+  it('does not care which slot is the higher one', () => {
+    // The range's last slot is above its first whenever the row being dragged
+    // is the bottom one of its run.
+    expect(clampCardToSlots(900, 300, 40)).toBe(300);
+    expect(clampCardToSlots(-500, 300, 40)).toBe(40);
+  });
+
+  it('pins to the one position available when the slots coincide', () => {
+    expect(clampCardToSlots(900, 88, 88)).toBe(88);
   });
 });
 

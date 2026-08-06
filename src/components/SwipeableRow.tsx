@@ -64,6 +64,14 @@ interface Props {
  *   rendered full-bleed behind it, so the color runs to the screen edge with
  *   square corners while the card slides over it. Put the card's margins on
  *   this component's `style` and let the row inside be flush.
+ * - **The row handed in must not round its own corners either**, for the same
+ *   reason one step in: it slides over the panel, so its leading and trailing
+ *   edges are interior seams against that panel while one is open, not card
+ *   corners. A radius there opens a notch of backing between the panel and the
+ *   card, and slices whatever sits on that edge — TaskItem's priority bar is
+ *   3pt wide, so a 12pt radius tapered it into a spike that looked torn out of
+ *   the orange. `style` is the only place the card's radius belongs; it rounds
+ *   the row and its panels together as one silhouette.
  */
 export function SwipeableRow({ selectAction, whenAction, enabled = true, style, children }: Props) {
   const colors = useColors();
