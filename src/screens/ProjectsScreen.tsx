@@ -465,10 +465,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
   },
-  headerBtnText: {
-    color: colors.accent,
-    fontSize: font.md,
-  },
   detailFooter: {
     paddingTop: spacing.sm,
     paddingBottom: spacing.xl,
@@ -488,18 +484,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-  },
-  footerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    paddingVertical: 10,
-  },
-  footerBtnText: {
-    color: colors.accent,
-    fontSize: font.md,
   },
   searchRow: {
     flexDirection: 'row',

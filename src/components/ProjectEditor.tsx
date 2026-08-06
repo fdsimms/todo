@@ -16,6 +16,8 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CalendarPicker } from './CalendarPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -131,9 +133,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       scrollContentStyle={styles.scrollContent}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -225,10 +225,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 autoCapitalize="words"
               />
             ) : (
-              <TouchableOpacity style={styles.addTagBtn} onPress={() => setAddingCategory(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addTagText}>New</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -351,7 +348,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  headerBtn: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, paddingBottom: 120 },
   titleInput: {
@@ -387,13 +383,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
   },
-  addTagBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: 10, paddingVertical: 5,
-    borderRadius: radius.full, borderWidth: 1,
-    borderColor: colors.bgQuaternary, borderStyle: 'dashed',
-  },
-  addTagText: { color: colors.accent, fontSize: font.sm },
   sep: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.separator,

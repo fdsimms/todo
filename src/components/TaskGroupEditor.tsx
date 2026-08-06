@@ -24,6 +24,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
+import { InlineAction } from './InlineAction';
+import { SheetHeaderButton } from './SheetHeaderButton';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -61,7 +63,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
-  const pinGroup = useTaskStore(s => s.pinGroup);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const updateTask = useTaskStore(s => s.updateTask);
@@ -217,9 +218,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       scrollEnabled={!draggingChild}
       header={
         <>
-          <TouchableOpacity onPress={saveAndClose} hitSlop={8}>
-            <Text style={styles.headerBtn}>Done</Text>
-          </TouchableOpacity>
+          <SheetHeaderButton label="Done" onPress={saveAndClose} />
           <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete stack">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
@@ -299,10 +298,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 autoCapitalize="none"
               />
             ) : (
-              <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingTag(true)}>
-                <Ionicons name="add" size={14} color={colors.accent} />
-                <Text style={styles.addPillText}>Add tag</Text>
-              </TouchableOpacity>
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
             )}
           </View>
         </CollapsibleField>
@@ -358,7 +354,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
             }}
           />
 
-          {addingChild ? (
+          {addingChild && (
             <View style={styles.subtaskInputRow}>
               <TextInput
                 autoFocus
@@ -383,17 +379,19 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 }}
               />
             </View>
-          ) : (
-            <TouchableOpacity style={styles.addPillBtn} onPress={() => setAddingChild(true)}>
-              <Ionicons name="add" size={14} color={colors.accent} />
-              <Text style={styles.addPillText}>Add new task</Text>
-            </TouchableOpacity>
           )}
 
-          <TouchableOpacity style={styles.addPillBtn} onPress={() => setShowExistingPicker(v => !v)}>
-            <Ionicons name={showExistingPicker ? 'chevron-up' : 'chevron-down'} size={14} color={colors.accent} />
-            <Text style={styles.addPillText}>Add existing task</Text>
-          </TouchableOpacity>
+          <View style={styles.actionPillRow}>
+            {!addingChild && (
+              <InlineAction icon="add" label="New task" onPress={() => setAddingChild(true)} />
+            )}
+            <InlineAction
+              icon={showExistingPicker ? 'chevron-up' : 'chevron-down'}
+              label="Add existing"
+              variant="neutral"
+              onPress={() => setShowExistingPicker(v => !v)}
+            />
+          </View>
 
           {showExistingPicker && (
             <View style={styles.existingPicker}>
@@ -426,21 +424,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
           )}
         </View>
       </View>
-
-      {/* Pin-all used to be an icon button on the stack header itself,
-          which spent a permanent slot on every row for one of the rarest
-          things you can do to a stack. */}
-      <View style={styles.sectionCard}>
-        <TouchableOpacity
-          style={styles.actionRow}
-          onPress={() => { haptics.tap(); pinGroup(group.id); onClose(); }}
-          accessibilityRole="button"
-          accessibilityLabel={`Pin all of ${group.title}`}
-        >
-          <Ionicons name="pin-outline" size={18} color={colors.accent} />
-          <Text style={styles.actionText}>Pin all tasks in this stack</Text>
-        </TouchableOpacity>
-      </View>
     </EditorSheet>
   );
 }
@@ -453,7 +436,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
   headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-  headerBtn: { color: colors.accent, fontSize: font.md, fontWeight: fontWeight.semibold },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 80 },
   titleInput: {
@@ -470,11 +452,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
   },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  actionRow: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingVertical: 14,
-  },
-  actionText: { color: colors.accent, fontSize: font.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.bold,
@@ -494,11 +471,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm, paddingVertical: 8,
     backgroundColor: colors.bgTertiary, borderRadius: radius.full, minWidth: 100,
   },
-  addPillBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 4,
-    paddingHorizontal: spacing.sm, paddingVertical: spacing.xs, marginTop: spacing.xs,
-  },
-  addPillText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
+  actionPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   subtaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   subtaskProgress: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
   childRow: {
