@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, Animated, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
-import { useTheme } from '../theme/ThemeContext';
+import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, animation, type Colors } from '../theme';
 import { isRelevantToGroupToday, isGroupHiddenToday } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
@@ -60,8 +60,8 @@ export function TaskGroupHeader({
   onPressEdit,
   onDrag,
 }: Props) {
-  const { colors, isDark } = useTheme();
-  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
   const [showDefer, setShowDefer] = useState(false);
   // Mirrors TaskItem's completion animation so dismissing a fully-done stack
   // shows the same pop-checkmark beat as completing an individual task,
@@ -109,161 +109,157 @@ export function TaskGroupHeader({
 
   return (
     <>
-      <View>
-        <View style={[
-          styles.itemWrapper,
-          styles.lidSurface,
-          !group.collapsed && styles.itemWrapperExpanded,
-        ]}>
-          <View style={styles.cardClip}>
-            {/* Deleting a stack lives in TaskGroupEditor (behind the ⋯), not
-                here. It used to be this row's swipe-left, which both put a
-                destructive action one flick away and meant the gesture said
-                "delete" on stacks and "select" on every task under them. */}
-            <SwipeableRow
-              selectAction={onSwipeSelect ? {
-                onSelect: onSwipeSelect,
-                accessibilityLabel: `Select all of ${group.title}`,
-              } : undefined}
-              whenAction={{
-                onAction: () => setShowDefer(true),
-                accessibilityLabel: `Reschedule all of ${group.title}`,
-              }}
-            >
-              <View style={[styles.row, styles.lidSurface, !group.collapsed && styles.lidSeam]}>
-                {/* A rounded square, deliberately not the circle a task row
-                    uses: this control cascades across the whole roster, and
-                    for a while it wore the exact shape, size, position and
-                    colour of a single task's checkbox while meaning something
-                    an order of magnitude bigger. It's a touch larger than that
-                    checkbox too, so the header reads as heavier than the rows
-                    hanging off it. */}
-                <TouchableOpacity
-                  onPress={() => {
-                    if (dismissed || dismissing) return;
-                    // Tap on a stack that still has work in it is just the
-                    // row's own expand/collapse — completing every child is a
-                    // long-press instead. Tap used to cascade, which put an
-                    // N-task completion (with its recurrence spawns, chain
-                    // advances and streak writes) one stray tap away from the
-                    // child checkboxes directly below it.
-                    if (!allDone) {
-                      onToggleCollapse();
-                      return;
-                    }
-                    haptics.success();
-                    setDismissing(true);
-                    checkScale.setValue(0);
-                    Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
-                    Animated.sequence([
-                      Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
-                      Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
-                      Animated.delay(120),
-                    ]).start(({ finished }) => {
-                      if (finished) onDismiss();
-                    });
-                  }}
-                  onLongPress={completeAll}
-                  delayLongPress={interaction.delayLongPress}
-                  hitSlop={10}
-                  style={styles.glyphWrapper}
-                  accessibilityRole="button"
-                  accessibilityLabel={
-                    dismissed ? `${group.title} cleared for today` : `Clear completed ${group.title} stack`
+      <View style={styles.band}>
+        <View style={styles.cardClip}>
+          {/* Deleting a stack lives in TaskGroupEditor (behind the ⋯), not
+              here. It used to be this row's swipe-left, which both put a
+              destructive action one flick away and meant the gesture said
+              "delete" on stacks and "select" on every task under them. */}
+          <SwipeableRow
+            selectAction={onSwipeSelect ? {
+              onSelect: onSwipeSelect,
+              accessibilityLabel: `Select all of ${group.title}`,
+            } : undefined}
+            whenAction={{
+              onAction: () => setShowDefer(true),
+              accessibilityLabel: `Reschedule all of ${group.title}`,
+            }}
+          >
+            <View style={styles.row}>
+              {/* A rounded square tile, deliberately not the circle a task
+                  row uses: this control cascades across the whole roster,
+                  and for a while it wore the exact shape, size, position and
+                  colour of a single task's checkbox while meaning something
+                  an order of magnitude bigger. It sits in the gutter to the
+                  left of the column its tasks occupy — the one filled shape
+                  in a header that is otherwise just type on the page. */}
+              <TouchableOpacity
+                onPress={() => {
+                  if (dismissed || dismissing) return;
+                  // Tap on a stack that still has work in it is just the
+                  // row's own expand/collapse — completing every child is a
+                  // long-press instead. Tap used to cascade, which put an
+                  // N-task completion (with its recurrence spawns, chain
+                  // advances and streak writes) one stray tap away from the
+                  // child checkboxes directly below it.
+                  if (!allDone) {
+                    onToggleCollapse();
+                    return;
                   }
-                  // Until the stack is finished this glyph does nothing the
-                  // row itself doesn't (tap collapses either way), and its
-                  // one unique function — complete-all — is a long-press,
-                  // which VoiceOver can't reach. So it stays out of the
-                  // accessibility tree until it becomes the dismiss control,
-                  // and complete-all rides on the row as a rotor action
-                  // instead of as a second element saying the same thing.
-                  accessibilityElementsHidden={!allDone && !dismissed}
-                  importantForAccessibility={!allDone && !dismissed ? 'no-hide-descendants' : 'yes'}
-                >
-                  <Animated.View style={[
-                    styles.glyph,
-                    (dismissed || dismissing) && styles.glyphDone,
-                    { transform: [{ scale: circleScale }] },
-                  ]}>
-                    {dismissed ? (
-                      <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
-                    ) : dismissing ? (
-                      <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-                        <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
-                      </Animated.View>
-                    ) : (
-                      <Ionicons name="layers-outline" size={iconSize.sm} color={colors.textSecondary} />
-                    )}
-                  </Animated.View>
-                </TouchableOpacity>
+                  haptics.success();
+                  setDismissing(true);
+                  checkScale.setValue(0);
+                  Animated.spring(checkScale, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+                  Animated.sequence([
+                    Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
+                    Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+                    Animated.delay(120),
+                  ]).start(({ finished }) => {
+                    if (finished) onDismiss();
+                  });
+                }}
+                onLongPress={completeAll}
+                delayLongPress={interaction.delayLongPress}
+                hitSlop={10}
+                style={styles.glyphWrapper}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  dismissed ? `${group.title} cleared for today` : `Clear completed ${group.title} stack`
+                }
+                // Until the stack is finished this glyph does nothing the
+                // row itself doesn't (tap collapses either way), and its
+                // one unique function — complete-all — is a long-press,
+                // which VoiceOver can't reach. So it stays out of the
+                // accessibility tree until it becomes the dismiss control,
+                // and complete-all rides on the row as a rotor action
+                // instead of as a second element saying the same thing.
+                accessibilityElementsHidden={!allDone && !dismissed}
+                importantForAccessibility={!allDone && !dismissed ? 'no-hide-descendants' : 'yes'}
+              >
+                <Animated.View style={[
+                  styles.glyph,
+                  (dismissed || dismissing) && styles.glyphDone,
+                  { transform: [{ scale: circleScale }] },
+                ]}>
+                  {dismissed ? (
+                    <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
+                  ) : dismissing ? (
+                    <Animated.View style={{ transform: [{ scale: checkScale }] }}>
+                      <Ionicons name="checkmark" size={iconSize.md} color={colors.onAccent} />
+                    </Animated.View>
+                  ) : (
+                    <Ionicons name="layers" size={iconSize.sm} color={colors.textSecondary} />
+                  )}
+                </Animated.View>
+              </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.content}
-                  onPress={onToggleCollapse}
-                  onLongPress={onDrag}
-                  delayLongPress={interaction.delayLongPress}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: !group.collapsed }}
-                  // Spells the tally out rather than leaving it to the badge:
-                  // a label set here overrides the row's children, so the
-                  // "3/8" pill is invisible to a screen reader on its own.
-                  accessibilityLabel={
-                    showTally
-                      ? `${group.title} stack, ${doneToday} of ${totalToday} done today`
-                      : `${group.title} stack`
-                  }
-                  accessibilityHint={
-                    onDrag
-                      ? `${group.collapsed ? 'Double tap to expand.' : 'Double tap to collapse.'} Long press to reorder.`
-                      : group.collapsed ? 'Double tap to expand' : 'Double tap to collapse'
-                  }
-                  // Complete-all is a long-press on the glyph, which VoiceOver
-                  // has no gesture for — it's offered here as a rotor action so
-                  // it isn't sighted-only.
-                  accessibilityActions={allDone || dismissed ? undefined : [{ name: 'longpress', label: 'Complete all' }]}
-                  onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
-                >
-                  <View style={styles.titleRow}>
-                    <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
-                    {showTally && (
-                      <View style={styles.progressBadge}>
-                        <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
+              <TouchableOpacity
+                style={styles.content}
+                onPress={onToggleCollapse}
+                onLongPress={onDrag}
+                delayLongPress={interaction.delayLongPress}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: !group.collapsed }}
+                // Spells the tally out rather than leaving it to the glyph:
+                // a label set here overrides the row's children, so the
+                // "3/8" is invisible to a screen reader on its own.
+                accessibilityLabel={
+                  showTally
+                    ? `${group.title} stack, ${doneToday} of ${totalToday} done today`
+                    : `${group.title} stack`
+                }
+                accessibilityHint={
+                  onDrag
+                    ? `${group.collapsed ? 'Double tap to expand.' : 'Double tap to collapse.'} Long press to reorder.`
+                    : group.collapsed ? 'Double tap to expand' : 'Double tap to collapse'
+                }
+                // Complete-all is a long-press on the glyph, which VoiceOver
+                // has no gesture for — it's offered here as a rotor action so
+                // it isn't sighted-only.
+                accessibilityActions={allDone || dismissed ? undefined : [{ name: 'longpress', label: 'Complete all' }]}
+                onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') completeAll(); }}
+              >
+                <View style={styles.titleRow}>
+                  <Text style={styles.title} numberOfLines={1}>{group.title}</Text>
+                  {/* Bare type, not a filled pill: the header has no card
+                      behind it any more, and a tinted capsule floating on
+                      the page background was the last thing left reading as
+                      a selected chip. */}
+                  {showTally && (
+                    <Text style={styles.progressText}>{doneToday}/{totalToday}</Text>
+                  )}
+                  <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
+                </View>
+                {group.collapsed && summary !== null && (
+                  <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
+                )}
+                {group.tags.length > 0 && (
+                  <View style={styles.tagsRow}>
+                    {group.tags.map(tag => (
+                      <View key={tag} style={[styles.tagChip, { borderColor: tagColor(tag) }]}>
+                        <Text style={[styles.tagChipText, { color: tagColor(tag) }]} numberOfLines={1}>{tag}</Text>
                       </View>
-                    )}
-                    <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={14} color={colors.textTertiary} />
+                    ))}
                   </View>
-                  {group.collapsed && summary !== null && (
-                    <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
-                  )}
-                  {group.tags.length > 0 && (
-                    <View style={styles.tagsRow}>
-                      {group.tags.map(tag => (
-                        <View key={tag} style={[styles.tagChip, { borderColor: tagColor(tag) }]}>
-                          <Text style={[styles.tagChipText, { color: tagColor(tag) }]} numberOfLines={1}>{tag}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </TouchableOpacity>
+                )}
+              </TouchableOpacity>
 
-                {/* Pin-all used to sit here beside the ⋯. Two always-on icon
-                    buttons made the header the busiest row on the screen for
-                    the rarest action on it; it lives in the stack editor now. */}
-                <TouchableOpacity
-                  onPress={onPressEdit}
-                  hitSlop={8}
-                  style={styles.iconBtn}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Edit ${group.title} stack`}
-                >
-                  <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-                </TouchableOpacity>
-              </View>
-            </SwipeableRow>
-            <SpotlightScrim />
-          </View>
+              {/* Pin-all used to sit here beside the ⋯. Two always-on icon
+                  buttons made the header the busiest row on the screen for
+                  the rarest action on it; it lives in the stack editor now. */}
+              <TouchableOpacity
+                onPress={onPressEdit}
+                hitSlop={8}
+                style={styles.iconBtn}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${group.title} stack`}
+              >
+                <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          </SwipeableRow>
+          <SpotlightScrim />
         </View>
       </View>
 
@@ -280,27 +276,50 @@ export function TaskGroupHeader({
   );
 }
 
-// The stack's leading glyph, and the geometry the body's rail is aligned to.
-const GLYPH_SIZE = 28;
-const GLYPH_PADDING = 2;
-/** Centre of the leading glyph, measured from the screen edge — TaskGroupBody
- *  hangs its rail here so the children read as descending from the glyph. */
-export const STACK_RAIL_X = spacing.md + GLYPH_PADDING + GLYPH_SIZE / 2;
+// The stack's leading tile, and the gap between it and the title.
+const GLYPH_SIZE = 30;
+const GLYPH_GAP = 10;
+/**
+ * Left inset of a stack's child rows, measured from the screen edge — TaskItem
+ * indents by exactly this so the cards start where the header's title starts.
+ * The tile then hangs alone in the gutter beside them, and the title reads as
+ * the head of the column rather than as a label floating near it. That
+ * alignment is the whole grouping cue now (see the note in TaskGroupBody about
+ * the rail that used to be), so it has to be one number, not two that agree.
+ */
+export const STACK_CHILD_INSET = spacing.md + GLYPH_SIZE + GLYPH_GAP;
 
-const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
-  itemWrapper: {
+const makeStyles = (colors: Colors) => StyleSheet.create({
+  /**
+   * A caption band on the page, not a card.
+   *
+   * Every previous version of this header was a filled rounded rectangle the
+   * same width and shape as the task rows below it — first on the card
+   * surface, then stepped up to bgTertiary to read as a "lid" over them. The
+   * problem with the lid is that a row that looks exactly like its neighbours
+   * but is a shade brighter doesn't read as *higher*, it reads as *selected*:
+   * bgTertiary is the surface this app uses for a pressed row and a dragged
+   * one. So the stack always looked like it was in some transient state.
+   *
+   * The fix isn't another shade — it's leaving the card vocabulary. Nothing
+   * here is filled or rounded except the tile: the header is type on the page
+   * background, which is a thing no task row can ever be, at any tint. That
+   * also puts three unambiguous levels on the screen at once — the category
+   * caption (tiny, uppercase, tertiary), the stack band (17pt bold + tile),
+   * and the task cards.
+   *
+   * The row still needs an opaque background, though it's the same colour as
+   * what's behind it: SwipeableRow renders its action panels *under* the row
+   * and slides the row off them, so a truly transparent header would show the
+   * orange panel straight through its own text.
+   */
+  band: {
     marginHorizontal: spacing.md,
-    marginTop: 2,
-    marginBottom: 2,
-    borderRadius: radius.md,
-    backgroundColor: colors.bgSecondary,
-  },
-  // A lid sits directly on what it covers: the gap underneath an expanded
-  // header closes, so the stack reads as one block rather than a run of
-  // separate cards that happen to be adjacent. TaskGroupBody's rail crosses
-  // the seam. Collapsed, there's nothing to sit on and the gap comes back.
-  itemWrapperExpanded: {
-    marginBottom: 0,
+    marginTop: spacing.sm,
+    // The gap the header was deliberately denied while it was a lid. A band
+    // has to stand off its content — pressed right up against the first card
+    // it goes back to looking like one more row in the run.
+    marginBottom: spacing.sm,
   },
   cardClip: {
     borderRadius: radius.md,
@@ -309,29 +328,26 @@ const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 56,
-    backgroundColor: colors.bgSecondary,
+    minHeight: 48,
+    backgroundColor: colors.bg,
   },
-  // Dark themes can step the header up a surface level and have it read as a
-  // lid over the children. Light can't: bgTertiary there (#EFEFF4) lands
-  // within a hair of the page background (#F2F2F7), so the header would sink
-  // into the page instead of covering the cards. It keeps the card surface
-  // and takes a hairline along its underside instead — same job, done with
-  // the tool that theme has. Hence the split: the raised surface identifies a
-  // stack whether it's open or shut, but the seam only exists when there is
-  // something below the header to be divided from.
-  lidSurface: isDark ? { backgroundColor: colors.bgTertiary } : {},
-  lidSeam: isDark ? {} : { borderBottomWidth: border.hairline, borderBottomColor: colors.separator },
   glyphWrapper: {
-    marginLeft: spacing.md,
-    padding: GLYPH_PADDING,
+    // No padding: the tile's leading edge lines up with the left edge of the
+    // cards above and below it, hitSlop does the finger-target work.
+    marginRight: GLYPH_GAP,
   },
   glyph: {
     width: GLYPH_SIZE,
     height: GLYPH_SIZE,
     borderRadius: radius.sm,
     borderWidth: border.sm,
-    borderColor: colors.bgQuaternary,
+    // A filled tile rather than an outline, and on the *card* surface: it's
+    // the one place the stack borrows the colour of the rows it owns, which
+    // is what stops a card-less header from looking unfinished. Works in both
+    // themes for once — bgSecondary is #1C1C1E on black and #FFFFFF on grey,
+    // legible against the page either way.
+    backgroundColor: colors.bgSecondary,
+    borderColor: colors.separator,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -342,29 +358,29 @@ const makeStyles = (colors: Colors, isDark: boolean) => StyleSheet.create({
   content: {
     flex: 1,
     paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 7,
   },
+  // Two steps up from a task title (font.md regular) — a stack is named once
+  // and then read as a heading, so it can afford the weight that would be
+  // shouting on a row you have twenty of.
   title: {
     flexShrink: 1,
     color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  progressBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+    fontSize: font.lg,
+    fontWeight: fontWeight.bold,
+    letterSpacing: -0.2,
   },
   progressText: {
     color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
+    // Nudged onto the title's baseline; centring it on a 17pt line leaves it
+    // sitting visibly high against the cap height.
+    marginTop: 2,
   },
   summary: {
     color: colors.textTertiary,

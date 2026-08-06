@@ -1,9 +1,8 @@
 import React, { useMemo } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, border, type Colors } from '../theme';
+import { spacing, font, type Colors } from '../theme';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
-import { STACK_RAIL_X } from './TaskGroupHeader';
 
 interface Props {
   expanded: boolean;
@@ -18,28 +17,20 @@ interface Props {
   children: React.ReactNode;
 }
 
-// How far above the bottom of the last row the rail stops. Roughly half a
-// resting task row, so the line ends around that row's middle and reads as a
-// branch reaching its last item rather than as a box drawn around the group.
-// A row that's been expanded for its notes is taller than this, so the rail
-// finishes nearer its top edge — still a deliberate-looking stop, which is
-// why this is one constant instead of a measured per-row layout.
-const RAIL_BOTTOM_INSET = 24;
-
 /**
- * The children of a stack: the collapse animation, the rail that ties them to
- * their header, and the all-done stand-in.
+ * The children of a stack: the collapse animation and the all-done stand-in.
  *
- * A stack's header and its children are separate cards in one flat list, so
- * without the rail nothing but indentation says the rows below a header
- * belong to it — and indentation alone is ambiguous the moment a stack is the
- * last thing in a category. The rail hangs from the centre of the header's
- * leading glyph (`STACK_RAIL_X`) so the connection reads as descending from
- * the stack's own mark.
- *
- * It's drawn behind the rows and `pointerEvents="none"`: in the Today list
- * these children sit inside a `SortableList`, and a rail that could take a
- * touch would be a drag that silently doesn't start.
+ * **There is no rail.** A hairline used to hang from the centre of the
+ * header's glyph and run down the left of these rows, because back when the
+ * header was itself a card, nothing but indentation said the rows below it
+ * belonged to it — and indentation alone is ambiguous when a stack is the
+ * last thing in a category. That line paid for itself then and doesn't now:
+ * the header is a caption band on the page background rather than a card
+ * (see TaskGroupHeader), so "the indented cards under the band" is already an
+ * unambiguous read, and the rail was left tracing the edge of a card that no
+ * longer exists. The grouping is carried by three things instead — the band
+ * itself, children inset to start exactly at its title (`STACK_CHILD_INSET`),
+ * and the closing gap below.
  */
 export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: Props) {
   const colors = useColors();
@@ -48,7 +39,6 @@ export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: P
   return (
     <AnimatedCollapsible expanded={expanded}>
       <View style={styles.content}>
-        {hasChildren && <View style={styles.rail} pointerEvents="none" />}
         {hasChildren
           ? children
           : emptyLabel !== undefined && <Text style={styles.empty}>{emptyLabel}</Text>}
@@ -58,21 +48,12 @@ export function TaskGroupBody({ expanded, hasChildren, emptyLabel, children }: P
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  // Swallows the first child's own 2pt top margin so the card emerges from
-  // under the header rather than floating just below it — closing the header
-  // side of that seam alone still leaves the child's half of it. Collapsed
-  // this is inert: AnimatedCollapsible clamps the wrapper to zero height and
-  // clips, so there's nothing for the offset to pull up.
+  // Closes the block. Children sit 2pt apart, so without this the first row
+  // after a stack is exactly as far from the last child as the children are
+  // from each other, and the stack has no visible end. Collapsed this is
+  // inert — AnimatedCollapsible clamps the wrapper to zero height and clips.
   content: {
-    marginTop: -2,
-  },
-  rail: {
-    position: 'absolute',
-    left: STACK_RAIL_X,
-    top: 0,
-    bottom: RAIL_BOTTOM_INSET,
-    width: border.sm,
-    backgroundColor: colors.separator,
+    paddingBottom: spacing.sm,
   },
   empty: {
     color: colors.textTertiary,
