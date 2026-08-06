@@ -62,6 +62,19 @@ describe('zoneAtY', () => {
     expect(key(zoneAtY(RECTS, 573))).toBe('t-rent');
   });
 
+  it('keeps answering well below the last row, out to the tail slop', () => {
+    // t-rent ends at 568, so the empty page down to 632 still reads as the end
+    // of the list rather than as nothing.
+    expect(key(zoneAtY(RECTS, 600))).toBe('t-rent');
+    expect(key(zoneAtY(RECTS, 632))).toBe('t-rent');
+    expect(zoneAtY(RECTS, 633)).toBeNull();
+  });
+
+  it('does not extend the tail slop above the first row', () => {
+    // The same distance off the top edge, where the header and pills live.
+    expect(zoneAtY(RECTS, 60)).toBeNull();
+  });
+
   it('is null for an empty list', () => {
     expect(zoneAtY([], 120)).toBeNull();
   });
@@ -99,6 +112,13 @@ describe('resolveFabDrop', () => {
     };
     expect(resolveFabDrop(RECTS[3]!, 255)).toEqual(expected);
     expect(resolveFabDrop(RECTS[3]!, 460)).toEqual(expected);
+  });
+
+  it('appends after the last row for a drop in the empty page below it', () => {
+    const y = 600; // below t-rent (516..568), inside the tail slop
+    expect(resolveFabDrop(zoneAtY(RECTS, y), y)).toEqual({
+      kind: 'insert', anchorKey: 't-rent', before: false, category: 'Home',
+    });
   });
 
   it('carries a null category for a drop above every header', () => {

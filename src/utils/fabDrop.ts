@@ -72,13 +72,37 @@ export function zoneKey(zone: DropZone): string {
 export const ZONE_HIT_SLOP = 6;
 
 /**
- * The zone `y` falls in, or the nearest one within `slop` when it lands in the
- * gap between two cards. Null past the ends of the list, so releasing well
- * clear of every row stays a plain add rather than snapping to the last one.
+ * Slack below the *last* row, where ZONE_HIT_SLOP's few pixels aren't enough.
+ *
+ * Every other seam in the list has a row on both sides of it, so a gutter-sized
+ * slop is all a finger needs to find it. The seam after the last row has empty
+ * page under it instead, and aiming at it meant landing inside the final card —
+ * a drop a few pixels lower silently downgraded to a plain add, which is the one
+ * spot where "past the end of the list" and "at the end of the list" look
+ * identical to the person doing it. Roughly a row's height of empty page keeps
+ * reading as the end of the list; further down is clear of the list and stays a
+ * plain add, so releasing into the blank page still means what it did.
+ *
+ * Only applied downward off the bottom, not upward off the top: above the first
+ * row is the header and the Today/Later pills, not blank page.
  */
-export function zoneAtY(rects: ZoneRect[], y: number, slop: number = ZONE_HIT_SLOP): ZoneRect | null {
+export const TAIL_HIT_SLOP = 64;
+
+/**
+ * The zone `y` falls in, or the nearest one within `slop` when it lands in the
+ * gap between two cards — `tailSlop` instead of `slop` when it lands below the
+ * last row, per TAIL_HIT_SLOP. Null past that, so releasing well clear of every
+ * row stays a plain add rather than snapping to the last one.
+ */
+export function zoneAtY(
+  rects: ZoneRect[],
+  y: number,
+  slop: number = ZONE_HIT_SLOP,
+  tailSlop: number = TAIL_HIT_SLOP,
+): ZoneRect | null {
   let best: ZoneRect | null = null;
   let bestDist = Infinity;
+  let last: ZoneRect | null = null;
   for (const r of rects) {
     const dist = Math.max(r.top - y, y - r.bottom, 0);
     if (dist === 0) return r;
@@ -86,8 +110,12 @@ export function zoneAtY(rects: ZoneRect[], y: number, slop: number = ZONE_HIT_SL
       bestDist = dist;
       best = r;
     }
+    if (!last || r.bottom > last.bottom) last = r;
   }
-  return bestDist <= slop ? best : null;
+  // Below every row, the nearest zone is the bottom one by definition — so this
+  // is the tail, and nothing above the list can reach the larger slop.
+  const belowList = best !== null && best === last && y > best.bottom;
+  return bestDist <= (belowList ? Math.max(slop, tailSlop) : slop) ? best : null;
 }
 
 /**
