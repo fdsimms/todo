@@ -1,4 +1,18 @@
 import * as ExpoHaptics from 'expo-haptics';
+import { useSettingsStore } from '../store/useSettingsStore';
+
+/**
+ * The single gate for the "Haptic feedback" setting. Every haptic in the app
+ * goes through the vocabulary below — components never import expo-haptics
+ * directly — so switching it off here switches it off everywhere, with no
+ * call site aware of it.
+ *
+ * Read per call rather than captured, because the setting can change while the
+ * modules that imported `haptics` are still mounted.
+ */
+function enabled(): boolean {
+  return useSettingsStore.getState().hapticsEnabled;
+}
 
 /**
  * Floor between two drag ticks. A drag can cross several slots between frames,
@@ -21,20 +35,23 @@ let lastDragTick = 0;
  *   error      — failed actions, validation errors
  *   impact     — physical-feeling moments (drag lift, drop, swipe actions)
  *
- * All return promises that are safe to ignore; failures are swallowed.
+ * All return a promise that is safe to ignore — or nothing at all, when the
+ * haptics setting is off or a drag tick lands inside the throttle. Failures
+ * are swallowed either way; no caller awaits these.
  */
 export const haptics = {
-  tap: () => ExpoHaptics.selectionAsync().catch(() => {}),
+  tap: () => enabled() ? ExpoHaptics.selectionAsync().catch(() => {}) : undefined,
   dragTick: () => {
+    if (!enabled()) return;
     const now = Date.now();
     if (now - lastDragTick < MIN_DRAG_TICK_MS) return;
     lastDragTick = now;
     return ExpoHaptics.selectionAsync().catch(() => {});
   },
-  success: () => ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Success).catch(() => {}),
-  warning: () => ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}),
-  error: () => ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}),
-  impactLight: () => ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light).catch(() => {}),
-  impactMedium: () => ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Medium).catch(() => {}),
-  impactHeavy: () => ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Heavy).catch(() => {}),
+  success: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Success).catch(() => {}) : undefined,
+  warning: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
+  error: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}) : undefined,
+  impactLight: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light).catch(() => {}) : undefined,
+  impactMedium: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Medium).catch(() => {}) : undefined,
+  impactHeavy: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Heavy).catch(() => {}) : undefined,
 };

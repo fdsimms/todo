@@ -39,7 +39,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatHHMM, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDueDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
@@ -1442,7 +1442,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           icon="notifications"
           label="Remind me"
           hint="Send a notification at this time"
-          value={reminderTime ? format(reminderTime, "MMM d 'at' h:mm a") : undefined}
+          value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
           onPress={() => openPicker('reminder')}
           onClear={reminderTime ? () => setReminderTime(null) : undefined}
         />

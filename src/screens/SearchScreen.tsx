@@ -21,7 +21,7 @@ import { fuzzySearch } from '../utils/fuzzySearch';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, interaction, checkboxRadius, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
@@ -35,7 +35,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }) {
-  const { task, titleMatches } = result;
+  const { task, titleMatches, projectName, projectMatches } = result;
   const isCompleted = task.completed;
 
   const completedDate = task.completedAt
@@ -46,6 +46,7 @@ function SearchResultItem({ result, onPress, styles, colors }: {
 
   const a11yLabel = [
     displayTitle,
+    projectName ? `in ${projectName}` : null,
     task.archived ? 'archived' : null,
     isCompleted ? `completed${completedDate ? ` ${completedDate}` : ''}` : null,
     !isCompleted && task.dueDate ? `due ${format(new Date(task.dueDate), 'MMM d')}` : null,
@@ -78,6 +79,21 @@ function SearchResultItem({ result, onPress, styles, colors }: {
         <View style={styles.resultMeta}>
           {task.archived && (
             <Text style={styles.archivedLabel}>Archived</Text>
+          )}
+          {/* Ahead of the tags and dates, and highlighted like the title: a
+              result can match on its project's name alone (fuzzySearch scores
+              it), and until now that row gave no hint why it was in the list. */}
+          {projectName && (
+            <View style={styles.projectChip}>
+              <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+              <HighlightedText
+                text={projectName}
+                ranges={projectMatches}
+                style={styles.metaText}
+                highlightStyle={styles.highlight}
+                numberOfLines={1}
+              />
+            </View>
           )}
           {task.tags.slice(0, 3).map(tag => (
             <View key={tag} style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
@@ -330,6 +346,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 5,
+  },
+  // Same icon + label pairing TaskItem's meta chips use, at this row's own
+  // meta colour. flexShrink so a long project name gives way to the tags and
+  // dates rather than wrapping the row on its own.
+  projectChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
   },
   tagDot: { width: 7, height: 7, borderRadius: 4 },
   metaText: { color: colors.textSecondary, fontSize: font.xs },

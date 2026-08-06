@@ -272,6 +272,20 @@ export function quotaLeavesTodayAfterLog(task: Task): boolean {
   );
 }
 
+// True when the only thing keeping a daily target off Today is that you're
+// keeping up with it: every other gate — its own day, its window, its
+// category's schedule — says it's due right now. Drives Today's "on pace"
+// reveal, which is where a unit gets logged at a time nothing asked for it
+// (four glasses at once, and the fourth was never owed).
+export function isOnPaceQuota(task: Task): boolean {
+  if (!isQuotaTask(task) || task.completed || task.archived) return false;
+  if (!isQuotaOnPace(task)) return false;
+  // Asked as though it weren't a target at all: nothing else in isTaskVisible
+  // reads targetCount, so dropping it lifts the pace gate specifically and
+  // leaves every other one standing.
+  return isTaskVisible({ ...task, targetCount: null });
+}
+
 // True for a quota occurrence closed out without reaching its target — the
 // record rolloverQuotas leaves behind for a day you fell short. Derived from
 // the count, so a partial day needs no column of its own.
@@ -447,9 +461,17 @@ export function isWaitingTask(task: Task): boolean {
   return !task.parentId && !task.completed && !task.archived && isTaskBlocked(task);
 }
 
-// True when a task is hidden solely because its time-of-day segment hasn't started yet today.
-// Excludes tasks deferred to a future day or due on a future day.
+// True when a task is hidden solely because it isn't due yet today: a
+// time-of-day segment that hasn't started, or a daily target you're keeping up
+// with. Excludes tasks deferred to a future day or due on a future day.
 export function isUpcomingToday(task: Task): boolean {
+  // A target on pace is upcoming in exactly the same sense — nothing is owed
+  // *yet*, and it comes back later today when the next unit falls due
+  // (quotaNextDueAt). It has no time segment of its own, so it lands in the
+  // headerless bucket of Later Today rather than under Morning/Afternoon: the
+  // pace ramp reaches across the whole day, so no one segment is where it
+  // belongs. isOnPaceQuota has already run every gate below.
+  if (isOnPaceQuota(task)) return true;
   if (task.completed || task.archived || task.timeSegments.length === 0) return false;
   if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
   if (isCategoryHiddenOnVacation(task.category)) return false;

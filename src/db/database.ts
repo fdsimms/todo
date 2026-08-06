@@ -3,6 +3,7 @@ import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate,
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { normalizeTemplateItem } from '../utils/templateUtils';
+import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
 function parseTimeSegments(raw: unknown): TimeOfDay[] {
   if (!raw) return [];
@@ -357,6 +358,102 @@ export function initDatabase(): void {
     } catch (_) {}
     dbSetSetting('stack_category_ownership_backfill_done', '1');
   }
+}
+
+// ─── Backup / restore ────────────────────────────────────────────────────────
+
+/**
+ * Every table a backup carries, and the only tables restore touches.
+ *
+ * Spelled out rather than discovered from sqlite_master so that the SQL below
+ * never interpolates a name that didn't come from this file, and so a table
+ * added later is an explicit decision to include — a new table quietly missing
+ * from backups is a much worse failure than one quietly missing from this list,
+ * because it only shows up when someone restores.
+ *
+ * Order matters on the way in: nothing here declares a foreign key, but rows
+ * are inserted parents-first anyway so a future constraint doesn't turn this
+ * into a debugging session.
+ */
+export const BACKUP_TABLES = [
+  'categories',
+  'project_categories',
+  'template_categories',
+  'projects',
+  'task_groups',
+  'templates',
+  'tasks',
+  'settings',
+] as const;
+
+/** The live column names of a table, straight from the schema. */
+export function dbTableColumns(table: string): string[] {
+  return db.getAllSync<{ name: string }>(`PRAGMA table_info("${table}")`).map(r => r.name);
+}
+
+/** Every row of every backed-up table, exactly as stored. */
+export function dbExportTables(): Record<string, BackupRow[]> {
+  const out: Record<string, BackupRow[]> = {};
+  for (const table of BACKUP_TABLES) {
+    out[table] = db.getAllSync<BackupRow>(`SELECT * FROM "${table}"`);
+  }
+  return out;
+}
+
+/**
+ * Replaces the contents of every backed-up table with the given rows.
+ *
+ * One transaction on purpose: a restore that half-applied would leave tasks
+ * pointing at categories and projects that no longer exist, which is a worse
+ * state than either the old data or the new. Either the whole file lands or
+ * nothing does and the user still has what they had.
+ *
+ * Columns are intersected with the live schema by projectRow before they reach
+ * any SQL — see the note there; that intersection is what makes it safe to
+ * build these statements from names that came out of a file.
+ */
+export function dbReplaceAllData(tables: Record<string, BackupRow[]>): void {
+  // The settings a backup deliberately doesn't carry are device-local, not
+  // part of what a backup describes — so a restore has no business deleting
+  // them either. Without this the API key is wiped by restoring, and because
+  // it was redacted on the way out there is nothing in the file to put back:
+  // the user silently loses a credential they never exported.
+  const preserved = db.getAllSync<BackupRow>(
+    `SELECT * FROM settings WHERE key IN (${REDACTED_SETTING_KEYS.map(() => '?').join(', ')})`,
+    [...REDACTED_SETTING_KEYS]
+  );
+
+  db.withTransactionSync(() => {
+    // Cleared in reverse, children first, for the same reason rows go back in
+    // parents-first.
+    for (const table of [...BACKUP_TABLES].reverse()) {
+      db.runSync(`DELETE FROM "${table}"`);
+    }
+
+    for (const table of BACKUP_TABLES) {
+      const rows = tables[table];
+      if (!rows || rows.length === 0) continue;
+      const allowed = dbTableColumns(table);
+
+      for (const raw of rows) {
+        const row = projectRow(raw, allowed);
+        const columns = Object.keys(row);
+        if (columns.length === 0) continue;
+        const quoted = columns.map(c => `"${c}"`).join(', ');
+        const placeholders = columns.map(() => '?').join(', ');
+        db.runSync(
+          `INSERT OR REPLACE INTO "${table}" (${quoted}) VALUES (${placeholders})`,
+          columns.map(c => row[c])
+        );
+      }
+    }
+
+    // Put the device-local settings back. After the inserts, so a backup that
+    // somehow does carry one of these keys still loses to what's on the device.
+    for (const row of preserved) {
+      db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [row.key, row.value]);
+    }
+  });
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────

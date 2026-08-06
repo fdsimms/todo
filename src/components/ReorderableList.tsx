@@ -93,6 +93,13 @@ interface Props<T> {
   ListEmptyComponent?: React.ReactNode;
   ListFooterComponent?: React.ReactNode;
   onScrollBeginDrag?: () => void;
+  /**
+   * Fires when a scroll comes to rest — finger lifted, or momentum spent. For
+   * callers that want to act on "the user has finished moving the list" rather
+   * than on the scroll starting, so a layout change lands between gestures
+   * instead of under a moving finger.
+   */
+  onScrollSettle?: () => void;
   /** Called when the scroll position nears the bottom of the content, e.g. to page in more data. */
   onEndReached?: () => void;
   /** Distance in px from the bottom at which onEndReached fires. Defaults to 300. */
@@ -153,6 +160,7 @@ export function ReorderableList<T>({
   ListEmptyComponent,
   ListFooterComponent,
   onScrollBeginDrag,
+  onScrollSettle,
   onEndReached,
   onEndReachedThreshold = 300,
   scrollEnabled = true,
@@ -830,6 +838,18 @@ export function ReorderableList<T>({
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         {...keyboardScroll.props}
+        // Composed on top of the keyboard hook's handlers, not spread before
+        // them: it claims both of these itself to keep its recorded offset
+        // fresh (see useKeyboardInsetScroll), so replacing either would strand
+        // the list the next time the keyboard closes over it.
+        onScrollEndDrag={e => {
+          keyboardScroll.props.onScrollEndDrag(e);
+          onScrollSettle?.();
+        }}
+        onMomentumScrollEnd={e => {
+          keyboardScroll.props.onMomentumScrollEnd(e);
+          onScrollSettle?.();
+        }}
       >
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {

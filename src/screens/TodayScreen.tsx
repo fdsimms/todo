@@ -21,7 +21,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
-import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
+import type { Task, TaskGroup, TaskTemplate, Category } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
 import {
   makeCategoryGroups,
@@ -292,11 +292,15 @@ function VacationHiddenSection({
   );
 }
 
-// Collapsible reveal for tasks deferred to later today (a time segment or
-// window that hasn't opened yet). Mirrors ExpiredSection below: collapsed and
-// deemphasized by default, expands in place to show the tasks, sub-grouped by
-// time segment (Morning/Afternoon/Evening) the same way the Later screen
-// sub-groups by segment within a day.
+// Collapsible reveal for tasks that aren't due yet today — a time segment or
+// window that hasn't opened, or a daily target you're keeping up with (which
+// is also how a unit gets logged at a moment nothing asked for it: the rows
+// here keep their meters, and one tap logs without sending the row anywhere).
+// Mirrors ExpiredSection below: collapsed and deemphasized by default, expands
+// in place to show the tasks, sub-grouped by time segment
+// (Morning/Afternoon/Evening) the same way the Later screen sub-groups by
+// segment within a day. A target has no segment, so it sits in the headerless
+// bucket at the end.
 function LaterTodaySection({
   sections,
   expanded,
@@ -669,28 +673,54 @@ export function TodayScreen() {
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
   };
 
-  // Pinning a task immediately reshuffles the list into Pinned/Rest sections,
-  // which moves everything under the finger and makes it hard to tap the
-  // pin on more than one task in a row. Give the user a brief grace period
-  // after each pin toggle to keep tapping pins in the normal layout
-  // before the view snaps into pinned mode.
-  const PIN_VIEW_GRACE_MS = 1500;
+  // Pinning a task reshuffles the list into Pinned/Everything-else, which moves
+  // every row under the finger — so tapping the pin on a second task means
+  // aiming at a row that just jumped. The reshuffle is therefore held off until
+  // the run of pin taps is over.
+  //
+  // "Over" is an interaction, not a duration. The run ends on the first thing
+  // the user does that a pin tap *cannot* cause — expanding or collapsing a
+  // row, entering selection, opening quick add or the editor (the effect
+  // below), or settling a scroll (onScrollSettle on the list). That makes the
+  // common case — pin one thing, then touch anything at all — snap
+  // immediately, while a slow run of several pins gets as long as it needs
+  // instead of racing a clock. The timer is only a ceiling for the user who
+  // pins and then does nothing, so it can afford to be generous; it was 1500ms
+  // as the *sole* signal, which is what made the section feel slow to arrive.
+  const PIN_VIEW_GRACE_MS = 3000;
   const [pinViewGraceActive, setPinViewGraceActive] = useState(false);
   const pinViewGraceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevPinnedCount = useRef(pinnedTasks.length);
+  // Set by a path that pins several tasks in one shot rather than a tap at a
+  // time. The grace protects a *run of taps*, and there isn't one — so the
+  // pins those paths add mustn't start one. A ref rather than leaning on the
+  // interaction effect below because the sheet that does this closes on an
+  // animation callback, which would leave the layout waiting out the sheet.
+  const skipNextPinGrace = useRef(false);
+
+  // Stable identity: only touches a ref and a setState, so the effect and the
+  // list prop below can both depend on it without re-running or re-rendering.
+  const endPinViewGrace = useCallback(() => {
+    if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
+    pinViewGraceTimer.current = null;
+    setPinViewGraceActive(false);
+  }, []);
 
   useEffect(() => {
     const grew = pinnedTasks.length > prevPinnedCount.current;
     prevPinnedCount.current = pinnedTasks.length;
 
     if (pinnedTasks.length === 0) {
-      if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
-      pinViewGraceTimer.current = null;
-      setPinViewGraceActive(false);
+      endPinViewGrace();
       return;
     }
 
     if (grew) {
+      if (skipNextPinGrace.current) {
+        skipNextPinGrace.current = false;
+        endPinViewGrace();
+        return;
+      }
       if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
       setPinViewGraceActive(true);
       pinViewGraceTimer.current = setTimeout(() => {
@@ -698,7 +728,18 @@ export function TodayScreen() {
         setPinViewGraceActive(false);
       }, PIN_VIEW_GRACE_MS);
     }
-  }, [pinnedTasks.length]);
+  }, [pinnedTasks.length, endPinViewGrace]);
+
+  // The interaction half of the rule above. None of these deps can change as a
+  // *result* of a pin tap — the pin button sits outside the row's own
+  // touchable, so pinning neither expands a row nor opens anything — which is
+  // what keeps a run of pins from cutting itself short. Declared after the
+  // effect above so that when the two land in the same commit (pinning from
+  // inside the editor, then closing it) the interaction wins and the layout
+  // snaps rather than sitting out a grace nobody is using.
+  useEffect(() => {
+    endPinViewGrace();
+  }, [expandedTaskId, selectionMode, quickAddVisible, editorVisible, endPinViewGrace]);
 
   useEffect(() => {
     return () => {
@@ -706,13 +747,38 @@ export function TodayScreen() {
     };
   }, []);
 
+  // A drag holds the reshuffle off for a different reason than the grace does:
+  // the two layouts are two different list components, and releasing the swap
+  // mid-gesture would unmount the list under the finger. Only reachable while
+  // the grace is already holding the reorderable branch on screen with
+  // something pinned — the pinned branch is a plain FlatList and can't drag.
+  const [todayDragging, setTodayDragging] = useState(false);
+
+  // A drag can't outlive the list it happened in. Switching sub-view unmounts
+  // that list without an onDragEnd, and a flag left set holds the pinned
+  // layout off for the rest of the session.
+  useEffect(() => { setTodayDragging(false); }, [viewMode]);
+
+  /**
+   * Whether Today is actually *rendering* the Pinned/Everything-else layout, as
+   * opposed to merely having something pinned.
+   *
+   * Everything that has to agree with which of the two list components is
+   * mounted reads this rather than `pinnedTasks.length > 0`: the data, the
+   * drop-zone scroller, the add-button placement rule, the footer. Splitting
+   * them meant the first pin swapped ReorderableList out for the FlatList
+   * immediately — remounting the list, losing its scroll offset — and then
+   * reshuffled the rows when the grace expired, two jolts for one action.
+   */
+  const pinnedViewActive = pinnedTasks.length > 0 && !pinViewGraceActive && !todayDragging;
+
   const handleSuggestedPins = (ids: string[]) => {
-    for (const id of ids) updateTask(id, { pinned: true });
     // Suggested pins arrive in one shot rather than one tap at a time, so the
     // grace period that protects manual multi-pin tapping doesn't apply here.
-    if (pinViewGraceTimer.current) clearTimeout(pinViewGraceTimer.current);
-    pinViewGraceTimer.current = null;
-    setPinViewGraceActive(false);
+    // Armed before the writes, since it's the effect they schedule that reads it.
+    skipNextPinGrace.current = true;
+    for (const id of ids) updateTask(id, { pinned: true });
+    endPinViewGrace();
   };
 
   const toggleCategoryCollapse = (label: string) => {
@@ -729,10 +795,14 @@ export function TodayScreen() {
     });
   };
 
-  // Sort & filter state
-  const [sort, setSort] = useState<SortOption>('default');
-  const [filterPriorities, setFilterPriorities] = useState<Priority[]>([]);
-  const [filterEfforts, setFilterEfforts] = useState<Effort[]>([]);
+  // Sort & filter state. Persisted, like hideCategories below — the three are
+  // set from the same sheet, and only one of them used to survive a launch.
+  const sort = useSettingsStore(s => s.sortOption);
+  const setSort = useSettingsStore(s => s.setSortOption);
+  const filterPriorities = useSettingsStore(useShallow(s => s.filterPriorities));
+  const setFilterPriorities = useSettingsStore(s => s.setFilterPriorities);
+  const filterEfforts = useSettingsStore(useShallow(s => s.filterEfforts));
+  const setFilterEfforts = useSettingsStore(s => s.setFilterEfforts);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -1015,7 +1085,7 @@ export function TodayScreen() {
       : items;
 
   const data: ListItem[] = useMemo(() => {
-    if (pinnedTasks.length > 0 && !pinViewGraceActive) {
+    if (pinnedViewActive) {
       const items: ListItem[] = [{ type: 'pinned-header' }];
       pinnedTasks.forEach(task => items.push({ type: 'pinned-task', task }));
       const restTasks = filtered.filter(t => !t.pinned);
@@ -1036,7 +1106,7 @@ export function TodayScreen() {
     });
     return stripCategoryHeaders(applyCategoryCollapse(items));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pinnedTasks, pinViewGraceActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories, sort]);
+  }, [filtered, pinnedTasks, pinnedViewActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories, sort]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -1090,9 +1160,9 @@ export function TodayScreen() {
   const dropZonesRef = useRef<FabDropZonesHandle>(null);
   const [fabDragging, setFabDragging] = useState(false);
   // The list the drag scrolls when it reaches the top or bottom of the screen.
-  // Today renders two, so which one is live depends on whether anything is
-  // pinned: the reorderable branch hands its own control over, the plain
-  // FlatList gets one built here from its scroll events.
+  // Today renders two, so which one is live follows pinnedViewActive: the
+  // reorderable branch hands its own control over, the plain FlatList gets one
+  // built here from its scroll events.
   const todayScrollControl = useRef<DragScroller | null>(null);
   const pinnedScrollState = useRef({ offset: 0, contentHeight: 0, viewportHeight: 0 });
   const pinnedScrollControl = useRef<DragScroller | null>(null);
@@ -1147,9 +1217,11 @@ export function TodayScreen() {
   };
 
   // Today renders through two different list components — a plain FlatList
-  // whenever anything is pinned, ReorderableList otherwise — and the button can
-  // be dropped on either, so the zones are built from whichever is on screen.
-  const todayListData = pinnedTasks.length > 0 ? data : draggableData;
+  // once the pinned layout is on screen, ReorderableList otherwise — and the
+  // button can be dropped on either, so the zones are built from whichever is
+  // showing (see pinnedViewActive; "pinned" and "showing pinned" differ for as
+  // long as the grace lasts).
+  const todayListData = pinnedViewActive ? data : draggableData;
   const zoneByKey = useMemo(() => {
     const categoriesFor = categoriesByIndex(
       todayListData.map(item =>
@@ -1200,7 +1272,7 @@ export function TodayScreen() {
     // Position only means something in the reorderable branch. With anything
     // pinned the list isn't hand-ordered at all, and the drop's category —
     // already seeded into the sheet — is the whole of what it can say.
-    if (pinnedTasks.length > 0) return;
+    if (pinnedViewActive) return;
     // The category the sheet actually committed wins: changing it there means
     // the row belongs in that section, wherever the button happened to land.
     if ((task.category ?? null) !== intent.category) return;
@@ -1414,6 +1486,13 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory={opts?.showCategory}
+        // Unconditional, unlike showCategory: Today's sections *are* the
+        // categories, so a category chip only earns its place on a row outside
+        // them (the pinned section). Nothing on this screen says which project
+        // a task came from, and a task dated here by a project nudge —
+        // dripStalledProjects, which the user never saw run — is otherwise a
+        // title with no explanation of where it came from.
+        showProject
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
@@ -1615,6 +1694,7 @@ export function TodayScreen() {
         task={task}
         indented={opts?.indented}
         showCategory
+        showProject
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
@@ -1725,7 +1805,7 @@ export function TodayScreen() {
   // state centered by stopping the spacer from growing.
   const listFooter = (fixedWhenEmpty = false) => (
     <>
-      {viewMode === 'today' && pinnedTasks.length === 0 && (
+      {viewMode === 'today' && !pinnedViewActive && (
         <LaterTodaySection
           sections={laterTodaySections}
           expanded={showUpcoming}
@@ -1993,7 +2073,7 @@ export function TodayScreen() {
         <FabDropZoneProvider
           ref={dropZonesRef}
           onIntentChange={fabIntentChannel.publish}
-          scroller={pinnedTasks.length > 0 ? pinnedScrollControl : todayScrollControl}
+          scroller={pinnedViewActive ? pinnedScrollControl : todayScrollControl}
         >
         {viewMode === 'later' && (
           <ReorderableList
@@ -2082,7 +2162,7 @@ export function TodayScreen() {
           />
         )}
 
-        {viewMode === 'today' && pinnedTasks.length > 0 && (
+        {viewMode === 'today' && pinnedViewActive && (
           <FlatList
             ref={pinnedScroll.ref}
             scrollEnabled={!painting && !fabDragging && !draggingStackChild}
@@ -2110,7 +2190,7 @@ export function TodayScreen() {
           />
         )}
 
-        {viewMode === 'today' && pinnedTasks.length === 0 && (
+        {viewMode === 'today' && !pinnedViewActive && (
           <ReorderableList
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
@@ -2120,7 +2200,9 @@ export function TodayScreen() {
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
+            onScrollSettle={endPinViewGrace}
             onDragBegin={() => {
+              setTodayDragging(true);
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
               // Fires synchronously inside drag(), so this is the group whose
@@ -2130,6 +2212,10 @@ export function TodayScreen() {
               setDraggingGroupId(pendingGroupDragRef.current);
             }}
             onDragEnd={({ committed }) => {
+              // Deferred a tick: onReorder follows this call synchronously, and
+              // releasing the layout swap here would unmount the list before
+              // the drop had committed through it.
+              setTimeout(() => setTodayDragging(false), 0);
               const joinGroupId = joinGroupIntentRef.current;
               joinGroupIntentRef.current = null;
               setJoinGroupIntentId(null);
