@@ -6,12 +6,13 @@ import React, {
   useImperativeHandle,
   useMemo,
   useRef,
+  useSyncExternalStore,
 } from 'react';
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   indicatorY,
   resolveFabDrop,
-  sameIntent,
+  targetKey,
   zoneAtY,
   zoneKey,
   type DropZone,
@@ -47,6 +48,62 @@ interface MeasurableView {
   measureInWindow?: (
     callback: (x: number, y: number, width: number, height: number) => void,
   ) => void;
+}
+
+/**
+ * The current drag target, handed to the few components that change with it.
+ *
+ * Deliberately not screen state. The target changes several times a second
+ * while the finger is moving, and the screen that owns this list re-runs every
+ * row's renderItem when it re-renders — which is what made the button judder
+ * exactly as it passed over tasks. ReorderableList keeps its own hover
+ * animation off React state for the same reason; this is that rule applied to
+ * the one piece of drag state the screen can't keep to itself, since the label
+ * rides on the button and the highlight sits on a row.
+ */
+export interface FabIntentChannel {
+  publish: (intent: FabDropIntent | null) => void;
+  subscribe: (listener: () => void) => () => void;
+  get: () => FabDropIntent | null;
+}
+
+/** Creates the channel. One per screen, passed to the provider and to readers. */
+export function useFabIntentChannel(): FabIntentChannel {
+  return useMemo(() => {
+    let current: FabDropIntent | null = null;
+    const listeners = new Set<() => void>();
+    return {
+      publish: intent => {
+        current = intent;
+        listeners.forEach(l => l());
+      },
+      subscribe: listener => {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+      get: () => current,
+    };
+  }, []);
+}
+
+/**
+ * Reads the channel through a selector, re-rendering only the component that
+ * calls it and only when its own answer changes.
+ *
+ * Select something comparable — a boolean, the label's text — rather than the
+ * intent itself: most crossings don't change either ("New task in Work" reads
+ * the same three rows running), and one that doesn't should cost nothing.
+ * Keep the callers small and pass their children through untouched, so a
+ * change that does land can't reach the rows underneath.
+ */
+export function useFabIntentSelector<T>(
+  channel: FabIntentChannel,
+  select: (intent: FabDropIntent | null) => T,
+): T {
+  const selectRef = useRef(select);
+  selectRef.current = select;
+  const getSnapshot = useCallback(() => selectRef.current(channel.get()), [channel]);
+  return useSyncExternalStore(channel.subscribe, getSnapshot, getSnapshot);
 }
 
 interface FabDropZoneContextValue {
@@ -129,7 +186,8 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
     const zonesRef = useRef<Map<string, DropZone>>(new Map());
     /** Zone bands, sorted top to bottom, snapshotted once per drag. */
     const rectsRef = useRef<ZoneRect[]>([]);
-    const intentRef = useRef<FabDropIntent | null>(null);
+    /** targetKey of the published intent, or null between drags. */
+    const targetRef = useRef<string | null>(null);
     // Bumped per drag so measurements still in flight from the last one are
     // discarded rather than mixed into this one's snapshot.
     const dragIdRef = useRef(0);
@@ -139,6 +197,10 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
 
     const indicatorTop = useRef(new Animated.Value(0)).current;
     const indicatorOpacity = useRef(new Animated.Value(0)).current;
+    // Whether the line is currently shown, so a fade only ever runs on the
+    // frame it actually changes: re-issuing the same timing on every sample
+    // restarts it from wherever it had got to and flickers.
+    const indicatorShownRef = useRef(false);
 
     const registerView = useCallback((key: string, view: MeasurableView | null) => {
       if (view) viewsRef.current.set(key, view);
@@ -153,39 +215,55 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
     const ctx = useMemo(() => ({ registerView, setZone }), [registerView, setZone]);
 
     const handle = useMemo<FabDropZonesHandle>(() => {
+      const hideIndicator = () => {
+        if (!indicatorShownRef.current) return;
+        indicatorShownRef.current = false;
+        Animated.timing(indicatorOpacity, {
+          toValue: 0, duration: animation.duration.fast, useNativeDriver: true,
+        }).start();
+      };
+
       const showIndicator = (intent: FabDropIntent) => {
         if (intent.kind !== 'insert') {
-          Animated.timing(indicatorOpacity, {
-            toValue: 0, duration: animation.duration.fast, useNativeDriver: true,
-          }).start();
+          hideIndicator();
           return;
         }
         const hit = rectsRef.current.find(r => zoneKey(r.zone) === intent.anchorKey);
         if (!hit) return;
         // Window space → this container's space, so the line lands on the seam
         // the drop will actually use.
-        indicatorTop.setValue(indicatorY(hit, intent.before) - containerYRef.current);
+        const top = indicatorY(hit, intent.before) - containerYRef.current;
+        if (indicatorShownRef.current) {
+          // Already on screen: glide to the new seam. Snapping it there reads
+          // as a stutter at speed, since the jump lands on the same frame as
+          // the tick and the rows the finger is passing.
+          Animated.spring(indicatorTop, {
+            toValue: top, ...animation.spring.snappy, useNativeDriver: true,
+          }).start();
+          return;
+        }
+        indicatorTop.setValue(top);
+        indicatorShownRef.current = true;
         Animated.timing(indicatorOpacity, {
           toValue: 1, duration: animation.duration.fast, useNativeDriver: true,
         }).start();
       };
 
       const publish = (intent: FabDropIntent) => {
-        const prev = intentRef.current;
-        if (prev && sameIntent(prev, intent)) return;
-        intentRef.current = intent;
+        const target = targetKey(rectsRef.current, intent);
+        if (targetRef.current === target) return;
+        targetRef.current = target;
         showIndicator(intent);
-        // One tick per target, matching the arm of the drag-a-task-onto-a-stack
-        // gesture. A plain drop is silent: nothing was aimed at.
-        if (intent.kind !== 'plain') haptics.impactLight();
+        // One tick per place the drop can land — rate-limited, because a flick
+        // down the list crosses several between frames. A plain drop is silent:
+        // nothing was aimed at.
+        if (intent.kind !== 'plain') haptics.dragTick();
         onIntentChangeRef.current?.(intent);
       };
 
       const clear = () => {
-        intentRef.current = null;
-        Animated.timing(indicatorOpacity, {
-          toValue: 0, duration: animation.duration.fast, useNativeDriver: true,
-        }).start();
+        targetRef.current = null;
+        hideIndicator();
         onIntentChangeRef.current?.(null);
       };
 
@@ -194,7 +272,7 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           dragIdRef.current += 1;
           const drag = dragIdRef.current;
           rectsRef.current = [];
-          intentRef.current = null;
+          targetRef.current = null;
           containerRef.current?.measureInWindow?.((_x, y) => {
             if (Number.isFinite(y)) containerYRef.current = y;
           });
