@@ -9,6 +9,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +29,13 @@ import { useFontPreviewsLoaded } from '../theme/AppFont';
 import { disclosureValue } from '../theme/textStyles';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
+import { dbExportTables, dbReplaceAllData } from '../db/database';
+import {
+  buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
+} from '../utils/backup';
+import {
+  writeBackupFile, shareBackupFile, discardBackupFile, pickBackupFile, canShare,
+} from '../utils/backupFile';
 
 const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
   { mode: 'light', label: 'Light', icon: 'sunny' },
@@ -37,6 +45,22 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
 ];
 
 type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | null;
+
+/**
+ * Writes a parsed backup over everything and brings the app back up on it.
+ *
+ * The reload is the same sequence exitDemoMode uses, and for the same reason:
+ * every store has just had the file underneath it replaced, and useTaskStore's
+ * initialize() is what cascades into categories, templates, stacks, projects
+ * and both category pools — and reschedules reminders from the tasks it loads,
+ * so the restored data's notifications replace the old data's. Settings goes
+ * last because it isn't part of that cascade.
+ */
+function applyBackup(backup: Backup): void {
+  dbReplaceAllData(backup.tables);
+  useTaskStore.getState().initialize();
+  useSettingsStore.getState().initialize();
+}
 
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -84,6 +108,81 @@ export function SettingsScreen() {
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+
+  // Guards both backup rows against a second tap while the first is still
+  // going. Export walks every table and restore rewrites them, and neither is
+  // safe to have two of in flight.
+  const [backupBusy, setBackupBusy] = useState<'export' | 'restore' | null>(null);
+
+  const onExport = async () => {
+    if (backupBusy) return;
+    setBackupBusy('export');
+    let uri: string | null = null;
+    try {
+      const now = new Date();
+      const backup = buildBackup(dbExportTables(), {
+        appVersion: Constants.expoConfig?.version || '1.0.0',
+        exportedAt: now,
+      });
+      uri = writeBackupFile(serializeBackup(backup), backupFileName(now));
+      if (!(await canShare())) {
+        Alert.alert('Can’t share from this device', `Your backup was written to ${uri}.`);
+        uri = null; // left in place — it's the only copy the user has
+        return;
+      }
+      await shareBackupFile(uri);
+    } catch (e) {
+      Alert.alert('Export failed', e instanceof Error ? e.message : 'Something went wrong writing the backup.');
+    } finally {
+      // The share sheet has already copied the file wherever it was going, so
+      // the cache copy is done either way.
+      if (uri) discardBackupFile(uri);
+      setBackupBusy(null);
+    }
+  };
+
+  const onRestore = async () => {
+    if (backupBusy) return;
+    setBackupBusy('restore');
+    try {
+      const text = await pickBackupFile();
+      if (text == null) return; // user backed out of the picker
+
+      const result = parseBackup(text);
+      if (!result.ok) {
+        Alert.alert('That backup can’t be read', result.error);
+        return;
+      }
+
+      const backup = result.backup;
+      Alert.alert(
+        'Replace everything with this backup?',
+        `The backup holds ${summarizeBackup(backup)}. Everything currently in the app — tasks, projects, stacks, templates, categories and settings — is deleted and replaced by it. This can't be undone, so export what you have first if you haven't.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => {
+              try {
+                applyBackup(backup);
+                Alert.alert('Restored', `Your data now matches the backup — ${summarizeBackup(backup)}.`);
+              } catch (e) {
+                Alert.alert(
+                  'Restore failed',
+                  `${e instanceof Error ? e.message : 'Something went wrong.'} Nothing was changed — the restore is a single transaction, so your existing data is still there.`
+                );
+              }
+            },
+          },
+        ]
+      );
+    } catch (e) {
+      Alert.alert('Restore failed', e instanceof Error ? e.message : 'Something went wrong reading the file.');
+    } finally {
+      setBackupBusy(null);
+    }
+  };
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
@@ -522,6 +621,71 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Get a key at console.anthropic.com. The key stays on this device; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic.
+            </Text>
+          </View>
+
+          {/* Backup */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Backup</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={styles.row}
+                onPress={onExport}
+                disabled={demoActive || backupBusy !== null}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Export all data"
+                accessibilityState={{ disabled: demoActive || backupBusy !== null }}
+              >
+                <Ionicons
+                  name="download-outline"
+                  size={18}
+                  color={demoActive ? colors.textTertiary : colors.accent}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={[styles.rowLabel, demoActive && { color: colors.textTertiary }]}>
+                    Export all data
+                  </Text>
+                  <Text style={styles.rowHint}>
+                    {demoActive
+                      ? 'Unavailable while demo mode is on'
+                      : 'Saves everything to a JSON file you can send anywhere'}
+                  </Text>
+                </View>
+                {backupBusy === 'export' && <ActivityIndicator size="small" color={colors.accent} />}
+              </TouchableOpacity>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.row}
+                onPress={onRestore}
+                disabled={demoActive || backupBusy !== null}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Restore from a backup"
+                accessibilityState={{ disabled: demoActive || backupBusy !== null }}
+              >
+                <Ionicons
+                  name="cloud-upload-outline"
+                  size={18}
+                  color={demoActive ? colors.textTertiary : colors.red}
+                />
+                <View style={styles.rowContent}>
+                  <Text
+                    style={[styles.rowLabel, { color: demoActive ? colors.textTertiary : colors.red }]}
+                  >
+                    Restore from a backup
+                  </Text>
+                  <Text style={styles.rowHint}>
+                    {demoActive
+                      ? 'Unavailable while demo mode is on'
+                      : 'Replaces everything in the app with a backup file'}
+                  </Text>
+                </View>
+                {backupBusy === 'restore' && <ActivityIndicator size="small" color={colors.accent} />}
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sectionFooter}>
+              Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings — but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it.
             </Text>
           </View>
 

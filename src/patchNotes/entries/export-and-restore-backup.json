@@ -1,0 +1,4 @@
+{
+  "message": "Settings can now export everything to a backup file you can save or send anywhere, and restore from one later. Your API key is deliberately left out of the file, and stays put when you restore",
+  "date": "2026-08-06"
+}
