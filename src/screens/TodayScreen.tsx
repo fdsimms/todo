@@ -17,6 +17,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, SortOption, Priority, Effort, Category } from '../types';
 import { isTaskNew, isRelevantToGroupToday, isGroupHiddenToday, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
@@ -1364,7 +1365,7 @@ export function TodayScreen() {
       return (
         <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
           <View style={styles.focusSectionTitleRow}>
-            <Ionicons name="pin" size={13} color={colors.orange} />
+            <PinIcon filled size={13} color={colors.orange} />
             <Text style={styles.focusSectionTitle}>Pinned Tasks</Text>
           </View>
           <View style={styles.pinnedSectionActions}>

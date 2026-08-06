@@ -226,6 +226,17 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   `rowValue` / `anchorValue` in three sizes and two weights, which is most of why a value and a
   button were hard to tell apart.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
+- `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
+  (task row's expanded actions, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
+  and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
+  is a *map* pin — thin needle, round head — which reads as a location rather than "hold this at
+  the top" and goes wispy at `iconSize.sm`. So it's drawn, as two `react-native-svg` paths on the
+  same 24-unit grid the Ionicons use, and takes `size` from `iconSize` like they do. Keep the
+  stroke at 1.8 grid units — heavier closes up the outline's counter at the 13pt the Pinned Tasks
+  header uses. `react-native-svg` is in the tree for this and is autolinked (no config plugin, but
+  it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
+  `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
+  purpose and stays Ionicons.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - `PaintSelectionProvider` (`src/components/PaintSelection.tsx`) — wraps a task list so that, while bulk selecting, a drag down the checkbox column "paints" a run of rows instead of needing a tap each. Screens get it by spreading `paintProps` from `useTaskSelection` and passing `scrollEnabled={!painting}` to the list; rows register themselves from inside `TaskItem`, so nothing else has to change. The touch is claimed **on touch-down in the capture phase** within `PAINT_GUTTER_WIDTH` of the leading edge — a native scroll can't be taken back once it starts dragging, so deciding later would let the list scroll out from under the paint. That's why a drag started right on the checkboxes can't scroll (the deliberate trade), and why every other pixel of the row scrolls exactly as before. Hit-testing math and its tests live in `src/utils/paintSelect.ts` / `paintSelect.test.ts`.
