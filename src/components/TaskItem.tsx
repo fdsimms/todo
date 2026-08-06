@@ -820,7 +820,7 @@ export function TaskItem({
                           key={item.id}
                           style={actualIdx === currentIdx && styles.expandMetaActive}
                         >
-                          {actualIdx > 0 ? ' → ' : ' '}{item.title}
+                          {i > 0 ? ' → ' : ' '}{item.title}
                         </Text>
                       );
                     })}

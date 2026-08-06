@@ -1177,9 +1177,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           </TouchableOpacity>
                           <TouchableOpacity
                             onPress={() => {
+                              // Track the active step by id (like onReorder above) rather
+                              // than by index — deleting an earlier step shifts every later
+                              // index down, so re-clamping the old chainIndex against the
+                              // new length silently lands on the wrong step.
+                              const activeItemId = chainItems[chainIndex]?.id;
                               const next = chainItems.filter((_, j) => j !== actualIdx);
                               setChainItems(next);
-                              if (chainIndex >= next.length) setChainIndex(Math.max(0, next.length - 1));
+                              if (activeItemId === item.id) {
+                                // The active step itself was deleted — land on whatever now
+                                // occupies its old slot (i.e. the step after it).
+                                setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                              } else {
+                                const newIdx = next.findIndex(c => c.id === activeItemId);
+                                setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                              }
                             }}
                             hitSlop={8}
                             style={styles.chainItemDelete}
@@ -1237,7 +1249,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   )}
                   {chainIndex < chainItems.length && chainItems.length > 1 && (
                     <Text style={styles.chainCurrentHint}>
-                      Tap a number to set the current position. Next up: {chainItems[(chainIndex + 1) % chainItems.length]?.title}
+                      {chainIndex === chainItems.length - 1 && recurrenceType === 'none'
+                        ? 'Tap a number to set the current position. This is the last step — the chain ends here.'
+                        : `Tap a number to set the current position. Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`}
                     </Text>
                   )}
                 </>
