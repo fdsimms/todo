@@ -37,8 +37,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateProject = useProjectStore(s => s.updateProject);
-  const archiveProject = useProjectStore(s => s.archiveProject);
-  const unarchiveProject = useProjectStore(s => s.unarchiveProject);
+  const archiveProject = useTaskStore(s => s.archiveProject);
+  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);

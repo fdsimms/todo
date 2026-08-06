@@ -19,6 +19,7 @@ import { spacing, radius, font, fontWeight, animation, interaction, type Colors 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useProjectStore } from '../store/useProjectStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDueDate, formatStartDate } from '../utils/dateUtils';
@@ -54,7 +55,7 @@ export function QuickAddProjectModal({ visible, onClose, onOpenFull }: Props) {
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
   const updateProject = useProjectStore(s => s.updateProject);
-  const unarchiveProject = useProjectStore(s => s.unarchiveProject);
+  const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 

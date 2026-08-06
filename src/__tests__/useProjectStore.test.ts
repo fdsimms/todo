@@ -212,21 +212,33 @@ describe('createProject / updateProject / getProjectById', () => {
   });
 });
 
-describe('archiveProject / unarchiveProject', () => {
+describe('applyProjectArchived', () => {
   it('archives a project, stamping archivedAt', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: false })] });
-    useProjectStore.getState().archiveProject('p1');
+    useProjectStore.getState().applyProjectArchived('p1', true);
     const project = useProjectStore.getState().getProjectById('p1')!;
     expect(project.archived).toBe(true);
     expect(project.archivedAt).not.toBeNull();
   });
 
+  it('keeps a passed-in archivedAt instead of stamping now', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: false })] });
+    useProjectStore.getState().applyProjectArchived('p1', true, '2025-01-01T00:00:00.000Z');
+    expect(useProjectStore.getState().getProjectById('p1')!.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+  });
+
   it('unarchives a project, clearing archivedAt', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
-    useProjectStore.getState().unarchiveProject('p1');
+    useProjectStore.getState().applyProjectArchived('p1', false);
     const project = useProjectStore.getState().getProjectById('p1')!;
     expect(project.archived).toBe(false);
     expect(project.archivedAt).toBeNull();
+  });
+
+  it('is a no-op when the project is already in the requested state', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })] });
+    useProjectStore.getState().applyProjectArchived('p1', true);
+    expect(useProjectStore.getState().getProjectById('p1')!.archivedAt).toBe('2025-01-01T00:00:00.000Z');
   });
 });
 
