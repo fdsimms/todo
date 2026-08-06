@@ -152,4 +152,29 @@ export function contentOriginOffset(measuredTop: number, rowContentY: number): n
   return measuredTop - rowContentY;
 }
 
+/**
+ * How far the floating drag card has moved from the dragged row's resting slot
+ * — the translation `dropIndexFromTranslation` wants.
+ *
+ * Derived from where the card actually is (`cardTop`, on-screen) against the
+ * row's CURRENT content-Y, rather than from how far the finger has travelled
+ * since the drag began. The two agree exactly — this is `fingerDelta +
+ * scrollDelta` — for as long as the list holds still, because the card's
+ * anchor was pinned to `rowContentY - scrollOffset + contentOrigin` at drag
+ * start. They stop agreeing the moment the list re-lays out underneath a live
+ * drag: a category header's drag auto-collapses every section, so the row it
+ * started from moves up by however many task rows were above it, and a finger
+ * delta measured from the old layout then describes a slot that no longer
+ * exists. Re-deriving each move keeps the drop gap under the card — and so
+ * under the finger the card is anchored to — however far the layout shifts.
+ */
+export function dragTranslation(
+  cardTop: number,
+  rowContentY: number,
+  scrollOffset: number,
+  contentOrigin: number,
+): number {
+  return cardTop - (rowContentY - scrollOffset + contentOrigin);
+}
+
 
