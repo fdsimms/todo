@@ -327,7 +327,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
   it('deserialises JSON array columns (tags, recurrenceDays, chainItems)', () => {
     const tags = ['work', 'urgent'];
     const recurrenceDays = [1, 3, 5];
-    const chainItems = [{ id: 'ci', title: 'Item A', notes: '' }];
+    const chainItems = [{ id: 'ci', title: 'Item A' }];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
     const [t] = dbGetAllTasks();
     expect(t.tags).toEqual(tags);
@@ -509,7 +509,7 @@ describe('dbUpdateTask', () => {
       estimatedMinutes: 75,
       streakCount: 5,
       chainEnabled: true,
-      chainItems: [{ id: 'ci', title: 'C', notes: '' }],
+      chainItems: [{ id: 'ci', title: 'C' }],
       vacationPause: true,
     };
     dbUpdateTask(updated);

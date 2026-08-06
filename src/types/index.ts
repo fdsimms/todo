@@ -44,7 +44,6 @@ export interface TemplateCategory {
 export interface ChainItem {
   id: string;
   title: string;
-  notes: string;
 }
 
 // A lightweight, collapsible label for grouping several independent tasks

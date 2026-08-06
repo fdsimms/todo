@@ -627,7 +627,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     onSubmitEditing={() => {
                       chainItemSavedRef.current = true;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setTimeout(() => {
                         chainItemSavedRef.current = false;
@@ -637,7 +637,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     onBlur={() => {
                       if (chainItemSavedRef.current) return;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, notes: '' }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
                       setNewChainItemTitle('');
                       setAddingChainItem(false);
                     }}
