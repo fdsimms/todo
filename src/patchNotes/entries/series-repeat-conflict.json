@@ -1,0 +1,4 @@
+{
+  "message": "Giving a task several dates now clears any repeat rule on it, so the two schedules can't fight and spawn extra copies",
+  "date": "2026-08-06"
+}

@@ -157,10 +157,6 @@ function reanchorReminder(reminderTime: string | null, date: Date): string | nul
   return next.toISOString();
 }
 
-// One row of a dated series (Task.seriesId). Every field but the date comes
-// from the source row/draft; a relative deadline recomputes against this row's
-// own date the same way it does for a new recurrence occurrence, while a fixed
-// one is a single absolute target and carries over untouched.
 // A dated series and a recurrence rule are two schedules for one task, and a
 // series row is deliberately an ordinary one-off (see Task.seriesId) — the set
 // comes back, if it comes back at all, through seriesMonthDays. Left in place,
@@ -189,6 +185,10 @@ const NO_RECURRENCE: RecurrenceFields = {
   showStreak: false,
 };
 
+// One row of a dated series (Task.seriesId). Every field but the date comes
+// from the source row/draft; a relative deadline recomputes against this row's
+// own date the same way it does for a new recurrence occurrence, while a fixed
+// one is a single absolute target and carries over untouched.
 function buildSeriesRow(
   source: Partial<TaskDraft>,
   date: Date,

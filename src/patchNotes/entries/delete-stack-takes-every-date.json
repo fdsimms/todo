@@ -1,0 +1,4 @@
+{
+  "message": "Deleting a stack along with its tasks now takes every date of a multi-date task, rather than leaving the rest behind",
+  "date": "2026-08-06"
+}
