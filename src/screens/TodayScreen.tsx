@@ -107,6 +107,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { emitNowTick } from '../utils/nowTick';
 import { sumEstimatedMinutes, formatDuration } from '../utils/effort';
 
 // The four lenses of the pill switcher. They're disjoint by construction —
@@ -133,6 +134,18 @@ const VIEW_TITLES: Record<ViewMode, string> = {
 const LATER_INITIAL_TASK_LIMIT = 15;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 60;
+
+/** A parent's subtasks plus their done tally — see subtasksByParent. */
+interface SubtaskEntry {
+  items: Task[];
+  doneCount: number;
+}
+
+// One shared entry for every childless row, which is the common case. A
+// `?? { items: [], doneCount: 0 }` at the call site would allocate a fresh
+// array per row per render and defeat TaskItem's shallow compare precisely
+// where the memo matters most — on the rows that have nothing to say.
+const NO_SUBTASKS: SubtaskEntry = { items: [], doneCount: 0 };
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -608,6 +621,11 @@ export function TodayScreen() {
           // which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
           forceRefresh(n => n + 1);
+          // The rows are memoized, so re-rendering this screen no longer
+          // re-renders them. Their clock-derived text (deadline countdowns,
+          // "N left") needs its own nudge, or it would sit showing the
+          // pre-background value until the next 30s tick came round.
+          emitNowTick();
         }
       });
       return () => {
@@ -752,6 +770,38 @@ export function TodayScreen() {
     setEditorInitialDraft(null);
     setEditorVisible(true);
   };
+
+  // The row handlers below are shared verbatim by all five TaskItem call sites
+  // in this file and are deliberately stable across renders: TaskItem is
+  // memoized, and a fresh arrow per row per render defeats its shallow compare
+  // silently — the list still works, it just goes back to re-rendering every
+  // row on every store mutation. Each takes the row's own id (see TaskItem's
+  // Props) so one callback serves the whole list rather than one closure per
+  // row, which is what lets the identity be stable at all.
+  //
+  // Empty deps throughout, and each is written so that's provably safe: the
+  // expand toggle reaches state only through the functional form of setState,
+  // and the editor resolves its task from the store at call time instead of
+  // capturing it. Neither can read a stale value from its frozen closure.
+  const handleRowPress = useCallback((id: string) => {
+    setExpandedTaskId(prev => {
+      // A tap landing while a *different* row is spotlighted just dismisses
+      // that one, rather than expanding the row that was tapped.
+      if (prev !== null && prev !== id) return null;
+      return prev === id ? null : id;
+    });
+  }, []);
+
+  const handleRowEdit = useCallback((id: string) => {
+    setEditingTask(useTaskStore.getState().tasks.find(t => t.id === id) ?? null);
+    setEditorInitialDraft(null);
+    setEditorVisible(true);
+  }, []);
+
+  const handleRowSwipeSelect = useCallback((id: string) => {
+    setExpandedTaskId(null);
+    enterSelectionMode(id);
+  }, [enterSelectionMode]);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
     // The draft carries everything the sheet had, including the seeded
@@ -1309,13 +1359,19 @@ export function TodayScreen() {
   // needing to expose that itself.
   const activeDragIndexRef = useRef<number | null>(null);
 
+  // Keyed by parent id, carrying the done tally alongside the rows so the
+  // per-row `subs.filter(t => t.completed).length` that used to run on every
+  // render of every row happens once per parent per change instead.
   const subtasksByParent = useMemo(() => {
-    const map = new Map<string, Task[]>();
+    const map = new Map<string, SubtaskEntry>();
     for (const t of allTasks) {
       if (!t.parentId) continue;
-      const list = map.get(t.parentId);
-      if (list) list.push(t);
-      else map.set(t.parentId, [t]);
+      const entry = map.get(t.parentId);
+      if (entry) entry.items.push(t);
+      else map.set(t.parentId, { items: [t], doneCount: 0 });
+    }
+    for (const entry of map.values()) {
+      entry.doneCount = entry.items.filter(t => t.completed).length;
     }
     return map;
   }, [allTasks]);
@@ -1354,25 +1410,30 @@ export function TodayScreen() {
   // render branch below (reorder within the group / drag out to remove),
   // entirely separate from the outer ReorderableList's own drag machinery.
   const renderTaskRow = (task: Task, opts?: { drag?: (e?: GestureResponderEvent) => void; isActive?: boolean; indented?: boolean; showCategory?: boolean }) => {
-    const subs = subtasksByParent.get(task.id) ?? [];
+    const subs = subtasksByParent.get(task.id) ?? NO_SUBTASKS;
     return (
       <TaskItem
         task={task}
         indented={opts?.indented}
         showCategory={opts?.showCategory}
-        onPress={() => {
-          if (expandedTaskId !== null && expandedTaskId !== task.id) {
-            setExpandedTaskId(null);
-            return;
-          }
-          setExpandedTaskId(prev => prev === task.id ? null : task.id);
-        }}
+        onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
-        onEdit={() => openEditor(task)}
-        subtaskCount={subs.length}
-        subtaskDoneCount={subs.filter(t => t.completed).length}
-        subtasks={subs}
+        onEdit={handleRowEdit}
+        subtaskCount={subs.items.length}
+        subtaskDoneCount={subs.doneCount}
+        subtasks={subs.items}
+        // The one prop here that isn't stable, and knowingly so: ReorderableList
+        // builds a fresh `drag` per row on every render (it closes over the row
+        // key to call startDrag), so a reorderable row re-renders with its list
+        // the way it always has. Stabilising it means caching callbacks inside
+        // ReorderableList, whose header is explicit that the PanResponder
+        // lifecycle is not a safe thing to reach into — not worth it for this.
+        //
+        // It costs less than it looks: this is `undefined` throughout selection
+        // mode, which is where the expensive case actually lives — a paint drag
+        // mutates the selection on every frame, and with the memo only the rows
+        // whose `selected` flipped re-render.
         drag={
           selectionMode || !opts?.drag || upcomingTaskIds.has(task.id)
             ? undefined
@@ -1381,8 +1442,8 @@ export function TodayScreen() {
         isActive={opts?.isActive}
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
-        onSelect={() => toggleSelection(task.id)}
-        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
+        onSelect={toggleSelection}
+        onSwipeSelect={handleRowSwipeSelect}
         hideTodayLabel
         justCreated={task.id === justCreatedId}
         autoComplete={autoCompletingIds.has(task.id)}
@@ -1552,29 +1613,23 @@ export function TodayScreen() {
   // be swiped into selection like any other row so they don't lose delete
   // capability now that per-row swipe-delete is gone.
   const renderHiddenTask = (task: Task, opts?: { indented?: boolean }) => {
-    const subs = subtasksByParent.get(task.id) ?? [];
+    const subs = subtasksByParent.get(task.id) ?? NO_SUBTASKS;
     return (
       <TaskItem
         task={task}
         indented={opts?.indented}
         showCategory
-        onPress={() => {
-          if (expandedTaskId !== null && expandedTaskId !== task.id) {
-            setExpandedTaskId(null);
-            return;
-          }
-          setExpandedTaskId(prev => prev === task.id ? null : task.id);
-        }}
+        onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
-        onEdit={() => openEditor(task)}
-        subtaskCount={subs.length}
-        subtaskDoneCount={subs.filter(t => t.completed).length}
-        subtasks={subs}
+        onEdit={handleRowEdit}
+        subtaskCount={subs.items.length}
+        subtaskDoneCount={subs.doneCount}
+        subtasks={subs.items}
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
-        onSelect={() => toggleSelection(task.id)}
-        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
+        onSelect={toggleSelection}
+        onSwipeSelect={handleRowSwipeSelect}
         hideTodayLabel
       />
     );
@@ -1618,28 +1673,22 @@ export function TodayScreen() {
   // that by definition (see isInboxTask), and no drag, since the Inbox list
   // doesn't reorder. Shared by the loose rows and a stack's children.
   const renderInboxTask = (task: Task, opts?: { indented?: boolean }) => {
-    const subs = subtasksByParent.get(task.id) ?? [];
+    const subs = subtasksByParent.get(task.id) ?? NO_SUBTASKS;
     return (
       <TaskItem
         task={task}
         indented={opts?.indented}
-        onPress={() => {
-          if (expandedTaskId !== null && expandedTaskId !== task.id) {
-            setExpandedTaskId(null);
-            return;
-          }
-          setExpandedTaskId(prev => prev === task.id ? null : task.id);
-        }}
+        onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
-        onEdit={() => openEditor(task)}
-        subtaskCount={subs.length}
-        subtaskDoneCount={subs.filter(t => t.completed).length}
-        subtasks={subs}
+        onEdit={handleRowEdit}
+        subtaskCount={subs.items.length}
+        subtaskDoneCount={subs.doneCount}
+        subtasks={subs.items}
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
-        onSelect={() => toggleSelection(task.id)}
-        onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(task.id); }}
+        onSelect={toggleSelection}
+        onSwipeSelect={handleRowSwipeSelect}
         justCreated={task.id === justCreatedId}
       />
     );
@@ -1964,29 +2013,23 @@ export function TodayScreen() {
                   </Pressable>
                 );
               }
-              const subs = subtasksByParent.get(item.task.id) ?? [];
+              const subs = subtasksByParent.get(item.task.id) ?? NO_SUBTASKS;
               return (
                 <TaskItem
                   task={item.task}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.task.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.task.id ? null : item.task.id);
-                  }}
+                  onPress={handleRowPress}
                   expanded={expandedTaskId === item.task.id}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.task.id && !selectionMode}
-                  onEdit={() => openEditor(item.task)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
+                  onEdit={handleRowEdit}
+                  subtaskCount={subs.items.length}
+                  subtaskDoneCount={subs.doneCount}
+                  subtasks={subs.items}
                   drag={selectionMode || !drag ? undefined : drag}
                   isActive={isActive}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.task.id)}
-                  onSelect={() => toggleSelection(item.task.id)}
-                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.task.id); }}
+                  onSelect={toggleSelection}
+                  onSwipeSelect={handleRowSwipeSelect}
                   hideTodayLabel
                   showCategory
                   showProject
@@ -2277,27 +2320,21 @@ export function TodayScreen() {
             keyExtractor={t => t.id}
             {...unscheduledScroll.props}
             renderItem={({ item }) => {
-              const subs = subtasksByParent.get(item.id) ?? [];
+              const subs = subtasksByParent.get(item.id) ?? NO_SUBTASKS;
               return (
                 <TaskItem
                   task={item}
-                  onPress={() => {
-                    if (expandedTaskId !== null && expandedTaskId !== item.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(prev => prev === item.id ? null : item.id);
-                  }}
+                  onPress={handleRowPress}
                   expanded={expandedTaskId === item.id}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  onEdit={() => openEditor(item)}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
+                  onEdit={handleRowEdit}
+                  subtaskCount={subs.items.length}
+                  subtaskDoneCount={subs.doneCount}
+                  subtasks={subs.items}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
-                  onSelect={() => toggleSelection(item.id)}
-                  onSwipeSelect={() => { setExpandedTaskId(null); enterSelectionMode(item.id); }}
+                  onSelect={toggleSelection}
+                  onSwipeSelect={handleRowSwipeSelect}
                   hideTodayLabel
                   showCategory
                   showProject

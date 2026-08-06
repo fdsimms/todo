@@ -33,6 +33,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, isRecurrenceNotYetDue, isTaskNew, isQuotaTask, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
@@ -52,8 +53,13 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 
 interface Props {
   task: Task;
-  onPress: () => void;
-  onEdit?: () => void;
+  // The row hands its own id back to these rather than the caller closing over
+  // it. That lets a list pass one `useCallback` shared by every row instead of
+  // a fresh arrow per row per render, which is what makes the memo below
+  // actually hold (see the handlers in TodayScreen). Callers that don't need
+  // the id can keep ignoring it — a zero-argument arrow still satisfies these.
+  onPress: (id: string) => void;
+  onEdit?: (id: string) => void;
   expanded?: boolean;
   subtaskCount?: number;
   subtaskDoneCount?: number;
@@ -62,8 +68,8 @@ interface Props {
   isActive?: boolean;
   selectionMode?: boolean;
   selected?: boolean;
-  onSelect?: () => void;
-  onSwipeSelect?: () => void;
+  onSelect?: (id: string) => void;
+  onSwipeSelect?: (id: string) => void;
   spotlightDisabled?: boolean;
   hideTodayLabel?: boolean;
   showCategory?: boolean;
@@ -112,7 +118,20 @@ function describeRecurrence(task: Task): string {
   return text;
 }
 
-export function TaskItem({
+/**
+ * Memoized: a task list re-renders its rows on every store mutation, and
+ * without this each of those renders is O(all rows) rather than O(the rows
+ * that actually changed) — most visible while paint-selecting, where a drag
+ * down the checkbox column mutates the selection on every frame.
+ *
+ * The shallow prop compare this relies on is only as good as its callers.
+ * Every handler passed in has to be stable across renders (`useCallback`) and
+ * `subtasks` has to keep its identity — see NO_SUBTASKS and the memoized
+ * handlers in TodayScreen. A fresh `[]` or a fresh arrow per render defeats
+ * the compare silently: the row still works, it just goes back to re-rendering
+ * every time.
+ */
+export const TaskItem = React.memo(function TaskItem({
   task,
   onPress,
   onEdit,
@@ -414,6 +433,15 @@ export function TaskItem({
     }
   }, [expanded, isEditingTitle]);
 
+  // Everything below this line that consults the wall clock — the window
+  // state, the deadline countdown and its colour, the "N left" text in the
+  // expanded panel, the relative due-date label — is computed during render
+  // and so is only as fresh as the last render. This row is memoized, which
+  // means a passing minute is not by itself a reason for it to re-render;
+  // subscribing to the shared heartbeat makes it one. Nothing reads the
+  // returned timestamp: the re-render *is* the effect (see nowTick.ts).
+  useNowTick();
+
   const priorityColor = PRIORITY_COLORS[task.priority];
   const windowActive = isTaskWindowActive(task);
   const windowExpired = isTaskExpired(task);
@@ -427,7 +455,7 @@ export function TaskItem({
 
   const handleContentPress = () => {
     if (isNew) markTaskSeen(task.id);
-    if (selectionMode) { onSelect?.(); } else { onPress(); }
+    if (selectionMode) { onSelect?.(task.id); } else { onPress(task.id); }
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
@@ -571,7 +599,7 @@ export function TaskItem({
   };
 
   const handleTitleTap = () => {
-    if (selectionMode) { onSelect?.(); return; }
+    if (selectionMode) { onSelect?.(task.id); return; }
     setTitleEdit(task.title);
     setIsEditingTitle(true);
     setTimeout(() => titleInputRef.current?.focus(), 50);
@@ -607,7 +635,7 @@ export function TaskItem({
 
       <TouchableOpacity
         onPress={
-          selectionMode ? onSelect
+          selectionMode ? () => onSelect?.(task.id)
           : completing ? handleUndoComplete
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
@@ -1197,7 +1225,7 @@ export function TaskItem({
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
-                        if (expanded) onPress();
+                        if (expanded) onPress(task.id);
                       }}
                       hitSlop={8}
                       accessibilityLabel={`Skip next occurrence of ${task.title}`}
@@ -1235,7 +1263,7 @@ export function TaskItem({
                   </PressableScale>
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
-                    onPress={onEdit}
+                    onPress={() => onEdit(task.id)}
                     hitSlop={8}
                     accessibilityLabel="Edit task"
                   >
@@ -1303,7 +1331,7 @@ export function TaskItem({
             <SwipeableRow
               enabled={!spotlightDisabled}
               selectAction={onSwipeSelect ? {
-                onSelect: onSwipeSelect,
+                onSelect: () => onSwipeSelect(task.id),
                 accessibilityLabel: `Select ${task.title}`,
               } : undefined}
               whenAction={{
@@ -1318,7 +1346,7 @@ export function TaskItem({
                 {spotlightDisabled && (
                   // While another task is spotlighted this row must not react
                   // to touches itself — any tap on it just dismisses the spotlight.
-                  <Pressable style={StyleSheet.absoluteFill} onPress={onPress} />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => onPress(task.id)} />
                 )}
               </View>
             </SwipeableRow>
@@ -1377,7 +1405,7 @@ export function TaskItem({
       )}
     </>
   );
-}
+});
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   itemWrapper: {
