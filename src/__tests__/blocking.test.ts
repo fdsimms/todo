@@ -1,4 +1,4 @@
-import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor } from '../utils/blocking';
+import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity } from '../utils/blocking';
 import { registerTaskSource, resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
 import type { Task } from '../types';
 
@@ -221,5 +221,53 @@ describe('blockerRegistry', () => {
 
     tasks = tasks.filter(t => t.id !== 'b');
     expect(resolveBlocker('b')).toBeUndefined();
+  });
+});
+
+describe('sortByBlockerAffinity', () => {
+  const ctx = { groupId: 'g1', projectId: 'p1', category: 'Home' };
+  const ids = (tasks: Task[]) => tasks.map(t => t.id);
+
+  it('floats stack, then project, then category above the rest', () => {
+    const tasks = [
+      makeTask({ id: 'loose' }),
+      makeTask({ id: 'category', category: 'Home' }),
+      makeTask({ id: 'project', projectId: 'p1' }),
+      makeTask({ id: 'stack', groupId: 'g1' }),
+    ];
+    expect(ids(sortByBlockerAffinity(tasks, ctx))).toEqual(['stack', 'project', 'category', 'loose']);
+  });
+
+  it('ranks by the nearest relationship a task has', () => {
+    const tasks = [
+      makeTask({ id: 'category-only', category: 'Home' }),
+      // Shares all three, so it ranks by the stack and lands first.
+      makeTask({ id: 'all-three', groupId: 'g1', projectId: 'p1', category: 'Home' }),
+    ];
+    expect(ids(sortByBlockerAffinity(tasks, ctx))).toEqual(['all-three', 'category-only']);
+  });
+
+  it('keeps the incoming order within a tier', () => {
+    const tasks = [
+      makeTask({ id: 'b', groupId: 'g1' }),
+      makeTask({ id: 'a', groupId: 'g1' }),
+      makeTask({ id: 'd' }),
+      makeTask({ id: 'c' }),
+    ];
+    expect(ids(sortByBlockerAffinity(tasks, ctx))).toEqual(['b', 'a', 'd', 'c']);
+  });
+
+  // "Neither of us is in a project" is not a relationship — a null side must
+  // never pull the whole ungrouped tail up to the top.
+  it('does not match a null context field against a null task field', () => {
+    const tasks = [makeTask({ id: 'none' }), makeTask({ id: 'stack', groupId: 'g1' })];
+    const nullish = { groupId: null, projectId: null, category: null };
+    expect(ids(sortByBlockerAffinity(tasks, nullish))).toEqual(['none', 'stack']);
+    expect(blockerAffinity(tasks[0], nullish)).toBe(3);
+  });
+
+  it('leaves the order alone with no context at all', () => {
+    const tasks = [makeTask({ id: 'x', groupId: 'g1' }), makeTask({ id: 'y', projectId: 'p1' })];
+    expect(ids(sortByBlockerAffinity(tasks, {}))).toEqual(['x', 'y']);
   });
 });
