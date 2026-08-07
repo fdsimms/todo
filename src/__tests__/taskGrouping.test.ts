@@ -1,8 +1,6 @@
 import {
   makeCategoryGroups,
   resolveDrop,
-  resolveCategoryReorder,
-  categoryHeaderRange,
   flattenLaterSections,
   laterTaskOrder,
   isLaterHeader,
@@ -11,7 +9,6 @@ import {
   laterTodaySections,
   categorySpan,
   applyCategoryCollapse,
-  categorySectionKeys,
   sectionTaskIds,
   findTaskJumpTarget,
   LATER_TODAY_LABEL,
@@ -413,110 +410,6 @@ describe('resolveDrop', () => {
   });
 });
 
-describe('categoryHeaderRange', () => {
-  it('spans from the first to the last real category header', () => {
-    const data: CategoryListItem[] = [
-      { type: 'task', task: makeTask({ id: 'loose', category: null }) },
-      { type: 'header', label: 'health' },
-      { type: 'task', task: makeTask({ id: 'a', category: 'health' }) },
-      { type: 'header', label: 'work' },
-      { type: 'task', task: makeTask({ id: 'b', category: 'work' }) },
-    ];
-    expect(categoryHeaderRange(data)).toEqual([1, 3]);
-  });
-
-  it('excludes the trailing "Later Today" header from the range', () => {
-    const data: CategoryListItem[] = [
-      { type: 'header', label: 'health' },
-      { type: 'task', task: makeTask({ id: 'a', category: 'health' }) },
-      { type: 'header', label: 'work' },
-      { type: 'header', label: 'Later Today' },
-      { type: 'task', task: makeTask({ id: 'b', category: null }) },
-    ];
-    expect(categoryHeaderRange(data)).toEqual([0, 2]);
-  });
-
-  it('returns null when there are no category headers', () => {
-    const data: CategoryListItem[] = [
-      { type: 'task', task: makeTask({ id: 'a', category: null }) },
-    ];
-    expect(categoryHeaderRange(data)).toBeNull();
-  });
-});
-
-describe('resolveCategoryReorder', () => {
-  it('reads the new category order off the dragged header sequence', () => {
-    const health = makeTask({ id: 'workout', category: 'health' });
-    const work = makeTask({ id: 'meeting', category: 'work' });
-    const reordered: CategoryListItem[] = [
-      { type: 'header', label: 'work' },
-      { type: 'task', task: work },
-      { type: 'header', label: 'health' },
-      { type: 'task', task: health },
-    ];
-    const { categoryOrder, settled } = resolveCategoryReorder(reordered, noUpcoming);
-    expect(categoryOrder).toEqual(['work', 'health']);
-    expect(layoutSeq(settled)).toEqual(['#work', 'meeting', '#health', 'workout']);
-  });
-
-  it('never changes a task\'s own category, even if it ends up spliced mid-drag', () => {
-    // The dragged header can transiently land between another section's
-    // tasks; only the header sequence should matter, not raw positions.
-    const health = makeTask({ id: 'workout', category: 'health' });
-    const work1 = makeTask({ id: 'meeting', category: 'work' });
-    const work2 = makeTask({ id: 'standup', category: 'work' });
-    const reordered: CategoryListItem[] = [
-      { type: 'header', label: 'work' },
-      { type: 'task', task: work1 },
-      { type: 'header', label: 'health' },
-      { type: 'task', task: health },
-      { type: 'task', task: work2 },
-    ];
-    const { categoryOrder, settled } = resolveCategoryReorder(reordered, noUpcoming);
-    expect(categoryOrder).toEqual(['work', 'health']);
-    expect(layoutSeq(settled)).toEqual(['#work', 'meeting', 'standup', '#health', 'workout']);
-  });
-
-  it('keeps upcoming "Later Today" tasks in their own trailing section', () => {
-    const health = makeTask({ id: 'workout', category: 'health' });
-    const upcoming = makeTask({ id: 'later-task', category: null });
-    const reordered: CategoryListItem[] = [
-      { type: 'header', label: 'health' },
-      { type: 'task', task: health },
-      { type: 'header', label: 'Later Today' },
-      { type: 'task', task: upcoming },
-    ];
-    const { categoryOrder, settled } = resolveCategoryReorder(reordered, {
-      isUpcoming: id => id === 'later-task',
-      showUpcoming: true,
-    });
-    expect(categoryOrder).toEqual(['health']);
-    expect(layoutSeq(settled)).toEqual(['#health', 'workout', '#Later Today', 'later-task']);
-  });
-
-  // A category with no visible task today never gets a header to drag, so it
-  // wouldn't appear in the raw dragged sequence at all. Persisting only that
-  // partial order would silently reassign every other category's sortOrder
-  // too, so hidden categories must keep their existing relative slot.
-  it('keeps a category absent from today\'s headers in its existing relative slot', () => {
-    const work = makeTask({ id: 'meeting', category: 'work' });
-    const health = makeTask({ id: 'workout', category: 'health' });
-    // Only "work" and "health" have a visible task today; "chores" has none
-    // and so never appears as a header in the dragged sequence.
-    const reordered: CategoryListItem[] = [
-      { type: 'header', label: 'health' },
-      { type: 'task', task: health },
-      { type: 'header', label: 'work' },
-      { type: 'task', task: work },
-    ];
-    const { categoryOrder } = resolveCategoryReorder(reordered, {
-      ...noUpcoming,
-      fullCategoryOrder: ['work', 'chores', 'health'],
-    });
-    expect(categoryOrder).toEqual(['health', 'chores', 'work']);
-  });
-});
-
 // Readable view of a flattened Later layout.
 const laterSeq = (items: ReturnType<typeof flattenLaterSections>) =>
   items.map(item => (item.type === 'header' ? `#${item.label}` : item.task.id));
@@ -664,13 +557,7 @@ describe('visibleLaterSections', () => {
   });
 });
 
-describe('categorySpan / applyCategoryCollapse / categorySectionKeys', () => {
-  const listItemKey = (item: TodayListItem): string =>
-    item.type === 'header' ? `h-${item.label}`
-    : item.type === 'group' ? `g-${item.group.id}`
-    : item.type === 'task' ? item.task.id
-    : item.type;
-
+describe('categorySpan / applyCategoryCollapse', () => {
   it('assigns null before the first header and while under "Later Today"', () => {
     const a = makeTask({ id: 'a' });
     const b = makeTask({ id: 'b' });
@@ -683,10 +570,9 @@ describe('categorySpan / applyCategoryCollapse / categorySectionKeys', () => {
     expect(categorySpan(items)).toEqual([null, 'Work', null, null]);
   });
 
-  // categorySpan is the shared traversal behind both consumers — assert they
-  // agree on what counts as "under a collapsed/real category" for the same
-  // input, rather than re-deriving the walk independently.
-  it('applyCategoryCollapse and categorySectionKeys agree on which rows are under a real category', () => {
+  // Collapsing a category takes its own rows and nothing else: the
+  // header-less loose group at the top belongs to no category, so it stays.
+  it('applyCategoryCollapse removes only the rows under the collapsed header', () => {
     const a = makeTask({ id: 'a' });
     const b = makeTask({ id: 'b' });
     const items: TodayListItem[] = [
@@ -695,16 +581,11 @@ describe('categorySpan / applyCategoryCollapse / categorySectionKeys', () => {
       { type: 'task', task: b },
     ];
 
-    const keys = categorySectionKeys(items, listItemKey);
-    expect(keys).toEqual(new Set(['b']));
-
     const collapsed = applyCategoryCollapse(items, new Set(['Work']));
     const collapsedTaskIds = collapsed.filter(i => i.type === 'task').map(i => i.task.id);
-    // Every row categorySectionKeys says is "under a real category" (only
-    // `b`, since `a` is the header-less loose group) is exactly the row
-    // applyCategoryCollapse removes once that category is collapsed.
     expect(collapsedTaskIds).toEqual(['a']);
-    expect(keys.has('a')).toBe(false);
+    // The header itself stays, so it's still tappable to re-expand.
+    expect(collapsed.some(i => i.type === 'header' && i.label === 'Work')).toBe(true);
   });
 });
 

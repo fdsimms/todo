@@ -26,8 +26,6 @@ import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedTo
 import {
   makeCategoryGroups,
   resolveDrop,
-  resolveCategoryReorder,
-  categoryHeaderRange,
   flattenLaterSections,
   isLaterHeader,
   laterTaskOrder,
@@ -36,13 +34,11 @@ import {
   visibleLaterSections as computeVisibleLaterSections,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
-  categorySectionKeys as computeCategorySectionKeys,
   sectionTaskIds as computeSectionTaskIds,
   findTaskJumpTarget,
   type LaterListItem,
   type CategoryListItem,
   type LaterTodaySectionData,
-  type TodayListItem,
 } from '../utils/taskGrouping';
 import { dragRange } from '../utils/reorder';
 import { useTaskStore } from '../store/useTaskStore';
@@ -87,6 +83,7 @@ import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
+import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
@@ -175,14 +172,12 @@ function SectionHeader({
   colors,
   collapsed,
   onToggle,
-  onDrag,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   collapsed?: boolean;
   onToggle?: () => void;
-  onDrag?: () => void;
 }) {
   const scrim = <SpotlightScrim />;
 
@@ -198,15 +193,11 @@ function SectionHeader({
     <TouchableOpacity
       style={styles.categorySectionHeader}
       onPress={onToggle}
-      onLongPress={onDrag}
-      delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
-      accessibilityHint={onDrag ? 'Long press to reorder categories' : undefined}
     >
       <View style={styles.categorySectionHeaderLeft}>
-        {onDrag && <Ionicons name="reorder-three" size={14} color={colors.textTertiary} />}
         <Text style={styles.sectionHeaderText}>{label}</Text>
         <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
       </View>
@@ -428,7 +419,6 @@ export function TodayScreen() {
   const clearAllPins = useTaskStore(s => s.clearAllPins);
   const reorderTasks = useTaskStore(s => s.reorderTasks);
   const reorderWithCategoryUpdates = useTaskStore(s => s.reorderWithCategoryUpdates);
-  const reorderCategories = useCategoryStore(s => s.reorderCategories);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -474,6 +464,7 @@ export function TodayScreen() {
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [categoryOrderVisible, setCategoryOrderVisible] = useState(false);
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
@@ -502,11 +493,6 @@ export function TodayScreen() {
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-  // True only while a category header is mid-drag: every category's tasks
-  // hide (render-only — see categorySectionKeys below, NOT removed from the
-  // underlying list) so the full run of headers is visible without
-  // scrolling, without changing what onReorder hands back on drop.
-  const [autoCollapseForDrag, setAutoCollapseForDrag] = useState(false);
   const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
   const [groupEditorVisible, setGroupEditorVisible] = useState(false);
   // Set while editingGroup is a stack freshly created from the add menu —
@@ -1179,16 +1165,6 @@ export function TodayScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingJump]);
 
-  // Keys of task/group rows that sit under a real category header (i.e. not
-  // the header-less loose group at top, and not "Later Today", which is a
-  // time section rather than a category). Used by autoCollapseForDrag to
-  // decide what to hide while a category header is being dragged.
-  const categorySectionKeys = useMemo(
-    () => computeCategorySectionKeys(data, listItemKey as (item: TodayListItem) => string),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [data],
-  );
-
   // What each section header needs to know to leave with its rows when the last
   // of them is ticked off (see CompletionCollapse). Built from `data` — the list
   // as rendered — so a header whose rows a collapsed category has folded away
@@ -1421,36 +1397,10 @@ export function TodayScreen() {
     },
   };
 
-  // Set right before a category header's drag() starts, and cleared right
-  // before any other drag starts, so onReorder below can tell whether the
-  // in-flight drag is reordering categories rather than moving a task.
-  // Left stale after a cancelled (no-op) header drag is harmless: it's only
-  // read once inside onReorder, by which point the next drag has already set
-  // it correctly for whatever it actually is.
-  const draggingCategoryRef = useRef<string | null>(null);
-  const startCategoryDrag = (label: string, drag: () => void) => {
-    draggingCategoryRef.current = label;
-    // No lift haptic here — drag() fires it (ReorderableList.startDrag), so it
-    // can't sound off for a long-press the list declines to take.
-    //
-    // No animateLayout() here, on purpose — same rule layoutAnimation.ts
-    // states for the drop-settle commit applies just as much to drag start.
-    // The dragged header's own calibration (ReorderableList.calibrateOverlayBase)
-    // measures this row's real on-screen position once the auto-collapse
-    // commits; a native LayoutAnimation would still be tweening every other
-    // header's frame toward that position for 220ms after the measurement,
-    // so the floating card would pin to a spot the layout hasn't reached yet.
-    // An instant collapse gives it settled ground truth immediately. (The
-    // matching drag-end collapse below already avoids this collision by
-    // deferring animateLayout() to its own commit — same conflict, other end.)
-    setAutoCollapseForDrag(true);
-    drag();
-  };
-
-  // Set while a group header's drag() is in flight, mirroring
-  // draggingCategoryRef — lets the group's own children collapse for the
-  // duration of the drag (rendered check further down) without touching the
-  // rest of the category. Cleared in the outer ReorderableList's onDragEnd.
+  // Set while a group header's drag() is in flight — lets the group's own
+  // children collapse for the duration of the drag (rendered check further
+  // down) without touching the rest of the category. Cleared in the outer
+  // ReorderableList's onDragEnd.
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
   // A stack's children are reordered by a nested SortableList, whose responder
   // sits *inside* this screen's list rather than around it — so the list has to
@@ -1474,7 +1424,6 @@ export function TodayScreen() {
   // tasks.
   const pendingGroupDragRef = useRef<string | null>(null);
   const startGroupDrag = (groupId: string, drag: () => void) => {
-    draggingCategoryRef.current = null;
     pendingGroupDragRef.current = groupId;
     drag();
     pendingGroupDragRef.current = null;
@@ -1585,9 +1534,7 @@ export function TodayScreen() {
         // mutates the selection on every frame, and with the memo only the rows
         // whose `selected` flipped re-render.
         drag={
-          selectionMode || !opts?.drag || upcomingTaskIds.has(task.id)
-            ? undefined
-            : (e?: GestureResponderEvent) => { draggingCategoryRef.current = null; opts.drag!(e); }
+          selectionMode || !opts?.drag || upcomingTaskIds.has(task.id) ? undefined : opts.drag
         }
         isActive={opts?.isActive}
         selectionMode={selectionMode}
@@ -1608,18 +1555,6 @@ export function TodayScreen() {
   };
 
   const renderListItem = ({ item, drag, isActive }: { item: ListItem; drag?: () => void; isActive?: boolean }) => {
-    // While a category drag is auto-collapsing every section (see
-    // startCategoryDrag), hide task/group rows that sit under a real
-    // category header — the same rows collapsedCategories would remove, but
-    // render-only here so the underlying list (and onReorder's result) is
-    // untouched.
-    if (
-      autoCollapseForDrag &&
-      (item.type === 'task' || item.type === 'group') &&
-      categorySectionKeys.has(listItemKey(item))
-    ) {
-      return null;
-    }
     // Headers sit in the same elevated list as task rows, above the spotlight
     // overlay, so each one draws its own scrim to dim in step with the rows.
     if (item.type === 'pinned-header') {
@@ -1672,9 +1607,8 @@ export function TodayScreen() {
             label={isCategory ? categoryLabel(item.label, categories) : item.label}
             styles={styles}
             colors={colors}
-            collapsed={isCategory ? (autoCollapseForDrag || collapsedCategories.has(item.label)) : undefined}
+            collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
-            onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
           />
         </CompletionCollapse>
       );
@@ -2368,16 +2302,6 @@ export function TodayScreen() {
               // render-stale draggingGroupId, so a drag that began and ended
               // before the state update committed left it set.
               setDraggingGroupId(null);
-              if (!autoCollapseForDrag) return;
-              // Deferred a tick so this LayoutAnimation lands in its own
-              // commit, after ReorderableList's own drop-settle render (rows
-              // snapping from their transform back to plain layout) — firing
-              // it in the same commit as that snap fights it (see
-              // layoutAnimation.ts).
-              setTimeout(() => {
-                animateLayout();
-                setAutoCollapseForDrag(false);
-              }, 0);
             }}
             onHoverChange={haptics.dragTick}
             onDragMove={({ dx, overIndex }) => {
@@ -2417,13 +2341,12 @@ export function TodayScreen() {
                 ? null
                 : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
             }
+            // Only here to record which row is in flight (onDragMove reads it);
+            // every draggable row on this list may go anywhere in it. Section
+            // headers aren't draggable at all — their order is set from the "…"
+            // menu (see CategoryOrderSheet).
             dragRange={(rangeData, activeIndex) => {
               activeDragIndexRef.current = activeIndex;
-              const activeItem = rangeData[activeIndex];
-              if (activeItem?.type === 'header' && activeItem.label !== LATER_TODAY_LABEL) {
-                const range = categoryHeaderRange(rangeData);
-                if (range) return range;
-              }
               return [0, rangeData.length - 1];
             }}
             placeholderStyle={styles.dropSlot}
@@ -2436,18 +2359,6 @@ export function TodayScreen() {
 
               const joinedTaskId = joinedTaskIdRef.current;
               joinedTaskIdRef.current = null;
-
-              if (draggingCategoryRef.current !== null) {
-                draggingCategoryRef.current = null;
-                const { categoryOrder, settled } = resolveCategoryReorder(dropped, {
-                  isUpcoming: id => upcomingTaskIds.has(id),
-                  showUpcoming,
-                  fullCategoryOrder: allCategories,
-                });
-                setDraggableData(settled);
-                reorderCategories(categoryOrder);
-                return;
-              }
 
               // A task dragged onto a group (see onDragMove) has already joined
               // it in onDragEnd — drop it from the normal placement pass so
@@ -2738,6 +2649,16 @@ export function TodayScreen() {
             setPullVisible(true);
           }}
           quietProjectCount={projectStalls.length}
+          onReorderCategories={() => {
+            setOptionsMenuVisible(false);
+            setCategoryOrderVisible(true);
+          }}
+          categoryCount={allCategories.length}
+        />
+
+        <CategoryOrderSheet
+          visible={categoryOrderVisible}
+          onClose={() => setCategoryOrderVisible(false)}
         />
 
         <DeloadSheet
