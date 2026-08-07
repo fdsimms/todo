@@ -14,7 +14,7 @@ import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
-import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken } from './clockTime';
+import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart } from './clockTime';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 
 /**
@@ -22,18 +22,10 @@ import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
  * If dayResetTime is "02:00" and it's 1:30 AM, we're still in the previous logical day.
  */
 export function getDayStart(date: Date = new Date(), dayResetTime?: string): Date {
-  const rt = dayResetTime ?? useSettingsStore.getState().dayResetTime;
-  const [h, m] = rt.split(':').map(Number);
-
-  const resetOnDate = new Date(date);
-  resetOnDate.setHours(h, m, 0, 0);
-
-  // Before the reset hour → still belongs to the previous logical day
-  if (date < resetOnDate) {
-    resetOnDate.setDate(resetOnDate.getDate() - 1);
-  }
-
-  return resetOnDate;
+  // The math itself lives in the store-free clockTime module, so the modules
+  // that can't reach the store share this one rather than forking it; all this
+  // wrapper adds is the setting.
+  return logicalDayStart(date, dayResetTime ?? useSettingsStore.getState().dayResetTime);
 }
 
 export function getCurrentDayStart(): Date {
