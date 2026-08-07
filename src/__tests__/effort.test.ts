@@ -1,5 +1,8 @@
-import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes } from '../utils/effort';
-import type { Effort } from '../types';
+import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+import type { ChainItem, Effort } from '../types';
+
+const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
+  ({ id: title, title, estimatedMinutes });
 
 describe('effortToMinutes', () => {
   it('returns null for the unknown bucket', () => {
@@ -116,6 +119,62 @@ describe('sumEstimatedMinutes', () => {
       { estimatedMinutes: null, effort: 2 as Effort }, // ~15
     ];
     expect(sumEstimatedMinutes(tasks)).toBe(35);
+  });
+});
+
+describe('estimatedMinutesFor', () => {
+  const chained = (over: Partial<{ estimatedMinutes: number | null; effort: Effort; chainItems: ChainItem[]; chainIndex: number; chainEnabled: boolean }> = {}) => ({
+    estimatedMinutes: 90,
+    effort: 0 as Effort,
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [step('Warm up', 5), step('Main set', 45), step('Cool down')],
+    ...over,
+  });
+
+  it('uses the active step\'s own estimate', () => {
+    expect(estimatedMinutesFor(chained({ chainIndex: 0 }))).toBe(5);
+    expect(estimatedMinutesFor(chained({ chainIndex: 1 }))).toBe(45);
+  });
+
+  it('falls back to the task estimate for a step that has none', () => {
+    expect(estimatedMinutesFor(chained({ chainIndex: 2 }))).toBe(90);
+  });
+
+  it('falls back to the effort bucket when neither the step nor the task has an estimate', () => {
+    expect(estimatedMinutesFor(chained({ chainIndex: 2, estimatedMinutes: null, effort: 3 }))).toBe(30);
+  });
+
+  it('wraps the index the way a repeating chain does', () => {
+    expect(estimatedMinutesFor(chained({ chainIndex: 4 }))).toBe(45);
+  });
+
+  it('ignores step estimates when the chain is off or has a single step', () => {
+    expect(estimatedMinutesFor(chained({ chainEnabled: false }))).toBe(90);
+    expect(estimatedMinutesFor(chained({ chainItems: [step('Warm up', 5)] }))).toBe(90);
+  });
+
+  it('is null when nothing anywhere has an estimate', () => {
+    expect(estimatedMinutesFor({ estimatedMinutes: null, effort: 0, chainEnabled: false, chainIndex: 0, chainItems: [] })).toBeNull();
+  });
+
+  it('takes the loose shape too, for callers with no chain fields', () => {
+    expect(estimatedMinutesFor({ estimatedMinutes: 20, effort: 0 })).toBe(20);
+  });
+});
+
+describe('sumEstimatedMinutes with chains', () => {
+  // The bug this exists for: without per-step estimates a chained task charges
+  // its whole estimate at every step, and since completing a step spawns the
+  // next onto the same day, the day's total never falls as the chain is worked.
+  it('charges the active step, not the whole chain', () => {
+    const task = {
+      estimatedMinutes: 90, effort: 0 as Effort, chainEnabled: true,
+      chainItems: [step('Warm up', 5), step('Main set', 45)],
+      chainIndex: 0,
+    };
+    expect(sumEstimatedMinutes([task])).toBe(5);
+    expect(sumEstimatedMinutes([{ ...task, chainIndex: 1 }])).toBe(45);
   });
 });
 

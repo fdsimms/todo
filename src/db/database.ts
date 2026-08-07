@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
+import { parseChainItems } from '../utils/chain';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -516,7 +517,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     // for existing installs. The JS-facing field names are the new ones.
     chainEnabled: Boolean(row.cycle_enabled),
     chainIndex: (row.cycle_index as number) ?? 0,
-    chainItems: JSON.parse((row.cycle_items as string) ?? '[]'),
+    chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,

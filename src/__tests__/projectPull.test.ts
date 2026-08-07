@@ -197,9 +197,9 @@ describe('findProjectStalls', () => {
   it('is not stalled when the only live members are mid-chain steps', () => {
     const tasks = [
       makeTask({ id: 'a', chainEnabled: true, chainIndex: 2, chainItems: [
-        { id: 'c1', title: 'one' },
-        { id: 'c2', title: 'two' },
-        { id: 'c3', title: 'three' },
+        { id: 'c1', title: 'one', estimatedMinutes: null },
+        { id: 'c2', title: 'two', estimatedMinutes: null },
+        { id: 'c3', title: 'three', estimatedMinutes: null },
       ] }),
     ];
 

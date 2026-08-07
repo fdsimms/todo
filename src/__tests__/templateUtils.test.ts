@@ -476,7 +476,7 @@ describe('extractPlaceholders', () => {
       title: 'Pack',
       notes: 'for {trip}',
       subtasks: [{ id: 's1', title: 'Charge the {device}' }],
-      chainItems: [{ id: 'c1', title: 'Confirm with {who}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm with {who}', estimatedMinutes: null }],
     })];
     expect(extractPlaceholders(items)).toEqual(['trip', 'device', 'who']);
   });
@@ -539,11 +539,11 @@ describe('substituteDraftPlaceholders', () => {
     const out = substituteDraftPlaceholders({
       title: 'Pack for {trip}',
       notes: 'ask {who}',
-      chainItems: [{ id: 'c1', title: 'Confirm {who}' }],
+      chainItems: [{ id: 'c1', title: 'Confirm {who}', estimatedMinutes: null }],
     }, { trip: 'Denver', who: 'Dan', when: 'Friday' });
     expect(out.title).toBe('Pack for Denver');
     expect(out.notes).toBe('ask Dan');
-    expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan' }]);
+    expect(out.chainItems).toEqual([{ id: 'c1', title: 'Confirm Dan', estimatedMinutes: null }]);
   });
 
   it('leaves an absent title/notes/chain absent rather than turning it into a blank string', () => {
