@@ -83,6 +83,15 @@ interface GroceryStore {
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
+  /**
+   * Commit a drag on the list: each row's new rank in the walk order and the
+   * aisle it was dropped into. One action rather than a reorder plus a
+   * setAisleMany, because a drop decides both at once (see resolveGroceryDrop)
+   * and two writes would leave a frame where the item had moved but not moved
+   * aisle.
+   */
+  applyDrop: (placements: Array<{ id: string; sortOrder: number; aisle: string }>) => void;
+
   setAisleOrder: (order: string[]) => void;
 
   itemByNameKey: (key: string) => GroceryItem | null;
@@ -351,6 +360,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: [],
     }));
     return ids.length;
+  },
+
+  applyDrop(placements) {
+    const byId = new Map(get().items.map(i => [i.id, i]));
+    const updates: GroceryItem[] = [];
+    for (const p of placements) {
+      const item = byId.get(p.id);
+      if (!item) continue;
+      if (item.sortOrder === p.sortOrder && item.aisle === p.aisle) continue;
+      updates.push({ ...item, sortOrder: p.sortOrder, aisle: p.aisle });
+    }
+    if (updates.length === 0) return;
+
+    for (const u of updates) dbUpdateGroceryItem(u);
+    const updated = new Map(updates.map(u => [u.id, u]));
+    set(s => ({
+      items: s.items.map(i => updated.get(i.id) ?? i),
+      // Every aisle here came off a header that was already on screen, so this
+      // is belt and braces — but normalizing is what setAisleMany does, and an
+      // aisle missing from the order renders its section unplaced.
+      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+    }));
   },
 
   setAisleOrder(order) {
