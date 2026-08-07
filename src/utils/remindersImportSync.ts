@@ -231,8 +231,11 @@ function drainTargets(): DrainTarget[] {
  */
 function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null {
   if (deleteAfterImport) return null;
+  // Grocery dedup is scoped to what's currently on the list, not the whole
+  // catalog: an item bought once and now sitting off-list is exactly what a
+  // dictated reminder should be able to re-add, same as typing it would.
   return sink === 'grocery'
-    ? groceryItemKeys(useGroceryStore.getState().items)
+    ? groceryItemKeys(useGroceryStore.getState().items.filter(i => i.onList))
     : taskTitleKeys(useTaskStore.getState().tasks);
 }
 
