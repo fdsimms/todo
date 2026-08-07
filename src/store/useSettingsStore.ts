@@ -3,6 +3,7 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort } from '../types';
+import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -51,6 +52,11 @@ interface SettingsStore {
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
+  // How long completed tasks are kept before a startup purge deletes them.
+  // null = forever, and forever is the default: nothing about an existing
+  // install changes until the user picks a window in Settings. See
+  // src/utils/retention.ts for what a purge may take.
+  completedRetentionDays: RetentionDays;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
@@ -82,6 +88,7 @@ interface SettingsStore {
   setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
+  setCompletedRetentionDays: (days: RetentionDays) => void;
   setHideCategories: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
@@ -112,6 +119,11 @@ const DEFAULT_SETTINGS = {
 // String(), so only scalars belong in it — an array would land as "" (or
 // "1,2") and read back as garbage. The persisted sort & filter are kept out
 // for that reason and because they aren't preferences anyone sets in Settings.
+//
+// completedRetentionDays is kept out for a second reason: null would land as
+// the string "null", and more to the point "Reset settings" must not quietly
+// re-arm — or disarm — a setting that deletes history. Like vacation mode, it
+// only ever changes when the user changes it.
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
@@ -159,6 +171,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationEnd: null,
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
+  completedRetentionDays: null,
   hideCategories: false,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
@@ -193,6 +206,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationEnd = dbGetSetting('vacationEnd') || null;
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
+    const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
@@ -204,7 +218,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -331,6 +345,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAutoArchiveProjectsOnComplete(on: boolean) {
     dbSetSetting('autoArchiveProjectsOnComplete', on ? 'true' : 'false');
     set({ autoArchiveProjectsOnComplete: on });
+  },
+
+  // Stored as '' for forever, matching vacationEnd/projectNudgeDismissedAt —
+  // the settings table is all TEXT, and parseRetentionDays reads anything it
+  // doesn't recognise back as forever.
+  setCompletedRetentionDays(days: RetentionDays) {
+    dbSetSetting('completedRetentionDays', days === null ? '' : String(days));
+    set({ completedRetentionDays: days });
   },
 
   setHideCategories(on: boolean) {
