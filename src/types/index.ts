@@ -217,6 +217,13 @@ export interface Task {
   // be meaningful — the editor turns it on with the target.
   targetCount: number | null; // null = ordinary task; >= 2 = quota task
   progressCount: number;      // units logged toward targetCount on this occurrence
+  // What the count counts, e.g. "8oz glasses" — free text, optional, and shown
+  // beside the numbers wherever they are ("5/12 8oz glasses"). It exists so the
+  // unit doesn't have to live in the title: "Drink water" with a unit says the
+  // same thing as "Drink 8oz glasses of water" and still reads as a task.
+  // Formatting rules (including why nothing pluralises it) are in
+  // src/utils/quotaUnit.ts; null = show the bare count, as targets always did.
+  targetUnit: string | null;
 
   tags: string[];
   category: string | null;

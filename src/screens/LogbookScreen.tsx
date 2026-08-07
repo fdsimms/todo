@@ -37,6 +37,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 
@@ -540,7 +541,7 @@ const LogbookRow = React.memo(function LogbookRow({
             missed
               ? `missed, ${formatTime(task.completedAt!)}`
               : partial
-                ? `fell short at ${task.progressCount} of ${task.targetCount}, ${formatTime(task.completedAt!)}`
+                ? `fell short at ${task.progressCount} of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatTime(task.completedAt!)}`
                 : `completed ${formatTime(task.completedAt!)}`,
             task.category,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
@@ -555,7 +556,9 @@ const LogbookRow = React.memo(function LogbookRow({
                 meaning inverts — it has to survive being skimmed. */}
             {missed && <Text style={styles.missedTag}>· Missed</Text>}
             {task.targetCount !== null && (
-              <Text style={styles.taskTime}>· {task.progressCount}/{task.targetCount}</Text>
+              <Text style={styles.taskTime} numberOfLines={1}>
+                · {formatQuotaProgress(task.progressCount, task.targetCount, task.targetUnit)}
+              </Text>
             )}
             {categoryLabel && (
               <View style={styles.categoryChip}>

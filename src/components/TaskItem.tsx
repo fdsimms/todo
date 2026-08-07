@@ -32,6 +32,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -626,7 +627,9 @@ export const TaskItem = React.memo(function TaskItem({
   // still says 7/8 while the meter runs up to the brim. A logged unit needs no
   // such reading: it lands in the store on the tap.
   const quotaLogged = quotaCompleting ? task.targetCount! : task.progressCount;
-  const quotaProgress = isQuota ? `${quotaLogged}/${task.targetCount}` : '';
+  const quotaProgress = isQuota
+    ? formatQuotaProgress(quotaLogged, task.targetCount!, task.targetUnit)
+    : '';
   // When the next unit falls due. Shown for as long as the row is on borrowed
   // time, so a target that goes quiet at 2/8 reads as scheduled rather than as
   // swallowed — and so the window in which another tap still lands is a visible
@@ -1044,7 +1047,7 @@ export const TaskItem = React.memo(function TaskItem({
               : completing
                 ? `Undo complete ${task.title}`
                 : meterInteractive
-                  ? `Log one of ${task.targetCount}, ${quotaProgress} done, ${task.title}`
+                  ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
                     : `Complete ${task.title}`

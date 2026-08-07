@@ -33,6 +33,7 @@ import { spacing, radius, font, border, interaction, animation, checkboxRadius, 
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { MAX_TARGET_COUNT, MIN_TARGET_COUNT } from '../utils/quickAddTypes';
+import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -93,6 +94,7 @@ export interface TaskDraft {
   groupId?: string | null;
   linkUrl?: string | null;
   targetCount?: number | null;
+  targetUnit?: string | null;
 }
 
 interface Props {
@@ -187,6 +189,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [targetUnit, setTargetUnit] = useState('');
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
@@ -296,6 +299,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
       setTargetCount(task.targetCount ?? null);
+      setTargetUnit(task.targetUnit ?? '');
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
@@ -319,7 +323,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification');
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setDeferUntil(null); setReminderTime(null); setReminderKind('notification');
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -371,6 +375,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
+      targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       reminderKind: task?.reminderKind ?? 'notification',
@@ -483,7 +488,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
       deadlineMonthDay: recurrenceType === 'monthly' ? deadlineMonthDay : null,
-      timeSegments, windowStart, windowEnd, targetCount, deferUntil: deferUntil?.toISOString() ?? null,
+      timeSegments, windowStart, windowEnd, targetCount,
+      // Cleared with the count it labels — a unit left behind on a task that is
+      // no longer a target has nothing to sit beside, and would come back the
+      // moment a target did.
+      targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
+      deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       recurrenceType, recurrenceInterval,
@@ -794,6 +804,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       timeSegments,
       windowStart, windowEnd,
       targetCount,
+      targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
@@ -1529,36 +1540,60 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           icon="speedometer-outline"
           label="Daily target"
           hint="Log it several times a day; only shows up when you fall behind"
-          value={targetCount !== null ? `${targetCount}×` : undefined}
+          value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
           expanded={showTargetCount}
           onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
-          onClear={targetCount !== null ? () => { setTargetCount(null); setShowTargetCount(false); } : undefined}
+          onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
         />
         {showTargetCount && (
-          <View style={styles.targetStepperRow}>
-            <CountStepper
-              value={targetCount}
-              onChange={next => {
-                setTargetCount(next);
-                // A quota only makes sense day to day: the count resets
-                // because each new occurrence starts at zero, so without
-                // a daily repeat there'd be nothing to reset it.
-                if (next !== null) enableRecurrence();
-              }}
-              min={MIN_TARGET_COUNT}
-              max={MAX_TARGET_COUNT}
-              // The floor clears it, so the row's × isn't the only way out of
-              // being a quota once you've opened this.
-              allowNull
-              emptyLabel="Off"
-              format={n => `${n}×`}
-              label="Daily target"
-              describeValue={n => (n === null ? 'off' : `${n} times a day`)}
-            />
+          <>
+            <View style={styles.targetStepperRow}>
+              <CountStepper
+                value={targetCount}
+                onChange={next => {
+                  setTargetCount(next);
+                  // A quota only makes sense day to day: the count resets
+                  // because each new occurrence starts at zero, so without
+                  // a daily repeat there'd be nothing to reset it.
+                  if (next !== null) enableRecurrence();
+                }}
+                min={MIN_TARGET_COUNT}
+                max={MAX_TARGET_COUNT}
+                // The floor clears it, so the row's × isn't the only way out of
+                // being a quota once you've opened this.
+                allowNull
+                emptyLabel="Off"
+                format={n => `${n}×`}
+                label="Daily target"
+                describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
+              />
+              {/* The unit is only ever read next to the count, so it's typed
+                  next to it too — and it's hidden while there's no count,
+                  since on its own it labels nothing. */}
+              {targetCount !== null && (
+                <TextInput
+                  style={styles.targetUnitInput}
+                  value={targetUnit}
+                  onChangeText={setTargetUnit}
+                  placeholder="glasses"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MAX_TARGET_UNIT_LENGTH}
+                  autoCapitalize="none"
+                  returnKeyType="done"
+                  accessibilityLabel="Unit for the daily target, optional"
+                />
+              )}
+            </View>
+            {/* Says what the row will read as rather than what the field is
+                for: the unit's whole job is how the meter comes out, and a
+                preview answers "plural or singular?" without a rule to
+                explain. */}
             <Text style={styles.targetStepperCaption}>
-              {targetCount === null ? 'Not a daily target' : 'a day'}
+              {targetCount === null
+                ? 'Not a daily target'
+                : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)}, a day`}
             </Text>
-          </View>
+          </>
         )}
         <View style={styles.sep} />
         <EditorRow
@@ -2741,9 +2776,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   windowPill: { flex: 1 },
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
+  },
+  targetStepperCaption: {
+    color: colors.textTertiary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
   },
-  targetStepperCaption: { color: colors.textTertiary, fontSize: font.sm },
+  targetUnitInput: {
+    flex: 1, color: colors.text, fontSize: font.sm,
+    borderBottomWidth: border.sm, borderBottomColor: colors.separator,
+    // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
+    height: 32,
+  },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,

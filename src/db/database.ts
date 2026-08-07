@@ -320,6 +320,9 @@ export function initDatabase(): void {
     // it on hides every member but the first, and no existing project's order
     // was ever entered as a sequence.
     'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
+    // Null for every existing target, which is exactly the old behaviour: no
+    // unit means the meter keeps reading as the bare "5/12" it always has.
+    'ALTER TABLE tasks ADD COLUMN target_unit TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -576,6 +579,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
     targetCount: (row.target_count as number | null) ?? null,
     progressCount: (row.progress_count as number) ?? 0,
+    targetUnit: (row.target_unit as string | null) ?? null,
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
@@ -635,8 +639,9 @@ export function dbInsertTask(task: Task): void {
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
-      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
+      target_unit
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -666,6 +671,7 @@ export function dbInsertTask(task: Task): void {
       task.pendingImport ? JSON.stringify(task.pendingImport) : null,
       task.missedAt ?? null,
       task.autoScheduledAt ?? null,
+      task.targetUnit ?? null,
     ]
   );
 }
@@ -682,7 +688,8 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
-      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?
+      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
+      target_unit=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -713,6 +720,7 @@ export function dbUpdateTask(task: Task): void {
       task.pendingImport ? JSON.stringify(task.pendingImport) : null,
       task.missedAt ?? null,
       task.autoScheduledAt ?? null,
+      task.targetUnit ?? null,
       task.id,
     ]
   );

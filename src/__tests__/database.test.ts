@@ -130,6 +130,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceCount: null,
   recurrenceFromCompletion: false,
   targetCount: null,
+  targetUnit: null,
   progressCount: 0,
   tags: [],
   category: null,
@@ -354,6 +355,20 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.estimatedMinutes).toBeNull();
   });
 
+  it('round-trips a daily target and its unit', () => {
+    dbInsertTask(makeTask({ id: 'quota', targetCount: 12, progressCount: 5, targetUnit: '8oz glasses' }));
+    const [t] = dbGetAllTasks();
+    expect(t.targetCount).toBe(12);
+    expect(t.progressCount).toBe(5);
+    expect(t.targetUnit).toBe('8oz glasses');
+  });
+
+  it('returns null targetUnit when unset', () => {
+    dbInsertTask(makeTask({ id: 'nounit', targetCount: 12 }));
+    const [t] = dbGetAllTasks();
+    expect(t.targetUnit).toBeNull();
+  });
+
   it('deserialises boolean columns back to JS booleans', () => {
     dbInsertTask(
       makeTask({
@@ -363,6 +378,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         pinned: true,
         recurrenceFromCompletion: true,
         targetCount: null,
+        targetUnit: null,
         progressCount: 0,
         chainEnabled: true,
         vacationPause: true,
@@ -622,6 +638,15 @@ describe('dbUpdateTask', () => {
     expect(result.windowStart).toBe('08:00');
     expect(result.windowEnd).toBe('13:00');
     expect(result.deadline).toBe('2025-07-04T00:00:00.000Z');
+  });
+
+  it('writes a target unit, and clears it again', () => {
+    dbInsertTask(makeTask({ id: 'q', targetCount: 12 }));
+    dbUpdateTask(makeTask({ id: 'q', targetCount: 12, targetUnit: 'glasses' }));
+    expect(dbGetAllTasks()[0].targetUnit).toBe('glasses');
+
+    dbUpdateTask(makeTask({ id: 'q', targetCount: 12, targetUnit: null }));
+    expect(dbGetAllTasks()[0].targetUnit).toBeNull();
   });
 
   it('does not touch other rows', () => {
