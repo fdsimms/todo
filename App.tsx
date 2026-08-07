@@ -13,6 +13,7 @@ import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
+import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { runStartupSequence } from './src/utils/startup';
@@ -123,6 +124,11 @@ function AppRoot() {
   // Runs after the init effect above, so the SQLite DB exists before any
   // incoming link tries to insert a task.
   useTaskDeepLinks();
+
+  // Handles a Home Screen quick action (long-press the app icon → Add Task /
+  // Groceries / Search / Projects). Same ordering rationale as the deep links
+  // above: after the navigator has had a chance to mount.
+  useHomeScreenQuickActions();
 
   // Pulls anything waiting in the chosen Apple Reminders list into the Inbox
   // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links

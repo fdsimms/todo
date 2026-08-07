@@ -70,7 +70,34 @@
       ],
       "./plugins/withAppGroup",
       "./plugins/withWidgetExtension",
-      "./plugins/withAlarmKit"
+      "./plugins/withAlarmKit",
+      [
+        "expo-quick-actions",
+        {
+          "iosActions": [
+            {
+              "id": "add",
+              "title": "Add Task",
+              "icon": "symbol:square.and.pencil"
+            },
+            {
+              "id": "groceries",
+              "title": "Groceries",
+              "icon": "symbol:cart"
+            },
+            {
+              "id": "search",
+              "title": "Search",
+              "icon": "symbol:magnifyingglass"
+            },
+            {
+              "id": "projects",
+              "title": "Projects",
+              "icon": "symbol:briefcase"
+            }
+          ]
+        }
+      ]
     ],
     "extra": {
       "eas": {
