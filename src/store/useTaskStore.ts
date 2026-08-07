@@ -13,6 +13,7 @@ import {
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkSetWhen,
+  dbBulkSetTimeSegments,
   dbBulkSetCategory,
   dbBulkSetPinned,
   dbBulkAddTags,
@@ -36,7 +37,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, sameTimeSegments } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -73,10 +74,40 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
   target[key] = source[key];
 }
 
+// The time-of-day a brand-new task starts with: its own if the draft named
+// one, else its category's default (Category.defaultTimeSegments).
+//
+// An empty draft array counts as "didn't name one" rather than as an explicit
+// "no segment", because every editor sends timeSegments unconditionally from
+// its state — TaskEditor and QuickAdd both pass `[]` when the user simply
+// never opened the Time of day row, so treating `[]` as a deliberate choice
+// would make the default fire for approximately nobody.
+//
+// Creation only, and the resolved value is written onto the row like any
+// other: after this the task's own timeSegments are what everything reads, so
+// clearing the category's default never moves a task that already exists.
+function resolveTimeSegments(draft: Partial<TaskDraft>): TimeOfDay[] {
+  if (draft.timeSegments && draft.timeSegments.length > 0) return draft.timeSegments;
+  if (!draft.category) return draft.timeSegments ?? [];
+  const cat = useCategoryStore.getState().getCategoryByName(draft.category);
+  return cat?.defaultTimeSegments.length ? [...cat.defaultTimeSegments] : (draft.timeSegments ?? []);
+}
+
 // The one place a Task's defaults are spelled out. Shared by addTask and the
 // dated-series builder below so a new field can't end up defaulted in one
 // path and undefined in the other.
-function newTaskFromDraft(draft: Partial<TaskDraft>, now: string, sortOrder: number): Task {
+//
+// `seedFromCategory` is off by default because this is also the *clone*
+// builder: buildSeriesRow feeds it an existing row when a series is
+// reconciled or rolls over, and there an empty timeSegments is the source
+// row's deliberate answer, not an unanswered question. Only the two paths
+// where a person is creating a task from scratch turn it on.
+function newTaskFromDraft(
+  draft: Partial<TaskDraft>,
+  now: string,
+  sortOrder: number,
+  seedFromCategory = false,
+): Task {
   return {
     id: generateId(),
     title: draft.title ?? '',
@@ -90,7 +121,7 @@ function newTaskFromDraft(draft: Partial<TaskDraft>, now: string, sortOrder: num
     deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
     deadlineMonthDay: draft.deadlineMonthDay ?? null,
     deferUntil: draft.deferUntil ?? null,
-    timeSegments: draft.timeSegments ?? [],
+    timeSegments: seedFromCategory ? resolveTimeSegments(draft) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,
     windowEnd: draft.windowEnd ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
@@ -194,9 +225,10 @@ function buildSeriesRow(
   date: Date,
   seriesId: string,
   repeat?: { monthDays: number[]; repeatMonths: number },
+  seedFromCategory = false,
 ): Task {
   const now = new Date().toISOString();
-  const base = newTaskFromDraft(source, now, 0);
+  const base = newTaskFromDraft(source, now, 0, seedFromCategory);
   return {
     ...base,
     ...NO_RECURRENCE,
@@ -472,6 +504,7 @@ interface TaskStore {
   unarchiveTask: (id: string) => void;
   clearAllPins: () => void;
   pinCategory: (category: string) => void;
+  setCategoryTimeSegments: (category: string, segments: TimeOfDay[]) => number;
   startTimer: (id: string) => void;
   stopTimer: (id: string) => void;
   discardTimer: (id: string) => void;
@@ -620,7 +653,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   addTask(draft) {
     const now = new Date().toISOString();
     const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-    const task = newTaskFromDraft(draft, now, maxOrder + 1);
+    const task = newTaskFromDraft(draft, now, maxOrder + 1, true);
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
@@ -638,7 +671,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const rows = sorted.map(date => {
       order += 1;
       return {
-        ...buildSeriesRow(draft, date, seriesId, repeat),
+        ...buildSeriesRow(draft, date, seriesId, repeat, true),
         createdAt: now,
         seenAt: now,
         sortOrder: order,
@@ -1721,6 +1754,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextPinned = !allPinned;
     dbBulkSetPinned(ids, nextPinned);
     set(s => ({ tasks: patchTasks(s.tasks, ids, { pinned: nextPinned }) }));
+  },
+
+  // Moves every live task in a category to a time-of-day in one act, and
+  // returns how many it touched. This is the retroactive half of
+  // Category.defaultTimeSegments: the default only seeds tasks created after
+  // it was set, so without this, switching an "Evening tasks" category to
+  // night still means opening the eight tasks already in it one at a time.
+  //
+  // Scoped through tasksByCategory, so it reaches exactly the rows the
+  // category screen lists — no completed occurrences (a task finished last
+  // night happened in the evening and always will), no archived rows, no
+  // subtasks (they aren't independently scheduled, and their parent carries
+  // the segment).
+  setCategoryTimeSegments(category, segments) {
+    const targets = get().tasksByCategory(category);
+    // Nothing to do when they already agree — and worth checking, because
+    // otherwise re-tapping an already-applied segment would push a no-op onto
+    // the undo stack and bury whatever real action was under it.
+    const changing = targets.filter(t => !sameTimeSegments(t.timeSegments, segments));
+    if (changing.length === 0) return 0;
+    const ids = changing.map(t => t.id);
+    const snapshots = changing.map(t => ({ ...t }));
+    dbBulkSetTimeSegments(ids, segments);
+    set(s => ({ tasks: patchTasks(s.tasks, ids, { timeSegments: segments }) }));
+    get().setLastAction({
+      label: changing.length === 1 ? 'Task rescheduled' : `${changing.length} tasks rescheduled`,
+      undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
+    });
+    return changing.length;
   },
 
   startTimer(id) {

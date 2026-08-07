@@ -18,6 +18,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { EditorRow } from './EditorRow';
 import { EmojiPickerSheet } from './EmojiPickerSheet';
+import { InlineAction } from './InlineAction';
 import { PressableScale } from './PressableScale';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
@@ -31,11 +32,16 @@ import {
 } from '../utils/categorySchedule';
 import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { firstEmoji } from '../utils/emojiInput';
+import { sameTimeSegments } from '../utils/visibilityUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import type { TimeOfDay } from '../types';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
 const DEFAULT_START = '09:00';
 const DEFAULT_END = '18:00';
+const TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 interface Props {
   visible: boolean;
@@ -64,8 +70,10 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
   const setCategoryExcludeFromPinSuggestions = useCategoryStore(s => s.setCategoryExcludeFromPinSuggestions);
   const setCategoryEmoji = useCategoryStore(s => s.setCategoryEmoji);
+  const setCategoryDefaultTimeSegments = useCategoryStore(s => s.setCategoryDefaultTimeSegments);
   const renameCategory = useTaskStore(s => s.renameCategory);
   const deleteCategory = useTaskStore(s => s.deleteCategory);
+  const setCategoryTimeSegments = useTaskStore(s => s.setCategoryTimeSegments);
   const taskCount = useTaskStore(s => (category ? s.tasksByCategory(category).length : 0));
 
   const [name, setName] = useState('');
@@ -77,6 +85,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const [end, setEnd] = useState(DEFAULT_END);
   const [hideOnVacation, setHideOnVacation] = useState(false);
   const [excludeFromPins, setExcludeFromPins] = useState(false);
+  const [defaultSegments, setDefaultSegments] = useState<TimeOfDay[]>([]);
+  const [segmentsOpen, setSegmentsOpen] = useState(false);
   const [picker, setPicker] = useState<'start' | 'end' | null>(null);
   const [pickerDate, setPickerDate] = useState(() => new Date());
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -95,6 +105,8 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setEnd(cat?.scheduleEnd ?? DEFAULT_END);
     setHideOnVacation(!!cat?.hideOnVacation);
     setExcludeFromPins(!!cat?.excludeFromPinSuggestions);
+    setDefaultSegments(cat?.defaultTimeSegments ?? []);
+    setSegmentsOpen(false);
     setPicker(null);
     setEmojiPickerOpen(false);
     // Intentionally keyed on the category name only — `cat` changes on every
@@ -105,6 +117,21 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
   const scheduleSummary = scheduleOn && days.length > 0
     ? `${formatScheduleDays(days)}, ${formatScheduleTime(start)}–${formatScheduleTime(end)}`
     : undefined;
+
+  const segmentsSummary = defaultSegments.length > 0
+    ? defaultSegments.map(capitalize).join(', ')
+    : undefined;
+
+  // How many of this category's live tasks the apply action would actually
+  // move. The button names that number rather than the whole category, so a
+  // second tap reads as "nothing left to do" instead of silently re-applying
+  // to eight tasks that already agree — and it's why the action disappears
+  // once the category is consistent.
+  const pendingCount = useTaskStore(s =>
+    category
+      ? s.tasksByCategory(category).filter(t => !sameTimeSegments(t.timeSegments, defaultSegments)).length
+      : 0
+  );
 
   const toggleSchedule = () => {
     animateLayout();
@@ -122,6 +149,38 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     setDays(DEFAULT_DAYS);
     setStart(DEFAULT_START);
     setEnd(DEFAULT_END);
+  };
+
+  const toggleSegments = () => {
+    animateLayout();
+    setSegmentsOpen(v => !v);
+  };
+
+  // Writes the segment onto the tasks themselves — the category default only
+  // seeds tasks made after it was set, so this is the half that catches up the
+  // ones already filed here. Confirmed rather than instant because it rewrites
+  // several tasks' schedules at once; undoable either way.
+  const applyToExisting = () => {
+    if (!category || pendingCount === 0) return;
+    haptics.warning();
+    const noun = pendingCount === 1 ? 'task' : 'tasks';
+    Alert.alert(
+      defaultSegments.length > 0 ? `Move to ${segmentsSummary}?` : 'Clear time of day?',
+      defaultSegments.length > 0
+        ? `${pendingCount} ${noun} in "${category}" will be held back until ${defaultSegments.join(' or ')} each day. This can be undone with shake-to-undo.`
+        : `${pendingCount} ${noun} in "${category}" will lose their time of day and show from the start of the day. This can be undone with shake-to-undo.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: () => {
+            animateLayout();
+            setCategoryTimeSegments(category, defaultSegments);
+            haptics.success();
+          },
+        },
+      ],
+    );
   };
 
   const toggleDay = (day: number) => {
@@ -159,6 +218,9 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     }
     if (excludeFromPins !== !!cat?.excludeFromPinSuggestions) {
       setCategoryExcludeFromPinSuggestions(category, excludeFromPins);
+    }
+    if (!sameTimeSegments(defaultSegments, cat?.defaultTimeSegments ?? [])) {
+      setCategoryDefaultTimeSegments(category, defaultSegments);
     }
     // Clamped on the way out as well as on the way in — a category saved before
     // the picker existed can still be holding two emoji from the old text field.
@@ -354,6 +416,65 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               </View>
             </TouchableOpacity>
           </View>
+
+          {/* Its own group rather than a fourth row in VISIBILITY, because it
+              isn't a live category rule like the three above it: it seeds the
+              tasks and then stops mattering. Sitting under the schedule row it
+              would read as one more thing the category does to its tasks
+              every day. */}
+          <Text style={[styles.groupLabel, styles.groupLabelSpaced]}>DEFAULT FOR NEW TASKS</Text>
+          <View style={styles.card}>
+            <EditorRow
+              icon="partly-sunny-outline"
+              label="Time of day"
+              hint="New tasks here start held back until this part of the day"
+              value={segmentsSummary}
+              expanded={segmentsOpen}
+              onPress={toggleSegments}
+              onClear={defaultSegments.length > 0 ? () => { haptics.tap(); setDefaultSegments([]); } : undefined}
+            />
+            {segmentsOpen && (
+              <View style={styles.segmentPillRow}>
+                {TIME_SEGMENTS.map(seg => {
+                  const active = defaultSegments.includes(seg);
+                  return (
+                    <TouchableOpacity
+                      key={seg}
+                      style={[styles.segmentPill, active && styles.segmentPillActive]}
+                      onPress={() => {
+                        haptics.tap();
+                        setDefaultSegments(prev => (prev.includes(seg) ? [] : [seg]));
+                      }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: active }}
+                      accessibilityLabel={capitalize(seg)}
+                    >
+                      <Text style={[styles.segmentPillText, active && styles.segmentPillTextActive]}>
+                        {capitalize(seg)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+          {/* The retroactive half, and the reason the row above is safe to be
+              a mere default: changing what's already filed here is something
+              the user asks for, not something a default does behind them. */}
+          {pendingCount > 0 && (
+            <View style={styles.applyRow}>
+              <InlineAction
+                label={
+                  defaultSegments.length > 0
+                    ? `Move ${pendingCount} existing ${pendingCount === 1 ? 'task' : 'tasks'} to ${segmentsSummary}`
+                    : `Clear time of day on ${pendingCount} existing ${pendingCount === 1 ? 'task' : 'tasks'}`
+                }
+                icon="swap-horizontal-outline"
+                onPress={applyToExisting}
+              />
+            </View>
+          )}
         </ScrollView>
 
         <EmojiPickerSheet
@@ -400,7 +521,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
     paddingHorizontal: spacing.sm, marginBottom: spacing.sm,
   },
+  groupLabelSpaced: { marginTop: spacing.lg },
   card: { backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden' },
+  segmentPillRow: {
+    flexDirection: 'row', gap: spacing.xs,
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  segmentPill: {
+    flex: 1, paddingVertical: 7, borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary, alignItems: 'center',
+  },
+  segmentPillActive: { backgroundColor: colors.accent },
+  segmentPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  segmentPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+  applyRow: { alignItems: 'flex-start', marginTop: spacing.sm, paddingHorizontal: spacing.xs },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
   scheduleBody: { paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm },
   daysRow: { flexDirection: 'row', gap: spacing.xs, justifyContent: 'space-between' },

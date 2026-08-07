@@ -16,6 +16,15 @@ export interface Category {
   // still be pinned by hand. For routines and errands, which are perfectly
   // real work but bad company for whatever else lands in the pinned list.
   excludeFromPinSuggestions: boolean;
+  // The time-of-day a task created in this category starts with — a *seed*,
+  // never an override. Nothing reads it after the row exists: the task's own
+  // timeSegments stay the single source of truth for every visibility, sorting
+  // and grouping path, so one genuinely-morning task in an evening category is
+  // still sayable, and clearing this default never silently reschedules
+  // anything that already exists. Retroactive changes go through
+  // useTaskStore.setCategoryTimeSegments, which writes the tasks themselves.
+  // Empty = no default.
+  defaultTimeSegments: TimeOfDay[];
   sortOrder: number;
   emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
 }

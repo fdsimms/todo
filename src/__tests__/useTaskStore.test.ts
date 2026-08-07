@@ -1,4 +1,5 @@
 import { useTaskStore } from '../store/useTaskStore';
+import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -17,6 +18,7 @@ import {
   dbBulkSetPriority,
   dbBulkSetDefer,
   dbBulkSetPinned,
+  dbBulkSetTimeSegments,
   dbBulkAddTags,
   dbMarkTaskSeen,
   dbTransaction,
@@ -61,6 +63,7 @@ jest.mock('../db/database', () => ({
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
   dbBulkSetCategory: jest.fn(),
+  dbBulkSetTimeSegments: jest.fn(),
   dbBulkSetPinned: jest.fn(),
   dbBulkAddTags: jest.fn(),
   dbMarkTaskSeen: jest.fn(),
@@ -83,6 +86,7 @@ jest.mock('../store/useCategoryStore', () => ({
       renameCategory: jest.fn().mockReturnValue(true),
       setCategorySchedule: jest.fn(),
       removeCategorySchedule: jest.fn(),
+      setCategoryDefaultTimeSegments: jest.fn(),
       getCategoryByName: jest.fn().mockReturnValue(null),
     })),
   },
@@ -1892,6 +1896,211 @@ describe('pinCategory', () => {
     useTaskStore.getState().pinCategory('Work');
     expect(dbBulkSetPinned).not.toHaveBeenCalled();
     expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+  });
+});
+
+// ─── setCategoryTimeSegments ─────────────────────────────────────────────────
+
+describe('setCategoryTimeSegments', () => {
+  it('moves every live task in the category and leaves other categories alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Evening tasks', timeSegments: ['evening'] }),
+        makeTask({ id: 't2', category: 'Evening tasks', timeSegments: ['evening'] }),
+        makeTask({ id: 't3', category: 'Work', timeSegments: ['evening'] }),
+      ],
+    });
+
+    const moved = useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night']);
+
+    expect(moved).toBe(2);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 't1')?.timeSegments).toEqual(['night']);
+    expect(tasks.find(t => t.id === 't2')?.timeSegments).toEqual(['night']);
+    expect(tasks.find(t => t.id === 't3')?.timeSegments).toEqual(['evening']);
+    expect(dbBulkSetTimeSegments).toHaveBeenCalledWith(['t1', 't2'], ['night']);
+  });
+
+  // The whole reason this isn't bulkSetWhen(ids, null, segments): that one
+  // writes due_date too, so reusing it would unschedule everything it touched.
+  it('leaves due dates untouched', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', category: 'Evening tasks', dueDate: '2026-08-06T00:00:00.000Z', timeSegments: ['evening'] })],
+    });
+
+    useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night']);
+
+    expect(useTaskStore.getState().tasks[0].dueDate).toBe('2026-08-06T00:00:00.000Z');
+  });
+
+  it('skips completed, archived and subtask rows', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'live', category: 'Evening tasks', timeSegments: ['evening'] }),
+        makeTask({ id: 'done', category: 'Evening tasks', timeSegments: ['evening'], completed: true }),
+        makeTask({ id: 'filed', category: 'Evening tasks', timeSegments: ['evening'], archived: true }),
+        makeTask({ id: 'sub', category: 'Evening tasks', timeSegments: ['evening'], parentId: 'live' }),
+      ],
+    });
+
+    expect(useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night'])).toBe(1);
+    expect(dbBulkSetTimeSegments).toHaveBeenCalledWith(['live'], ['night']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'done')?.timeSegments).toEqual(['evening']);
+    expect(tasks.find(t => t.id === 'filed')?.timeSegments).toEqual(['evening']);
+    expect(tasks.find(t => t.id === 'sub')?.timeSegments).toEqual(['evening']);
+  });
+
+  it('clears the segment when given an empty set', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Evening tasks', timeSegments: ['evening'] })] });
+
+    useTaskStore.getState().setCategoryTimeSegments('Evening tasks', []);
+
+    expect(useTaskStore.getState().tasks[0].timeSegments).toEqual([]);
+    expect(dbBulkSetTimeSegments).toHaveBeenCalledWith(['t1'], []);
+  });
+
+  // Re-tapping an already-applied segment must not push a no-op onto the undo
+  // stack, or it buries whatever real action was under it.
+  it('does nothing when every task already agrees', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', category: 'Evening tasks', timeSegments: ['night'] })],
+      lastAction: { label: 'Something else', undo: jest.fn() },
+    });
+
+    expect(useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night'])).toBe(0);
+    expect(dbBulkSetTimeSegments).not.toHaveBeenCalled();
+    expect(useTaskStore.getState().lastAction?.label).toBe('Something else');
+  });
+
+  it('does nothing when the category has no live tasks', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Work', timeSegments: ['evening'] })] });
+
+    expect(useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night'])).toBe(0);
+    expect(dbBulkSetTimeSegments).not.toHaveBeenCalled();
+  });
+
+  it('registers an undo that puts the old segments back', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 't1', category: 'Evening tasks', timeSegments: ['evening'] }),
+        makeTask({ id: 't2', category: 'Evening tasks', timeSegments: [] }),
+      ],
+    });
+
+    useTaskStore.getState().setCategoryTimeSegments('Evening tasks', ['night']);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks rescheduled');
+
+    useTaskStore.getState().lastAction!.undo();
+
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 't1')?.timeSegments).toEqual(['evening']);
+    expect(tasks.find(t => t.id === 't2')?.timeSegments).toEqual([]);
+  });
+});
+
+// ─── category default time-of-day (creation-time seed) ───────────────────────
+
+describe('Category.defaultTimeSegments seeding', () => {
+  const withCategoryDefault = (name: string, defaultTimeSegments: string[]) => {
+    (useCategoryStore.getState as unknown as jest.Mock).mockReturnValue({
+      categories: [],
+      getCategoryByName: (n: string) => (n === name ? { id: 'c1', name, defaultTimeSegments } : null),
+    });
+  };
+
+  afterEach(() => {
+    (useCategoryStore.getState as unknown as jest.Mock).mockReset();
+    (useCategoryStore.getState as unknown as jest.Mock).mockReturnValue({
+      categories: [],
+      getCategoryByName: () => null,
+    });
+  });
+
+  it('starts a new task in the category on the category default', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+
+    const task = useTaskStore.getState().addTask({ title: 'Floss', category: 'Evening tasks' });
+
+    expect(task.timeSegments).toEqual(['night']);
+  });
+
+  // Every editor sends timeSegments unconditionally from its state, so `[]`
+  // means "never opened the row", not "deliberately none" — treating it as a
+  // choice would make the default fire for approximately nobody.
+  it('treats an empty draft array as unset rather than as a deliberate none', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+
+    const task = useTaskStore.getState().addTask({ title: 'Floss', category: 'Evening tasks', timeSegments: [] });
+
+    expect(task.timeSegments).toEqual(['night']);
+  });
+
+  it('lets an explicit segment on the draft win over the default', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+
+    const task = useTaskStore.getState().addTask({ title: 'Floss', category: 'Evening tasks', timeSegments: ['morning'] });
+
+    expect(task.timeSegments).toEqual(['morning']);
+  });
+
+  it('leaves a task in a category with no default alone', () => {
+    withCategoryDefault('Evening tasks', []);
+
+    const task = useTaskStore.getState().addTask({ title: 'Floss', category: 'Evening tasks' });
+
+    expect(task.timeSegments).toEqual([]);
+  });
+
+  it('leaves an uncategorized task alone', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+
+    expect(useTaskStore.getState().addTask({ title: 'Floss' }).timeSegments).toEqual([]);
+  });
+
+  it('seeds each row of a series created from scratch', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog', category: 'Evening tasks' },
+      [new Date('2026-08-10T12:00:00.000Z'), new Date('2026-08-15T12:00:00.000Z')],
+    );
+
+    expect(rows).toHaveLength(2);
+    expect(rows.every(r => r.timeSegments.length === 1 && r.timeSegments[0] === 'night')).toBe(true);
+  });
+
+  // buildSeriesRow is the clone builder as well as the create builder, and a
+  // clone's empty timeSegments is the source row's deliberate answer — not an
+  // unanswered question for the category to fill in. Without the seed being
+  // gated, next month's set would gain a segment this month's never had.
+  it('does not reseed the next set when a series rolls over', () => {
+    withCategoryDefault('Evening tasks', ['night']);
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 's1', title: 'Rent', category: 'Evening tasks', timeSegments: [],
+          seriesId: 'ser-1', dueDate: '2026-08-10T12:00:00.000Z',
+          seriesMonthDays: [10], seriesRepeatMonths: 1,
+        }),
+      ],
+    });
+
+    useTaskStore.getState().completeTask('s1');
+
+    const spawned = useTaskStore.getState().tasks.filter(t => t.id !== 's1' && !t.completed);
+    expect(spawned).toHaveLength(1);
+    expect(spawned[0].timeSegments).toEqual([]);
+  });
+
+  // The default is a seed, not a live rule: once the row exists its own
+  // segments are what everything reads, so changing the category later must
+  // not reach back and move it.
+  it('does not move a task that already exists', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', category: 'Evening tasks', timeSegments: ['evening'] })] });
+    withCategoryDefault('Evening tasks', ['night']);
+
+    expect(useTaskStore.getState().tasks[0].timeSegments).toEqual(['evening']);
   });
 });
 

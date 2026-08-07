@@ -97,6 +97,13 @@ function getNextCategoryWindowStart(cat: Category): Date | null {
   return null;
 }
 
+// Order-insensitive, because nothing guarantees two equal segment sets were
+// written in the same order — the editors write single-element arrays, but
+// parseTaskInput and the templates can produce several at once.
+export function sameTimeSegments(a: TimeOfDay[], b: TimeOfDay[]): boolean {
+  return a.length === b.length && a.every(s => b.includes(s));
+}
+
 function earliestSegmentThreshold(segments: TimeOfDay[]): Date | null {
   if (segments.length === 0) return null;
   return segments
