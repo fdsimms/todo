@@ -157,8 +157,12 @@ export function TagsScreen() {
         <FlatList
           data={allTags}
           keyExtractor={t => t}
-          contentContainerStyle={styles.list}
-          ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+          contentContainerStyle={allTags.length === 0 ? styles.emptyContainer : styles.list}
+          ListFooterComponent={
+            allTags.length === 0
+              ? null
+              : <View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />
+          }
           ListEmptyComponent={
             <EmptyState
               icon="pricetag"
@@ -285,7 +289,14 @@ export function TagsScreen() {
                     />
                   );
                 }}
-                ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+                // The footer is only a tap target for dismissing an expanded
+                // row, so it has no job on an empty list — and its minHeight
+                // would push the empty state off centre.
+                ListFooterComponent={
+                  tagTasks.length === 0
+                    ? null
+                    : <TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
+                }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
                   <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="No active tasks with this tag" />
@@ -338,6 +349,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.sm,
   },
+  // The empty state centres with `flex: 1`, so it needs a full-height content
+  // container and none of the list's own padding. See TemplateDetailScreen.
+  emptyContainer: { flexGrow: 1 },
   // Same inset-grouped card footprint as TaskItem rows.
   tagRow: {
     flexDirection: 'row',

@@ -234,7 +234,9 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.list}
+          // Full height when empty so the empty state's `flex: 1` has something
+          // to centre in, and without the list's padding shifting that centre.
+          contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.list}
           ListFooterComponent={
             // An offer, never a sweep: there's no undo anywhere in groceries,
             // so an automatic delete would be unrecoverable in a way the task
@@ -315,6 +317,7 @@ function makeStyles(colors: Colors) {
       color: colors.textSecondary,
     },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
+    emptyContainer: { flexGrow: 1 },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
