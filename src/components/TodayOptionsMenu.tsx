@@ -29,6 +29,13 @@ interface Props {
   onPullFromProjects: () => void;
   /** How many projects have gone quiet, shown as the action's hint. */
   quietProjectCount: number;
+  /**
+   * Opens the sheet that orders Today's category sections. This is the only way
+   * to reorder them — dragging a section header on the list itself is gone.
+   */
+  onReorderCategories: () => void;
+  /** How many categories there are to order, shown as the action's hint. */
+  categoryCount: number;
 }
 
 /**
@@ -45,6 +52,8 @@ export function TodayOptionsMenu({
   plannedLabel,
   onPullFromProjects,
   quietProjectCount,
+  onReorderCategories,
+  categoryCount,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -129,6 +138,28 @@ export function TodayOptionsMenu({
                 {quietProjectCount > 0
                   ? `${quietProjectCount} project${quietProjectCount === 1 ? '' : 's'} gone quiet — bring something in`
                   : 'Bring the next thing from a quiet project into today'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <View style={styles.optionSep} />
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => {
+              haptics.tap();
+              onReorderCategories();
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Category order"
+          >
+            <Ionicons name="swap-vertical-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Category order</Text>
+              <Text style={styles.optionHint}>
+                {categoryCount > 0
+                  ? `Choose what order your ${categoryCount} ${categoryCount === 1 ? 'category comes' : 'categories come'} in`
+                  : 'Add a category to break today into sections'}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />

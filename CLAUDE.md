@@ -443,6 +443,16 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 Both lists fire the drag-lift haptic themselves (`startDrag`), so callers must not add their own.
 
+**Today's category headers are not draggable, and that isn't an oversight.** Reordering the
+sections used to be a long-press on a header inside the task list, and the floating card never
+lined up with the finger holding it: the drag had to auto-collapse every other section first
+(the headers being reordered are scattered down a list of tasks, so they don't otherwise fit on
+screen together), and `calibrateOverlayBase` was measuring a row the collapse was still moving.
+It's now `CategoryOrderSheet`, off the Today screen's "…" menu — one row per category, moved a
+step at a time (`src/utils/categoryOrder.ts`), which needs no measurement and shows the whole
+order at once. Don't put the gesture back; `resolveCategoryReorder`/`categoryHeaderRange` were
+deleted with it. Task drag on that list is untouched and still goes through `resolveDrop`.
+
 ### Database schema / migrations
 
 `initDatabase()` in `src/db/database.ts` creates tables and runs a list of `ALTER TABLE ADD COLUMN` migrations wrapped in try/catch — they fail silently if the column already exists. When adding a new column, append it to the migrations array rather than modifying the `CREATE TABLE` statement.
