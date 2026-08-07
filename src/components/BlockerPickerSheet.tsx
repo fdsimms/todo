@@ -8,7 +8,10 @@ import {
   ScrollView,
   Animated,
   PanResponder,
+  Keyboard,
+  Platform,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,8 +20,10 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { fuzzySearch } from '../utils/fuzzySearch';
-import { wouldCycle, resolverFor } from '../utils/blocking';
+import { wouldCycle, resolverFor, sortByBlockerAffinity, type BlockerContext } from '../utils/blocking';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import type { Task } from '../types';
 
@@ -27,11 +32,19 @@ interface Props {
   onClose: () => void;
   /** The task being edited — excluded from the list, along with anything that would loop back to it. */
   taskId: string | null;
+  /**
+   * Where the waiting task sits, from the editor's unsaved draft. Candidates
+   * sharing its stack, then project, then category are floated to the top.
+   */
+  context?: BlockerContext;
   onSelect: (blockerId: string) => void;
 }
 
 /** Enough to scan, few enough to render without virtualizing. Search reaches the rest. */
 const MAX_ROWS = 40;
+
+/** Kept clear above the lifted sheet so its title never slides under the status bar. */
+const TOP_INSET = 72;
 
 /**
  * Picks the task that another task is waiting on (see Task.blockedById).
@@ -41,13 +54,18 @@ const MAX_ROWS = 40;
  * never complete. Filtering here is what stops one being made in the first
  * place — and it's why "waiting on" can't be offered as a free-text field.
  */
-export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props) {
+export function BlockerPickerSheet({ visible, onClose, taskId, context, onSelect }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
 
   const tasks = useTaskStore(useShallow(s => s.tasks));
+  const groups = useTaskGroupStore(useShallow(s => s.groups));
+  const projects = useProjectStore(useShallow(s => s.projects));
   const [query, setQuery] = useState('');
+
+  const ctx: BlockerContext = context ?? {};
 
   const candidates = useMemo(() => {
     const resolve = resolverFor(tasks);
@@ -60,24 +78,71 @@ export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props
       // both ends of it forever.
       !(taskId && wouldCycle(taskId, t.id, resolve))
     );
+    // Rank before truncating, so a neighbour buried deep in the list still
+    // reaches the visible rows.
     if (!query.trim()) {
-      return eligible.slice(0, MAX_ROWS);
+      return sortByBlockerAffinity(eligible, ctx).slice(0, MAX_ROWS);
     }
     const ids = new Set(eligible.map(t => t.id));
-    return fuzzySearch(eligible, query)
+    const matches = fuzzySearch(eligible, query)
       .filter(r => ids.has(r.task.id))
-      .slice(0, MAX_ROWS)
       .map(r => r.task);
-  }, [tasks, taskId, query]);
+    return sortByBlockerAffinity(matches, ctx).slice(0, MAX_ROWS);
+  }, [tasks, taskId, query, ctx.groupId, ctx.projectId, ctx.category]);
+
+  /**
+   * The one-line "where this lives" under a candidate's title, so the ordering
+   * reads as an ordering rather than as an arbitrary shuffle. It names whatever
+   * put the row where it is, falling back to the category for the unrelated
+   * tail — which is all this row used to show.
+   */
+  const subtitleFor = (task: Task): string | null => {
+    if (ctx.groupId && task.groupId === ctx.groupId) {
+      return groups.find(g => g.id === task.groupId)?.title ?? task.category;
+    }
+    if (ctx.projectId && task.projectId === ctx.projectId) {
+      return projects.find(p => p.id === task.projectId)?.title ?? task.category;
+    }
+    return task.category;
+  };
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  /**
+   * The sheet is bottom-anchored, so with a short list the whole thing — rows
+   * and Cancel both — sits behind the keyboard the search field just raised.
+   * Lifting it clear needs the height cap below as well as this offset: the
+   * lift alone would push a full list's title off the top of the screen.
+   */
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      const height = e.endCoordinates?.height ?? 0;
+      setKeyboardHeight(height);
+      Animated.spring(keyboardOffset, {
+        toValue: -height, ...animation.spring.smooth, useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+      Animated.spring(keyboardOffset, {
+        toValue: 0, ...animation.spring.smooth, useNativeDriver: true,
+      }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   useEffect(() => {
     if (visible) {
       setQuery('');
       translateY.setValue(600);
       backdropOpacity.setValue(0);
+      keyboardOffset.setValue(0);
+      setKeyboardHeight(0);
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -94,6 +159,7 @@ export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, {
         toValue: 700,
@@ -148,7 +214,16 @@ export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[
+          styles.sheetOuter,
+          // Capped against what's left above the keyboard; the card and its list
+          // both shrink, so no chrome constant has to be kept in sync with the
+          // header's real height.
+          { maxHeight: windowHeight - keyboardHeight - TOP_INSET },
+          { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] },
+        ]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
@@ -199,7 +274,7 @@ export function BlockerPickerSheet({ visible, onClose, taskId, onSelect }: Props
                     </View>
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowName} numberOfLines={1}>{displayTitleFor(task)}</Text>
-                      {!!task.category && <Text style={styles.rowHint}>{task.category}</Text>}
+                      {!!subtitleFor(task) && <Text style={styles.rowHint} numberOfLines={1}>{subtitleFor(task)}</Text>}
                     </View>
                     <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
                   </TouchableOpacity>
@@ -245,6 +320,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    flexShrink: 1,
   },
   sheetTitle: {
     color: colors.text,
@@ -278,6 +354,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     maxHeight: 320,
+    flexShrink: 1,
   },
   row: {
     flexDirection: 'row',
