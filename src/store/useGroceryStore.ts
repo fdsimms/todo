@@ -9,10 +9,18 @@ import {
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
+  dbGetGroceryAisleOverrides,
+  dbSetGroceryAisleOverrides,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
-import { aisleForName, normalizeAisleOrder, OTHER_AISLE } from '../utils/groceryAisles';
+import {
+  aisleForName,
+  normalizeAisleOrder,
+  rememberAisles,
+  renameRememberedAisle,
+  OTHER_AISLE,
+} from '../utils/groceryAisles';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -59,6 +67,12 @@ function armCartHold(): void {
 interface GroceryStore {
   items: GroceryItem[];
   aisleOrder: string[];
+  /**
+   * name_key → the aisle the user last filed that item under. Consulted ahead
+   * of the lexicon when a row is created, so a correction sticks even after the
+   * row it was made on is gone. See rememberAisles.
+   */
+  aisleOverrides: Record<string, string>;
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   initialized: boolean;
@@ -103,6 +117,8 @@ interface GroceryStore {
 
   itemByNameKey: (key: string) => GroceryItem | null;
   itemById: (id: string) => GroceryItem | null;
+  /** The aisle the user has filed this name under before, if any. */
+  rememberedAisleFor: (name: string) => string | null;
 }
 
 function nextSortOrder(items: GroceryItem[]): number {
@@ -112,6 +128,7 @@ function nextSortOrder(items: GroceryItem[]): number {
 export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
+  aisleOverrides: {},
   cartHoldIds: [],
   initialized: false,
 
@@ -125,7 +142,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
     }
-    set({ items, aisleOrder, cartHoldIds: [], initialized: true });
+    set({
+      items,
+      aisleOrder,
+      aisleOverrides: dbGetGroceryAisleOverrides(),
+      cartHoldIds: [],
+      initialized: true,
+    });
   },
 
   /**
@@ -169,7 +192,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       id: generateId(),
       name,
       nameKey: key,
-      aisle: aisleForName(name) ?? OTHER_AISLE,
+      // Where the user put it last time beats where the lexicon thinks it
+      // goes — the lexicon is a guess about groceries, this is a fact about
+      // their shop. (An item still in the catalog never reaches here: it
+      // carries its own aisle, and the branch above keeps it.)
+      aisle: get().aisleOverrides[key] ?? aisleForName(name) ?? OTHER_AISLE,
       quantity,
       note: '',
       onList: true,
@@ -266,12 +293,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (updates.length === 0) return;
 
     for (const u of updates) dbUpdateGroceryItem(u);
+    // Every call here is a deliberate filing — the item sheet's picker, or a
+    // reviewed-and-accepted AI tidy — so it's what gets remembered for the
+    // next time this name is typed.
+    const remembered = rememberAisles(get().aisleOverrides, updates);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({
       items: s.items.map(i => byId.get(i.id) ?? i),
       // A brand-new aisle (a custom one, or an AI suggestion) has to enter the
       // walk order or its section would render at the bottom, unordered.
       aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
     }));
   },
 
@@ -292,7 +326,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     const updated = { ...item, name: trimmed, nameKey: key };
     dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // The remembered aisle is keyed by name, so it has to follow the rename or
+    // it stays stranded under the old spelling — which is usually a typo the
+    // rename exists to fix.
+    const remembered = renameRememberedAisle(get().aisleOverrides, item.nameKey, key);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+    set(s => ({
+      items: s.items.map(i => (i.id === id ? updated : i)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
+    }));
     return true;
   },
 
@@ -411,15 +453,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   applyDrop(placements) {
     const byId = new Map(get().items.map(i => [i.id, i]));
     const updates: GroceryItem[] = [];
+    // Only the rows that crossed a section header — a drag that merely
+    // reordered within an aisle says nothing about where the item lives.
+    const moved: Array<{ nameKey: string; aisle: string }> = [];
     for (const p of placements) {
       const item = byId.get(p.id);
       if (!item) continue;
       if (item.sortOrder === p.sortOrder && item.aisle === p.aisle) continue;
+      if (item.aisle !== p.aisle) moved.push({ nameKey: item.nameKey, aisle: p.aisle });
       updates.push({ ...item, sortOrder: p.sortOrder, aisle: p.aisle });
     }
     if (updates.length === 0) return;
 
     for (const u of updates) dbUpdateGroceryItem(u);
+    // Dragging a row into another aisle is the same statement the item sheet's
+    // picker makes, so it's remembered the same way.
+    const remembered = rememberAisles(get().aisleOverrides, moved);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
     const updated = new Map(updates.map(u => [u.id, u]));
     set(s => ({
       items: s.items.map(i => updated.get(i.id) ?? i),
@@ -427,6 +478,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // is belt and braces — but normalizing is what setAisleMany does, and an
       // aisle missing from the order renders its section unplaced.
       aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
     }));
   },
 
@@ -442,5 +494,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   itemById(id) {
     return get().items.find(i => i.id === id) ?? null;
+  },
+
+  rememberedAisleFor(name) {
+    const key = groceryNameKey(name);
+    return (key && get().aisleOverrides[key]) || null;
   },
 }));

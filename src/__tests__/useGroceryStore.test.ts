@@ -3,6 +3,8 @@ import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
+  dbGetGroceryAisleOverrides,
+  dbSetGroceryAisleOverrides,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
@@ -17,6 +19,8 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbSetGroceryAisleOrder: jest.fn(),
+  dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
+  dbSetGroceryAisleOverrides: jest.fn(),
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
@@ -46,10 +50,11 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
   };
 }
 
-function seed(items: GroceryItem[]) {
+function seed(items: GroceryItem[], aisleOverrides: Record<string, string> = {}) {
   useGroceryStore.setState({
     items,
     aisleOrder: [...DEFAULT_AISLES],
+    aisleOverrides,
     cartHoldIds: [],
     initialized: true,
   });
@@ -59,6 +64,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
+  (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
   seed([]);
@@ -509,5 +515,93 @@ describe('aisles', () => {
     const written = (dbSetGroceryAisleOrder as jest.Mock).mock.calls[0][0] as string[];
     expect(written[0]).toBe('Frozen');
     expect(written[written.length - 1]).toBe(OTHER_AISLE);
+  });
+});
+
+// ─── remembered aisles ───────────────────────────────────────────────────────
+
+describe('remembered aisles', () => {
+  it('setAisle records the filing under the item name', () => {
+    const item = makeItem({ name: 'Protein powder' });
+    seed([item]);
+
+    useGroceryStore.getState().setAisle(item.id, 'Household');
+
+    expect(dbSetGroceryAisleOverrides).toHaveBeenCalledWith({ 'protein powder': 'Household' });
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ 'protein powder': 'Household' });
+  });
+
+  it('a new row is filed where the user last put that name, over the lexicon', () => {
+    // The lexicon would say Dairy & Eggs; their shop keeps it somewhere else.
+    seed([], { milk: 'Frozen' });
+
+    const item = useGroceryStore.getState().addByName('Milk');
+
+    expect(item.aisle).toBe('Frozen');
+  });
+
+  it('survives the provisional row it was made on being deleted', () => {
+    // The case the memory exists for: a name typed for the first time is
+    // provisional, so taking it off the list deletes the row outright.
+    const item = useGroceryStore.getState().addByName('Nduja');
+    useGroceryStore.getState().setAisle(item.id, 'Butcher');
+    useGroceryStore.getState().removeFromList(item.id);
+    expect(useGroceryStore.getState().items).toEqual([]);
+
+    expect(useGroceryStore.getState().addByName('nduja').aisle).toBe('Butcher');
+  });
+
+  it('leaves an existing catalog row alone — its own aisle is already the truth', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy & Eggs' });
+    seed([item], { milk: 'Frozen' });
+
+    expect(useGroceryStore.getState().addByName('Milk').aisle).toBe('Dairy & Eggs');
+  });
+
+  it('applyDrop remembers a row dragged into another aisle', () => {
+    const item = makeItem({ name: 'Nduja', aisle: OTHER_AISLE, onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 2, aisle: 'Deli' }]);
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ nduja: 'Deli' });
+  });
+
+  it('applyDrop remembers nothing when the drag only reordered within an aisle', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy & Eggs', onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 5, aisle: 'Dairy & Eggs' }]);
+
+    expect(dbSetGroceryAisleOverrides).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({});
+  });
+
+  it('follows a rename, so the filing survives fixing a typo', () => {
+    const item = makeItem({ name: 'Protien powder' });
+    seed([item], { 'protien powder': 'Household' });
+
+    useGroceryStore.getState().renameItem(item.id, 'Protein powder');
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ 'protein powder': 'Household' });
+    expect(dbSetGroceryAisleOverrides).toHaveBeenCalledWith({ 'protein powder': 'Household' });
+  });
+
+  it('writes nothing when the filing is the one already remembered', () => {
+    const item = makeItem({ name: 'Nduja', aisle: OTHER_AISLE });
+    seed([item], { nduja: 'Deli' });
+
+    useGroceryStore.getState().setAisle(item.id, 'Deli');
+
+    expect(dbSetGroceryAisleOverrides).not.toHaveBeenCalled();
+  });
+
+  it('initialize loads what was remembered', () => {
+    (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({ nduja: 'Deli' });
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().rememberedAisleFor('Nduja')).toBe('Deli');
+    expect(useGroceryStore.getState().rememberedAisleFor('Milk')).toBeNull();
   });
 });

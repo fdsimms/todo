@@ -196,6 +196,57 @@ export function aisleForName(name: string): string | null {
 }
 
 /**
+ * Aisles the user has filed by hand, keyed by `name_key` — the memory that
+ * outlives the row.
+ *
+ * `aisleForName` is a guess about *groceries*; this is a fact about *your*
+ * shop, so it wins. It's kept beside the row rather than on it because the row
+ * is not guaranteed to survive: a provisional one (never bought, never
+ * starred) is deleted outright by removeFromList, which is precisely the case
+ * this exists for — file "protein powder" under Household, take it off the
+ * list, and without this the next add puts it back in Other.
+ *
+ * Keyed by name_key and not by id for the same reason: the id dies with the
+ * row, the name is what gets typed again. That also makes it a *preference*,
+ * in `settings` beside the walk order rather than in `grocery_items` — a
+ * deleted item is forgotten, but where you'd file it isn't.
+ *
+ * Returns null when nothing changed, so callers can skip the write.
+ */
+export function rememberAisles(
+  current: Readonly<Record<string, string>>,
+  entries: ReadonlyArray<{ nameKey: string; aisle: string }>
+): Record<string, string> | null {
+  let next: Record<string, string> | null = null;
+  for (const { nameKey, aisle } of entries) {
+    const key = nameKey.trim();
+    const value = aisle.trim();
+    // An empty key can't ever be looked up again, and an empty aisle isn't a
+    // placement — recording either would just be a row that never matches.
+    if (!key || !value) continue;
+    if ((next ?? current)[key] === value) continue;
+    next = { ...(next ?? current), [key]: value };
+  }
+  return next;
+}
+
+/**
+ * Follows a remembered aisle across a rename, so correcting a typo doesn't
+ * strand the filing under the misspelling.
+ */
+export function renameRememberedAisle(
+  current: Readonly<Record<string, string>>,
+  fromKey: string,
+  toKey: string
+): Record<string, string> | null {
+  const aisle = current[fromKey];
+  if (!aisle || fromKey === toKey || !toKey) return null;
+  const next = { ...current, [toKey]: aisle };
+  delete next[fromKey];
+  return next;
+}
+
+/**
  * Repairs a stored walk order against what the app and the user's rows
  * actually use, at read time, WITHOUT writing back.
  *

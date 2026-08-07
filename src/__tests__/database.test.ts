@@ -55,6 +55,8 @@ import {
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
+  dbGetGroceryAisleOverrides,
+  dbSetGroceryAisleOverrides,
   dbSetGroceryAisleOrder,
 } from '../db/database';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
@@ -1566,6 +1568,29 @@ describe('grocery items', () => {
     it('drops non-string entries', () => {
       dbSetSetting('grocery_aisle_order', '["Produce",7,null,"Frozen"]');
       expect(dbGetGroceryAisleOrder()).toEqual(['Produce', 'Frozen']);
+    });
+  });
+
+  describe('remembered aisles', () => {
+    it('is empty on a fresh database', () => {
+      expect(dbGetGroceryAisleOverrides()).toEqual({});
+    });
+
+    it('survives a round trip', () => {
+      dbSetGroceryAisleOverrides({ nduja: 'Deli', milk: 'Frozen' });
+      expect(dbGetGroceryAisleOverrides()).toEqual({ nduja: 'Deli', milk: 'Frozen' });
+    });
+
+    it('shrugs off a corrupt value rather than throwing on startup', () => {
+      dbSetSetting('grocery_aisle_overrides', 'not json');
+      expect(dbGetGroceryAisleOverrides()).toEqual({});
+      dbSetSetting('grocery_aisle_overrides', '["Produce"]');
+      expect(dbGetGroceryAisleOverrides()).toEqual({});
+    });
+
+    it('drops entries that are not a name filed under an aisle', () => {
+      dbSetSetting('grocery_aisle_overrides', '{"nduja":"Deli","milk":7,"bread":null,"":"Bakery"}');
+      expect(dbGetGroceryAisleOverrides()).toEqual({ nduja: 'Deli' });
     });
   });
 

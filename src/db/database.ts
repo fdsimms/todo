@@ -1188,6 +1188,30 @@ export function dbSetGroceryAisleOrder(order: string[]): void {
   dbSetSetting('grocery_aisle_order', JSON.stringify(order));
 }
 
+// name_key → the aisle the user filed that item under, which is why it lives
+// here and not on the row: a provisional grocery row is deleted when it comes
+// off the list, and the filing has to outlive it. Same tolerance for a corrupt
+// value as the walk order above — a bad blob costs the memory, not the launch.
+export function dbGetGroceryAisleOverrides(): Record<string, string> {
+  const val = dbGetSetting('grocery_aisle_overrides');
+  if (!val) return {};
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [key, aisle] of Object.entries(parsed as Record<string, unknown>)) {
+      if (key && typeof aisle === 'string' && aisle) out[key] = aisle;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): void {
+  dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
+}
+
 // ─── Projects ───────────────────────────────────────────────────────────────
 
 function rowToProject(row: Record<string, unknown>): Project {
