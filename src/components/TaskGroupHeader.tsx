@@ -211,15 +211,18 @@ export function TaskGroupHeader({
         </View>
       </View>
 
-      <WhenPicker
-        visible={showDefer}
-        value={null}
-        title="Reschedule"
-        showTimeOfDay={false}
-        showSuggest={false}
-        onConfirm={date => { setShowDefer(false); if (date) onDefer(date); }}
-        onCancel={() => setShowDefer(false)}
-      />
+      {/* Mounted only while open — see the same note in TaskItem. */}
+      {showDefer && (
+        <WhenPicker
+          visible
+          value={null}
+          title="Reschedule"
+          showTimeOfDay={false}
+          showSuggest={false}
+          onConfirm={date => { setShowDefer(false); if (date) onDefer(date); }}
+          onCancel={() => setShowDefer(false)}
+        />
+      )}
     </>
   );
 }

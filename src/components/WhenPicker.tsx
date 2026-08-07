@@ -116,9 +116,14 @@ export function WhenPicker({
   const [suggestError, setSuggestError] = useState<string | null>(null);
 
   const popAnim = useRef(new Animated.Value(1)).current;
-  // Drives the card's entrance pop — layered on top of the Modal's native
-  // fade so opening reads as a snappy spring rather than a flat crossfade.
+  // The entrance. This used to be a spring layered on top of the Modal's own
+  // `animationType="fade"`, which is a UIKit cross-dissolve — ~350ms during
+  // which the card is present but not yet readable, on top of however long it
+  // took to get here. Every other sheet in the app animates itself over
+  // `animationType="none"` for exactly this reason; this one now does too, at
+  // duration.fast.
   const cardScale = useRef(new Animated.Value(0.92)).current;
+  const enterAnim = useRef(new Animated.Value(0)).current;
   const pendingRef = useRef(false);
   const confirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -136,7 +141,18 @@ export function WhenPicker({
       pendingRef.current = false;
       popAnim.setValue(1);
       cardScale.setValue(0.92);
-      Animated.spring(cardScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }).start();
+      enterAnim.setValue(0);
+      Animated.parallel([
+        Animated.timing(enterAnim, { toValue: 1, duration: animation.duration.fast, useNativeDriver: true }),
+        Animated.spring(cardScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
+      ]).start();
+    } else {
+      // Park the entrance at its first frame on the way out. Without the
+      // native cross-dissolve there's nothing to hide a re-open rendering one
+      // frame at the values the last dismissal left behind — a full-size,
+      // fully-opaque card that then snaps back to 0.92 to animate in.
+      cardScale.setValue(0.92);
+      enterAnim.setValue(0);
     }
     return () => {
       if (confirmTimer.current) clearTimeout(confirmTimer.current);
@@ -221,13 +237,17 @@ export function WhenPicker({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="none"
       transparent
       onRequestClose={onCancel}
     >
       <View style={styles.backdrop}>
+        <Animated.View
+          style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
+          pointerEvents="none"
+        />
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
-        <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
+        <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />
@@ -460,10 +480,14 @@ function QuickButton({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: colors.backdrop,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 16,
+  },
+  // The dim is its own layer rather than the container's background so it can
+  // fade in with the card.
+  dim: {
+    backgroundColor: colors.backdrop,
   },
   card: {
     width: CARD_WIDTH,
