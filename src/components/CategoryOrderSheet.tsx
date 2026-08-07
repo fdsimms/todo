@@ -150,7 +150,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                     accessibilityLabel={`Move ${name} up`}
                     accessibilityState={{ disabled: isFirst }}
                   >
-                    <Ionicons name="chevron-up" size={iconSize.sm} color={colors.textSecondary} />
+                    <Ionicons name="arrow-up" size={iconSize.md} color={colors.textSecondary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.moveButton, isLast && styles.moveButtonDisabled]}
@@ -162,7 +162,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                     accessibilityLabel={`Move ${name} down`}
                     accessibilityState={{ disabled: isLast }}
                   >
-                    <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} />
+                    <Ionicons name="arrow-down" size={iconSize.md} color={colors.textSecondary} />
                   </TouchableOpacity>
                 </View>
               );
