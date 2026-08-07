@@ -6,6 +6,18 @@ on:
     # build expiry, so a fresh build is always available.
     - cron: '0 6 1 * *'
   workflow_dispatch:
+    inputs:
+      clear_cache:
+        description: >-
+          Build without EAS's cached native layer. Use when the shipped app
+          disagrees with the source about what's in it — a missing native
+          module being the signal that costs a release to read.
+        type: boolean
+        default: false
+      submit:
+        description: Submit the finished build to TestFlight.
+        type: boolean
+        default: true
 
 jobs:
   build-and-submit:
@@ -22,5 +34,16 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-      - run: eas build --platform ios --profile production --non-interactive
-      - run: eas submit --platform ios --profile production --latest --non-interactive
+      # --clear-cache discards the cached CocoaPods/derived-data layer, so the
+      # native side is rebuilt from the lockfile actually being shipped. A
+      # cached layer is normally exactly what you want and is why these builds
+      # finish in minutes; it goes wrong when a dependency's JS moves and its
+      # pod doesn't, because the bundle then asks for a native module the
+      # binary hasn't got and the app dies before it can render anything.
+      - name: Build
+        run: eas build --platform ios --profile production --non-interactive ${{ inputs.clear_cache && '--clear-cache' || '' }}
+      - name: Submit
+        # Defaults to true, including for the scheduled run, where `inputs` is
+        # empty and the expression below is what keeps submitting.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.submit }}
+        run: eas submit --platform ios --profile production --latest --non-interactive
