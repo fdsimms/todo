@@ -544,9 +544,9 @@ describe('duplicateTask', () => {
         id: 't1',
         chainEnabled: true,
         chainItems: [
-          { id: 'a', title: 'Step A' },
-          { id: 'b', title: 'Step B' },
-          { id: 'c', title: 'Step C' },
+          { id: 'a', title: 'Step A', estimatedMinutes: null },
+          { id: 'b', title: 'Step B', estimatedMinutes: null },
+          { id: 'c', title: 'Step C', estimatedMinutes: null },
         ],
         chainIndex: 2,
       })],
@@ -823,9 +823,9 @@ describe('completeTask', () => {
       dueDate: null,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
-        { id: 'c', title: 'Step C' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
       ],
       chainIndex: 0,
     });
@@ -846,8 +846,8 @@ describe('completeTask', () => {
       recurrenceType: 'none',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
       ],
       chainIndex: 1, // already on the last item
     });
@@ -865,8 +865,8 @@ describe('completeTask', () => {
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
       ],
       chainIndex: 1, // already on the last item
     });
@@ -889,9 +889,9 @@ describe('completeTask', () => {
       streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
-        { id: 'c', title: 'Step C' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
       ],
       chainIndex: 0, // not the last step
     });
@@ -919,8 +919,8 @@ describe('completeTask', () => {
       id: 'chained-with-subtasks',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
       ],
       chainIndex: 0,
     });
@@ -1329,9 +1329,9 @@ describe('uncompleteTask', () => {
       id: 't1',
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
-        { id: 'c', title: 'Step C' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
       ],
       chainIndex: 0,
     });
@@ -1676,9 +1676,9 @@ describe('skipNextRecurrence', () => {
       recurrenceCount: 5,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
-        { id: 'c', title: 'Step C' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
       ],
       chainIndex: 0, // not the last step
     });
@@ -1701,9 +1701,9 @@ describe('skipNextRecurrence', () => {
       recurrenceCount: 5,
       chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
-        { id: 'c', title: 'Step C' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
       ],
       chainIndex: 2, // last step
     });
@@ -2367,8 +2367,8 @@ describe('groupRosterOf', () => {
     const step1 = makeTask({
       id: 'step-1', groupId: 'g1', dueDate: today(), chainEnabled: true,
       chainItems: [
-        { id: 'a', title: 'Step A' },
-        { id: 'b', title: 'Step B' },
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
       ],
       chainIndex: 0, sortOrder: 1,
     });
@@ -4587,7 +4587,7 @@ describe('a series and a recurrence rule never coexist', () => {
   // date edit, which reconciles by calendar day, deleted one of the pair.
   it('leaves the set when a chain step spawns from one of its dates', () => {
     const rows = useTaskStore.getState().addTaskSeries(
-      { title: 'Meal prep', chainEnabled: true, chainItems: [{ id: 'a', title: 'Shop' }, { id: 'b', title: 'Cook' }] },
+      { title: 'Meal prep', chainEnabled: true, chainItems: [{ id: 'a', title: 'Shop', estimatedMinutes: null }, { id: 'b', title: 'Cook', estimatedMinutes: null }] },
       [new Date(2025, 5, 10, 12), new Date(2025, 5, 15, 12)],
     );
     useTaskStore.getState().completeTask(rows[0].id);

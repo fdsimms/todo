@@ -9,7 +9,7 @@ import {
 } from '../utils/quickAddTypes';
 import type { ChainItem } from '../types';
 
-const step = (title: string): ChainItem => ({ id: title, title });
+const step = (title: string): ChainItem => ({ id: title, title, estimatedMinutes: null });
 
 const values = (over: Partial<TypeValues> = {}): TypeValues => ({
   timedMinutes: null,

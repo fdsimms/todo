@@ -25,6 +25,7 @@ import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { SortableList } from './SortableList';
+import { ChainStepMinutes } from './ChainStepMinutes';
 import { RecurrencePicker } from './RecurrencePicker';
 import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
@@ -587,6 +588,13 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                       <Text style={styles.chainItemDotText}>{displayIndex + 1}</Text>
                     </View>
                     <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
+                    <ChainStepMinutes
+                      value={chainItem.estimatedMinutes}
+                      label={chainItem.title}
+                      onChange={mins => setChainItems(prev => prev.map(
+                        c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
+                      ))}
+                    />
                     <TouchableOpacity
                       onLongPress={drag}
                       delayLongPress={150}
@@ -627,7 +635,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     onSubmitEditing={() => {
                       chainItemSavedRef.current = true;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
                       setNewChainItemTitle('');
                       setTimeout(() => {
                         chainItemSavedRef.current = false;
@@ -637,7 +645,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                     onBlur={() => {
                       if (chainItemSavedRef.current) return;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
                       setNewChainItemTitle('');
                       setAddingChainItem(false);
                     }}
@@ -650,6 +658,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   onPress={() => setAddingChainItem(true)}
                   style={styles.addBtnSpacing}
                 />
+              )}
+              {chainItems.length > 0 && (
+                <Text style={styles.optionHint}>
+                  Times are per step; a step left blank uses the item's own estimate.
+                </Text>
               )}
             </>
           )}

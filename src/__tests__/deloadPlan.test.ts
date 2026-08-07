@@ -160,7 +160,7 @@ describe('buildDeloadPlan', () => {
       ['running', { timerStartedAt: new Date().toISOString() }],
       ['urgent', { priority: 4 as const }],
       ['quota', { targetCount: 8 }],
-      ['chain', { chainEnabled: true, chainItems: [{ id: 'c1', title: 'a' }], chainIndex: 1 }],
+      ['chain', { chainEnabled: true, chainItems: [{ id: 'c1', title: 'a', estimatedMinutes: null }], chainIndex: 1 }],
     ])('blocks a %s task outright', (blocker, overrides) => {
       const task = makeTask({ id: 'a', estimatedMinutes: 30, ...overrides });
       const plan = buildDeloadPlan([task], [task]);
@@ -170,6 +170,24 @@ describe('buildDeloadPlan', () => {
       expect(p.date).toBeNull();
       expect(p.selected).toBe(false);
       expect(p.blockerLabel).toBeTruthy();
+    });
+
+    it('reports a mid-chain step at the step\'s own cost, not the whole chain\'s', () => {
+      // The sheet still lists a hard-blocked task so the day's total adds up;
+      // charging the chain's full estimate to whichever step is showing made
+      // "Staying put · 1.5h" mean the routine, not the step you're on.
+      const task = makeTask({
+        id: 'a', estimatedMinutes: 90, chainEnabled: true, chainIndex: 1,
+        chainItems: [
+          { id: 'c1', title: 'Warm up', estimatedMinutes: 5 },
+          { id: 'c2', title: 'Main set', estimatedMinutes: 45 },
+        ],
+      });
+      const plan = buildDeloadPlan([task], [task]);
+
+      expect(plan.proposals[0].blocker).toBe('chain');
+      expect(plan.proposals[0].minutes).toBe(45);
+      expect(plan.currentMinutes).toBe(45);
     });
 
     it('lists a streak task as movable but unchecked, naming the streak', () => {

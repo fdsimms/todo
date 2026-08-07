@@ -1,4 +1,5 @@
 import type { Effort } from '../types';
+import { activeChainStep, type ChainCarrier } from './chain';
 
 /**
  * Field updates to apply when a task's actual duration is measured (via the
@@ -60,13 +61,38 @@ export function minutesToEffort(min: number | null): Effort {
   return 6;                  // XL ~480+
 }
 
+/** What estimatedMinutesFor needs: the task's own estimate, plus its chain position. */
+export type EstimateSource = ChainCarrier & {
+  estimatedMinutes: number | null;
+  effort: Effort;
+};
+
+/**
+ * What a task is expected to cost *right now* — the single read every workload
+ * surface should route through (today's "planned" total, the deload sheet, the
+ * snooze engine's day scoring), the way displayTitleFor is the single read for
+ * a task's name.
+ *
+ * Mid-chain it's the active step's own estimate when that step has one. Only
+ * one step of a chain is ever on the day at a time, but the task-level estimate
+ * covers the whole chain — so charging it per step both overstates the day and,
+ * because completing a step spawns the next onto the same day, never lets the
+ * total fall as the chain is worked. Falls back to the task's estimate, then
+ * its coarse effort bucket; null when nothing is set at all.
+ */
+export function estimatedMinutesFor(task: EstimateSource): number | null {
+  const step = activeChainStep(task);
+  if (step?.estimatedMinutes != null) return step.estimatedMinutes;
+  return task.estimatedMinutes ?? effortToMinutes(task.effort);
+}
+
 /**
  * Total estimated minutes across a set of tasks, falling back to each task's
  * coarse effort bucket when it has no precise estimate. Powers the "how full
  * is today" workload readout.
  */
-export function sumEstimatedMinutes(tasks: readonly { estimatedMinutes: number | null; effort: Effort }[]): number {
-  return tasks.reduce((sum, t) => sum + (t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 0), 0);
+export function sumEstimatedMinutes(tasks: readonly EstimateSource[]): number {
+  return tasks.reduce((sum, t) => sum + (estimatedMinutesFor(t) ?? 0), 0);
 }
 
 /** Compact human label for a duration in minutes, e.g. 15m, 45m, 1h, 1.5h, 8h. */

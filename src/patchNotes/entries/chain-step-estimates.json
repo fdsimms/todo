@@ -1,0 +1,4 @@
+{
+  "message": "Chain steps can each carry their own time estimate. Today's planned total now counts the step you're actually on rather than charging the whole chain at every step, so a long routine's remaining time drops as you work through it",
+  "date": "2026-08-07"
+}
