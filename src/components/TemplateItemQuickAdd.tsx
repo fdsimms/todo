@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Alert,
   Animated,
   Keyboard,
   Modal,
@@ -163,9 +164,22 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
   const createItem = () => {
     if (!trimmedTitle) return;
+    const created = addItem(templateId, draft());
+    // Dismissing regardless is how an add that never happened came to look
+    // exactly like one that did. Nothing was stored, so the sheet stays put
+    // with the title intact rather than closing on a row that will never
+    // appear (see addItem in useTemplateStore).
+    if (!created) {
+      haptics.error();
+      Alert.alert(
+        'Couldn’t add that item',
+        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+      );
+      return;
+    }
     haptics.success();
     animateLayout();
-    onCreated?.(addItem(templateId, draft()));
+    onCreated?.(created);
     dismiss();
   };
 

@@ -1,0 +1,4 @@
+{
+  "message": "Adding to a template can no longer fail silently — if a save doesn't land, the sheet stays open with your text instead of closing on a task that never appears",
+  "date": "2026-08-07"
+}

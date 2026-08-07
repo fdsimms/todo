@@ -114,12 +114,16 @@ export function TemplateDetailScreen() {
         refTemplateId: target.id,
         refTemplateName: target.name,
       });
-    } else {
-      addItem(templateId, {
-        title: target.name,
-        refTemplateId: target.id,
-        refTemplateName: target.name,
-      });
+    } else if (!addItem(templateId, {
+      title: target.name,
+      refTemplateId: target.id,
+      refTemplateName: target.name,
+    })) {
+      haptics.error();
+      Alert.alert(
+        'Couldn’t nest that template',
+        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+      );
     }
   };
 

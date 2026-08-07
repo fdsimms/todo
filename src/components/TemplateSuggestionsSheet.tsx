@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -98,17 +99,29 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
 
   const handleAdd = () => {
     if (!templateId || accepted.size === 0) return;
-    haptics.success();
+    let added = 0;
     suggestions.forEach((s, i) => {
       if (!accepted.has(i)) return;
       const minutes = estimates[i]?.minutes ?? null;
-      addItem(templateId, {
+      const created = addItem(templateId, {
         title: s.title,
         notes: s.notes,
         effort: minutes != null ? minutesToEffort(minutes) : 0,
         estimatedMinutes: minutes,
       });
+      if (created) added += 1;
     });
+    // A whole generated checklist is expensive to get back, so a run that
+    // stored none of it keeps the sheet open rather than closing on nothing.
+    if (added === 0) {
+      haptics.error();
+      Alert.alert(
+        'Couldn’t add these',
+        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+      );
+      return;
+    }
+    haptics.success();
     onClose();
   };
 

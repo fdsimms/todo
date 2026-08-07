@@ -57,7 +57,8 @@ interface TemplateStore {
    * which a rename has no business creating.
    */
   renameItemCategory: (from: string, to: string) => void;
-  addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem;
+  /** The stored item, or null if `templateId` names no template — see the note on the implementation. */
+  addItem: (templateId: string, item: Partial<TemplateItem>) => TemplateItem | null;
   updateItem: (templateId: string, itemId: string, updates: Partial<TemplateItem>) => void;
   deleteItem: (templateId: string, itemId: string) => void;
   reorderItems: (templateId: string, orderedIds: string[]) => void;
@@ -175,11 +176,16 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
   },
 
   addItem(templateId, item) {
-    const normalized = normalizeTemplateItem(item);
     const template = get().templates.find(t => t.id === templateId);
-    if (template) {
-      get().setTemplateItems(templateId, [...template.items, normalized]);
-    }
+    // Null rather than the item it would have made. This used to return the
+    // normalized item whether or not it had anywhere to put it, so a caller
+    // that couldn't be told apart from success dismissed its sheet on a write
+    // that never happened — an add that reports itself done and leaves no row
+    // is indistinguishable from the feature being broken. Callers must treat
+    // null as "not added" and say so.
+    if (!template) return null;
+    const normalized = normalizeTemplateItem(item);
+    get().setTemplateItems(templateId, [...template.items, normalized]);
     return normalized;
   },
 
