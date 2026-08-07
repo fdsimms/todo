@@ -31,6 +31,7 @@ import { useTaskGroupStore } from './useTaskGroupStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
+import { useGroceryStore } from './useGroceryStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -624,6 +625,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
+    // Groceries ride this fan-out rather than being initialized from App.tsx,
+    // and that placement is load-bearing: enterDemoMode/exitDemoMode and
+    // restore-from-backup all reload by calling *this* function after swapping
+    // the database file. A store initialized outside it would keep its
+    // in-memory rows pointed at the previous database while every other
+    // surface showed the new one — i.e. your real groceries on a demo phone.
+    useGroceryStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 

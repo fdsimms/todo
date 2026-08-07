@@ -242,6 +242,11 @@ describe('summarizeBackup', () => {
     expect(summarizeBackup(build({ categories: [{ id: '1' }] }))).toBe('1 category');
   });
 
+  it('names grocery items', () => {
+    expect(summarizeBackup(build({ grocery_items: [{ id: '1' }] }))).toBe('1 grocery item');
+    expect(summarizeBackup(build({ grocery_items: [{ id: '1' }, { id: '2' }] }))).toBe('2 grocery items');
+  });
+
   it('joins several with commas and a trailing "and"', () => {
     const backup = build({
       tasks: [{ id: '1' }, { id: '2' }],

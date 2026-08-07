@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, GroceryItem, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -181,6 +181,23 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL,
       sort_order REAL NOT NULL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS grocery_items (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      aisle TEXT NOT NULL DEFAULT 'Other',
+      quantity TEXT,
+      note TEXT NOT NULL DEFAULT '',
+      on_list INTEGER NOT NULL DEFAULT 1,
+      checked INTEGER NOT NULL DEFAULT 0,
+      sort_order REAL NOT NULL DEFAULT 0,
+      favorite INTEGER NOT NULL DEFAULT 0,
+      purchase_count INTEGER NOT NULL DEFAULT 0,
+      last_added_at TEXT,
+      last_purchased_at TEXT,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
@@ -264,6 +281,13 @@ export function initDatabase(): void {
     // gets the name the feature actually has. Defaults to 0 = "right away",
     // which is how every chain has always behaved.
     'ALTER TABLE tasks ADD COLUMN chain_step_on_schedule INTEGER NOT NULL DEFAULT 0',
+    // The grocery catalog's no-duplicates guarantee, and it lives here rather
+    // than in a store method a future call site could bypass. The index is a
+    // migration while the table itself is in the CREATE block above — same
+    // split as idx_tasks_parent_id, and it means a device that got the table
+    // from an earlier build still picks the index up.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_items_name_key ON grocery_items(name_key)',
+    'CREATE INDEX IF NOT EXISTS idx_grocery_items_on_list ON grocery_items(on_list)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -393,6 +417,7 @@ export const BACKUP_TABLES = [
   'template_categories',
   'projects',
   'task_groups',
+  'grocery_items',
   'templates',
   'tasks',
   'settings',
@@ -986,6 +1011,134 @@ export function dbUpdateTaskGroup(group: TaskGroup): void {
 
 export function dbDeleteTaskGroup(id: string): void {
   db.runSync('DELETE FROM task_groups WHERE id = ?', [id]);
+}
+
+// ─── Groceries ──────────────────────────────────────────────────────────────
+
+function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nameKey: row.name_key as string,
+    aisle: (row.aisle as string) ?? 'Other',
+    quantity: (row.quantity as string) ?? null,
+    note: (row.note as string) ?? '',
+    onList: Boolean(row.on_list),
+    checked: Boolean(row.checked),
+    sortOrder: (row.sort_order as number) ?? 0,
+    favorite: Boolean(row.favorite),
+    purchaseCount: (row.purchase_count as number) ?? 0,
+    lastAddedAt: (row.last_added_at as string) ?? null,
+    lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllGroceryItems(): GroceryItem[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM grocery_items ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToGroceryItem);
+}
+
+export function dbInsertGroceryItem(item: GroceryItem): void {
+  db.runSync(
+    `INSERT INTO grocery_items
+      (id, name, name_key, aisle, quantity, note, on_list, checked, sort_order,
+       favorite, purchase_count, last_added_at, last_purchased_at, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.favorite ? 1 : 0, item.purchaseCount,
+      item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateGroceryItem(item: GroceryItem): void {
+  db.runSync(
+    `UPDATE grocery_items SET
+       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?,
+       sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?
+     WHERE id=?`,
+    [
+      item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.favorite ? 1 : 0, item.purchaseCount,
+      item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.id,
+    ]
+  );
+}
+
+export function dbDeleteGroceryItem(id: string): void {
+  db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdateGrocerySortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const u of updates) {
+      db.runSync('UPDATE grocery_items SET sort_order = ? WHERE id = ?', [u.sortOrder, u.id]);
+    }
+  });
+}
+
+/**
+ * Ends a shopping trip: everything in the trolley comes off the list and is
+ * recorded as bought. Returns the ids it touched so the store can patch its
+ * own array without a re-read.
+ *
+ * This is an UPDATE and never a DELETE, and the reason isn't only that the
+ * catalog is the feature. purchase_count/last_purchased_at *are* the ranking
+ * signal behind autocomplete and Buy again — delete the row and the eleventh
+ * milk ranks like the typo you made once.
+ */
+export function dbFinishGroceryShopping(purchasedAt: string): string[] {
+  const rows = db.getAllSync<{ id: string }>(
+    'SELECT id FROM grocery_items WHERE checked = 1 AND on_list = 1'
+  );
+  if (rows.length === 0) return [];
+  db.runSync(
+    `UPDATE grocery_items
+        SET on_list = 0, checked = 0,
+            purchase_count = purchase_count + 1,
+            last_purchased_at = ?
+      WHERE checked = 1 AND on_list = 1`,
+    [purchasedAt]
+  );
+  return rows.map(r => r.id);
+}
+
+/**
+ * Clears the list without buying anything — "I'm not doing this trip after
+ * all". Deliberately does not touch purchase_count: nothing was bought, so
+ * inflating the ranking signal would teach autocomplete a lie.
+ */
+export function dbClearGroceryList(): string[] {
+  const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
+  if (rows.length === 0) return [];
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
+  return rows.map(r => r.id);
+}
+
+// The aisle order is a JSON string list in `settings`, not a table — the
+// inverse of the categories decision, and for the reason that decision gives:
+// categories earned a table because they carry schedule fields a string list
+// can't hold, whereas an aisle carries a name and a position. Same shape as
+// dbGetTagRegistry, including its tolerance for a corrupt value.
+export function dbGetGroceryAisleOrder(): string[] | null {
+  const val = dbGetSetting('grocery_aisle_order');
+  if (!val) return null;
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : null;
+  } catch {
+    return null;
+  }
+}
+
+export function dbSetGroceryAisleOrder(order: string[]): void {
+  dbSetSetting('grocery_aisle_order', JSON.stringify(order));
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { useGroceryStore } from '../store/useGroceryStore';
 
 const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
 
@@ -29,6 +30,9 @@ interface MenuItem {
 
 const MENU_ITEMS: MenuItem[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
+  // Sits with Tasks rather than down among Logbook/Archived: it's a peer
+  // surface you go to on purpose, not somewhere things end up.
+  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
@@ -51,6 +55,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
+  // A scalar, so it's referentially stable and needs no useShallow. Counts
+  // what's still to buy — items already in the trolley aren't a reason to go.
+  const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
@@ -234,6 +241,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                   >
                     {item.label}
                   </Text>
+                  {item.name === 'Groceries' && groceryCount > 0 && (
+                    <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+                      <Text style={[styles.badgeText, { color: colors.accent }]}>{groceryCount}</Text>
+                    </View>
+                  )}
                   {isActive && (
                     <View style={[styles.activeDot, { backgroundColor: colors.accent }]} />
                   )}
@@ -357,5 +369,17 @@ const styles = StyleSheet.create({
     width: 7,
     height: 7,
     borderRadius: 4,
+  },
+  badge: {
+    minWidth: 22,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeText: {
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
 });

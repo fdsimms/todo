@@ -420,6 +420,51 @@ export interface TaskTemplate {
   applyContainer: TemplateContainer;
 }
 
+// One row of the grocery catalog — which is also the shopping list. A row is
+// created the first time an item is typed and then lives forever: `onList`
+// says "I intend to buy this", `checked` says "it's in the trolley", and
+// finishing a trip clears both rather than deleting anything. That's what
+// makes the second "Milk" a toggle instead of a duplicate, and what gives
+// autocomplete and Buy again something to rank.
+//
+// Deliberately not a Task: a task is an occurrence you complete once, so
+// modelling groceries as tasks floods Inbox/Unscheduled (neither predicate has
+// an escape hatch but projectId) and leaves a completion tombstone per trip.
+export interface GroceryItem {
+  id: string;
+  // What the user last typed — the label. "Whole milk" and "milk" reading
+  // identically in the list would be worse than a near-duplicate.
+  name: string;
+  // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, which is
+  // where the no-duplicates guarantee actually lives.
+  nameKey: string;
+  // Never null, unlike Task.category: an unrecognised item is *in* the Other
+  // aisle rather than aisle-less, which keeps the null branch out of every
+  // grouping and sorting path.
+  aisle: string;
+  // Free text ("2 lb", "x3", "a bunch"). Nothing does arithmetic on it — the
+  // parser exists to get it out of the name so the name stays a clean key.
+  quantity: string | null;
+  note: string;
+  onList: boolean;
+  // Invariant: checked implies onList.
+  checked: boolean;
+  sortOrder: number;
+  favorite: boolean;
+  // Bumped by finishShopping, never by clearList. Together with
+  // lastPurchasedAt this *is* the autocomplete ranking signal, which is the
+  // real reason a finished trip must not delete rows.
+  purchaseCount: number;
+  lastAddedAt: string | null;
+  lastPurchasedAt: string | null;
+  createdAt: string;
+}
+
+// Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
+// title, and a long one wrecks the row layout at the bigger grocery font size.
+export const GROCERY_NAME_MAX_LENGTH = 80;
+export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',
