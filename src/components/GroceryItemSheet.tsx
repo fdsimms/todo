@@ -24,6 +24,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { describeShops, shopsForItem } from '../utils/groceryShops';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
@@ -50,6 +51,7 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const setQuantity = useGroceryStore(s => s.setQuantity);
   const setNote = useGroceryStore(s => s.setNote);
   const setAisle = useGroceryStore(s => s.setAisle);
+  const addAisle = useGroceryStore(s => s.addAisle);
   const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
@@ -62,6 +64,8 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const [quantity, setQuantityText] = useState('');
   const [note, setNoteText] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
+  const [newAisle, setNewAisle] = useState('');
+  const [addingAisle, setAddingAisle] = useState(false);
 
   useEffect(() => {
     if (visible && item) {
@@ -69,6 +73,8 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
       setQuantityText(item.quantity ?? '');
       setNoteText(item.note);
       setNameError(null);
+      setNewAisle('');
+      setAddingAisle(false);
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -91,6 +97,21 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
     setNote(item.id, note);
     haptics.success();
     onClose();
+  };
+
+  /**
+   * Creating an aisle here always files this item into it: you're standing in
+   * the item's aisle picker, so "Baby" with the item left in Other would be a
+   * step that looks like it did nothing. addAisle hands back the existing name
+   * on a collision, so typing one that's already there just selects it.
+   */
+  const handleAddAisle = () => {
+    const created = addAisle(newAisle);
+    if (!created) return;
+    setAisle(item.id, created);
+    haptics.success();
+    setNewAisle('');
+    setAddingAisle(false);
   };
 
   const linkedCounts = new Map(
@@ -224,7 +245,50 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
                 </TouchableOpacity>
               );
             })}
+            {/* Neutral, not accent: accent is what marks the *selected* aisle in
+                this grid, so a tinted add button would read as one more aisle —
+                the same reason the add button beside tag chips is neutral. */}
+            {!addingAisle && (
+              <InlineAction
+                label="New aisle"
+                icon="add"
+                variant="neutral"
+                haptic
+                onPress={() => setAddingAisle(true)}
+                accessibilityLabel="Add a new aisle"
+              />
+            )}
           </View>
+
+          {addingAisle && (
+            <View style={styles.addWrap}>
+              <TextInput
+                style={styles.addInput}
+                value={newAisle}
+                onChangeText={setNewAisle}
+                placeholder="Aisle name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                onSubmitEditing={handleAddAisle}
+                // An empty field is someone who changed their mind, so tapping
+                // away closes it rather than leaving a dead row behind.
+                onBlur={() => {
+                  if (!newAisle.trim()) setAddingAisle(false);
+                }}
+                autoFocus
+                autoCorrect={false}
+                maxLength={32}
+                accessibilityLabel="New aisle name"
+              />
+              <InlineAction
+                label="Add"
+                icon="add"
+                variant="neutral"
+                onPress={handleAddAisle}
+                disabled={!newAisle.trim()}
+              />
+            </View>
+          )}
 
           {shops.length > 0 && (
             <>
@@ -379,7 +443,23 @@ function makeStyles(colors: Colors) {
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
-    pills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+    pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+    addWrap: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+    addInput: {
+      flex: 1,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      fontSize: font.md,
+      color: colors.text,
+      // A height rather than a lineHeight — see the note on `input` above.
+      height: 44,
+    },
     pill: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.full,
