@@ -38,6 +38,7 @@ import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, sameTimeSegments } from '../utils/visibilityUtils';
+import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -429,6 +430,8 @@ interface TaskStore {
   // the completion back) — stop holding the batch for it.
   cancelCompletionAnimation: (id: string) => void;
   sweepExpiredTasks: () => void;
+  /** Deletes completions older than the retention window; returns how many went. */
+  purgeOldCompletedTasks: () => number;
   addTask: (draft: Partial<TaskDraft>) => Task;
   duplicateTask: (id: string) => Task | null;
   // scope 'occurrence' ("this task only") applies `updates` to this row but
@@ -648,6 +651,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     rolled.forEach(t => get().skipNextRecurrence(t.id));
     if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
+  },
+
+  // Enforces the "keep completed tasks for" window — the only thing that has
+  // ever bounded the tombstone a completion leaves behind. Runs at startup
+  // (after settings load, like sweepExpiredTasks) and again when the window
+  // itself changes, so picking one acts on the backlog rather than only on
+  // what happens to age out later.
+  //
+  // Deliberately does NOT go through bulkDeleteTasks: that arms shake-to-undo,
+  // and a purge the user didn't just perform must not be sitting under their
+  // first shake of the session waiting to be reversed. Everything else about
+  // the delete is the same, including the subtask cascade dbBulkDeleteTasks
+  // does in SQL — minus the reminder cancels, which have nothing to cancel
+  // here: completeTask already cancelled this row's, and upcomingReminders
+  // filters completed tasks out of every reschedule since.
+  purgeOldCompletedTasks() {
+    const { completedRetentionDays, dayResetTime } = useSettingsStore.getState();
+    const cutoff = retentionCutoff(completedRetentionDays, new Date(), dayResetTime);
+    if (!cutoff) return 0;
+
+    const ids = selectPurgeableTaskIds(get().tasks, cutoff);
+    if (ids.length === 0) return 0;
+    const idSet = new Set(ids);
+
+    dbBulkDeleteTasks(ids);
+    set(s => ({
+      tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
+    }));
+    return ids.length;
   },
 
   addTask(draft) {

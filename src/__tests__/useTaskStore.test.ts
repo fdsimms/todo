@@ -3519,6 +3519,115 @@ describe('sweepExpiredTasks', () => {
   });
 });
 
+describe('purgeOldCompletedTasks', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 5, 1, 12, 0, 0));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const settingsStoreMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  const withRetention = (completedRetentionDays: number | null) => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: false,
+      vacationMode: false,
+      completedRetentionDays,
+    });
+  };
+
+  /** A completed row stamped `daysAgo` before the mocked now. */
+  const completedDaysAgo = (id: string, daysAgo: number, overrides: Partial<Task> = {}) => {
+    const at = new Date(2026, 5, 1, 12, 0, 0);
+    at.setDate(at.getDate() - daysAgo);
+    return makeTask({ id, completed: true, completedAt: at.toISOString(), ...overrides });
+  };
+
+  it('does nothing when retention is forever', () => {
+    withRetention(null);
+    useTaskStore.setState({ tasks: [completedDaysAgo('ancient', 3000)] });
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(0);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['ancient']);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('deletes completions past the window and keeps the rest', () => {
+    withRetention(90);
+    useTaskStore.setState({
+      tasks: [completedDaysAgo('old', 200), completedDaysAgo('recent', 10), makeTask({ id: 'live' })],
+    });
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(1);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['recent', 'live']);
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['old']);
+  });
+
+  it('drops the subtasks of a purged parent from state too', () => {
+    withRetention(90);
+    useTaskStore.setState({
+      tasks: [
+        completedDaysAgo('parent', 200),
+        completedDaysAgo('sub', 200, { parentId: 'parent' }),
+        makeTask({ id: 'live' }),
+      ],
+    });
+    // Only the parent is named; SQLite's cascade takes the subtask by parent_id.
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(1);
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['parent']);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['live']);
+  });
+
+  // The tombstones behind a habit are exactly what the window is for, and the
+  // streak has to survive losing them: it lives on the row still running it.
+  it('clears a recurring task\'s old occurrences without touching its streak', () => {
+    withRetention(90);
+    useTaskStore.setState({
+      tasks: [
+        completedDaysAgo('occ1', 300),
+        completedDaysAgo('occ2', 200, { previousOccurrenceId: 'occ1' }),
+        makeTask({ id: 'live', previousOccurrenceId: 'occ2', streakCount: 42, streakDate: '2026-05-31T00:00:00.000Z' }),
+      ],
+    });
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(2);
+    const [live] = useTaskStore.getState().tasks;
+    expect(live.id).toBe('live');
+    expect(live.streakCount).toBe(42);
+  });
+
+  it('leaves archived tasks alone', () => {
+    withRetention(90);
+    useTaskStore.setState({
+      tasks: [completedDaysAgo('filed', 400, { archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+    });
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(0);
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['filed']);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  // A startup purge must not be sitting under the user's first shake of the
+  // session — undo is for actions they just took.
+  it('does not arm shake-to-undo', () => {
+    withRetention(90);
+    useTaskStore.setState({ tasks: [completedDaysAgo('old', 200)], lastAction: null });
+    useTaskStore.getState().purgeOldCompletedTasks();
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('touches the database only when something actually falls outside', () => {
+    withRetention(365);
+    useTaskStore.setState({ tasks: [completedDaysAgo('recent', 30)] });
+    expect(useTaskStore.getState().purgeOldCompletedTasks()).toBe(0);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+});
+
 describe('completedTasks', () => {
   it('returns only completed non-subtask tasks with a completedAt', () => {
     useTaskStore.setState({
