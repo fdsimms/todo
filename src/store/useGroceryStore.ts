@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem } from '../types';
+import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -9,6 +9,15 @@ import {
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
+  dbGetAllGroceryShops,
+  dbInsertGroceryShop,
+  dbUpdateGroceryShop,
+  dbDeleteGroceryShop,
+  dbGetAllItemShopLinks,
+  dbSetItemShopLink,
+  dbDeleteItemShopLink,
+  dbGetLastShopId,
+  dbSetLastShopId,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
@@ -52,6 +61,17 @@ function armCartHold(): void {
 interface GroceryStore {
   items: GroceryItem[];
   aisleOrder: string[];
+  /**
+   * The places you shop, and which items have been bought at each. They live
+   * here rather than in a store of their own for the reason aisleOrder does:
+   * they're grocery configuration read by the same screens, and a
+   * `useGroceryShopStore` sitting next to `useGroceryStore` is a name nobody
+   * would reliably pick between.
+   */
+  shops: Shop[];
+  itemShops: ItemShopLink[];
+  /** The store the last trip was finished at, if it still exists. */
+  lastShopId: string | null;
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   initialized: boolean;
@@ -78,12 +98,26 @@ interface GroceryStore {
   deleteItem: (id: string) => void;
   deleteItems: (ids: string[]) => void;
 
-  /** Ends the trip: everything checked comes off the list and counts as bought. Returns how many. */
-  finishShopping: () => number;
+  /**
+   * Ends the trip: everything checked comes off the list and counts as bought.
+   * Returns how many. `shopId` is optional — null records the purchase without
+   * a place, exactly as every trip did before stores existed.
+   */
+  finishShopping: (shopId?: string | null) => number;
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
   setAisleOrder: (order: string[]) => void;
+
+  /** Null when the name collides with an existing store. */
+  addShop: (name: string) => Shop | null;
+  renameShop: (id: string, name: string) => boolean;
+  reorderShops: (ids: string[]) => void;
+  deleteShop: (id: string) => void;
+  /** Assert "this item is available here" without a purchase behind it. */
+  linkItemShop: (itemId: string, shopId: string) => void;
+  unlinkItemShop: (itemId: string, shopId: string) => void;
+  setLastShopId: (id: string | null) => void;
 
   itemByNameKey: (key: string) => GroceryItem | null;
   itemById: (id: string) => GroceryItem | null;
@@ -96,6 +130,9 @@ function nextSortOrder(items: GroceryItem[]): number {
 export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
+  shops: [],
+  itemShops: [],
+  lastShopId: null,
   cartHoldIds: [],
   initialized: false,
 
@@ -105,11 +142,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // bigger DEFAULT_AISLES later then needs no migration, and can't clobber
     // an order someone arranged to match their store.
     const aisleOrder = normalizeAisleOrder(dbGetGroceryAisleOrder(), items.map(i => i.aisle));
+    const shops = dbGetAllGroceryShops();
+    const itemShops = dbGetAllItemShopLinks();
+    // Resolved against live shops rather than trusted: the setting outlives
+    // the store it names, and a preselected shop that no longer exists would
+    // record the next trip against nothing.
+    const storedLast = dbGetLastShopId();
+    const lastShopId = shops.some(s => s.id === storedLast) ? storedLast : null;
     if (cartHoldTimer) {
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
     }
-    set({ items, aisleOrder, cartHoldIds: [], initialized: true });
+    set({ items, aisleOrder, shops, itemShops, lastShopId, cartHoldIds: [], initialized: true });
   },
 
   /**
@@ -307,36 +351,63 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   /** The one real delete. There is no undo, so every caller confirms first. */
   deleteItem(id) {
-    dbDeleteGroceryItem(id);
-    set(s => ({
-      items: s.items.filter(i => i.id !== id),
-      cartHoldIds: s.cartHoldIds.filter(x => x !== id),
-    }));
+    get().deleteItems([id]);
   },
 
   deleteItems(ids) {
     if (ids.length === 0) return;
     const gone = new Set(ids);
+    // dbDeleteGroceryItem drops the item's shop links too; mirror that here so
+    // the in-memory copy doesn't keep links to an item that's gone.
     for (const id of ids) dbDeleteGroceryItem(id);
     set(s => ({
       items: s.items.filter(i => !gone.has(i.id)),
+      itemShops: s.itemShops.filter(l => !gone.has(l.itemId)),
       cartHoldIds: s.cartHoldIds.filter(x => !gone.has(x)),
     }));
   },
 
-  finishShopping() {
+  finishShopping(shopId = null) {
     const purchasedAt = new Date().toISOString();
-    const ids = dbFinishGroceryShopping(purchasedAt);
+    // A shop deleted between opening the finish sheet and confirming it would
+    // otherwise write links nothing can resolve.
+    const shop = shopId ? get().shops.find(s => s.id === shopId) ?? null : null;
+    const ids = dbFinishGroceryShopping(purchasedAt, shop?.id ?? null);
     if (ids.length === 0) return 0;
     const done = new Set(ids);
-    set(s => ({
-      items: s.items.map(i =>
-        done.has(i.id)
-          ? { ...i, onList: false, checked: false, purchaseCount: i.purchaseCount + 1, lastPurchasedAt: purchasedAt }
-          : i
-      ),
-      cartHoldIds: [],
-    }));
+
+    set(s => {
+      // Patch the links the db just upserted rather than re-reading them —
+      // same discipline the items array follows two lines down.
+      let itemShops = s.itemShops;
+      if (shop) {
+        const bumped = new Set(
+          s.itemShops.filter(l => l.shopId === shop.id && done.has(l.itemId)).map(l => l.itemId)
+        );
+        itemShops = [
+          ...s.itemShops.map(l =>
+            l.shopId === shop.id && done.has(l.itemId)
+              ? { ...l, purchaseCount: l.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+              : l
+          ),
+          ...ids
+            .filter(id => !bumped.has(id))
+            .map(id => ({ itemId: id, shopId: shop.id, purchaseCount: 1, lastPurchasedAt: purchasedAt })),
+        ];
+      }
+
+      return {
+        items: s.items.map(i =>
+          done.has(i.id)
+            ? { ...i, onList: false, checked: false, purchaseCount: i.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+            : i
+        ),
+        itemShops,
+        cartHoldIds: [],
+      };
+    });
+
+    if (shop) get().setLastShopId(shop.id);
     return ids.length;
   },
 
@@ -357,6 +428,108 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const normalized = normalizeAisleOrder(order, get().items.map(i => i.aisle));
     dbSetGroceryAisleOrder(normalized);
     set({ aisleOrder: normalized });
+  },
+
+  /**
+   * Refuses a duplicate rather than returning the existing store, the same way
+   * renameItem refuses rather than merging: the caller asked to create
+   * something, and quietly handing back a different object is how you end up
+   * filing a trip against the wrong place.
+   */
+  addShop(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    // Falls back to the raw text for the same reason addByName does: a name
+    // with no letters or digits normalises to empty, and two of those would
+    // collide on the UNIQUE index and throw out of whatever called this.
+    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+    if (get().shops.some(s => s.nameKey === key)) return null;
+
+    const shop: Shop = {
+      id: generateId(),
+      name: trimmed,
+      nameKey: key,
+      sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
+      createdAt: new Date().toISOString(),
+    };
+    dbInsertGroceryShop(shop);
+    set(s => ({ shops: [...s.shops, shop] }));
+    return shop;
+  },
+
+  renameShop(id, name) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return false;
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+
+    const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
+    if (key !== shop.nameKey && get().shops.some(s => s.nameKey === key)) return false;
+
+    // Renaming costs nothing downstream — every link points at the id, which
+    // is the whole reason stores got a table instead of being name strings.
+    const updated = { ...shop, name: trimmed, nameKey: key };
+    dbUpdateGroceryShop(updated);
+    set(s => ({ shops: s.shops.map(x => (x.id === id ? updated : x)) }));
+    return true;
+  },
+
+  reorderShops(ids) {
+    const byId = new Map(get().shops.map(s => [s.id, s]));
+    const updated: Shop[] = [];
+    let order = 1;
+    for (const id of ids) {
+      const shop = byId.get(id);
+      if (!shop) continue;
+      updated.push({ ...shop, sortOrder: order++ });
+      byId.delete(id);
+    }
+    // Anything the caller didn't name keeps its relative place at the end,
+    // rather than being dropped from the order entirely.
+    for (const shop of byId.values()) updated.push({ ...shop, sortOrder: order++ });
+
+    for (const shop of updated) dbUpdateGroceryShop(shop);
+    set({ shops: updated });
+  },
+
+  /**
+   * Takes the store's purchase records with it. A link to a store that doesn't
+   * exist is unreadable rather than merely orphaned, so there's nothing to
+   * preserve — and the confirm that fronts this says so.
+   */
+  deleteShop(id) {
+    const wasLast = get().lastShopId === id;
+    dbDeleteGroceryShop(id);
+    if (wasLast) dbSetLastShopId(null);
+    set(s => ({
+      shops: s.shops.filter(x => x.id !== id),
+      itemShops: s.itemShops.filter(l => l.shopId !== id),
+      lastShopId: wasLast ? null : s.lastShopId,
+    }));
+  },
+
+  linkItemShop(itemId, shopId) {
+    const { items, shops, itemShops } = get();
+    if (!items.some(i => i.id === itemId) || !shops.some(s => s.id === shopId)) return;
+    if (itemShops.some(l => l.itemId === itemId && l.shopId === shopId)) return;
+
+    // purchaseCount 0 is the assertion: the user says it's here, no trip has
+    // confirmed it. Ranking reads that and declines to call it "usually".
+    const link: ItemShopLink = { itemId, shopId, purchaseCount: 0, lastPurchasedAt: null };
+    dbSetItemShopLink(link);
+    set(s => ({ itemShops: [...s.itemShops, link] }));
+  },
+
+  unlinkItemShop(itemId, shopId) {
+    dbDeleteItemShopLink(itemId, shopId);
+    set(s => ({
+      itemShops: s.itemShops.filter(l => !(l.itemId === itemId && l.shopId === shopId)),
+    }));
+  },
+
+  setLastShopId(id) {
+    dbSetLastShopId(id);
+    set({ lastShopId: id });
   },
 
   itemByNameKey(key) {

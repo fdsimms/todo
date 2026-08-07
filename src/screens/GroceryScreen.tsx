@@ -18,6 +18,7 @@ import { GroceryRow } from '../components/GroceryRow';
 import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
+import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { InlineAction } from '../components/InlineAction';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -59,6 +60,7 @@ export function GroceryScreen() {
   const [cartOpen, setCartOpen] = useState(false);
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
+  const [finishOpen, setFinishOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
 
@@ -110,23 +112,18 @@ export function GroceryScreen() {
     setEditingId(id);
   }, []);
 
-  const confirmFinish = useCallback(() => {
-    Alert.alert(
-      'Finish shopping?',
-      `${checkedCount} ${checkedCount === 1 ? 'item comes' : 'items come'} off the list. Everything stays in your catalog for next time.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Finish',
-          onPress: () => {
-            animateLayout();
-            if (finishShopping() > 0) haptics.success();
-            setCartOpen(false);
-          },
-        },
-      ]
-    );
-  }, [checkedCount, finishShopping]);
+  // The confirm is a sheet rather than an Alert because it now carries a store
+  // picker, and an Alert can't hold one. It's still a confirm: nothing is
+  // recorded until Finish.
+  const handleFinished = useCallback(
+    (shopId: string | null) => {
+      setFinishOpen(false);
+      animateLayout();
+      if (finishShopping(shopId) > 0) haptics.success();
+      setCartOpen(false);
+    },
+    [finishShopping]
+  );
 
   const confirmClear = useCallback(() => {
     Alert.alert(
@@ -173,14 +170,14 @@ export function GroceryScreen() {
     }
     list.push({
       icon: 'bag-check-outline',
-      onPress: confirmFinish,
+      onPress: () => setFinishOpen(true),
       disabled: checkedCount === 0,
       badge: checkedCount || undefined,
       tint: 'accent',
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, confirmFinish, anthropicApiKey]);
+  }, [checkedCount, anthropicApiKey]);
 
   const renderRow = useCallback(
     ({ item: row }: { item: ListRow }) => {
@@ -285,6 +282,12 @@ export function GroceryScreen() {
 
       <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      <FinishShoppingSheet
+        visible={finishOpen}
+        checkedCount={checkedCount}
+        onClose={() => setFinishOpen(false)}
+        onFinished={handleFinished}
+      />
       <GroceryItemSheet
         visible={editingId !== null}
         itemId={editingId}
