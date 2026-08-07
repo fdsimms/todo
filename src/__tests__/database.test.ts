@@ -48,9 +48,17 @@ import {
   dbExportTables,
   dbReplaceAllData,
   BACKUP_TABLES,
+  dbGetAllGroceryItems,
+  dbInsertGroceryItem,
+  dbUpdateGroceryItem,
+  dbDeleteGroceryItem,
+  dbFinishGroceryShopping,
+  dbClearGroceryList,
+  dbGetGroceryAisleOrder,
+  dbSetGroceryAisleOrder,
 } from '../db/database';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -169,7 +177,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects;');
+  mockRawDb.exec('DELETE FROM tasks; DELETE FROM settings; DELETE FROM templates; DELETE FROM projects; DELETE FROM grocery_items;');
 });
 
 // ---------------------------------------------------------------------------
@@ -1318,5 +1326,197 @@ describe('backup and restore', () => {
   it('does not invent an API key row when the device has none', () => {
     dbReplaceAllData({ settings: [{ key: 'themeMode', value: 'dark' }] });
     expect(dbGetSetting('anthropicApiKey')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Groceries
+// ---------------------------------------------------------------------------
+
+function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
+  return {
+    nameKey: overrides.name.toLowerCase(),
+    aisle: 'Other',
+    quantity: null,
+    note: '',
+    onList: true,
+    checked: false,
+    sortOrder: 1,
+    favorite: false,
+    purchaseCount: 0,
+    lastAddedAt: null,
+    lastPurchasedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+describe('grocery items', () => {
+  it('round-trips every field through rowToGroceryItem', () => {
+    const item = makeGroceryItem({
+      id: 'g1',
+      name: 'Whole Milk',
+      nameKey: 'whole milk',
+      aisle: 'Dairy & Eggs',
+      quantity: '2 gal',
+      note: 'the blue cap one',
+      onList: true,
+      checked: true,
+      sortOrder: 4,
+      favorite: true,
+      purchaseCount: 12,
+      lastAddedAt: '2026-08-01T00:00:00.000Z',
+      lastPurchasedAt: '2026-07-25T00:00:00.000Z',
+    });
+    dbInsertGroceryItem(item);
+
+    expect(dbGetAllGroceryItems()).toEqual([item]);
+  });
+
+  it('keeps null quantity null rather than turning it into a string', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    expect(dbGetAllGroceryItems()[0].quantity).toBeNull();
+  });
+
+  it('stores booleans as 0/1 and reads them back as booleans', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false, checked: false, favorite: true }));
+    const raw = mockRawDb.prepare('SELECT on_list, favorite FROM grocery_items WHERE id = ?').get('g1') as {
+      on_list: number;
+      favorite: number;
+    };
+    expect(raw.on_list).toBe(0);
+    expect(raw.favorite).toBe(1);
+
+    const item = dbGetAllGroceryItems()[0];
+    expect(item.onList).toBe(false);
+    expect(item.favorite).toBe(true);
+  });
+
+  // The no-duplicates guarantee lives in the schema, not in a store method a
+  // future call site could bypass.
+  it('rejects a second row with the same name_key', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk' }));
+    expect(() =>
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'MILK', nameKey: 'milk' }))
+    ).toThrow();
+  });
+
+  it('updates in place', () => {
+    const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
+    dbInsertGroceryItem(item);
+    dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal', checked: true });
+
+    const [after] = dbGetAllGroceryItems();
+    expect(after.aisle).toBe('Dairy & Eggs');
+    expect(after.quantity).toBe('1 gal');
+    expect(after.checked).toBe(true);
+  });
+
+  it('deletes', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    dbDeleteGroceryItem('g1');
+    expect(dbGetAllGroceryItems()).toEqual([]);
+  });
+
+  it('orders by sort_order', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Zucchini', nameKey: 'zucchini', sortOrder: 9 }));
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Apples', nameKey: 'apples', sortOrder: 2 }));
+    expect(dbGetAllGroceryItems().map(i => i.id)).toEqual(['g2', 'g1']);
+  });
+
+  describe('dbFinishGroceryShopping', () => {
+    it('touches only the checked rows and returns their ids', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs', checked: false }));
+
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual(['g1']);
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('g1')!.onList).toBe(false);
+      expect(byId.get('g1')!.checked).toBe(false);
+      expect(byId.get('g1')!.purchaseCount).toBe(4);
+      expect(byId.get('g1')!.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
+      // Not bought, so still on the list for next time.
+      expect(byId.get('g2')!.onList).toBe(true);
+    });
+
+    // Deleting would lose the ranking signal, not just the row.
+    it('never deletes', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+      expect(dbGetAllGroceryItems()).toHaveLength(1);
+    });
+
+    it('ignores a checked row that is already off the list', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false, checked: true }));
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual([]);
+    });
+
+    it('is a no-op on an empty trolley', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual([]);
+      expect(dbGetAllGroceryItems()[0].purchaseCount).toBe(0);
+    });
+  });
+
+  describe('dbClearGroceryList', () => {
+    it('empties the list without crediting a purchase', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs' }));
+
+      expect(dbClearGroceryList().sort()).toEqual(['g1', 'g2']);
+
+      const items = dbGetAllGroceryItems();
+      expect(items.every(i => !i.onList && !i.checked)).toBe(true);
+      expect(items.find(i => i.id === 'g1')!.purchaseCount).toBe(3);
+    });
+  });
+
+  describe('aisle order', () => {
+    it('is null on a fresh database', () => {
+      expect(dbGetGroceryAisleOrder()).toBeNull();
+    });
+
+    it('survives a round trip', () => {
+      dbSetGroceryAisleOrder(['Frozen', 'Produce', 'Other']);
+      expect(dbGetGroceryAisleOrder()).toEqual(['Frozen', 'Produce', 'Other']);
+    });
+
+    it('shrugs off a corrupt value rather than throwing on startup', () => {
+      dbSetSetting('grocery_aisle_order', 'not json');
+      expect(dbGetGroceryAisleOrder()).toBeNull();
+      dbSetSetting('grocery_aisle_order', '{"nope":1}');
+      expect(dbGetGroceryAisleOrder()).toBeNull();
+    });
+
+    it('drops non-string entries', () => {
+      dbSetSetting('grocery_aisle_order', '["Produce",7,null,"Frozen"]');
+      expect(dbGetGroceryAisleOrder()).toEqual(['Produce', 'Frozen']);
+    });
+  });
+
+  describe('backup', () => {
+    it('is in BACKUP_TABLES, so the first restore does not silently destroy it', () => {
+      expect(BACKUP_TABLES).toContain('grocery_items');
+    });
+
+    it('survives an export/restore round trip', () => {
+      const item = makeGroceryItem({
+        id: 'g1',
+        name: 'Whole Milk',
+        nameKey: 'whole milk',
+        aisle: 'Dairy & Eggs',
+        quantity: '2 gal',
+        purchaseCount: 12,
+      });
+      dbInsertGroceryItem(item);
+
+      const backup = dbExportTables();
+      mockRawDb.exec('DELETE FROM grocery_items');
+      expect(dbGetAllGroceryItems()).toEqual([]);
+
+      dbReplaceAllData(backup);
+      expect(dbGetAllGroceryItems()).toEqual([item]);
+    });
   });
 });

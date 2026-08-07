@@ -12,3 +12,13 @@ export function resetToToday(): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({ name: 'Today', params: { resetToToday: Date.now() } });
 }
+
+// Where `dundundun://groceries` lands — the link a recurring "Grocery run"
+// task carries, so the reminder to go and the list to shop from are one tap
+// apart. Deliberately a link rather than putting grocery rows on Today: the
+// four Today sub-views are disjoint lenses over tasks, and a grocery item
+// isn't one.
+export function resetToGroceries(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Groceries');
+}

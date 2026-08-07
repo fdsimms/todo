@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import type { Calendar as ReminderList, Reminder } from 'expo-calendar';
 import { useTaskStore } from '../store/useTaskStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
   draftFromReminder,
@@ -143,26 +144,54 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
 }
 
 /**
- * Reads the chosen Reminders list, turns each reminder into a task, and deletes
- * it. See the notes on ordering and isolation inside — this is the one thing in
- * the app that destroys data the user owns somewhere else.
+ * Where a drained list's reminders go. Two destinations exist because a
+ * dictated "buy milk" and a dictated "call the dentist" want different homes,
+ * and Siri can only tell them apart by which list you named.
+ */
+interface DrainTarget {
+  listId: string;
+  sink: 'task' | 'grocery';
+}
+
+/**
+ * The configured destinations, in order. Each is gated exactly as the single
+ * one used to be — enabled, a list picked, and that same list confirmed (the
+ * confirmation is keyed on the id, so switching list re-asks rather than
+ * silently swallowing a fresh backlog).
+ */
+function drainTargets(): DrainTarget[] {
+  const {
+    remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId,
+    groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId,
+  } = useSettingsStore.getState();
+
+  const targets: DrainTarget[] = [];
+  if (remindersImportEnabled && remindersImportListId
+      && remindersImportConfirmedListId === remindersImportListId) {
+    targets.push({ listId: remindersImportListId, sink: 'task' });
+  }
+  if (groceryImportEnabled && groceryImportListId
+      && groceryImportConfirmedListId === groceryImportListId) {
+    targets.push({ listId: groceryImportListId, sink: 'grocery' });
+  }
+  return targets;
+}
+
+/**
+ * Reads each configured Reminders list, turns every reminder into a task or a
+ * grocery item, and deletes it. See the notes on ordering and isolation inside
+ * — this is the one thing in the app that destroys data the user owns
+ * somewhere else.
  */
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
 
-  const {
-    remindersImportEnabled,
-    remindersImportListId,
-    remindersImportConfirmedListId,
-    remindersImportReview,
-  } = useSettingsStore.getState();
+  const { remindersImportEnabled, groceryImportEnabled, remindersImportReview } =
+    useSettingsStore.getState();
+  if (!remindersImportEnabled && !groceryImportEnabled) return NOTHING('off');
 
-  if (!remindersImportEnabled) return NOTHING('off');
-  // The confirmation names a count and a list, and it's keyed on the list id —
-  // so switching list re-asks rather than silently swallowing a fresh backlog.
-  if (!remindersImportListId || remindersImportConfirmedListId !== remindersImportListId) {
-    return NOTHING('no-list');
-  }
+  const targets = drainTargets();
+  if (targets.length === 0) return NOTHING('no-list');
   if ((await getRemindersPermission()) !== 'granted') return NOTHING('no-permission');
 
   try {
@@ -172,60 +201,96 @@ async function drainOnce(): Promise<ImportOutcome> {
     // an empty array behaved like nil, is deleting every reminder on the
     // device. Cheap to rule out, not worth inferring.
     const lists = await calendar().getCalendarsAsync(calendar().EntityTypes.REMINDER);
-    const list = findReminderList(lists, remindersImportListId);
-    if (!list) return NOTHING('list-missing');
-    // Permissions on a shared list can change after it was picked.
-    if (!isImportableList(list)) return NOTHING('list-readonly');
-
-    const reminders = await fetchImportable(remindersImportListId);
-    if (reminders.length === 0) return NOTHING('ok');
 
     const { addTask } = useTaskStore.getState();
     let imported = 0;
     let deleteFailed = 0;
-
-    // Sequential, never Promise.all: addTask derives sortOrder from max + 1
-    // over the current array, so concurrency scrambles the order things were
-    // dictated in, and one commit at a time bounds the damage if something goes
-    // wrong at item 40 of 200.
+    let sawList = false;
+    let sawWritableList = false;
+    // One clock for the whole drain, so a batch of reminders parsed together
+    // can't straddle a minute boundary and land on different days.
     const now = new Date();
-    for (const reminder of reminders) {
-      const draft = draftFromReminder(reminder);
-      if (!draft) continue;
 
-      // Everything the reminder implies about scheduling. Pure and synchronous,
-      // and done before the create so a parse that somehow threw could never
-      // leave a deleted reminder behind — though it can't: the whole path is
-      // string and date arithmetic over data already in hand.
-      const pending = pendingImportFor(reminder, now);
-      // With review on, the schedule waits beside the task as a suggestion and
-      // the row stays bare enough for isInboxTask — a capture nobody has read
-      // must not file itself onto Today. With review off the user has said
-      // they trust the parse, so it applies on the way in.
-      const scheduled = pending ? (remindersImportReview ? { pendingImport: pending } : pending) : null;
+    // Each target is drained in full before the next. handledIds, `draining`
+    // and `rerunRequested` stay global and stay correct: EventKit ids are
+    // unique across lists, and those guards always guarded the whole drain.
+    for (const target of targets) {
+      const list = findReminderList(lists, target.listId);
+      if (!list) continue;
+      sawList = true;
+      // Permissions on a shared list can change after it was picked.
+      if (!isImportableList(list)) continue;
+      sawWritableList = true;
 
-      // Create first, delete second, and never the other way round. A failed
-      // delete leaves a duplicate — visible, understandable, fixable by hand. A
-      // failed create *after* a delete destroys a capture with no trace and no
-      // error anyone will ever see. addTask is synchronous runSync + a set, so
-      // it has either thrown or committed by the time we get here; the delete
-      // is async EventKit against an iCloud-backed store and can genuinely
-      // fail. The reliable half goes first.
-      addTask({ ...draft, ...scheduled });
-      // Recorded the moment the task exists, before the delete is even
-      // attempted — that's what makes it cover both failure modes above.
-      handledIds.add(reminder.id!);
-      imported += 1;
+      const reminders = await fetchImportable(target.listId);
+      if (reminders.length === 0) continue;
 
-      try {
-        await calendar().deleteReminderAsync(reminder.id!);
-      } catch {
-        // Isolated on purpose: one reminder in a strange state must not strand
-        // the rest of the batch.
-        deleteFailed += 1;
+      // Sequential, never Promise.all: addTask derives sortOrder from max + 1
+      // over the current array, so concurrency scrambles the order things were
+      // dictated in, and one commit at a time bounds the damage if something goes
+      // wrong at item 40 of 200.
+      for (const reminder of reminders) {
+        const draft = draftFromReminder(reminder);
+        if (!draft) continue;
+
+        // Create first, delete second, and never the other way round. A failed
+        // delete leaves a duplicate — visible, understandable, fixable by hand. A
+        // failed create *after* a delete destroys a capture with no trace and no
+        // error anyone will ever see. addTask is synchronous runSync + a set, so
+        // it has either thrown or committed by the time we get here; the delete
+        // is async EventKit against an iCloud-backed store and can genuinely
+        // fail. The reliable half goes first.
+        if (target.sink === 'grocery') {
+          // draftFromReminder already guarantees a non-empty title; skipping
+          // rather than passing '' through keeps that contract explicit, and
+          // leaves the reminder in place rather than deleting it for a row we
+          // didn't create.
+          const name = draft.title?.trim();
+          if (!name) continue;
+          // Nothing schedule-shaped is read here, and that's deliberate: a
+          // grocery item has no dueDate, recurrence or reminder for a parsed
+          // schedule to land on. "Milk every Tuesday" means buy milk, and the
+          // list already remembers that you buy it weekly.
+          //
+          // addByName rather than a raw insert, so a dictated "2 lb chicken"
+          // splits its quantity off and a name already in the catalog is
+          // re-listed instead of duplicated — same as typing it.
+          useGroceryStore.getState().addByName(name);
+        } else {
+          // Everything the reminder implies about scheduling. Pure and
+          // synchronous, and done before the create so a parse that somehow
+          // threw could never leave a deleted reminder behind — though it
+          // can't: the whole path is string and date arithmetic over data
+          // already in hand.
+          const pending = pendingImportFor(reminder, now);
+          // With review on, the schedule waits beside the task as a suggestion
+          // and the row stays bare enough for isInboxTask — a capture nobody
+          // has read must not file itself onto Today. With review off the user
+          // has said they trust the parse, so it applies on the way in.
+          const scheduled = pending
+            ? (remindersImportReview ? { pendingImport: pending } : pending)
+            : null;
+          addTask({ ...draft, ...scheduled });
+        }
+        // Recorded the moment the row exists, before the delete is even
+        // attempted — that's what makes it cover both failure modes above.
+        handledIds.add(reminder.id!);
+        imported += 1;
+
+        try {
+          await calendar().deleteReminderAsync(reminder.id!);
+        } catch {
+          // Isolated on purpose: one reminder in a strange state must not strand
+          // the rest of the batch.
+          deleteFailed += 1;
+        }
       }
     }
 
+    if (imported === 0) {
+      if (!sawList) return NOTHING('list-missing');
+      if (!sawWritableList) return NOTHING('list-readonly');
+    }
     return { imported, deleteFailed, reason: 'ok' };
   } catch {
     // Nothing was deleted that wasn't first imported, so the next trigger

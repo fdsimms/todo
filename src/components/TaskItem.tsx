@@ -33,6 +33,7 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { openInAppUrl } from '../utils/deepLinks';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
@@ -239,6 +240,10 @@ export const TaskItem = React.memo(function TaskItem({
   const handleOpenLink = async () => {
     if (!task.linkUrl) return;
     haptics.tap();
+    // A link this app owns (dundundun://groceries) navigates in place. Going
+    // out through Linking would come back to us anyway, but as an app-switch
+    // round trip that flashes.
+    if (openInAppUrl(task.linkUrl)) return;
     try {
       // Skip Linking.canOpenURL: on iOS it only returns true for schemes
       // pre-declared in LSApplicationQueriesSchemes, which would break both

@@ -380,6 +380,62 @@ describe('reminders import settings', () => {
   });
 });
 
+describe('grocery import settings', () => {
+  it('is off with no list until someone turns it on', () => {
+    const state = useSettingsStore.getState();
+    expect(state.groceryImportEnabled).toBe(false);
+    expect(state.groceryImportListId).toBeNull();
+    expect(state.groceryImportConfirmedListId).toBeNull();
+  });
+
+  it('round-trips its own list ids, independently of the task import', () => {
+    useSettingsStore.getState().setGroceryImportListId('list-2');
+    useSettingsStore.getState().setGroceryImportConfirmedListId('list-2');
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryImportListId', 'list-2');
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryImportConfirmedListId', 'list-2');
+
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'groceryImportListId' || key === 'groceryImportConfirmedListId' ? 'list-2'
+      : key === 'groceryImportEnabled' ? 'true'
+      : null
+    );
+    useSettingsStore.getState().initialize();
+    const state = useSettingsStore.getState();
+    expect(state.groceryImportEnabled).toBe(true);
+    expect(state.groceryImportListId).toBe('list-2');
+    expect(state.groceryImportConfirmedListId).toBe('list-2');
+    // The task-side import is untouched by any of it.
+    expect(state.remindersImportEnabled).toBe(false);
+  });
+
+  it('reads a cleared list id back as null rather than an empty string', () => {
+    useSettingsStore.getState().setGroceryImportListId(null);
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryImportListId', '');
+
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'groceryImportListId' ? '' : null
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().groceryImportListId).toBeNull();
+  });
+
+  it('resetToDefaults disarms it completely, ids included', () => {
+    useSettingsStore.getState().setGroceryImportEnabled(true);
+    useSettingsStore.getState().setGroceryImportListId('list-2');
+    useSettingsStore.getState().setGroceryImportConfirmedListId('list-2');
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.groceryImportEnabled).toBe(false);
+    // Same safeguard as the task side: a matching confirmed id would let a
+    // later re-enable skip the confirmation entirely.
+    expect(state.groceryImportListId).toBeNull();
+    expect(state.groceryImportConfirmedListId).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('groceryImportConfirmedListId', '');
+  });
+});
+
 describe('setProjectNudgeDismissedAt', () => {
   it('stores and persists the stamp', () => {
     useSettingsStore.getState().setProjectNudgeDismissedAt('2026-08-06T09:00:00.000Z');

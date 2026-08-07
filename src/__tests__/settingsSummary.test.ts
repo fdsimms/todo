@@ -10,6 +10,7 @@ const defaults: SettingsSummaryInput = {
   weekStartsOn: 0,
   dailyAgendaEnabled: false,
   remindersImportEnabled: false,
+  groceryImportEnabled: false,
   vacationMode: false,
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,

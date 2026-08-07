@@ -72,6 +72,10 @@ jest.mock('../db/database', () => ({
   dbInsertTemplate: jest.fn(),
   dbUpdateTemplate: jest.fn(),
   dbDeleteTemplate: jest.fn(),
+  // Reached only via the initialize() fan-out — groceries are otherwise
+  // untouched by this file's subject.
+  dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
+  dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
 }));
 
 jest.mock('../store/useCategoryStore', () => ({

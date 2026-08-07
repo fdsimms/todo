@@ -37,6 +37,7 @@ import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -718,6 +719,37 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     const t = customLinkText.trim();
     setLinkUrl(t || null);
     setShowLinkPicker(false);
+  };
+
+  /**
+   * Rescues a shopping item captured in the wrong place — "buy milk" typed
+   * into quick-add before you thought about which list it belonged on.
+   *
+   * Uses the live `title` rather than task.title so an edit in this session
+   * comes along, and goes through addByName so the usual parsing applies: the
+   * quantity is split off and a name already in the catalog is put back on the
+   * list rather than duplicated. Confirms because it deletes the task.
+   */
+  const handleSendToGroceries = () => {
+    if (!task) return;
+    const raw = title.trim() || task.title;
+    if (!raw) return;
+    Alert.alert(
+      'Send to groceries?',
+      `“${raw}” moves to your grocery list, and this task is deleted.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: () => {
+            useGroceryStore.getState().addByName(raw);
+            deleteTask(task.id);
+            haptics.success();
+            onClose();
+          },
+        },
+      ]
+    );
   };
 
   // Save can fire before the custom link input's onBlur/onSubmitEditing has
@@ -2400,6 +2432,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
+        {task && !task.parentId && (
+          <>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={handleSendToGroceries}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Send to groceries"
+            >
+              <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Send to groceries</Text>
+                <Text style={styles.optionHint}>
+                  Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </>
+        )}
         {task && task.recurrenceType !== 'none' && (
           <>
             <View style={styles.sep} />

@@ -9,6 +9,7 @@ import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
+import { GroceryScreen } from '../screens/GroceryScreen';
 import { StacksScreen } from '../screens/StacksScreen';
 import { SearchScreen } from '../screens/SearchScreen';
 import { ProjectsScreen } from '../screens/ProjectsScreen';
@@ -36,7 +37,7 @@ const EDGE_WIDTH = 20;
 // Screens only reachable via the drawer — hidden from the tab bar.
 const HIDDEN = { tabBarButton: () => null };
 
-const DRAWER_TABS = new Set(['Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Archived']);
+const DRAWER_TABS = new Set(['Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Archived', 'Groceries']);
 
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
 // whichever tab you pushed it *from*, so these never become the active tab.
@@ -123,6 +124,7 @@ const MainTabs = React.memo(function MainTabs({
       />
 
       {/* Drawer-only screens — not visible in the tab bar */}
+      <Tab.Screen name="Groceries" component={GroceryScreen} options={HIDDEN} />
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
       <Tab.Screen name="Stacks" component={StacksScreen} options={HIDDEN} />

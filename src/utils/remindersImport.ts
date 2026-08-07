@@ -305,9 +305,22 @@ export function isImportableList(list: ReminderList | undefined): boolean {
   return !!list && list.allowsModifications === true;
 }
 
-/** The picker's options: reminder lists we could actually import from. */
-export function reminderListOptions(lists: ReminderList[]): ReminderList[] {
-  return lists.filter(isImportableList).sort((a, b) => a.title.localeCompare(b.title));
+/**
+ * The picker's options: reminder lists we could actually import from.
+ *
+ * `excludeId` is how the two destinations (tasks, groceries) stay disjoint.
+ * They must be, and it isn't cosmetic: `handledIds` is global, so a list wired
+ * to both would send each reminder to whichever drain reached it first — a
+ * coin toss between the Inbox and the grocery list.
+ */
+export function reminderListOptions(
+  lists: ReminderList[],
+  excludeId: string | null = null
+): ReminderList[] {
+  return lists
+    .filter(isImportableList)
+    .filter(list => !excludeId || list.id !== excludeId)
+    .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 export function findReminderList(

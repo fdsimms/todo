@@ -55,6 +55,7 @@ export function SettingsScreen() {
     weekStartsOn: settings.weekStartsOn,
     dailyAgendaEnabled: settings.dailyAgendaEnabled,
     remindersImportEnabled: settings.remindersImportEnabled,
+    groceryImportEnabled: settings.groceryImportEnabled,
     vacationMode: settings.vacationMode,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete: settings.autoArchiveProjectsOnComplete,

@@ -578,6 +578,37 @@ describe('isImportableList', () => {
 });
 
 describe('reminderListOptions', () => {
+  // The two drain destinations must be disjoint: handledIds is global, so a
+  // list wired to both would send each reminder to whichever drain reached it
+  // first — a coin toss between the Inbox and the grocery list.
+  it('hides the list the other destination already uses', () => {
+    const options = reminderListOptions(
+      [list({ id: 'a', title: 'Groceries' }), list({ id: 'b', title: 'Reminders' })],
+      'a'
+    );
+    expect(options.map(l => l.id)).toEqual(['b']);
+  });
+
+  it('excludes nothing when the other destination is unset', () => {
+    const options = reminderListOptions(
+      [list({ id: 'a', title: 'Groceries' }), list({ id: 'b', title: 'Reminders' })],
+      null
+    );
+    expect(options.map(l => l.id)).toEqual(['a', 'b']);
+  });
+
+  it('still drops a read-only list even when excluding another', () => {
+    const options = reminderListOptions(
+      [
+        list({ id: 'a', title: 'Groceries' }),
+        list({ id: 'b', title: 'Shared', allowsModifications: false }),
+        list({ id: 'c', title: 'Work' }),
+      ],
+      'a'
+    );
+    expect(options.map(l => l.id)).toEqual(['c']);
+  });
+
   it('offers only modifiable lists, sorted by title', () => {
     const options = reminderListOptions([
       list({ id: 'b', title: 'Work' }),

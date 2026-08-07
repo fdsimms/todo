@@ -114,6 +114,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['which list', 'default list'] },
   { id: 'remindersImportReview', groupId: 'capture', label: 'Review before applying', section: 'Apple Reminders',
     keywords: ['approve', 'confirm', 'schedule', 'date', 'repeat', 'alarm', 'inbox'] },
+  { id: 'groceryImport', groupId: 'capture', label: 'Send a list to Groceries', section: 'Apple Reminders',
+    keywords: ['siri', 'shopping', 'voice', 'apple', 'milk', 'hey siri'] },
+  { id: 'groceryImportList', groupId: 'capture', label: 'Grocery list', section: 'Apple Reminders',
+    keywords: ['which list', 'shopping'] },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 
