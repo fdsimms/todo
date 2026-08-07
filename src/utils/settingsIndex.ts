@@ -46,7 +46,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'appearance', title: 'Appearance', icon: 'color-palette-outline', tint: 'accent' },
   { id: 'dayTime', title: 'Day & time', icon: 'sunny-outline', tint: 'orange' },
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
-  { id: 'capture', title: 'Capture from Reminders', icon: 'mic-outline', tint: 'green', iosOnly: true },
+  { id: 'capture', title: 'Capture from Reminders', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
   // Neutral from here down: the five tinted groups are things you configure,
   // the grey ones are housekeeping. A second orange next to Day & time's read
