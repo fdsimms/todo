@@ -1330,6 +1330,33 @@ describe('completeTask', () => {
       store().uncompleteTask('t1');
       expect(collapsed()).toEqual([]);
     });
+
+    // The two ways the hold can let a row go, which TaskItem has to tell apart:
+    // the row it releases on expiry is gone from the list and unmounts on its
+    // own, while the one it releases to an undo is still there — and still
+    // collapsed to nothing from the batch, unless the row puts itself back
+    // (see restoreFromCompletion in TaskItem).
+    it('drops a released row from the list on expiry, but keeps an uncompleted one', () => {
+      // Due today, like the completion-hold block above: an undated task never
+      // counts as visible in the first place, so the list assertions below
+      // would pass for the wrong reason.
+      const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(300);
+      expect(useTaskStore.getState().completionHoldIds).toEqual(['t1']);
+
+      store().uncompleteTask('t1');
+      expect(useTaskStore.getState().completionHoldIds).toEqual([]);
+      expect(store().visibleTasks().map(t => t.id)).toEqual(['t1']);
+
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(1200);
+      expect(useTaskStore.getState().completionHoldIds).toEqual([]);
+      expect(store().visibleTasks()).toHaveLength(0);
+    });
   });
 });
 

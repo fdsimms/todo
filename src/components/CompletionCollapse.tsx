@@ -47,6 +47,14 @@ export function CompletionCollapse({
   const progress = useSharedValue(1);
   const [height, setHeight] = useState<number | null>(null);
   const startedRef = useRef(false);
+  // Remounts the wrapper on the way back. Putting `progress` back to 1 is not
+  // enough on its own: at 1 the style below stops returning `height` and
+  // `opacity` at all, and Reanimated only ever applies the keys an updater
+  // *does* return — so the zeroes committed on the collapse's last frame stay on
+  // the native view and the header never comes back. A freshly mounted view
+  // carries none of them. (TaskItem's collapse keeps a generation of its own for
+  // exactly this; AnimatedCollapsible's header is the long version of why.)
+  const [generation, setGeneration] = useState(0);
 
   useEffect(() => {
     if (collapsing === startedRef.current) return;
@@ -62,6 +70,7 @@ export function CompletionCollapse({
     // hold, and this section has live work again. Snap back rather than animate:
     // the header is already at zero height, and growing it back in would read as
     // a new section arriving.
+    setGeneration(g => g + 1);
     progress.value = 1;
   }, [collapsing]);
 
@@ -84,7 +93,13 @@ export function CompletionCollapse({
   });
 
   return (
-    <Reanimated.View style={style} onLayout={handleLayout} pointerEvents={collapsing ? 'none' : 'auto'}>
+    <Reanimated.View
+      // Changes only to force a fresh view on the way back — see `generation`.
+      key={generation}
+      style={style}
+      onLayout={handleLayout}
+      pointerEvents={collapsing ? 'none' : 'auto'}
+    >
       {children}
     </Reanimated.View>
   );
