@@ -2,7 +2,6 @@ import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   StyleSheet,
   Alert,
@@ -19,29 +18,31 @@ import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { InlineAction } from '../components/InlineAction';
+import { ReorderableList } from '../components/ReorderableList';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
+import { resolveGroceryDrop, groceryDragRange } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { GroceryItem } from '../types';
 
 /**
  * A flat stream of tagged rows rather than a SectionList — the same shape
- * TodayScreen uses for its headers and stacks. It keeps one scroll view (so
- * useKeyboardInsetScroll's FlatList handle applies directly), and it makes the
- * in-cart collapse a matter of which rows are in the array rather than a
- * second animation system.
+ * TodayScreen uses for its headers and stacks. It keeps one scroll view, it
+ * makes the in-cart collapse a matter of which rows are in the array rather
+ * than a second animation system, and it is what lets one drag both reorder an
+ * item and move it to another aisle: the row lands where it's dropped and takes
+ * the aisle of the nearest header above (see resolveGroceryDrop).
  */
 type ListRow =
   | { type: 'aisle'; key: string; aisle: string }
   | { type: 'cartHeader'; key: string; count: number }
-  | { type: 'item'; key: string; item: GroceryItem };
+  | { type: 'item'; key: string; item: GroceryItem; inCart: boolean };
 
 export function GroceryScreen() {
   const insets = useSafeAreaInsets();
@@ -55,6 +56,7 @@ export function GroceryScreen() {
   const toggleChecked = useGroceryStore(s => s.toggleChecked);
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const clearList = useGroceryStore(s => s.clearList);
+  const applyDrop = useGroceryStore(s => s.applyDrop);
 
   const [cartOpen, setCartOpen] = useState(false);
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
@@ -65,7 +67,6 @@ export function GroceryScreen() {
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
 
   const { sections, inCart, remaining } = useMemo(
     () => buildGrocerySections(items, aisleOrder, cartHoldIds),
@@ -85,12 +86,12 @@ export function GroceryScreen() {
     const out: ListRow[] = [];
     for (const section of sections) {
       out.push({ type: 'aisle', key: `aisle:${section.aisle}`, aisle: section.aisle });
-      for (const item of section.data) out.push({ type: 'item', key: item.id, item });
+      for (const item of section.data) out.push({ type: 'item', key: item.id, item, inCart: false });
     }
     if (inCart.length > 0) {
       out.push({ type: 'cartHeader', key: 'cartHeader', count: inCart.length });
       if (cartOpen) {
-        for (const item of inCart) out.push({ type: 'item', key: item.id, item });
+        for (const item of inCart) out.push({ type: 'item', key: item.id, item, inCart: true });
       }
     }
     return out;
@@ -183,7 +184,7 @@ export function GroceryScreen() {
   }, [checkedCount, confirmFinish, anthropicApiKey]);
 
   const renderRow = useCallback(
-    ({ item: row }: { item: ListRow }) => {
+    ({ item: row, drag, isActive }: { item: ListRow; drag?: () => void; isActive?: boolean }) => {
       if (row.type === 'aisle') {
         return (
           <View style={styles.sectionHeader}>
@@ -214,7 +215,17 @@ export function GroceryScreen() {
           </TouchableOpacity>
         );
       }
-      return <GroceryRow item={row.item} onToggle={handleToggle} onEdit={handleEdit} />;
+      return (
+        <GroceryRow
+          item={row.item}
+          onToggle={handleToggle}
+          onEdit={handleEdit}
+          // Nothing in the cart is draggable: that section is a record of the
+          // trolley, not a place to file something (see groceryDragRange).
+          drag={row.inCart ? undefined : drag}
+          isActive={isActive}
+        />
+      );
     },
     [styles, colors, cartOpen, handleToggle, handleEdit]
   );
@@ -233,14 +244,17 @@ export function GroceryScreen() {
 
       <GroceryAddField />
 
-      <FlatList
-        ref={keyboardScroll.ref}
-        {...keyboardScroll.props}
+      <ReorderableList
         data={rows}
         keyExtractor={row => row.key}
         renderItem={renderRow}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
+        // dragTick, not tap: a fast drag crosses several rows between frames
+        // and unthrottled ticks run together into one long buzz. The lift
+        // itself is fired by ReorderableList.
+        onHoverChange={haptics.dragTick}
+        dragRange={groceryDragRange}
+        placeholderStyle={styles.dropSlot}
+        onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
         contentContainerStyle={styles.list}
         ListFooterComponent={
           <View>
@@ -308,6 +322,15 @@ function makeStyles(colors: Colors) {
     list: {
       flexGrow: 1,
       paddingTop: spacing.xs,
+    },
+    dropSlot: {
+      // Matches GroceryRow's own card geometry, so the gap that opens is
+      // exactly the shape of the row about to land in it.
+      marginHorizontal: spacing.md,
+      marginVertical: 2,
+      borderRadius: radius.md,
+      backgroundColor: colors.bgSecondary,
+      opacity: 0.55,
     },
     sectionHeader: {
       paddingHorizontal: spacing.md + spacing.xs,
