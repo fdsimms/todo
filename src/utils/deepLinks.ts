@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { haptics } from './haptics';
-import { resetToToday } from '../navigation/navigationRef';
+import { resetToToday, resetToGroceries } from '../navigation/navigationRef';
 
 export interface AddTaskLink {
   title: string;
@@ -73,6 +73,35 @@ export function isOpenAppUrl(url: string): boolean {
   return typeof url === 'string' && OPEN_APP_RE.test(url.trim());
 }
 
+// `dundundun://groceries` — what a recurring "Grocery run" task carries in its
+// linkUrl, so the reminder to go opens the list to shop from.
+const GROCERIES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?groceries\\/?$`, 'i');
+
+export function isGroceriesUrl(url: string): boolean {
+  return typeof url === 'string' && GROCERIES_RE.test(url.trim());
+}
+
+/**
+ * Handles a URL this app owns itself, returning true when it did.
+ *
+ * Lets a row route to an in-app destination without going through
+ * Linking.openURL. That *would* work — iOS hands your own scheme back to you
+ * and the 'url' listener below fires — but it's an app-switch round trip that
+ * flashes, for a navigation that never left the app.
+ */
+export function openInAppUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  if (isGroceriesUrl(url)) {
+    resetToGroceries();
+    return true;
+  }
+  if (isOpenAppUrl(url)) {
+    resetToToday();
+    return true;
+  }
+  return false;
+}
+
 // Wires up deep-link handling for the app: the cold-start URL (the Shortcut
 // launching the app) via getInitialURL, and warm links (app already running)
 // via the 'url' event. Call once from the root component, after the store's
@@ -81,7 +110,7 @@ export function useTaskDeepLinks(): void {
   useEffect(() => {
     const handle = (url: string | null) => {
       handleIncomingUrl(url);
-      if (url && isOpenAppUrl(url)) resetToToday();
+      if (url) openInAppUrl(url);
     };
     Linking.getInitialURL().then(handle).catch(() => {});
     const sub = Linking.addEventListener('url', ({ url }) => handle(url));

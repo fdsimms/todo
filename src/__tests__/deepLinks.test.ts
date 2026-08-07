@@ -3,6 +3,8 @@
 // (mirrors notifications.test.ts's react-native mock).
 const mockAddTask = jest.fn();
 const mockSuccess = jest.fn();
+const mockResetToToday = jest.fn();
+const mockResetToGroceries = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -18,8 +20,12 @@ jest.mock('../utils/haptics', () => ({
   // capturing the fn directly would grab `undefined`.
   haptics: { success: (...args: unknown[]) => mockSuccess(...args) },
 }));
+jest.mock('../navigation/navigationRef', () => ({
+  resetToToday: (...args: unknown[]) => mockResetToToday(...args),
+  resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
+}));
 
-import { parseAddTaskUrl, handleIncomingUrl } from '../utils/deepLinks';
+import { parseAddTaskUrl, handleIncomingUrl, isGroceriesUrl, openInAppUrl } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
   it('parses a plain title', () => {
@@ -99,5 +105,62 @@ describe('handleIncomingUrl', () => {
     expect(handleIncomingUrl('dundundun://open')).toBe(false);
     expect(mockAddTask).not.toHaveBeenCalled();
     expect(mockSuccess).not.toHaveBeenCalled();
+  });
+});
+
+// ─── in-app links ────────────────────────────────────────────────────────────
+
+describe('isGroceriesUrl', () => {
+  it('accepts every spelling of the grocery link', () => {
+    expect(isGroceriesUrl('dundundun://groceries')).toBe(true);
+    expect(isGroceriesUrl('dundundun:///groceries')).toBe(true);
+    expect(isGroceriesUrl('dundundun://groceries/')).toBe(true);
+    expect(isGroceriesUrl('DUNDUNDUN://Groceries')).toBe(true);
+    expect(isGroceriesUrl('  dundundun://groceries  ')).toBe(true);
+  });
+
+  it('rejects anything else', () => {
+    expect(isGroceriesUrl('dundundun://')).toBe(false);
+    expect(isGroceriesUrl('dundundun://add?title=milk')).toBe(false);
+    expect(isGroceriesUrl('dundundun://groceries/milk')).toBe(false);
+    expect(isGroceriesUrl('spotify://')).toBe(false);
+    expect(isGroceriesUrl('')).toBe(false);
+  });
+});
+
+describe('openInAppUrl', () => {
+  beforeEach(() => {
+    mockResetToToday.mockClear();
+    mockResetToGroceries.mockClear();
+  });
+
+  it('navigates to the grocery list and claims the URL', () => {
+    expect(openInAppUrl('dundundun://groceries')).toBe(true);
+    expect(mockResetToGroceries).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends the bare scheme to Today', () => {
+    expect(openInAppUrl('dundundun://')).toBe(true);
+    expect(mockResetToToday).toHaveBeenCalledTimes(1);
+  });
+
+  // Anything it doesn't claim has to fall through to Linking.openURL.
+  it('leaves a third-party scheme alone', () => {
+    expect(openInAppUrl('spotify://')).toBe(false);
+    expect(openInAppUrl('https://example.com')).toBe(false);
+    expect(mockResetToToday).not.toHaveBeenCalled();
+    expect(mockResetToGroceries).not.toHaveBeenCalled();
+  });
+
+  it('shrugs off null and empty', () => {
+    expect(openInAppUrl(null)).toBe(false);
+    expect(openInAppUrl(undefined)).toBe(false);
+    expect(openInAppUrl('')).toBe(false);
+  });
+
+  // The grocery link must never be mistaken for a capture.
+  it('does not create a task', () => {
+    openInAppUrl('dundundun://groceries');
+    expect(mockAddTask).not.toHaveBeenCalled();
   });
 });
