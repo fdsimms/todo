@@ -136,7 +136,7 @@ export function CategoriesScreen() {
                     {excludeFromPins && (
                       <>
                         <Text style={styles.metaDot}>·</Text>
-                        <Ionicons name="sparkles-outline" size={11} color={colors.textTertiary} />
+                        <Ionicons name="color-wand-outline" size={11} color={colors.textTertiary} />
                       </>
                     )}
                   </View>

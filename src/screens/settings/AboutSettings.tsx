@@ -22,7 +22,7 @@ export function AboutSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
-          icon="sparkles-outline"
+          icon="gift-outline"
           iconColor={colors.accent}
           label="What's New"
           chevron

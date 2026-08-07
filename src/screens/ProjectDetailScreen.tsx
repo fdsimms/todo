@@ -133,7 +133,7 @@ export function ProjectDetailScreen() {
   // Bottom-up: "New task" ends up closest to the button.
   const addMenuItems: FabMenuItem[] = [
     { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-    { key: 'new', label: 'New task', icon: 'checkmark-circle' },
+    { key: 'new', label: 'New task', icon: 'checkbox' },
   ];
 
   const handleAddMenuSelect = (key: string) => {

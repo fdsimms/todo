@@ -154,7 +154,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
               styles={styles}
             />
             <Chip
-              icon="flag-outline"
+              icon="arrow-up-circle-outline"
               iconColor={priority > 0 ? PRIORITY_COLORS[priority] : undefined}
               label="Priority"
               value={priority > 0 ? PRIORITY_LABELS_SHORT[priority] : null}

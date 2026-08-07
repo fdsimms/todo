@@ -269,7 +269,7 @@ export function BulkActionBar({
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.moreRow} onPress={() => setPanel('priority')}>
-              <Ionicons name="flag-outline" size={18} color={colors.textSecondary} />
+              <Ionicons name="arrow-up-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Priority</Text>
               <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
             </TouchableOpacity>

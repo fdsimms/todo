@@ -146,7 +146,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
 
           <View style={styles.card}>
             <View style={styles.titleRow}>
-              <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
+              <Ionicons name="gift-outline" size={20} color={colors.accent} />
               <Text style={styles.title}>What's New</Text>
               <View style={styles.titleSpacer} />
               <TouchableOpacity
