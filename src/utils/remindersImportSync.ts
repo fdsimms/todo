@@ -235,10 +235,16 @@ async function drainOnce(): Promise<ImportOutcome> {
         // is async EventKit against an iCloud-backed store and can genuinely
         // fail. The reliable half goes first.
         if (target.sink === 'grocery') {
+          // draftFromReminder already guarantees a non-empty title; skipping
+          // rather than passing '' through keeps that contract explicit, and
+          // leaves the reminder in place rather than deleting it for a row we
+          // didn't create.
+          const name = draft.title?.trim();
+          if (!name) continue;
           // addByName rather than a raw insert, so a dictated "2 lb chicken"
           // splits its quantity off and a name already in the catalog is
           // re-listed instead of duplicated — same as typing it.
-          useGroceryStore.getState().addByName(draft.title ?? '');
+          useGroceryStore.getState().addByName(name);
         } else {
           addTask(draft);
         }

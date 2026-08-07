@@ -161,6 +161,19 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().items[0].quantity).toBe('1 gal');
   });
 
+  // Two punctuation-only names both normalise to an empty key; without a
+  // fallback they'd collide on the UNIQUE index and the second insert would
+  // throw out of whatever was calling — a paste, or the Reminders drain
+  // mid-batch.
+  it('keeps a key for a name with no letters or digits', () => {
+    const a = useGroceryStore.getState().addByName('???');
+    const b = useGroceryStore.getState().addByName('!!!');
+    expect(a.nameKey).not.toBe('');
+    expect(b.nameKey).not.toBe('');
+    expect(a.nameKey).not.toBe(b.nameKey);
+    expect(useGroceryStore.getState().items).toHaveLength(2);
+  });
+
   it('un-checks a checked row that gets re-added', () => {
     seed([makeItem({ name: 'Milk', onList: true, checked: true })]);
     useGroceryStore.getState().addByName('milk');

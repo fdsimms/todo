@@ -120,7 +120,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    */
   addByName(raw) {
     const { name, quantity } = parseGroceryInput(raw);
-    const key = groceryNameKey(name);
+    // A name with no letters or digits ("???") normalises to an empty key.
+    // Falling back to the raw text keeps the key unique, which matters: two
+    // such rows would collide on the UNIQUE index and the *second* insert
+    // would throw out of whatever was calling — a paste, or the Reminders
+    // drain mid-batch.
+    const key = groceryNameKey(name) || name.trim().toLowerCase();
     const now = new Date().toISOString();
     const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
 
