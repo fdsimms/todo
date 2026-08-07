@@ -97,8 +97,8 @@ interface Props {
   showPin?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
-  /** Briefly tints the row on mount to draw the eye to a task that was just created. */
-  justCreated?: boolean;
+  /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
+  highlighted?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
   /**
@@ -186,7 +186,7 @@ export const TaskItem = React.memo(function TaskItem({
   showActions = true,
   showPin = true,
   indented = false,
-  justCreated = false,
+  highlighted = false,
   autoComplete = false,
   hidesWhenOnPace = false,
   onApplyImport,
@@ -322,9 +322,12 @@ export const TaskItem = React.memo(function TaskItem({
   // during a burst it keeps its full height for as long as the tapping goes on.
   const [awaitingCollapse, setAwaitingCollapse] = useState(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
-  // Tints the row briefly right after it mounts as the result of task
-  // creation, so the user can tell which row is the one that just appeared.
-  const highlightOpacity = useRef(new Animated.Value(justCreated && !reduceMotion ? 0.35 : 0)).current;
+  // Tints the row briefly so the user can tell which one is being pointed at.
+  // Seeded at full strength for a row that mounts already flagged (a task that
+  // was just created), so it can't paint one frame untinted before the effect
+  // below runs; a row already on screen when the flag arrives (a jump from the
+  // new-todos banner) is re-armed there.
+  const highlightOpacity = useRef(new Animated.Value(highlighted && !reduceMotion ? 0.35 : 0)).current;
   // Reanimated (UI-thread) shared value drives the expand/collapse. The panel
   // animates `height`, which forces a re-layout of every row below it on each
   // frame — doing that from a JS-thread Animated.Value stutters once the list
@@ -436,14 +439,15 @@ export const TaskItem = React.memo(function TaskItem({
   }, [isActive]);
 
   useEffect(() => {
-    if (!justCreated || reduceMotion) return;
+    if (!highlighted || reduceMotion) return;
+    highlightOpacity.setValue(0.35);
     Animated.timing(highlightOpacity, {
       toValue: 0,
       duration: animation.duration.slow,
       delay: 350,
       useNativeDriver: true,
     }).start();
-  }, [justCreated]);
+  }, [highlighted]);
 
   // Tick once a second only while this task's timer runs, so the elapsed clock
   // updates live without keeping an interval alive on every idle row.
@@ -1806,7 +1810,7 @@ export const TaskItem = React.memo(function TaskItem({
               regardless of its original color. The spotlighted card is the one
               row that skips it. */}
           {!isSpotlighted && <SpotlightScrim />}
-          {justCreated && !reduceMotion && (
+          {highlighted && !reduceMotion && (
             <Animated.View
               style={[styles.highlightScrim, { opacity: highlightOpacity }]}
               pointerEvents="none"

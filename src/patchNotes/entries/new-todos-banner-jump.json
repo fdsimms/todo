@@ -1,0 +1,4 @@
+{
+  "message": "Tapping a title in the \"new todos\" banner now scrolls Today to that task and flashes it — opening its category or stack if needed — instead of opening the editor",
+  "date": "2026-08-07"
+}

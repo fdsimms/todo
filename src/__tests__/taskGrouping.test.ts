@@ -12,6 +12,7 @@ import {
   categorySpan,
   applyCategoryCollapse,
   categorySectionKeys,
+  findTaskJumpTarget,
   LATER_TODAY_LABEL,
   type CategoryListItem,
   type TodayListItem,
@@ -701,5 +702,101 @@ describe('categorySpan / applyCategoryCollapse / categorySectionKeys', () => {
     // applyCategoryCollapse removes once that category is collapsed.
     expect(collapsedTaskIds).toEqual(['a']);
     expect(keys.has('a')).toBe(false);
+  });
+});
+
+describe('findTaskJumpTarget', () => {
+  // The screen's own key scheme (TodayScreen.listItemKey), which is what the
+  // returned key has to be usable as.
+  const listItemKey = (item: TodayListItem): string =>
+    item.type === 'pinned-header' ? '__pinned-header__'
+    : item.type === 'pinned-task' ? `pin-${item.task.id}`
+    : item.type === 'rest-header' ? '__rest-header__'
+    : item.type === 'header' ? `h-${item.label}`
+    : item.type === 'group' ? `g-${item.group.id}`
+    : item.task.id;
+
+  const find = (items: TodayListItem[], id: string) => findTaskJumpTarget(items, id, listItemKey);
+
+  it('finds a loose task and reports no section to open', () => {
+    const a = makeTask({ id: 'a' });
+    expect(find([{ type: 'task', task: a }], 'a')).toEqual({
+      key: 'a',
+      category: null,
+      groupId: null,
+      inRest: false,
+    });
+  });
+
+  it('names the category a task sits under, so a collapsed one can be opened', () => {
+    const a = makeTask({ id: 'a', category: 'Work' });
+    const items: TodayListItem[] = [
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: a },
+    ];
+    expect(find(items, 'a')).toMatchObject({ key: 'a', category: 'Work' });
+  });
+
+  // "Later Today" is a time section, not a collapsible category — nothing to
+  // expand, so it must not come back as one.
+  it('treats the "Later Today" section as no category', () => {
+    const a = makeTask({ id: 'a' });
+    const items: TodayListItem[] = [
+      { type: 'header', label: LATER_TODAY_LABEL },
+      { type: 'task', task: a },
+    ];
+    expect(find(items, 'a')).toMatchObject({ category: null });
+  });
+
+  // A stacked task has no row of its own in this list; its stack's header is
+  // the thing that can be scrolled to.
+  it('returns the stack heading a task rather than the task', () => {
+    const child = makeTask({ id: 'child', groupId: 'group-1' });
+    const items: TodayListItem[] = [
+      { type: 'header', label: 'Work' },
+      { type: 'group', group: makeGroup({ id: 'group-1' }), children: [child] },
+    ];
+    expect(find(items, 'child')).toEqual({
+      key: 'g-group-1',
+      category: 'Work',
+      groupId: 'group-1',
+      inRest: false,
+    });
+  });
+
+  it('flags a row sitting under "Everything else"', () => {
+    const pinned = makeTask({ id: 'p', pinned: true });
+    const rest = makeTask({ id: 'r' });
+    const items: TodayListItem[] = [
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: pinned },
+      { type: 'rest-header' },
+      { type: 'task', task: rest },
+    ];
+    expect(find(items, 'r')).toMatchObject({ key: 'r', inRest: true });
+  });
+
+  // A pinned row sits above the divider, so it's never inside the collapsible
+  // section even though the divider is further down the same list.
+  it('does not flag a pinned row as being under "Everything else"', () => {
+    const pinned = makeTask({ id: 'p', pinned: true });
+    const items: TodayListItem[] = [
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: pinned },
+      { type: 'rest-header' },
+      { type: 'task', task: makeTask({ id: 'r' }) },
+    ];
+    expect(find(items, 'p')).toEqual({
+      key: 'pin-p',
+      category: null,
+      groupId: null,
+      inRest: false,
+    });
+  });
+
+  // A filter can leave a visible-but-new task out of the list entirely; the
+  // caller needs to be able to tell that from "found it".
+  it('returns null for a task that has no row at all', () => {
+    expect(find([{ type: 'task', task: makeTask({ id: 'a' }) }], 'missing')).toBeNull();
   });
 });

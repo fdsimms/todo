@@ -518,6 +518,67 @@ export function applyCategoryCollapse(
 }
 
 /**
+ * Where a task's row sits in a Today list, for scrolling to it from something
+ * outside the list (the new-todos banner).
+ *
+ * Resolve this against the list BEFORE the collapse filters are applied —
+ * a task in a collapsed section is exactly the one the caller most needs to
+ * find, and the point of the extra fields is to say what has to be opened
+ * before the scroll can land on it.
+ */
+export interface TaskJumpTarget {
+  /** Key of the row to scroll to: the task's own row, or the stack heading it. */
+  key: string;
+  /** Category section the row sits in, or null for the loose group at the top. */
+  category: string | null;
+  /** The stack the task belongs to, if it's a member of one. */
+  groupId: string | null;
+  /** Whether the row sits under the "Everything else" divider (pinned layout). */
+  inRest: boolean;
+}
+
+/**
+ * Find the row that stands for `taskId`. A stacked task has no row of its own
+ * in this list — its stack's header does — so that's what comes back for one,
+ * along with the group id so the caller can open the stack.
+ *
+ * Returns null when the task isn't in the list at all, which a priority/effort
+ * filter is enough to cause.
+ */
+export function findTaskJumpTarget(
+  items: TodayListItem[],
+  taskId: string,
+  listItemKey: (item: TodayListItem) => string,
+): TaskJumpTarget | null {
+  const spans = categorySpan(items);
+  let inRest = false;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.type === 'rest-header') {
+      inRest = true;
+      continue;
+    }
+    const isMatch =
+      item.type === 'task' || item.type === 'pinned-task'
+        ? item.task.id === taskId
+        : item.type === 'group'
+          ? item.children.some(child => child.id === taskId)
+          : false;
+    if (!isMatch) continue;
+    // A pinned row sits above the category sections entirely, so it's never
+    // collapsed away and never inside "Everything else".
+    const pinned = item.type === 'pinned-task';
+    return {
+      key: listItemKey(item),
+      category: pinned ? null : spans[i],
+      groupId: item.type === 'group' ? item.group.id : null,
+      inRest: pinned ? false : inRest,
+    };
+  }
+  return null;
+}
+
+/**
  * Keys of task/group rows that sit under a real category header (i.e. not
  * the header-less loose group at top, and not "Later Today", which is a time
  * section rather than a category). Used to decide what to hide while a
