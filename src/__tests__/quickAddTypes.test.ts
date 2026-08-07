@@ -14,6 +14,7 @@ const step = (title: string): ChainItem => ({ id: title, title, estimatedMinutes
 const values = (over: Partial<TypeValues> = {}): TypeValues => ({
   timedMinutes: null,
   targetCount: null,
+  targetUnit: null,
   chainItems: [],
   recurrenceType: 'none',
   effort: 0,
@@ -85,6 +86,18 @@ describe('bakedFields', () => {
     expect(f.chainIndex).toBe(0);
   });
 
+  it('keeps a normalized unit on a quota', () => {
+    const f = bakedFields('target', values({ targetCount: 8, targetUnit: '  8oz  glasses ' }));
+    expect(f.targetUnit).toBe('8oz glasses');
+  });
+
+  it('never carries a unit into a task that switched away from Target', () => {
+    const carried = values({ targetCount: 8, targetUnit: 'glasses' });
+    expect(bakedFields('task', carried).targetUnit).toBeNull();
+    expect(bakedFields('timed', carried).targetUnit).toBeNull();
+    expect(bakedFields('chain', carried).targetUnit).toBeNull();
+  });
+
   it('never carries a duration into a task that switched away from Timed', () => {
     const carried = values({ timedMinutes: 25 });
     expect(bakedFields('target', carried).timedMinutes).toBeNull();
@@ -122,6 +135,12 @@ describe('typeSummary', () => {
     const s = typeSummary('target', values({ targetCount: 8 }))!;
     expect(s).toContain('8×');
     expect(s).toContain('fall behind');
+  });
+
+  it('names the unit in place of the × once one is typed', () => {
+    const s = typeSummary('target', values({ targetCount: 8, targetUnit: 'glasses' }))!;
+    expect(s).toContain('8 glasses a day');
+    expect(s).not.toContain('8×');
   });
 
   it('counts the steps, singular and plural', () => {

@@ -157,6 +157,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceCount: null,
   recurrenceFromCompletion: false,
   targetCount: null,
+  targetUnit: null,
   progressCount: 0,
   tags: [],
   category: null,
@@ -4668,6 +4669,33 @@ describe('quota tasks', () => {
 
       useTaskStore.getState().lastAction!.undo();
       expect(useTaskStore.getState().tasks[0].progressCount).toBe(3);
+    });
+  });
+
+  describe('targetUnit', () => {
+    it('carries the unit onto the next occurrence', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7, targetUnit: '8oz glasses' })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const next = useTaskStore.getState().tasks.find(t => t.id !== 'water')!;
+      expect(next.targetUnit).toBe('8oz glasses');
+    });
+
+    it('normalizes what addTask is given, and defaults to no unit', () => {
+      const withUnit = useTaskStore.getState().addTask({ title: 'Water', targetCount: 8, targetUnit: '  8oz   glasses ' });
+      expect(withUnit.targetUnit).toBe('8oz glasses');
+
+      const plain = useTaskStore.getState().addTask({ title: 'Post office' });
+      expect(plain.targetUnit).toBeNull();
+    });
+
+    it('normalizes an edit, and takes a blank one as clearing it', () => {
+      useTaskStore.setState({ tasks: [quota({ targetUnit: 'glasses' })] });
+      useTaskStore.getState().updateTask('water', { targetUnit: ' reps ' });
+      expect(useTaskStore.getState().tasks[0].targetUnit).toBe('reps');
+
+      useTaskStore.getState().updateTask('water', { targetUnit: '   ' });
+      expect(useTaskStore.getState().tasks[0].targetUnit).toBeNull();
     });
   });
 
