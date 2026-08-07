@@ -2,6 +2,7 @@ import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { activeChainStep } from './chain';
 import { isBlocked } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 
@@ -598,8 +599,7 @@ function getBecameVisibleAt(task: Task): Date | null {
 // the UI (no badge, same behavior), so this only kicks in once there's more
 // than one step to distinguish.
 export function activeChainStepTitle(task: Task): string | null {
-  if (!task.chainEnabled || task.chainItems.length <= 1) return null;
-  return task.chainItems[task.chainIndex % task.chainItems.length]?.title ?? null;
+  return activeChainStep(task)?.title ?? null;
 }
 
 // What the user should see as "the title" for a task — the active chain

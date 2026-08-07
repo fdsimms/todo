@@ -178,7 +178,7 @@ describe('fuzzySearch', () => {
       const task = makeTask({
         title: 'Landlord stuff',
         chainItems: [
-          { id: 'c1', title: 'Call the landlord about groceries budget' },
+          { id: 'c1', title: 'Call the landlord about groceries budget', estimatedMinutes: null },
         ],
       });
       expect(fuzzySearch([task], 'groceries')).toHaveLength(1);
@@ -197,8 +197,8 @@ describe('fuzzySearch', () => {
         chainEnabled: true,
         chainIndex: 0,
         chainItems: [
-          { id: 'c1', title: 'Stretch for five minutes' },
-          { id: 'c2', title: 'Shower' },
+          { id: 'c1', title: 'Stretch for five minutes', estimatedMinutes: null },
+          { id: 'c2', title: 'Shower', estimatedMinutes: null },
         ],
       });
       const [result] = fuzzySearch([task], 'stretch');
@@ -213,8 +213,8 @@ describe('fuzzySearch', () => {
         chainEnabled: true,
         chainIndex: 0,
         chainItems: [
-          { id: 'c1', title: 'Stretch for five minutes' },
-          { id: 'c2', title: 'Shower' },
+          { id: 'c1', title: 'Stretch for five minutes', estimatedMinutes: null },
+          { id: 'c2', title: 'Shower', estimatedMinutes: null },
         ],
       });
       const withoutChain = makeTask({ id: '2', title: 'unrelated', category: 'stretch' });

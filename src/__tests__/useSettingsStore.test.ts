@@ -1,15 +1,24 @@
 import { useSettingsStore } from '../store/useSettingsStore';
 import { dbGetSetting, dbSetSetting } from '../db/database';
+import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 
 jest.mock('../db/database', () => ({
   dbGetSetting: jest.fn().mockReturnValue(null),
   dbSetSetting: jest.fn(),
 }));
 
+// The key lives in the keychain now — see secureApiKey.test.ts for the module
+// itself. Here it only matters that the store goes through it.
+jest.mock('../utils/secureApiKey', () => ({
+  loadAnthropicApiKey: jest.fn().mockResolvedValue(''),
+  saveAnthropicApiKey: jest.fn().mockResolvedValue(true),
+}));
+
 beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', patchNotesQaStatus: {}, initialized: false });
+  (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -223,6 +232,96 @@ describe('resetToDefaults', () => {
     expect(state.anthropicApiKey).toBe('sk-ant-secret');
     expect(state.vacationMode).toBe(true);
   });
+
+  // "Reset appearance and formatting" must not be a way to take the lock off
+  // the app.
+  it('does not turn the app lock off', () => {
+    useSettingsStore.getState().setAppLockEnabled(true);
+    useSettingsStore.getState().setAppLockGraceSeconds(900);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.appLockEnabled).toBe(true);
+    expect(state.appLockGraceSeconds).toBe(900);
+    expect(dbSetSetting).not.toHaveBeenCalledWith('appLockEnabled', 'false');
+  });
+});
+
+// ─── the API key ─────────────────────────────────────────────────────────────
+
+describe('the API key', () => {
+  it('never goes into the settings table', () => {
+    useSettingsStore.getState().setAnthropicApiKey('sk-ant-secret');
+
+    expect(useSettingsStore.getState().anthropicApiKey).toBe('sk-ant-secret');
+    expect(saveAnthropicApiKey).toHaveBeenCalledWith('sk-ant-secret');
+    expect(dbSetSetting).not.toHaveBeenCalledWith('anthropicApiKey', expect.anything());
+  });
+
+  it('is not read out of the settings table by initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'anthropicApiKey' ? 'sk-ant-plaintext' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().anthropicApiKey).toBe('');
+  });
+
+  it('comes from the keychain', async () => {
+    (loadAnthropicApiKey as jest.Mock).mockResolvedValue('sk-ant-secure');
+    await useSettingsStore.getState().initializeSecrets();
+    expect(useSettingsStore.getState().anthropicApiKey).toBe('sk-ant-secure');
+  });
+
+  // The keychain read is in flight for a moment at launch; a key typed in that
+  // window has already been written, and must not be overwritten by it.
+  it('does not clobber a key set while the keychain read was in flight', async () => {
+    let resolveLoad: (key: string) => void = () => {};
+    (loadAnthropicApiKey as jest.Mock).mockReturnValue(
+      new Promise<string>(resolve => { resolveLoad = resolve; })
+    );
+
+    const pending = useSettingsStore.getState().initializeSecrets();
+    useSettingsStore.getState().setAnthropicApiKey('sk-ant-typed');
+    resolveLoad('sk-ant-stale');
+    await pending;
+
+    expect(useSettingsStore.getState().anthropicApiKey).toBe('sk-ant-typed');
+  });
+});
+
+// ─── app lock ────────────────────────────────────────────────────────────────
+
+describe('app lock settings', () => {
+  it('is off with a one-minute grace period until someone turns it on', () => {
+    const state = useSettingsStore.getState();
+    expect(state.appLockEnabled).toBe(false);
+    expect(state.appLockGraceSeconds).toBe(60);
+  });
+
+  it('persists both halves', () => {
+    useSettingsStore.getState().setAppLockEnabled(true);
+    useSettingsStore.getState().setAppLockGraceSeconds(300);
+    expect(dbSetSetting).toHaveBeenCalledWith('appLockEnabled', 'true');
+    expect(dbSetSetting).toHaveBeenCalledWith('appLockGraceSeconds', '300');
+  });
+
+  it('reads both back', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'appLockEnabled' ? 'true' : key === 'appLockGraceSeconds' ? '0' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appLockEnabled).toBe(true);
+    expect(useSettingsStore.getState().appLockGraceSeconds).toBe(0);
+  });
+
+  it('falls back to the default grace period for a garbled value', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'appLockGraceSeconds' ? '99999' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().appLockGraceSeconds).toBe(60);
+  });
 });
 
 // ─── Apple Reminders import ──────────────────────────────────────────────────
@@ -354,6 +453,31 @@ describe('weekStartsOn', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().weekStartsOn).toBe(0);
+  });
+});
+
+describe('fabHand', () => {
+  it('defaults to the right corner, so an existing install is unchanged', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('right');
+  });
+
+  it('round-trips left', () => {
+    useSettingsStore.getState().setFabHand('left');
+    expect(dbSetSetting).toHaveBeenCalledWith('fabHand', 'left');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'fabHand' ? 'left' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('left');
+  });
+
+  it('falls back to right for anything that is not exactly "left"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'fabHand' ? 'LEFT' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('right');
   });
 });
 

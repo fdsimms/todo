@@ -1,6 +1,6 @@
 import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
-import { effortToMinutes } from './effort';
+import { estimatedMinutesFor } from './effort';
 import { getTaskDayStart } from './dateUtils';
 import { useSettingsStore } from '../store/useSettingsStore';
 
@@ -67,12 +67,14 @@ export interface DeloadPlan {
   projectedMinutes: number;
 }
 
-// Matches sumEstimatedMinutes, so the sheet's "5.5h → 3.0h" reconciles with the
-// Today header's "5.5h planned today". (Note a timed task's timedMinutes isn't
-// part of that sum on either side — a pre-existing gap in the workload readout,
-// not one to close from in here.)
+// The same read sumEstimatedMinutes uses, so the sheet's "5.5h → 3.0h"
+// reconciles with the Today header's "5.5h planned today" — including mid-chain,
+// where it resolves to the active step's own estimate rather than the whole
+// chain's. (Note a timed task's timedMinutes isn't part of that sum on either
+// side — a pre-existing gap in the workload readout, not one to close from in
+// here.)
 function taskMinutes(t: Task): number {
-  return t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 0;
+  return estimatedMinutesFor(t) ?? 0;
 }
 
 /**

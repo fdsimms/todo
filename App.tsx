@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator from './src/navigation/AppNavigator';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
+import { AppLockGate } from './src/components/AppLockGate';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
@@ -35,6 +36,9 @@ function AppContent() {
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <AppNavigator />
+      {/* Inside ThemeProvider (it's a themed screen) and last, so its overlay
+          sits above the navigator. */}
+      <AppLockGate />
     </View>
   );
 }
@@ -42,6 +46,7 @@ function AppContent() {
 export default function App() {
   const initTasks = useTaskStore(s => s.initialize);
   const initSettings = useSettingsStore(s => s.initialize);
+  const initSecrets = useSettingsStore(s => s.initializeSecrets);
   const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
@@ -53,6 +58,12 @@ export default function App() {
     initTasks();
     // Then load settings from the now-initialized DB
     initSettings();
+    // The API key, which lives in the keychain rather than the settings table.
+    // Async and deliberately not awaited — nothing in the launch sequence below
+    // reads it, and the first thing that does is a suggestion the user asks for
+    // by tapping. It also migrates the old plaintext row on the first launch
+    // after the update, which needs the DB above to exist.
+    initSecrets();
     // Sweep expired tasks now that settings (vacationMode, dayResetTime,
     // autoRemoveExpiredTasks) are loaded for real, before vacation expiry
     // can turn vacationMode back off — see issue #689.
@@ -80,7 +91,7 @@ export default function App() {
     // AlarmKit has its own authorization, separate from UNUserNotificationCenter
     // above — only meaningful where the platform actually supports it.
     if (isAlarmKitAvailable()) requestAlarmAuthorization();
-  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
+  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

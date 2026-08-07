@@ -2,6 +2,7 @@ import * as SQLite from 'expo-sqlite';
 import type { Task, Category, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
+import { parseChainItems } from '../utils/chain';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -471,6 +472,16 @@ export function dbSetSetting(key: string, value: string): void {
   db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
 }
 
+/**
+ * Removes a setting outright, rather than blanking it the way the nullable
+ * settings do. Only one caller wants this: moving the API key to the keychain
+ * has to leave *no* row behind, and an empty string is still a row holding the
+ * name of a credential this app used to keep in plaintext.
+ */
+export function dbDeleteSetting(key: string): void {
+  db.runSync('DELETE FROM settings WHERE key = ?', [key]);
+}
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 function rowToTask(row: Record<string, unknown>): Task {
@@ -519,7 +530,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     // for existing installs. The JS-facing field names are the new ones.
     chainEnabled: Boolean(row.cycle_enabled),
     chainIndex: (row.cycle_index as number) ?? 0,
-    chainItems: JSON.parse((row.cycle_items as string) ?? '[]'),
+    chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,

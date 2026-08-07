@@ -54,6 +54,11 @@ export interface TemplateCategory {
 export interface ChainItem {
   id: string;
   title: string;
+  // What this step alone is expected to cost. null falls back to the task's
+  // own estimate — which covers the whole chain, so without per-step values a
+  // five-step routine charges its full estimate at every step and the day's
+  // workload never drops as you work through it (see estimatedMinutesFor).
+  estimatedMinutes: number | null;
 }
 
 // A lightweight, collapsible label for grouping several independent tasks

@@ -46,6 +46,18 @@
           "calendarPermission": false
         }
       ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Lets dundundun ask for Face ID before it opens, so an unlocked phone doesn't hand over your task list."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Lets dundundun ask for Face ID before it opens, so an unlocked phone doesn't hand over your task list."
+        }
+      ],
       "expo-asset",
       "expo-font",
       [

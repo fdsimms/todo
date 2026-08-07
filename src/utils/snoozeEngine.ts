@@ -5,7 +5,7 @@ import { isThisWeek } from 'date-fns/isThisWeek';
 import { format } from 'date-fns/format';
 import type { Task } from '../types';
 import { getDayStart, getNextDueDate, getWeekStart } from './dateUtils';
-import { effortToMinutes } from './effort';
+import { estimatedMinutesFor } from './effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 
@@ -13,7 +13,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 // from a precise time estimate when the task has one, else its coarse effort
 // bucket, else a modest default so unestimated tasks still count toward load.
 function effortUnits(t: Task): number {
-  return (t.estimatedMinutes ?? effortToMinutes(t.effort) ?? 30) / 30;
+  return (estimatedMinutesFor(t) ?? 30) / 30;
 }
 
 // True when two dates fall on the same *logical* day under dayResetTime.

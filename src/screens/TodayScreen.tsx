@@ -1890,8 +1890,14 @@ export function TodayScreen() {
   // Projects that have gone quiet. One bucketing pass inside a memo, not a
   // filter per project — this screen re-renders on every store change plus a
   // 30s tick.
+  //
+  // 'nudge' mode deliberately, unlike the sheet these feed into: this drives an
+  // accent tint and a count the user didn't ask for, so it stays gated on each
+  // project's own cadence. Opening the sheet asks a question and gets every
+  // quiet project back; sitting here does not, and shouldn't (see StallMode).
+  // The two counts disagreeing is the design, not a bug to reconcile.
   const projectStalls = useMemo(
-    () => findProjectStalls(projects, allTasks).filter(s => !s.project.autoSchedule),
+    () => findProjectStalls(projects, allTasks, 'nudge').filter(s => !s.project.autoSchedule),
     [projects, allTasks]
   );
   const nudgeDismissed = isDismissedToday(projectNudgeDismissedAt);

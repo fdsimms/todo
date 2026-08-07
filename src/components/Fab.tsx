@@ -6,6 +6,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { fabHomeState, type FabHomeState } from '../utils/fabDrop';
+import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
 
 /** Diameter of the standard list-screen FAB — also the room a list must leave below its last row. */
 export const FAB_SIZE = 56;
@@ -31,6 +32,19 @@ export interface FabDragHandlers {
 
 /** How far the well behind the dragged button extends past the button itself. */
 const WELL_PADDING = 8;
+
+/**
+ * The corner the button rests in, read from settings in the two places that
+ * build styles so no caller has to know about it. Everything handed lives in
+ * `makeStyles` — mirroring the button is four declarations, because the drag it
+ * supports is measured vertically and radially and so is already hand-blind:
+ * `zoneAtY` compares a pageY against bands, `resolveFabDrop` splits a row at
+ * its vertical midpoint, and `isOverFabHome` is a radius around wherever the
+ * gesture began. None of fabDrop.ts knows which side it started from.
+ */
+function useFabHand(): FabHand {
+  return useSettingsStore(s => s.fabHand);
+}
 
 interface FabButtonProps {
   onPress: () => void;
@@ -60,7 +74,8 @@ function FabButton({
 }: FabButtonProps) {
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const hand = useFabHand();
+  const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
 
   const dragX = useRef(new Animated.Value(0)).current;
   const dragY = useRef(new Animated.Value(0)).current;
@@ -157,7 +172,6 @@ function FabButton({
               width: size + WELL_PADDING * 2,
               height: size + WELL_PADDING * 2,
               borderRadius: size / 2 + WELL_PADDING,
-              right: -WELL_PADDING,
               bottom: -WELL_PADDING,
               opacity: wellOpacity,
             },
@@ -296,7 +310,8 @@ export function FabMenu({
 }: FabMenuProps) {
   const colors = useColors();
   const { shadows } = useTheme();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const hand = useFabHand();
+  const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
 
@@ -378,10 +393,17 @@ export function FabMenu({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
+const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
   container: {
     position: 'absolute',
-    right: spacing.lg,
+    // spacing.lg (24) rather than the spacing.md the cards use, and on the left
+    // that inset is load-bearing: AppNavigator's drawer edge-swipe strip is a
+    // 20pt-wide view at left: 0, rendered as a later sibling of the whole
+    // NavigationContainer — so it wins any touch it receives regardless of this
+    // container's zIndex. 24 clears it by 4pt. At spacing.md the button's left
+    // sliver would open the side menu instead of starting a drag.
+    left: hand === 'left' ? spacing.lg : undefined,
+    right: hand === 'left' ? undefined : spacing.lg,
     zIndex: 20,
   },
   fab: {
@@ -399,8 +421,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   menuContainer: {
     position: 'absolute',
-    right: spacing.lg,
-    alignItems: 'flex-end',
+    left: hand === 'left' ? spacing.lg : undefined,
+    right: hand === 'left' ? undefined : spacing.lg,
+    // The pills are wider than the button and grow away from its corner, so this
+    // has to follow the hand or they hang off the opposite edge of the screen.
+    alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
   },
   menuItem: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -413,7 +438,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold,
   },
   dragRow: {
-    flexDirection: 'row',
+    // Reversed on the left so the drop label still trails *into* the screen
+    // rather than off the edge it's parked against — the label is up to 220pt
+    // wide and the button is only 24pt from the frame.
+    flexDirection: hand === 'left' ? 'row-reverse' : 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
@@ -435,6 +463,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   well: {
     position: 'absolute',
+    // Pinned to the same edge as the button, so the spot it left behind stays
+    // under it — which is what makes bringing it home cover the well again.
+    left: hand === 'left' ? -WELL_PADDING : undefined,
+    right: hand === 'left' ? undefined : -WELL_PADDING,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: border.md,
