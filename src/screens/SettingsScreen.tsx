@@ -55,6 +55,7 @@ import { useFontPreviewsLoaded } from '../theme/AppFont';
 import { disclosureValue } from '../theme/textStyles';
 import { PatchNotesModal } from '../components/PatchNotesModal';
 import { CalendarPicker } from '../components/CalendarPicker';
+import { DetailHeader } from '../components/DetailHeader';
 import { dbExportTables, dbReplaceAllData } from '../db/database';
 import {
   buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
@@ -580,13 +581,7 @@ export function SettingsScreen() {
   return (
     <>
       <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
-            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Settings</Text>
-          <View style={{ width: 24 }} />
-        </View>
+        <DetailHeader title="Settings" onBack={onClose} />
 
         <KeyboardAvoidingView
           style={{ flex: 1 }}
@@ -1688,12 +1683,6 @@ export function SettingsScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
-  },
-  title: { color: colors.text, fontSize: font.lg, fontWeight: '600' },
   section: { paddingHorizontal: spacing.md, marginTop: spacing.xl },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '600',

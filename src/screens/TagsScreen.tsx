@@ -25,6 +25,7 @@ import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
+import { DetailHeader } from '../components/DetailHeader';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -223,20 +224,16 @@ export function TagsScreen() {
           onRequestClose={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
         >
           <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-            <View style={styles.detailHeader}>
-              <TouchableOpacity onPress={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }} accessibilityRole="button" accessibilityLabel="Close">
-                <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <View style={styles.detailTitle}>
-                {selectedTag && (
-                  <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
-                    <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
-                  </View>
-                )}
-                <Text style={styles.detailTitleText}>{selectedTag}</Text>
-              </View>
-              <View style={{ width: 24 }} />
-            </View>
+            <DetailHeader
+              title={selectedTag ?? ''}
+              backIcon="close"
+              onBack={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
+              leading={selectedTag ? (
+                <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
+                  <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
+                </View>
+              ) : undefined}
+            />
 
             <SpotlightOverlay
               visible={spotlightActive}
@@ -378,25 +375,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  detailTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  detailTitleText: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: '600',
   },
   tagIconSm: {
     width: 28,

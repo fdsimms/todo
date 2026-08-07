@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
+import { SearchField } from './SearchField';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
@@ -137,32 +138,14 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             { opacity: cardOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] },
           ]}
         >
-          <View style={styles.field}>
-            <Ionicons name="search" size={16} color={colors.textTertiary} />
-            <TextInput
-              ref={inputRef}
-              style={styles.input}
-              placeholder="Search todos…"
-              placeholderTextColor={colors.textTertiary}
-              value={query}
-              onChangeText={setQuery}
-              autoCorrect={false}
-              autoCapitalize="none"
-              returnKeyType="search"
-              onSubmitEditing={handleOpenFull}
-              clearButtonMode="while-editing"
-            />
-            {query.length > 0 && Platform.OS !== 'ios' && (
-              <TouchableOpacity
-                onPress={() => setQuery('')}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Clear search"
-              >
-                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          <SearchField
+            ref={inputRef}
+            surface="sunken"
+            placeholder="Search todos…"
+            value={query}
+            onChangeText={setQuery}
+            onSubmitEditing={handleOpenFull}
+          />
 
           {results.length > 0 && (
             <View style={styles.results}>
@@ -236,25 +219,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,
     padding: spacing.sm,
-  },
-
-  field: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-  },
-  input: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    // No lineHeight on a TextInput — see the note in SearchScreen.
-    height: 20,
-    padding: 0,
-    textAlignVertical: 'center',
   },
 
   results: { marginTop: spacing.xs },

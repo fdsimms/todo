@@ -22,8 +22,9 @@ import { SpotlightProvider, useSpotlightProgress } from '../components/Spotlight
 import { TaskEditor } from '../components/TaskEditor';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
+import { DetailHeader } from '../components/DetailHeader';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, interaction, type Colors } from '../theme';
+import { spacing, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task } from '../types';
@@ -119,11 +120,12 @@ export function CategoryDetailScreen() {
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-        <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
-            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <View style={styles.detailTitle}>
+        {/* The tile already carries the emoji — repeating it in the title
+            just doubles it up. */}
+        <DetailHeader
+          title={category}
+          onBack={onClose}
+          leading={
             <View style={[styles.catIconSm, { backgroundColor: colors.accentSubtle }]}>
               {catObj?.emoji ? (
                 <Text style={styles.catIconEmojiSm}>{catObj.emoji}</Text>
@@ -131,25 +133,24 @@ export function CategoryDetailScreen() {
                 <Ionicons name="folder" size={14} color={colors.accent} />
               )}
             </View>
-            {/* The tile to the left already carries the emoji — repeating it
-                in the title just doubles it up. */}
-            <Text style={styles.detailTitleText} numberOfLines={1}>{category}</Text>
-          </View>
-          <TouchableOpacity
-            onPress={handlePinCategory}
-            disabled={categoryTasks.length === 0}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllPinned }}
-            accessibilityLabel={categoryAllPinned ? `Unpin all tasks in ${category}` : `Pin all tasks in ${category}`}
-          >
-            <PinIcon
-              filled={categoryAllPinned}
-              size={22}
-              color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
-            />
-          </TouchableOpacity>
-        </View>
+          }
+          actions={
+            <TouchableOpacity
+              onPress={handlePinCategory}
+              disabled={categoryTasks.length === 0}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: categoryTasks.length === 0, selected: categoryAllPinned }}
+              accessibilityLabel={categoryAllPinned ? `Unpin all tasks in ${category}` : `Pin all tasks in ${category}`}
+            >
+              <PinIcon
+                filled={categoryAllPinned}
+                size={22}
+                color={categoryTasks.length === 0 ? colors.textTertiary : (categoryAllPinned ? colors.orange : colors.textSecondary)}
+              />
+            </TouchableOpacity>
+          }
+        />
 
         <View
           style={{ flex: 1 }}
@@ -240,25 +241,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  detailTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  detailTitleText: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: '600',
   },
   catIconSm: {
     width: 28,

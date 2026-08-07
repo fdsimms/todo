@@ -32,6 +32,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { DetailHeader } from '../components/DetailHeader';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -178,19 +179,19 @@ export function ProjectDetailScreen() {
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-        <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
-            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <Text style={styles.detailTitleText} numberOfLines={1}>{project?.title}</Text>
-          <TouchableOpacity
-            onPress={() => project && setEditingProject(project)}
-            accessibilityRole="button"
-            accessibilityLabel="Edit project"
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+        <DetailHeader
+          title={project?.title ?? ''}
+          onBack={onClose}
+          actions={
+            <TouchableOpacity
+              onPress={() => project && setEditingProject(project)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit project"
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          }
+        />
 
         <View
           style={{ flex: 1 }}
