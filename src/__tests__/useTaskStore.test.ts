@@ -130,6 +130,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -1775,6 +1776,55 @@ describe('dripStalledProjects', () => {
     useTaskStore.getState().dripStalledProjects();
 
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('stamps what it schedules, so the row can say where it came from', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().dripStalledProjects();
+
+    expect(useTaskStore.getState().tasks[0].autoScheduledAt).not.toBeNull();
+  });
+
+  // The reported bug, end to end: clear what the drip scheduled and the next
+  // foreground used to put the same task straight back.
+  it('does not re-date a task the user cleared today', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().dripStalledProjects();
+    // Exactly what the date picker's Clear button writes.
+    useTaskStore.getState().updateTask('a', { dueDate: null, timeSegments: [] });
+    useTaskStore.getState().dripStalledProjects();
+
+    expect(useTaskStore.getState().tasks[0].dueDate).toBeNull();
+    // The stamp stays: it is the record of the refusal, and what expires it is
+    // the day rolling over, not a reset.
+    expect(useTaskStore.getState().tasks[0].autoScheduledAt).not.toBeNull();
+  });
+
+  it('drops the stamp when the user dates the task themselves', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().dripStalledProjects();
+    useTaskStore.getState().updateTask('a', { dueDate: new Date(2025, 5, 20).toISOString() });
+
+    expect(useTaskStore.getState().tasks[0].autoScheduledAt).toBeNull();
+  });
+
+  // A date the user picked off the pull sheet is a date the user picked — it
+  // has nothing to explain and nothing to back off from.
+  it('leaves an unstamped task unstamped when it is pulled by hand', () => {
+    useProjectStore.setState({ projects: [quietProject({ autoSchedule: false })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+
+    useTaskStore.getState().pullProjectTasks([
+      { id: 'a', updates: { dueDate: new Date().toISOString(), deferUntil: null } },
+    ]);
+
+    expect(useTaskStore.getState().tasks[0].autoScheduledAt).toBeNull();
   });
 });
 

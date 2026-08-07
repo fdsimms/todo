@@ -68,6 +68,50 @@ export function wouldCycle(taskId: string, blockerId: string, resolve: TaskResol
 }
 
 /**
+ * Where the waiting task sits, so the picker can float its neighbours to the top.
+ *
+ * Taken as loose fields rather than a Task because the caller is an open editor:
+ * the user may have just moved the task into a stack and not saved yet, and the
+ * picker should rank against what they're looking at, not against the row.
+ */
+export interface BlockerContext {
+  groupId?: string | null;
+  projectId?: string | null;
+  category?: string | null;
+}
+
+/**
+ * How near a candidate is to the waiting task — 0 is nearest, 3 is unrelated.
+ *
+ * Stack beats project beats category because that's the order of how
+ * deliberately the user put the two tasks together: a stack is hand-assembled,
+ * a project is a shared goal, a category is a bucket half the list is in. A
+ * null side never matches — "neither is in a project" isn't a relationship.
+ */
+export function blockerAffinity(task: Task, ctx: BlockerContext): number {
+  if (ctx.groupId && task.groupId === ctx.groupId) return 0;
+  if (ctx.projectId && task.projectId === ctx.projectId) return 1;
+  if (ctx.category && task.category === ctx.category) return 2;
+  return 3;
+}
+
+/**
+ * Orders picker candidates by affinity, keeping the incoming order within each
+ * tier — which is the store's order for the unsearched list and the match score
+ * for a searched one, so relevance still decides among equals.
+ *
+ * Sorting before the list is truncated is the point: what a task waits on is
+ * nearly always something next to it, and those can sit arbitrarily deep in a
+ * few hundred tasks.
+ */
+export function sortByBlockerAffinity(tasks: Task[], ctx: BlockerContext): Task[] {
+  return tasks
+    .map((task, index) => ({ task, index, tier: blockerAffinity(task, ctx) }))
+    .sort((a, b) => (a.tier !== b.tier ? a.tier - b.tier : a.index - b.index))
+    .map(e => e.task);
+}
+
+/**
  * The live tasks waiting on this one — the "N waiting" chip on a blocker's row.
  *
  * Completed and archived waiters are excluded: the chip is about work queued

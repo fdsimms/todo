@@ -31,16 +31,20 @@ jest.mock('react-native', () => ({
 }));
 
 const mockAddTask = jest.fn();
+// What the store already holds. Only read with deletion off, where the names
+// on these rows are what stands in for the delete.
+let mockTasks: { title: string }[] = [];
 jest.mock('../store/useTaskStore', () => ({
-  useTaskStore: { getState: () => ({ addTask: mockAddTask }) },
+  useTaskStore: { getState: () => ({ addTask: mockAddTask, tasks: mockTasks }) },
 }));
 
 // The second drain destination. Mocked out rather than imported for the same
 // reason as the task store: the real one reaches expo-sqlite, which doesn't
 // load under the node test env.
 const mockAddByName = jest.fn();
+let mockGroceryItems: { nameKey: string }[] = [];
 jest.mock('../store/useGroceryStore', () => ({
-  useGroceryStore: { getState: () => ({ addByName: mockAddByName }) },
+  useGroceryStore: { getState: () => ({ addByName: mockAddByName, items: mockGroceryItems }) },
 }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -73,13 +77,19 @@ beforeEach(() => {
   // reset, not clear: one test makes addTask throw, and clearAllMocks would
   // leave that implementation in place for everything after it.
   jest.resetAllMocks();
+  mockTasks = [];
+  mockGroceryItems = [];
   mockSettings = {
     remindersImportEnabled: true,
     remindersImportListId: LIST.id,
     remindersImportConfirmedListId: LIST.id,
-    // The shipped default, so the common path through these tests is the one
-    // real users are on.
+    // The shipped defaults, so the common path through these tests is the one
+    // real users are on. remindersImportDelete especially: with it off the
+    // drain stops deleting and starts consulting names instead, which is a
+    // different set of rules entirely.
     remindersImportReview: true,
+    remindersImportDelete: true,
+    groceryImportDelete: true,
     initialized: true,
   };
   mockCalendar.getRemindersPermissionsAsync.mockResolvedValue({
@@ -162,7 +172,7 @@ describe('importReminders — the create/delete contract', () => {
     expect(order).toEqual(['addTask', 'delete']);
     expect(mockAddTask).toHaveBeenCalledWith({ title: 'Task a' });
     expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('a');
-    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, reason: 'ok' });
+    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
   });
 
   it('imports in the order things were said', async () => {
@@ -199,7 +209,7 @@ describe('importReminders — the create/delete contract', () => {
     const outcome = await freshSync().importReminders();
 
     expect(mockAddTask).toHaveBeenCalledTimes(3);
-    expect(outcome).toEqual({ imported: 3, deleteFailed: 1, reason: 'ok' });
+    expect(outcome).toEqual({ imported: 3, deleteFailed: 1, skipped: 0, reason: 'ok' });
   });
 
   it('does not import a reminder again once its delete has failed', async () => {
@@ -240,7 +250,7 @@ describe('importReminders — the create/delete contract', () => {
     expect(sync.lastImportOutcome()).toBeNull();
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
     await sync.importReminders();
-    expect(sync.lastImportOutcome()).toEqual({ imported: 1, deleteFailed: 0, reason: 'ok' });
+    expect(sync.lastImportOutcome()).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
   });
 
   it('does not import the same reminder twice when two triggers overlap', async () => {
@@ -392,9 +402,11 @@ function groceryOnly() {
     remindersImportEnabled: false,
     remindersImportListId: null,
     remindersImportConfirmedListId: null,
+    remindersImportDelete: true,
     groceryImportEnabled: true,
     groceryImportListId: GROCERY_LIST.id,
     groceryImportConfirmedListId: GROCERY_LIST.id,
+    groceryImportDelete: true,
     initialized: true,
   };
   mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, GROCERY_LIST]);
@@ -476,9 +488,11 @@ describe('importReminders — the grocery destination', () => {
       remindersImportEnabled: true,
       remindersImportListId: LIST.id,
       remindersImportConfirmedListId: LIST.id,
+      remindersImportDelete: true,
       groceryImportEnabled: true,
       groceryImportListId: GROCERY_LIST.id,
       groceryImportConfirmedListId: GROCERY_LIST.id,
+      groceryImportDelete: true,
       initialized: true,
     };
     mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, GROCERY_LIST]);
@@ -503,9 +517,11 @@ describe('importReminders — the grocery destination', () => {
       remindersImportEnabled: true,
       remindersImportListId: 'a-list-that-vanished',
       remindersImportConfirmedListId: 'a-list-that-vanished',
+      remindersImportDelete: true,
       groceryImportEnabled: true,
       groceryImportListId: GROCERY_LIST.id,
       groceryImportConfirmedListId: GROCERY_LIST.id,
+      groceryImportDelete: true,
       initialized: true,
     };
     mockCalendar.getCalendarsAsync.mockResolvedValue([GROCERY_LIST]);
@@ -515,5 +531,140 @@ describe('importReminders — the grocery destination', () => {
 
     expect(outcome.imported).toBe(1);
     expect(mockAddByName).toHaveBeenCalledWith('milk');
+  });
+});
+
+/**
+ * "Delete after importing" off. The delete is normally what stops a capture
+ * arriving twice — with it gone the reminder is handed back on every single
+ * foreground, so these tests are about the thing that replaces it.
+ */
+describe('importReminders — with the reminders left in place', () => {
+  beforeEach(() => {
+    mockSettings.remindersImportDelete = false;
+  });
+
+  it('imports the task and leaves the reminder alone', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'book a haircut' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
+    expect(mockAddTask).toHaveBeenCalledWith({ title: 'book a haircut' });
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('skips a reminder whose name is already a task, and says so', async () => {
+    mockTasks = [{ title: 'Book a haircut' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'book a haircut' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome).toMatchObject({ imported: 0, skipped: 1, reason: 'ok' });
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  // Wide on purpose: with nothing being deleted a false match costs a skip the
+  // user can undo by hand, while a false miss re-imports for ever. A finished
+  // task still answers "yes, that one came across already".
+  it('counts a completed task as a name already taken', async () => {
+    mockTasks = [{ title: 'take out the bins', completed: true } as { title: string }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'take out the bins' })]);
+
+    expect((await freshSync().importReminders()).skipped).toBe(1);
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('matches the stripped title an earlier import would have saved', async () => {
+    // Review off saves "pay rent", not "pay rent tomorrow" — so the name in
+    // the store is the stripped one, and only matching the dictated title
+    // would re-import this on the next foreground.
+    mockSettings.remindersImportReview = false;
+    mockTasks = [{ title: 'pay rent' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'pay rent tomorrow' }),
+    ]);
+
+    expect((await freshSync().importReminders()).skipped).toBe(1);
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps the index current, so one batch cannot land the same name twice', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'call mum', creationDate: '2026-08-06T09:00:00.000Z' }),
+      reminder('b', { title: 'Call Mum', creationDate: '2026-08-06T10:00:00.000Z' }),
+    ]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome).toMatchObject({ imported: 1, skipped: 1 });
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+
+  // The skip isn't remembered: nothing was created, so deleting the task that
+  // blocked it should free the capture to come across.
+  it('lets a skipped reminder through once its task is gone', async () => {
+    mockTasks = [{ title: 'book a haircut' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'book a haircut' })]);
+    const sync = freshSync();
+
+    expect((await sync.importReminders()).skipped).toBe(1);
+
+    mockTasks = [];
+    expect((await sync.importReminders()).imported).toBe(1);
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('still deletes on the other destination, which has its own setting', async () => {
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = GROCERY_LIST.id;
+    mockSettings.groceryImportConfirmedListId = GROCERY_LIST.id;
+    mockSettings.groceryImportDelete = true;
+    mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, GROCERY_LIST]);
+    mockCalendar.getRemindersAsync.mockImplementation(async (ids: string[]) =>
+      ids[0] === LIST.id ? [reminder('t1', { title: 'call the dentist' })] : [reminder('g1', { title: 'milk' })]
+    );
+
+    await freshSync().importReminders();
+
+    expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledTimes(1);
+    expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('g1');
+  });
+});
+
+describe('importReminders — groceries left in place', () => {
+  beforeEach(() => {
+    groceryOnly();
+    mockSettings.groceryImportDelete = false;
+  });
+
+  it('adds the item and leaves the reminder alone', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome).toMatchObject({ imported: 1, skipped: 0 });
+    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  // The catalog, not the list: a row that came off the list when it was bought
+  // still knows the name, which is what keeps a permanent reminder from
+  // yanking milk back onto the list after every shop.
+  it('skips a name the catalog already knows, quantity and all', async () => {
+    mockGroceryItems = [{ nameKey: 'chicken' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: '2 lb chicken' })]);
+
+    expect((await freshSync().importReminders()).skipped).toBe(1);
+    expect(mockAddByName).not.toHaveBeenCalled();
+  });
+
+  it('lets a name the catalog has never seen through', async () => {
+    mockGroceryItems = [{ nameKey: 'milk' }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'eggs' })]);
+
+    expect((await freshSync().importReminders()).imported).toBe(1);
+    expect(mockAddByName).toHaveBeenCalledWith('eggs');
   });
 });

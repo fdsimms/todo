@@ -12,6 +12,7 @@ import {
   categorySpan,
   applyCategoryCollapse,
   categorySectionKeys,
+  sectionTaskIds,
   findTaskJumpTarget,
   LATER_TODAY_LABEL,
   type CategoryListItem,
@@ -60,6 +61,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -798,5 +800,79 @@ describe('findTaskJumpTarget', () => {
   // caller needs to be able to tell that from "found it".
   it('returns null for a task that has no row at all', () => {
     expect(find([{ type: 'task', task: makeTask({ id: 'a' }) }], 'missing')).toBeNull();
+  });
+});
+
+describe('sectionTaskIds', () => {
+  // What a header needs to leave with its rows: the ids under it, so it can
+  // watch the completion batch and go in the same frame they do.
+  it('names the tasks under each header', () => {
+    const ids = sectionTaskIds([
+      { type: 'task', task: makeTask({ id: 'loose' }) },
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+      { type: 'task', task: makeTask({ id: 'w2' }) },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(ids.get('work')).toEqual(['w1', 'w2']);
+    expect(ids.get('home')).toEqual(['h1']);
+  });
+
+  // The loose group at the top has no header to take away, so its tasks belong
+  // to no section at all.
+  it('leaves the header-less loose tasks out', () => {
+    const ids = sectionTaskIds([
+      { type: 'task', task: makeTask({ id: 'loose' }) },
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+    ]);
+    expect(ids.size).toBe(1);
+    expect([...ids.values()].flat()).not.toContain('loose');
+  });
+
+  // A stack is a row with its own children and its own hold — collapsing the
+  // header over it would strand the tray under the section above.
+  it('drops a section that holds a stack', () => {
+    const ids = sectionTaskIds([
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+      { type: 'group', group: makeGroup({ id: 'g1', category: 'work' }), children: [makeTask({ id: 'c1' })] },
+      { type: 'task', task: makeTask({ id: 'w2' }) },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(ids.has('work')).toBe(false);
+    // The section after it is unaffected — the stack disqualifies its own
+    // header, not the rest of the list.
+    expect(ids.get('home')).toEqual(['h1']);
+  });
+
+  // A collapsed category still renders its header, with none of its rows. It has
+  // nothing to leave alongside, and an empty list here would read as "everything
+  // under me is going" the moment any batch fired.
+  it('drops a header whose rows have been folded away', () => {
+    const ids = sectionTaskIds([
+      { type: 'header', label: 'work' },
+      { type: 'header', label: 'home' },
+      { type: 'task', task: makeTask({ id: 'h1' }) },
+    ]);
+    expect(ids.has('work')).toBe(false);
+    expect(ids.get('home')).toEqual(['h1']);
+  });
+
+  // Neither divider heads a category, and rows above the first header (the
+  // pinned run) belong to no section.
+  it('ignores the pinned and "everything else" dividers', () => {
+    const ids = sectionTaskIds([
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: makeTask({ id: 'p1' }) },
+      { type: 'rest-header' },
+      { type: 'task', task: makeTask({ id: 'loose' }) },
+      { type: 'header', label: 'work' },
+      { type: 'task', task: makeTask({ id: 'w1' }) },
+    ]);
+    expect(ids.size).toBe(1);
+    expect(ids.get('work')).toEqual(['w1']);
   });
 });

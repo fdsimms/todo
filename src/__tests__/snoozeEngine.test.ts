@@ -21,6 +21,7 @@ const BASE: Task = {
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: new Date().toISOString(),
   seenAt: null,
   dueDate: null,

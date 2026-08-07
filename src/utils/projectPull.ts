@@ -143,6 +143,8 @@ export type PullEmptyReason =
   | 'has-schedule'
   /** Only mid-chain steps left, which can't be dated. */
   | 'no-pullable'
+  /** The user cleared what the drip scheduled today — it stands down till tomorrow. */
+  | 'declined-today'
   /** Nothing live left in it — empty, or finished. */
   | 'no-live-tasks';
 
@@ -171,6 +173,33 @@ export interface ProjectPullPlan {
  */
 function isPullable(task: Task): boolean {
   return !(task.chainEnabled && task.chainItems.length > 0 && task.chainIndex > 0);
+}
+
+/**
+ * The user cleared, today, a date the drip put on this project — an
+ * autoScheduledAt stamp with no dueDate left beside it (see Task.autoScheduledAt).
+ *
+ * Clearing a date is the one way to say "not this project today" that costs a
+ * single tap, and until this existed the drip couldn't see it: clearing
+ * restores hasNoDateSignal, which is *precisely* what makes a project stalled,
+ * so the next foreground dated the same task again seconds later. Nothing the
+ * user could do short of completing or archiving reset the quiet clock, because
+ * lastTouchedAt only moves on a completion.
+ *
+ * Scoped to the project, not the task, because the refusal is about the project
+ * — picking the runner-up candidate instead would be the same interruption
+ * wearing a different title. And scoped to the logical day, not to the cadence:
+ * a full cadence is the user's answer to "how often should I be chased", not to
+ * "I'm not doing this today", and on a fortnightly project it would bury the
+ * task for two weeks over one tap.
+ */
+function declinedToday(members: readonly Task[], todayStart: Date): boolean {
+  return members.some(
+    t =>
+      t.autoScheduledAt !== null &&
+      hasNoDateSignal(t) &&
+      +getDayStart(new Date(t.autoScheduledAt)) === +todayStart
+  );
 }
 
 /**
@@ -233,6 +262,14 @@ function classifyProject(
 
   const pullable = members.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
+
+  // Nudge-mode only, for the same reason the cadence is: this answers "should I
+  // speak up unasked today", and a sheet the user opened themselves has already
+  // been asked. Tapping "Pull from projects" an hour after clearing a drip is a
+  // change of mind, and the sheet should honour it.
+  if (mode === 'nudge' && declinedToday(members, todayStart)) {
+    return { reason: 'declined-today', daysUntilQuiet: 1 };
+  }
 
   const touched = lastTouchedAt(project, allMembers);
   // Calendar days on the logical day boundary, never string-sliced ISO — see
@@ -389,6 +426,7 @@ export function suggestPullDate(
 const REASON_PRIORITY: readonly PullEmptyReason[] = [
   'cadence-off',
   'too-soon',
+  'declined-today',
   'auto-scheduled',
   'has-schedule',
   'no-pullable',
@@ -477,6 +515,12 @@ export function describePullEmpty(state: PullEmptyState): string {
       return state.daysUntilQuiet !== undefined
         ? `Nothing has been quiet long enough yet — the next one is due in ${state.daysUntilQuiet} day${state.daysUntilQuiet === 1 ? '' : 's'}.`
         : 'Nothing has been quiet long enough yet.';
+    case 'declined-today':
+      // Only reachable from a 'nudge'-mode diagnosis — the sheet asks in 'ask'
+      // mode, where a change of mind is honoured (see classifyProject).
+      return count === total
+        ? 'You cleared what was scheduled today — nothing new until tomorrow.'
+        : `${projects(count)} of ${total} had today's suggestion cleared.${rest}`;
     case 'auto-scheduled':
       return `${count === 1 ? 'One quiet project is' : `${projects(count)} are quiet and`} on auto-schedule — the next task gets dated without you.${rest}`;
     case 'has-schedule':

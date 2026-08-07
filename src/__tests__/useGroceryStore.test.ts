@@ -389,6 +389,48 @@ describe('aisles', () => {
     expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
   });
 
+  it('applyDrop writes the new order and any aisle the drop changed', () => {
+    const apples = makeItem({ name: 'Apples', aisle: 'Produce', onList: true, sortOrder: 1 });
+    const milk = makeItem({ name: 'Milk', aisle: 'Dairy', onList: true, sortOrder: 2 });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery', onList: true, sortOrder: 3 });
+    seed([apples, milk, bread]);
+
+    // Milk dragged up under the Produce header: same slot, new aisle.
+    useGroceryStore.getState().applyDrop([
+      { id: apples.id, sortOrder: 1, aisle: 'Produce' },
+      { id: milk.id, sortOrder: 2, aisle: 'Produce' },
+      { id: bread.id, sortOrder: 3, aisle: 'Bakery' },
+    ]);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === milk.id)).toMatchObject({ sortOrder: 2, aisle: 'Produce' });
+    // Nothing else moved, so only the row that changed is written.
+    expect(dbUpdateGroceryItem).toHaveBeenCalledTimes(1);
+    expect((dbUpdateGroceryItem as jest.Mock).mock.calls[0][0].id).toBe(milk.id);
+  });
+
+  it('applyDrop takes a new aisle into the walk order and ignores unknown ids', () => {
+    const item = makeItem({ name: 'nduja', onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([
+      { id: item.id, sortOrder: 1, aisle: 'Butcher' },
+      { id: 'gone', sortOrder: 2, aisle: 'Butcher' },
+    ]);
+
+    expect(useGroceryStore.getState().items[0].aisle).toBe('Butcher');
+    expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
+  });
+
+  it('applyDrop writes nothing when the drop changed nothing', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy', onList: true, sortOrder: 3 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 3, aisle: 'Dairy' }]);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
   it('setAisleOrder persists a normalised order', () => {
     useGroceryStore.getState().setAisleOrder(['Frozen', 'Produce']);
 

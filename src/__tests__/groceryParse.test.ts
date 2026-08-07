@@ -49,6 +49,14 @@ describe('parseGroceryInput', () => {
     expect(parseGroceryInput('12 eggs')).toEqual({ name: 'eggs', quantity: '12' });
   });
 
+  it('recognizes tbsp and tsp as units', () => {
+    expect(parseGroceryInput('1 tbsp sugar')).toEqual({ name: 'sugar', quantity: '1 tbsp' });
+    expect(parseGroceryInput('2 tsp vanilla extract')).toEqual({
+      name: 'vanilla extract',
+      quantity: '2 tsp',
+    });
+  });
+
   it('peels a trailing xN', () => {
     expect(parseGroceryInput('milk x2')).toEqual({ name: 'milk', quantity: 'x2' });
     expect(parseGroceryInput('eggs x 12')).toEqual({ name: 'eggs', quantity: 'x12' });

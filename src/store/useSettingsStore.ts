@@ -93,6 +93,14 @@ interface SettingsStore {
   remindersImportEnabled: boolean;
   remindersImportListId: string | null;
   remindersImportConfirmedListId: string | null;
+  // Whether an imported reminder is deleted from the Reminders app. On by
+  // default, and on is the mode the whole feature was built around: the delete
+  // is what stops a capture being imported twice. Off turns it into a one-way
+  // mirror — the list keeps its contents, and a name index over the existing
+  // tasks stands in for the delete (see remindersImport.ts). Kept per
+  // destination because the two lists are used differently: a dictation inbox
+  // wants emptying, a shared grocery list usually doesn't.
+  remindersImportDelete: boolean;
   // A second Reminders list, drained into the grocery list instead of the
   // Inbox — which is what makes "Hey Siri, add milk to my Groceries list"
   // land somewhere useful. Must never be the same list as the one above; the
@@ -100,6 +108,8 @@ interface SettingsStore {
   groceryImportEnabled: boolean;
   groceryImportListId: string | null;
   groceryImportConfirmedListId: string | null;
+  /** remindersImportDelete's twin, for the grocery list. Same default, same rules. */
+  groceryImportDelete: boolean;
   // Whether the schedule an import parses out of a reminder — its due date,
   // repeat, and alarm — waits on the Inbox row as a suggestion the user taps
   // to accept, or is simply applied. On by default: applying is what takes a
@@ -146,9 +156,11 @@ interface SettingsStore {
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
+  setRemindersImportDelete: (on: boolean) => void;
   setGroceryImportEnabled: (on: boolean) => void;
   setGroceryImportListId: (id: string | null) => void;
   setGroceryImportConfirmedListId: (id: string | null) => void;
+  setGroceryImportDelete: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
@@ -175,7 +187,9 @@ const DEFAULT_SETTINGS = {
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
   remindersImportEnabled: false,
+  remindersImportDelete: true,
   groceryImportEnabled: false,
+  groceryImportDelete: true,
   remindersImportReview: true,
 };
 
@@ -255,9 +269,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
+  remindersImportDelete: true,
   groceryImportEnabled: false,
   groceryImportListId: null,
   groceryImportConfirmedListId: null,
+  groceryImportDelete: true,
   remindersImportReview: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
@@ -304,9 +320,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const remindersImportReview = dbGetSetting('remindersImportReview') !== 'false';
     const remindersImportListId = dbGetSetting('remindersImportListId') || null;
     const remindersImportConfirmedListId = dbGetSetting('remindersImportConfirmedListId') || null;
+    // `!== 'false'` again, and here it's the more important of the two: an
+    // install that predates the setting has already been deleting reminders,
+    // and reading the missing row as "off" would silently switch it to leaving
+    // them behind — duplicating every capture the name index didn't catch.
+    const remindersImportDelete = dbGetSetting('remindersImportDelete') !== 'false';
     const groceryImportEnabled = dbGetSetting('groceryImportEnabled') === 'true';
     const groceryImportListId = dbGetSetting('groceryImportListId') || null;
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
+    const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
@@ -317,8 +339,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportReview, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   /**
@@ -512,6 +533,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ remindersImportConfirmedListId: id });
   },
 
+  setRemindersImportDelete(on: boolean) {
+    dbSetSetting('remindersImportDelete', on ? 'true' : 'false');
+    set({ remindersImportDelete: on });
+  },
+
   setGroceryImportEnabled(on: boolean) {
     dbSetSetting('groceryImportEnabled', on ? 'true' : 'false');
     set({ groceryImportEnabled: on });
@@ -525,6 +551,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setGroceryImportConfirmedListId(id: string | null) {
     dbSetSetting('groceryImportConfirmedListId', id ?? '');
     set({ groceryImportConfirmedListId: id });
+  },
+
+  setGroceryImportDelete(on: boolean) {
+    dbSetSetting('groceryImportDelete', on ? 'true' : 'false');
+    set({ groceryImportDelete: on });
   },
 
   setRemindersImportReview(on: boolean) {

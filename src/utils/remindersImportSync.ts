@@ -7,10 +7,15 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import {
   draftFromReminder,
   findReminderList,
+  groceryItemKey,
+  groceryItemKeys,
   importableReminders,
   isImportableList,
+  isReminderAlreadyPresent,
   pendingImportFor,
   reminderListOptions,
+  taskTitleKey,
+  taskTitleKeys,
 } from './remindersImport';
 
 /**
@@ -35,6 +40,12 @@ export interface ImportOutcome {
   imported: number;
   /** Tasks created whose reminder wouldn't delete — the duplicate-producing case. */
   deleteFailed: number;
+  /**
+   * Reminders left where they were because their name is already on a task or
+   * in the grocery catalog. Only ever non-zero with deletion off, which is the
+   * mode where a reminder is read again on every foreground.
+   */
+  skipped: number;
   reason:
     | 'ok'
     | 'unsupported'
@@ -49,6 +60,7 @@ export interface ImportOutcome {
 const NOTHING = (reason: ImportOutcome['reason']): ImportOutcome => ({
   imported: 0,
   deleteFailed: 0,
+  skipped: 0,
   reason,
 });
 
@@ -56,8 +68,10 @@ const NOTHING = (reason: ImportOutcome['reason']): ImportOutcome => ({
  * Every reminder this process has already turned into a task, whether or not
  * deleting it afterwards worked. Both halves matter, and for different reasons:
  *
- * - a *failed* delete leaves the reminder sitting there, so without this it
- *   would be re-imported on every single trigger, for ever;
+ * - a *failed* delete — or a delete the user switched off — leaves the reminder
+ *   sitting there, so without this it would be re-imported on every single
+ *   trigger for the rest of the session (across sessions, the name index in
+ *   remindersImport.ts is what holds the line);
  * - a *successful* delete is committed to EventKit asynchronously, so a fetch
  *   that lands immediately after one — which the replay below can cause — may
  *   still be handed a reminder we've already imported.
@@ -122,13 +136,27 @@ export async function listReminderLists(): Promise<ReminderList[]> {
  * fetchImportable with the drain itself so the number the confirmation names
  * is exactly the set that gets deleted — if they diverge the alert is a lie.
  *
+ * `sink` is why the name index is consulted here too: with deletion off the
+ * drain leaves anything already on a task or in the catalog alone, so counting
+ * those would over-promise on the one alert that has to be exact.
+ *
  * Returns null when the list couldn't be read at all.
  */
-export async function countImportableReminders(listId: string): Promise<number | null> {
+export async function countImportableReminders(
+  listId: string,
+  sink: Sink = 'task'
+): Promise<number | null> {
   if (Platform.OS !== 'ios') return null;
   try {
     const reminders = await fetchImportable(listId);
-    return reminders.length;
+    const { remindersImportDelete, groceryImportDelete } = useSettingsStore.getState();
+    const taken = takenNames(
+      sink,
+      sink === 'grocery' ? groceryImportDelete : remindersImportDelete
+    );
+    if (!taken) return reminders.length;
+    const now = new Date();
+    return reminders.filter(r => !isReminderAlreadyPresent(r, sink, taken, now)).length;
   } catch {
     return null;
   }
@@ -143,6 +171,8 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
   return importableReminders(reminders, handledIds);
 }
 
+type Sink = 'task' | 'grocery';
+
 /**
  * Where a drained list's reminders go. Two destinations exist because a
  * dictated "buy milk" and a dictated "call the dentist" want different homes,
@@ -150,7 +180,9 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
  */
 interface DrainTarget {
   listId: string;
-  sink: 'task' | 'grocery';
+  sink: Sink;
+  /** False when the user has asked for the reminders to be left in place. */
+  deleteAfterImport: boolean;
 }
 
 /**
@@ -162,19 +194,46 @@ interface DrainTarget {
 function drainTargets(): DrainTarget[] {
   const {
     remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId,
+    remindersImportDelete,
     groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId,
+    groceryImportDelete,
   } = useSettingsStore.getState();
 
   const targets: DrainTarget[] = [];
   if (remindersImportEnabled && remindersImportListId
       && remindersImportConfirmedListId === remindersImportListId) {
-    targets.push({ listId: remindersImportListId, sink: 'task' });
+    targets.push({
+      listId: remindersImportListId,
+      sink: 'task',
+      deleteAfterImport: remindersImportDelete,
+    });
   }
   if (groceryImportEnabled && groceryImportListId
       && groceryImportConfirmedListId === groceryImportListId) {
-    targets.push({ listId: groceryImportListId, sink: 'grocery' });
+    targets.push({
+      listId: groceryImportListId,
+      sink: 'grocery',
+      deleteAfterImport: groceryImportDelete,
+    });
   }
   return targets;
+}
+
+/**
+ * The name index a drain consults for this sink, or null when it doesn't need
+ * one. Null is the normal case: with the reminder being deleted the delete
+ * *is* the record, and two separate captures that happen to share a title
+ * should both come across.
+ *
+ * Read from the store at the top of each target rather than once per reminder,
+ * then kept current as rows are added — so two reminders saying the same thing
+ * in one batch can't both land either.
+ */
+function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null {
+  if (deleteAfterImport) return null;
+  return sink === 'grocery'
+    ? groceryItemKeys(useGroceryStore.getState().items)
+    : taskTitleKeys(useTaskStore.getState().tasks);
 }
 
 /**
@@ -205,6 +264,7 @@ async function drainOnce(): Promise<ImportOutcome> {
     const { addTask } = useTaskStore.getState();
     let imported = 0;
     let deleteFailed = 0;
+    let skipped = 0;
     let sawList = false;
     let sawWritableList = false;
     // One clock for the whole drain, so a batch of reminders parsed together
@@ -225,6 +285,9 @@ async function drainOnce(): Promise<ImportOutcome> {
       const reminders = await fetchImportable(target.listId);
       if (reminders.length === 0) continue;
 
+      // Null whenever reminders are being deleted — see takenNames.
+      const taken = takenNames(target.sink, target.deleteAfterImport);
+
       // Sequential, never Promise.all: addTask derives sortOrder from max + 1
       // over the current array, so concurrency scrambles the order things were
       // dictated in, and one commit at a time bounds the damage if something goes
@@ -232,6 +295,14 @@ async function drainOnce(): Promise<ImportOutcome> {
       for (const reminder of reminders) {
         const draft = draftFromReminder(reminder);
         if (!draft) continue;
+
+        // Deliberately *not* recorded in handledIds: nothing was created, so
+        // if the task that blocked it is deleted later the capture is still
+        // free to come across on the next foreground.
+        if (taken && isReminderAlreadyPresent(reminder, target.sink, taken, now)) {
+          skipped += 1;
+          continue;
+        }
 
         // Create first, delete second, and never the other way round. A failed
         // delete leaves a duplicate — visible, understandable, fixable by hand. A
@@ -256,6 +327,10 @@ async function drainOnce(): Promise<ImportOutcome> {
           // splits its quantity off and a name already in the catalog is
           // re-listed instead of duplicated — same as typing it.
           useGroceryStore.getState().addByName(name);
+          if (taken) {
+            const key = groceryItemKey(name);
+            if (key) taken.add(key);
+          }
         } else {
           // Everything the reminder implies about scheduling. Pure and
           // synchronous, and done before the create so a parse that somehow
@@ -270,13 +345,22 @@ async function drainOnce(): Promise<ImportOutcome> {
           const scheduled = pending
             ? (remindersImportReview ? { pendingImport: pending } : pending)
             : null;
-          addTask({ ...draft, ...scheduled });
+          const saved = { ...draft, ...scheduled };
+          addTask(saved);
+          // The title as *stored*, which is the one a later pass will find in
+          // the store — with review off that's the stripped one, not what was
+          // dictated.
+          if (taken) {
+            const key = taskTitleKey(saved.title);
+            if (key) taken.add(key);
+          }
         }
         // Recorded the moment the row exists, before the delete is even
         // attempted — that's what makes it cover both failure modes above.
         handledIds.add(reminder.id!);
         imported += 1;
 
+        if (!target.deleteAfterImport) continue;
         try {
           await calendar().deleteReminderAsync(reminder.id!);
         } catch {
@@ -291,7 +375,7 @@ async function drainOnce(): Promise<ImportOutcome> {
       if (!sawList) return NOTHING('list-missing');
       if (!sawWritableList) return NOTHING('list-readonly');
     }
-    return { imported, deleteFailed, reason: 'ok' };
+    return { imported, deleteFailed, skipped, reason: 'ok' };
   } catch {
     // Nothing was deleted that wasn't first imported, so the next trigger
     // simply tries again.
