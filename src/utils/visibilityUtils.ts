@@ -4,7 +4,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { activeChainStep } from './chain';
 import { isBlocked } from './blocking';
-import { resolveBlocker } from './blockerRegistry';
+import { isSequenceHeld, resolveBlocker } from './blockerRegistry';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -17,6 +17,28 @@ import { resolveBlocker } from './blockerRegistry';
 export function isTaskBlocked(task: Task): boolean {
   if (task.completed || task.archived) return false;
   return isBlocked(task, resolveBlocker);
+}
+
+/**
+ * True while a sequential project is holding this task back — an earlier step
+ * in its project's order isn't done yet (see Project.sequential).
+ *
+ * The same kind of "not yet" isTaskBlocked describes, and it hides a task from
+ * the same lists, but deliberately a separate predicate rather than a second
+ * clause inside that one. isTaskBlocked also decides what the Waiting screen
+ * shows, and Waiting groups its rows under the task each one is waiting on: a
+ * sequence has no such task to name (nothing is stored — the gate is position),
+ * and a twenty-step project would put nineteen rows there behind a heading it
+ * couldn't write. A held step's home is its project screen, where the order it
+ * is waiting on is the thing you are looking at.
+ */
+export function isSequenceBlocked(task: Task): boolean {
+  return isSequenceHeld(task);
+}
+
+/** Either reason a task isn't actionable yet — what the daily lists gate on. */
+export function isHeldBack(task: Task): boolean {
+  return isTaskBlocked(task) || isSequenceBlocked(task);
 }
 
 // Anchored to the current *logical* day (getCurrentDayStart), not the literal
@@ -357,7 +379,7 @@ export function isTaskVisible(task: Task): boolean {
 
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
-  if (isTaskBlocked(task)) return false;
+  if (isHeldBack(task)) return false;
 
   const now = new Date();
   const { dayResetTime } = useSettingsStore.getState();
@@ -431,8 +453,9 @@ export function isTaskDeferred(task: Task): boolean {
   // Same shape as the two below, and the reason it matters: Later is sorted and
   // sectioned end to end by getVisibleAt(), and a blocked task has no moment to
   // give it. Without this it would take getVisibleAt's `now` fallback and pin
-  // itself to the top of the list under a meaningless header.
-  if (isTaskBlocked(task)) return false;
+  // itself to the top of the list under a meaningless header. A step waiting on
+  // the one above it has no moment either.
+  if (isHeldBack(task)) return false;
   // Undated project tasks aren't visible, but they don't belong in Later
   // either — they have no date to be deferred to, so they just live in their
   // project until one is assigned.

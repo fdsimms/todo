@@ -3,6 +3,7 @@ import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { getCurrentDayStart, getDayStart } from './dateUtils';
 import { hasNoDateSignal } from './visibilityUtils';
+import { liveProjectSteps } from './projectOrder';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { sumEstimatedMinutes } from './effort';
@@ -260,7 +261,13 @@ function classifyProject(
   // "nothing in here can appear anywhere".
   if (!members.every(hasNoDateSignal)) return { reason: 'has-schedule' };
 
-  const pullable = members.filter(isPullable);
+  // A sequential project has exactly one task available to bring into play,
+  // whatever else is sitting in it: dating a step further down the order lands
+  // it on a day it still can't appear on (isSequenceBlocked), so the sheet
+  // would be offering a task that then goes nowhere — and auto-schedule would
+  // do it unattended.
+  const available = project.sequential ? liveProjectSteps(project.id, members).slice(0, 1) : members;
+  const pullable = available.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I

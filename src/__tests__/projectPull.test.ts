@@ -113,6 +113,7 @@ const PROJECT_BASE: Project = {
   createdAt: subDays(new Date(), 60).toISOString(),
   nudgeCadenceDays: 14,
   autoSchedule: false,
+  sequential: false,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
@@ -186,6 +187,23 @@ describe('findProjectStalls', () => {
     ];
 
     expect(findProjectStalls([makeProject()], tasks)).toHaveLength(1);
+  });
+
+  // Dating step 3 of a sequential project lands it on a day it still can't
+  // appear on, so only the open step is ever offered.
+  it('offers only the first step of a sequential project', () => {
+    const tasks = [
+      makeTask({ id: 'c', sortOrder: 30 }),
+      makeTask({ id: 'a', sortOrder: 10 }),
+      makeTask({ id: 'b', sortOrder: 20 }),
+    ];
+
+    const stalls = findProjectStalls([makeProject({ sequential: true })], tasks);
+
+    expect(stalls).toHaveLength(1);
+    expect(stalls[0].pullable.map(t => t.id)).toEqual(['a']);
+    // Membership is unchanged — the project still holds three tasks.
+    expect(stalls[0].members).toHaveLength(3);
   });
 
   it('excludes archived projects', () => {

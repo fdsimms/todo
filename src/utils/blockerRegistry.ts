@@ -1,8 +1,11 @@
-import type { Task } from '../types';
+import type { Project, Task } from '../types';
 import type { TaskResolver } from './blocking';
+import { stepNumbersByTask } from './projectOrder';
 
 /**
- * How visibilityUtils resolves Task.blockedById without importing the task store.
+ * How visibilityUtils resolves the two things that hold a task back — the task
+ * it's waiting on (Task.blockedById) and its place in a sequential project's
+ * order (Project.sequential) — without importing either store.
  *
  * It can't import it directly: useTaskStore pulls in src/db/database.ts and
  * therefore expo-sqlite, which doesn't exist under Jest's node environment, and
@@ -23,6 +26,11 @@ let cachedTasks: Task[] | null = null;
 let cachedById: Map<string, Task> | null = null;
 let cachedCountTasks: Task[] | null = null;
 let cachedCounts: Map<string, number> | null = null;
+let projectSource: (() => Project[]) | null = null;
+let cachedProjects: Project[] | null = null;
+let cachedSequentialIds: Set<string> | null = null;
+let cachedStepTasks: Task[] | null = null;
+let cachedSteps: Map<string, number> | null = null;
 
 /** Called once by useTaskStore at module load. Tests can point it at a fixture. */
 export function registerTaskSource(fn: (() => Task[]) | null): void {
@@ -31,6 +39,15 @@ export function registerTaskSource(fn: (() => Task[]) | null): void {
   cachedById = null;
   cachedCountTasks = null;
   cachedCounts = null;
+  cachedStepTasks = null;
+  cachedSteps = null;
+}
+
+/** The same, for useProjectStore — see isSequenceHeld. */
+export function registerProjectSource(fn: (() => Project[]) | null): void {
+  projectSource = fn;
+  cachedProjects = null;
+  cachedSequentialIds = null;
 }
 
 /**
@@ -69,4 +86,52 @@ export function waitingCountFor(id: string): number {
     }
   }
   return cachedCounts!.get(id) ?? 0;
+}
+
+/**
+ * Which step a task stands at in its project's order, 1-based, or undefined if
+ * it isn't a live top-level member of one.
+ *
+ * Indexed per store change like the two above, and for the same reason: the
+ * project screen asks once per row and isTaskVisible asks once per row of every
+ * *other* list, so a scan per call would be O(n²) across a render.
+ */
+export function stepNumberOf(task: Task): number | undefined {
+  const tasks = source?.();
+  if (!tasks) return undefined;
+  if (tasks !== cachedStepTasks) {
+    cachedStepTasks = tasks;
+    cachedSteps = stepNumbersByTask(tasks);
+  }
+  return cachedSteps!.get(task.id);
+}
+
+function sequentialProjectIds(): Set<string> {
+  const projects = projectSource?.();
+  if (!projects) return new Set();
+  if (projects !== cachedProjects) {
+    cachedProjects = projects;
+    cachedSequentialIds = new Set(projects.filter(p => p.sequential).map(p => p.id));
+  }
+  return cachedSequentialIds!;
+}
+
+/** True when the task's project is sequential and an earlier step is still open. */
+export function isSequentialProject(projectId: string | null): boolean {
+  return projectId != null && sequentialProjectIds().has(projectId);
+}
+
+/**
+ * True while a sequential project is holding this task back — the second way a
+ * task can be blocked, derived entirely from its position (see
+ * utils/projectOrder). No sources registered means false, the same safe answer
+ * resolveBlocker gives: a context that can't see the projects hides nothing.
+ */
+export function isSequenceHeld(task: Task): boolean {
+  if (task.completed || task.archived || task.parentId) return false;
+  if (!isSequentialProject(task.projectId)) return false;
+  const step = stepNumberOf(task);
+  // stepNumbersByTask ranks only live members, so anything past the first has
+  // an unfinished step above it by construction.
+  return step !== undefined && step > 1;
 }

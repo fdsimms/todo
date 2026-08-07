@@ -9,6 +9,7 @@ import {
   Modal,
   type GestureResponderEvent,
 } from 'react-native';
+import { ReorderableList } from '../components/ReorderableList';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -16,7 +17,6 @@ import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
@@ -52,6 +52,7 @@ export function ProjectDetailScreen() {
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const addCategory = useTaskStore(s => s.addCategory);
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
+  const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
@@ -85,7 +86,6 @@ export function ProjectDetailScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
-  const keyboardScroll = useKeyboardInsetScroll<FlatList>();
   // This screen is a RootStack card, not a tab screen — it covers the tab bar
   // entirely, so the bulk bar sits above the home indicator, not above a tab
   // bar. (Asking for useBottomTabBarHeight() here throws outright.)
@@ -99,6 +99,11 @@ export function ProjectDetailScreen() {
     ? allTasks.filter(t => t.projectId === project.id && t.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
   const incompleteProjectTasks = projectTasks.filter(t => !t.completed);
+  // The rows the order actually applies to — archived members are filed away,
+  // and holding a sequence open on one nobody can see would strand the rest.
+  // Matches liveProjectSteps, which is what the visibility gate ranks.
+  const steps = incompleteProjectTasks.filter(t => !t.archived);
+  const sequential = project?.sequential ?? false;
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
@@ -196,24 +201,44 @@ export function ProjectDetailScreen() {
           }
         />
 
+        {sequential && steps.length > 1 && (
+          // Says why every row but one is wearing a padlock. Only worth the
+          // line when something is actually held back — a one-step project
+          // looks identical either way.
+          <View style={styles.sequenceNote}>
+            <Ionicons name="lock-closed" size={12} color={colors.textTertiary} />
+            <Text style={styles.sequenceNoteText}>
+              In order · the next step unlocks when you finish this one
+            </Text>
+          </View>
+        )}
+
         <View
           style={{ flex: 1 }}
           onTouchStart={expandedTaskId !== null ? handleListTouchStart : undefined}
           onTouchEnd={expandedTaskId !== null ? handleListTouchEnd : undefined}
         >
         <PaintSelectionProvider {...paintProps}>
-          <FlatList
-            ref={keyboardScroll.ref}
+          <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
-            {...keyboardScroll.props}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
-            renderItem={({ item }) => {
+            onHoverChange={haptics.dragTick}
+            onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
+            renderItem={({ item, drag, isActive }) => {
               const subs = allTasks.filter(t => t.parentId === item.id);
+              // Position in the live order, 1-based — the same ranking
+              // isSequenceBlocked gates on, so the number on the row and the
+              // lock on it can't disagree.
+              const step = steps.indexOf(item);
               return (
                 <TaskItem
                   task={item}
+                  drag={selectionMode ? undefined : drag}
+                  isActive={isActive}
+                  stepNumber={sequential && step >= 0 ? step + 1 : null}
+                  locked={sequential && step > 0}
                   onPress={() => {
                     if (expandedTaskId !== null && expandedTaskId !== item.id) {
                       setExpandedTaskId(null);
@@ -451,6 +476,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     // Clears the floating add button so the last row is never under it.
     paddingBottom: spacing.xl * 2 + spacing.lg,
+  },
+  sequenceNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  sequenceNoteText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   completedSection: {
     paddingBottom: spacing.sm,
