@@ -47,15 +47,19 @@ export interface FoldResult<T> {
  * someone between two edits.
  */
 export function foldRows<T>(rows: FoldRow<T>[]): FoldResult<T> {
-  const visible: FoldRow<T>[] = [];
-  const hidden: FoldRow<T>[] = [];
+  const hideable = rows.filter(r => !r.primary && !r.set);
 
-  for (const row of rows) {
-    if (row.primary || row.set) visible.push(row);
-    else hidden.push(row);
-  }
+  // A "1 more" concealing a single row is a net loss. The control stands about
+  // as tall as the row it hides, so it costs a row *and* a tap to save nothing
+  // — and it makes you open it to find out it was one thing. Below two, show it.
+  const hidden = hideable.length > 1 ? hideable : [];
+  const hiddenRows = new Set(hidden);
 
-  return { visible, hidden, folded: !rows.some(r => r.set) };
+  return {
+    visible: rows.filter(r => !hiddenRows.has(r)),
+    hidden,
+    folded: !rows.some(r => r.set),
+  };
 }
 
 /**

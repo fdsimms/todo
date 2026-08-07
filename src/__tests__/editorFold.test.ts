@@ -14,9 +14,54 @@ describe('foldRows', () => {
     const { visible, hidden } = foldRows([
       row('date', { primary: true }),
       row('window'),
+      row('target'),
     ]);
     expect(keys(visible)).toEqual(['date']);
-    expect(keys(hidden)).toEqual(['window']);
+    expect(keys(hidden)).toEqual(['window', 'target']);
+  });
+
+  describe('when only one row would be hidden', () => {
+    // "1 more / Stack" costs a row and a tap to conceal a row — strictly worse
+    // than just showing it.
+    it('shows it instead of putting it behind a "1 more"', () => {
+      const { visible, hidden } = foldRows([
+        row('category', { primary: true }),
+        row('stack'),
+      ]);
+      expect(keys(visible)).toEqual(['category', 'stack']);
+      expect(hidden).toEqual([]);
+    });
+
+    it('keeps it in its authored position, not appended', () => {
+      const { visible } = foldRows([
+        row('stack'),
+        row('category', { primary: true }),
+        row('tags', { primary: true }),
+      ]);
+      expect(keys(visible)).toEqual(['stack', 'category', 'tags']);
+    });
+
+    it('still hides once there are two', () => {
+      const { visible, hidden } = foldRows([
+        row('category', { primary: true }),
+        row('stack'),
+        row('duration'),
+      ]);
+      expect(keys(visible)).toEqual(['category']);
+      expect(keys(hidden)).toEqual(['stack', 'duration']);
+    });
+
+    it('counts only rows that would actually be hidden', () => {
+      // Two non-primary rows, but one holds a value — so only one would be
+      // concealed, and it isn't.
+      const { visible, hidden } = foldRows([
+        row('category', { primary: true }),
+        row('stack', { set: true }),
+        row('duration'),
+      ]);
+      expect(keys(visible)).toEqual(['category', 'stack', 'duration']);
+      expect(hidden).toEqual([]);
+    });
   });
 
   it('never hides a row that holds a value', () => {
@@ -26,9 +71,10 @@ describe('foldRows', () => {
       row('date', { primary: true }),
       row('waiting', { set: true }),
       row('window'),
+      row('target'),
     ]);
     expect(keys(visible)).toEqual(['date', 'waiting']);
-    expect(keys(hidden)).toEqual(['window']);
+    expect(keys(hidden)).toEqual(['window', 'target']);
   });
 
   it('keeps the author’s order rather than hoisting set rows', () => {
@@ -73,8 +119,10 @@ describe('foldRows', () => {
 });
 
 describe('moreLabel', () => {
+  // foldRows never hands it fewer than two, so "1 more" is unreachable in the
+  // app — the formatter is general, the guarantee is upstream.
   it('counts rather than naming, so the control stays one line', () => {
-    expect(moreLabel(1)).toBe('1 more');
+    expect(moreLabel(2)).toBe('2 more');
     expect(moreLabel(5)).toBe('5 more');
   });
 });
