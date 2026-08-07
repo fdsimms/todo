@@ -32,6 +32,8 @@ export function AppearanceSettings() {
   const setAppFont = useSettingsStore(s => s.setAppFont);
   const hapticsEnabled = useSettingsStore(s => s.hapticsEnabled);
   const setHapticsEnabled = useSettingsStore(s => s.setHapticsEnabled);
+  const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
+  const setShakeToUndoEnabled = useSettingsStore(s => s.setShakeToUndoEnabled);
 
   const fontPreviewsLoaded = useFontPreviewsLoaded();
   const colors = useColors();
@@ -115,6 +117,17 @@ export function AppearanceSettings() {
             : 'Nothing in the app vibrates'}
           toggle={hapticsEnabled}
           onPress={() => setHapticsEnabled(!hapticsEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="phone-portrait-outline"
+          iconColor={shakeToUndoEnabled ? colors.accent : undefined}
+          label="Shake to undo"
+          hint={shakeToUndoEnabled
+            ? 'Shake your phone right after completing, deleting or rescheduling to undo it'
+            : 'Shaking your phone does nothing'}
+          toggle={shakeToUndoEnabled}
+          onPress={() => setShakeToUndoEnabled(!shakeToUndoEnabled)}
         />
       </SettingsSection>
     </>

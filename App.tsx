@@ -32,7 +32,8 @@ enableScreens(false);
 
 function AppContent() {
   const { isDark } = useTheme();
-  useShakeToUndo();
+  const shakeToUndoEnabled = useSettingsStore(s => s.shakeToUndoEnabled);
+  useShakeToUndo(shakeToUndoEnabled);
   return (
     <View style={{ flex: 1 }}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
