@@ -54,6 +54,29 @@ export const PULL_TODAY_BUDGET_MINUTES = 180;
 const QUEUE_LEAD = 18;
 const QUEUE_DEPTH = 6;
 
+/**
+ * Who is asking, which decides whether `nudgeCadenceDays` is a gate or just a
+ * sort key.
+ *
+ * 'nudge' — the app volunteering: the accent tint and "N projects gone quiet"
+ * on the Today options row, and the auto-schedule drip, which dates a task
+ * unattended. Both speak without being asked, so the cadence gates them. A
+ * project nobody opted in is silent, which is the whole point of the 0 default.
+ *
+ * 'ask' — the user tapped "Pull from projects". The cadence answers "when
+ * should I chase you unprompted", and that is not the question a tap on the
+ * button asks: tapping it *is* the nudge, so there is nothing left to opt into.
+ * Gating it too made the sheet inert for everyone — 0 is the default for new
+ * projects as well as the migration backfill, so every project ever created is
+ * excluded until its cadence is set by hand, and the sheet answered a board of
+ * entirely undated projects with "nothing waiting". The cadence still *ranks*
+ * here (see overdueBy), it just doesn't exclude.
+ *
+ * It also can't exclude honestly: 0 is both "I parked this project" and "I have
+ * never opened this picker", and nothing distinguishes them.
+ */
+export type StallMode = 'nudge' | 'ask';
+
 /** A project that has gone quiet, and why. */
 export interface ProjectStall {
   project: Project;
@@ -65,7 +88,13 @@ export interface ProjectStall {
   lastTouchedAt: string;
   quietDays: number;
   cadenceDays: number;
-  /** quietDays - cadenceDays; >= 0 for a stall. Drives the ordering. */
+  /**
+   * quietDays - cadenceDays. Drives the ordering, and does the right thing in
+   * both modes without a second sort key: in 'nudge' it's >= 0 by construction,
+   * and in 'ask' an un-opted-in project subtracts nothing, so it ranks on how
+   * long it's actually been quiet, while a project whose own cadence hasn't
+   * come round yet goes negative and sorts below the ones overdue for it.
+   */
   overdueBy: number;
 }
 
@@ -184,11 +213,13 @@ function classifyProject(
   project: Project,
   allMembers: readonly Task[],
   todayStart: Date,
+  mode: StallMode,
 ): ProjectVerdict {
-  // 0 is an explicit "never ask about this one", for a project deliberately
-  // parked — not a degenerate cadence.
+  // 0 means "don't bring this up unasked", for a project deliberately parked —
+  // not a degenerate cadence. It silences the volunteered surfaces only; see
+  // StallMode for why a sheet the user opened themselves ignores it.
   const cadenceDays = project.nudgeCadenceDays;
-  if (cadenceDays <= 0) return { reason: 'cadence-off' };
+  if (mode === 'nudge' && cadenceDays <= 0) return { reason: 'cadence-off' };
 
   const members = allMembers.filter(t => !t.completed && !t.archived);
   // No live members at all. Covers both the empty shell and the project whose
@@ -207,7 +238,10 @@ function classifyProject(
   // Calendar days on the logical day boundary, never string-sliced ISO — see
   // the timezone note on pinSuggest.overdueDays.
   const quietDays = differenceInCalendarDays(todayStart, getDayStart(new Date(touched)));
-  if (quietDays < cadenceDays) {
+  // The cadence is a threshold only for the surfaces that speak first. Asked
+  // directly, a project that went quiet yesterday is still a fair suggestion —
+  // it just ranks below one that's been quiet a month (see overdueBy).
+  if (mode === 'nudge' && quietDays < cadenceDays) {
     return { reason: 'too-soon', daysUntilQuiet: cadenceDays - quietDays };
   }
 
@@ -233,9 +267,11 @@ function classifyProject(
 export function findProjectStalls(
   projects: readonly Project[],
   tasks: readonly Task[],
+  mode: StallMode = 'nudge',
 ): ProjectStall[] {
-  // Vacation mode silences the whole feature. Nudging someone to schedule more
-  // work is exactly what vacation mode exists to stop.
+  // Vacation mode silences the whole feature, in both modes — unlike the
+  // cadence, it's a deliberate, unambiguous "hide work from me" the user set
+  // today, and every route out of this sheet dates a task.
   if (useSettingsStore.getState().vacationMode) return [];
 
   const byProject = bucketByProject(tasks);
@@ -244,7 +280,7 @@ export function findProjectStalls(
 
   for (const project of projects) {
     if (project.archived) continue;
-    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart);
+    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart, mode);
     if (verdict.stall) stalls.push(verdict.stall);
   }
 
@@ -371,6 +407,7 @@ const REASON_PRIORITY: readonly PullEmptyReason[] = [
 export function diagnosePullEmpty(
   projects: readonly Project[],
   tasks: readonly Task[],
+  mode: StallMode = 'ask',
 ): PullEmptyState | null {
   if (useSettingsStore.getState().vacationMode) {
     return { reason: 'vacation', count: 0, total: 0 };
@@ -385,7 +422,7 @@ export function diagnosePullEmpty(
   let daysUntilQuiet: number | undefined;
 
   for (const project of active) {
-    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart);
+    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart, mode);
     // A stall that got here is one buildProjectPullPlan filtered out, which it
     // only does for auto-schedule — that project is being handled, not ignored.
     const reason = verdict.stall
@@ -458,7 +495,9 @@ export function describePullEmpty(state: PullEmptyState): string {
 }
 
 /**
- * Build the plan the sheet reviews.
+ * Build the plan the sheet reviews. 'ask' mode: the user opened this, so every
+ * quiet project is a candidate whether or not it was opted in for nudging (see
+ * StallMode), ranked by how overdue it is for attention.
  *
  * Projects on auto-schedule never appear here — the drip handles them, so they
  * can't be nagged and dripped at once. The two layers coordinate through the
@@ -469,7 +508,7 @@ export function buildProjectPullPlan(
   allTasks: readonly Task[],
   todaysTasks: readonly Task[],
 ): ProjectPullPlan {
-  const stalls = findProjectStalls(projects, allTasks).filter(s => !s.project.autoSchedule);
+  const stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
   const ctx = pullContext();
 
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
@@ -504,10 +543,15 @@ export function projectPullUpdates(date: Date): Partial<Task> {
 /**
  * The single task an auto-scheduled project should date for itself, or null if
  * it isn't due to. Layer B's entire decision.
+ *
+ * Stays in 'nudge' mode, and must: this dates a task with nobody watching, so
+ * the cadence is the only thing deciding when. (The editor already refuses to
+ * store autoSchedule without one, so the gate is never load-bearing here — but
+ * it's the gate that makes that invariant safe to rely on rather than assume.)
  */
 export function dripCandidate(project: Project, allTasks: readonly Task[]): Task | null {
   if (!project.autoSchedule) return null;
-  const stall = findProjectStalls([project], allTasks)[0];
+  const stall = findProjectStalls([project], allTasks, 'nudge')[0];
   if (!stall) return null;
   return rankPullCandidates(stall.pullable)[0] ?? null;
 }

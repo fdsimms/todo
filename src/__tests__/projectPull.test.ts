@@ -223,6 +223,53 @@ describe('findProjectStalls', () => {
     });
   });
 
+  // The cadence answers "when should I speak up unasked". Asked directly, it
+  // ranks but never excludes — otherwise the sheet is inert for every project
+  // ever created, since 0 is the default for new ones too.
+  describe("'ask' mode", () => {
+    it('includes a project that was never opted in, which nudge mode skips', () => {
+      const project = makeProject({ nudgeCadenceDays: 0 });
+      const tasks = [makeTask({ id: 'a' })];
+
+      expect(findProjectStalls([project], tasks, 'nudge')).toHaveLength(0);
+      expect(findProjectStalls([project], tasks, 'ask')).toHaveLength(1);
+    });
+
+    it('includes a project whose own cadence has not come round yet', () => {
+      const project = makeProject({ nudgeCadenceDays: 30, createdAt: subDays(new Date(), 4).toISOString() });
+      const tasks = [makeTask({ id: 'a' })];
+
+      expect(findProjectStalls([project], tasks, 'nudge')).toHaveLength(0);
+      expect(findProjectStalls([project], tasks, 'ask')).toHaveLength(1);
+    });
+
+    // overdueBy carries both cases without a second sort key: no cadence
+    // subtracts nothing, and a cadence that hasn't come round goes negative.
+    it('ranks the overdue above the un-opted-in above the not-yet-due', () => {
+      const overdue = makeProject({ id: 'overdue', nudgeCadenceDays: 7, createdAt: subDays(new Date(), 90).toISOString() });
+      const never = makeProject({ id: 'never', nudgeCadenceDays: 0, createdAt: subDays(new Date(), 40).toISOString() });
+      const early = makeProject({ id: 'early', nudgeCadenceDays: 30, createdAt: subDays(new Date(), 4).toISOString() });
+      const tasks = [overdue, never, early].map(p => makeTask({ id: `t-${p.id}`, projectId: p.id }));
+
+      const stalls = findProjectStalls([early, never, overdue], tasks, 'ask');
+
+      expect(stalls.map(s => s.project.id)).toEqual(['overdue', 'never', 'early']);
+      expect(stalls.map(s => s.overdueBy)).toEqual([83, 40, -26]);
+    });
+
+    it('still obeys vacation mode — asking does not override hiding work', () => {
+      settingsState.vacationMode = true;
+
+      expect(findProjectStalls([makeProject()], [makeTask({ id: 'a' })], 'ask')).toHaveLength(0);
+    });
+
+    it('still requires every member to be undated', () => {
+      const tasks = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
+
+      expect(findProjectStalls([makeProject({ nudgeCadenceDays: 0 })], tasks, 'ask')).toHaveLength(0);
+    });
+  });
+
   it('orders by how overdue each project is, then by the user’s own project order', () => {
     const a = makeProject({ id: 'a', sortOrder: 1, nudgeCadenceDays: 7, createdAt: subDays(new Date(), 10).toISOString() });
     const b = makeProject({ id: 'b', sortOrder: 2, nudgeCadenceDays: 7, createdAt: subDays(new Date(), 30).toISOString() });
@@ -369,22 +416,21 @@ describe('buildProjectPullPlan', () => {
   });
 
   it('diagnoses an empty plan and leaves the diagnosis off a full one', () => {
-    const tasks = [makeTask({ id: 'a' })];
+    const undated = [makeTask({ id: 'a' })];
+    const dated = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
 
-    expect(buildProjectPullPlan([makeProject()], tasks, []).empty).toBeNull();
-    expect(buildProjectPullPlan([makeProject({ nudgeCadenceDays: 0 })], tasks, []).empty).toEqual({
-      reason: 'cadence-off',
+    expect(buildProjectPullPlan([makeProject()], undated, []).empty).toBeNull();
+    expect(buildProjectPullPlan([makeProject()], dated, []).empty).toEqual({
+      reason: 'has-schedule',
       count: 1,
       total: 1,
     });
   });
-});
 
-describe('diagnosePullEmpty', () => {
-  // The bug this exists for: a project that predates the nudge column gets
-  // backfilled to cadence 0, and the sheet used to report that as "every
-  // project has something scheduled" — the opposite of the truth.
-  it('names the unset cadence rather than claiming everything is scheduled', () => {
+  // The reported bug: nudgeCadenceDays defaults to 0 for new projects as well
+  // as the migration backfill, so gating the sheet on it made a board of
+  // entirely undated projects report that everything was scheduled.
+  it('proposes from projects that were never opted in for nudging', () => {
     const projects = [
       makeProject({ id: 'p1', nudgeCadenceDays: 0 }),
       makeProject({ id: 'p2', nudgeCadenceDays: 0 }),
@@ -394,8 +440,29 @@ describe('diagnosePullEmpty', () => {
       makeTask({ id: 'b', projectId: 'p2' }),
     ];
 
-    const state = diagnosePullEmpty(projects, tasks);
+    const plan = buildProjectPullPlan(projects, tasks, []);
 
+    expect(plan.proposals.map(p => p.project.id)).toEqual(['p1', 'p2']);
+    expect(plan.empty).toBeNull();
+  });
+});
+
+describe('diagnosePullEmpty', () => {
+  // An unset cadence is no longer a reason the *sheet* can be empty — it
+  // doesn't gate there — so it only ever reports one in nudge mode.
+  it('names the unset cadence only for the surfaces the cadence gates', () => {
+    const projects = [
+      makeProject({ id: 'p1', nudgeCadenceDays: 0 }),
+      makeProject({ id: 'p2', nudgeCadenceDays: 0 }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    expect(diagnosePullEmpty(projects, tasks, 'ask')).toBeNull();
+
+    const state = diagnosePullEmpty(projects, tasks, 'nudge');
     expect(state).toEqual({ reason: 'cadence-off', count: 2, total: 2 });
     expect(describePullEmpty(state!)).toContain('Nudge me');
   });
@@ -452,7 +519,7 @@ describe('diagnosePullEmpty', () => {
       makeTask({ id: 'b', projectId: 'p2' }),
     ];
 
-    const state = diagnosePullEmpty(projects, tasks);
+    const state = diagnosePullEmpty(projects, tasks, 'nudge');
 
     expect(state).toEqual({ reason: 'too-soon', count: 2, total: 2, daysUntilQuiet: 4 });
     expect(describePullEmpty(state!)).toContain('4 days');
@@ -474,14 +541,10 @@ describe('diagnosePullEmpty', () => {
   });
 
   it('picks the reason covering the most projects', () => {
-    const projects = [
-      makeProject({ id: 'p1', nudgeCadenceDays: 0 }),
-      makeProject({ id: 'p2' }),
-      makeProject({ id: 'p3' }),
-    ];
+    const projects = ['p1', 'p2', 'p3'].map(id => makeProject({ id }));
     const dated = { dueDate: new Date().toISOString() };
     const tasks = [
-      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'a', projectId: 'p1', completed: true, completedAt: new Date().toISOString() }),
       makeTask({ id: 'b', projectId: 'p2', ...dated }),
       makeTask({ id: 'c', projectId: 'p3', ...dated }),
     ];
