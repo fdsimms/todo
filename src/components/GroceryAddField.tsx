@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import {
   View,
   Text,
@@ -30,24 +30,32 @@ interface Props {
   onAdded?: (count: number) => void;
 }
 
+/** Lets the sheet focus the field once its entrance animation has settled. */
+export interface GroceryAddFieldHandle {
+  focus: () => void;
+}
+
 /**
- * The pinned "what do you need" field.
+ * The "what do you need" field, shown inside `GroceryAddSheet` behind the FAB.
  *
- * Pinned at the top with no FAB, which is the one place this screen diverges
- * hard from every other list screen here. A grocery list is entered in bursts
- * of ten; the FAB → QuickAddNameSheet pattern would cost ten modal
- * presentations. Top rather than bottom so the keyboard never covers it and it
- * needn't fight the tab bar height. The FAB's job moved into the header
- * actions instead.
+ * A grocery list is entered in bursts of ten, which is why this is a field and
+ * not a name sheet that closes on every add: submit adds and *keeps focus*
+ * (blurOnSubmit={false}), so ten items is ten keystrokes-and-return inside one
+ * presentation rather than ten. That's the behaviour the pinned-at-the-top
+ * version existed to protect, and it survives the move to the FAB intact — the
+ * sheet stays open until you dismiss it.
  *
- * Behaviour is the chain-step input from QuickAddModal, verbatim: submit adds
- * and *keeps focus* (blurOnSubmit={false}), so the next item is one keystroke
- * away rather than one tap.
+ * Behaviour is otherwise the chain-step input from QuickAddModal, verbatim.
  */
-export function GroceryAddField({ onAdded }: Props) {
+export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function GroceryAddField(
+  { onAdded },
+  ref
+) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
+
+  useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
   const items = useGroceryStore(s => s.items);
   const addByName = useGroceryStore(s => s.addByName);
@@ -102,12 +110,15 @@ export function GroceryAddField({ onAdded }: Props) {
 
       haptics.success();
       setText('');
+      // Only the part the caller can't already see. The sheet header counts
+      // what was added; what it can't say is that some of the paste was
+      // already on the list, which is why those lines didn't become rows.
       setStatus(
         alreadyOnList.length > 0
-          ? `Added ${added.length} · ${alreadyOnList.length} already on the list`
-          : `Added ${added.length}`
+          ? `${alreadyOnList.length} already on the list`
+          : null
       );
-      onAdded?.(total);
+      onAdded?.(added.length);
     },
     [addManyFromText, onAdded, status]
   );
@@ -153,11 +164,12 @@ export function GroceryAddField({ onAdded }: Props) {
       {!!status && <Text style={styles.status}>{status}</Text>}
 
       {suggestions.length > 0 && (
-        // Absolutely positioned so the list underneath never jumps as you
-        // type — a section list that reflows under a dropping suggestion list
-        // is how you tap the wrong row.
-        <View style={styles.overlay}>
-          <ScrollView keyboardShouldPersistTaps="handled" style={styles.overlayScroll}>
+        // In flow rather than absolutely positioned: inside the sheet there is
+        // no list underneath to reflow, and the card growing downwards is the
+        // thing that reads as "here are the matches". The pinned version had to
+        // float this over the aisles to stop them jumping as you typed.
+        <View style={styles.matches}>
+          <ScrollView keyboardShouldPersistTaps="handled" style={styles.matchesScroll}>
             {suggestions.map(({ item, onList }) => (
               <TouchableOpacity
                 key={item.id}
@@ -181,21 +193,20 @@ export function GroceryAddField({ onAdded }: Props) {
       )}
     </View>
   );
-}
+});
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
     wrap: {
-      paddingHorizontal: spacing.md,
-      paddingBottom: spacing.sm,
-      // The suggestion overlay is a child, and it has to paint over the list.
-      zIndex: 10,
+      gap: spacing.xs,
     },
     field: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      backgroundColor: colors.bgSecondary,
+      // Tertiary, not secondary: the sheet card behind it is already secondary,
+      // and a field the same colour as its card is a field you can't see.
+      backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
       borderWidth: border.sm,
       borderColor: 'transparent',
@@ -218,20 +229,14 @@ function makeStyles(colors: Colors) {
     status: {
       fontSize: font.sm,
       color: colors.textSecondary,
-      marginTop: spacing.xs,
       marginLeft: spacing.xs,
     },
-    overlay: {
-      position: 'absolute',
-      top: '100%',
-      left: spacing.md,
-      right: spacing.md,
+    matches: {
       backgroundColor: colors.bgTertiary,
       borderRadius: radius.md,
       overflow: 'hidden',
-      marginTop: spacing.xs,
     },
-    overlayScroll: {
+    matchesScroll: {
       maxHeight: 220,
     },
     suggestion: {
