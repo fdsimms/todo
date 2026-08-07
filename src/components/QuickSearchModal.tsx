@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
 import { SearchField } from './SearchField';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
@@ -115,6 +116,9 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const trimmed = query.trim();
   const showNoMatches = trimmed.length > 0 && results.length === 0;
+  // The footer only needs a rule when there's something above it to separate it
+  // from — on an empty query the card is just the field and the button.
+  const hasContent = results.length > 0 || showNoMatches;
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
@@ -184,23 +188,18 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             <Text style={styles.noMatches}>No todos match “{trimmed}”</Text>
           )}
 
-          <TouchableOpacity
-            style={styles.footer}
-            onPress={handleOpenFull}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={
-              overflow > 0
-                ? `Open in Search, ${overflow} more ${overflow === 1 ? 'match' : 'matches'}`
-                : 'Open in Search'
-            }
-          >
-            <Text style={styles.footerText}>Open in Search</Text>
-            <View style={styles.footerRight}>
-              {overflow > 0 && <Text style={styles.footerCount}>{overflow} more</Text>}
-              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
-            </View>
-          </TouchableOpacity>
+          <View style={[styles.footer, hasContent && styles.footerDivided]}>
+            <InlineAction
+              label="Open in Search"
+              onPress={handleOpenFull}
+              accessibilityLabel={
+                overflow > 0
+                  ? `Open in Search, ${overflow} more ${overflow === 1 ? 'match' : 'matches'}`
+                  : 'Open in Search'
+              }
+            />
+            {overflow > 0 && <Text style={styles.footerCount}>{overflow} more</Text>}
+          </View>
         </Animated.View>
       </View>
     </Modal>
@@ -266,23 +265,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     gap: spacing.sm,
     marginTop: spacing.xs,
-    paddingTop: 10,
+    paddingTop: spacing.xs,
     paddingHorizontal: spacing.xs,
+  },
+  footerDivided: {
+    paddingTop: 10,
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
-  },
-  footerText: {
-    color: colors.accent,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-  },
-  footerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
   },
   footerCount: {
     color: colors.textSecondary,
