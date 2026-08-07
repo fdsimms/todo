@@ -71,8 +71,8 @@ export function ProjectDetailScreen() {
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
-  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
-  const justCreatedTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
+  const flashTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const {
     selectionMode,
     selectedIds,
@@ -152,13 +152,13 @@ export function ProjectDetailScreen() {
     if (project) addExistingToProject(task.id, project.id);
     // Same brief highlight Today gives a freshly added row — the list is
     // sorted by sortOrder, so a new task doesn't necessarily land at the end.
-    if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
-    setJustCreatedId(task.id);
-    justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    setFlashTaskId(task.id);
+    flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
   };
 
   React.useEffect(() => () => {
-    if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
   }, []);
 
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
@@ -235,7 +235,7 @@ export function ProjectDetailScreen() {
                   showCategory
                   showGroup
                   showPin={false}
-                  justCreated={item.id === justCreatedId}
+                  highlighted={item.id === flashTaskId}
                 />
               );
             }}

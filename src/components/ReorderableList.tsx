@@ -27,6 +27,25 @@ import { haptics } from '../utils/haptics';
 
 const ROW_SHIFT_DURATION = 180;
 
+/** Breathing room left above a row scrolled into view by scrollToKey. */
+const ROW_SCROLL_MARGIN = 24;
+/**
+ * How long scrollToKey waits for a row that hasn't laid out yet. Long enough
+ * for a section expanded in the same commit to arrive, short enough that a row
+ * which never turns up (the caller's data changed under it) can't hijack an
+ * unrelated layout minutes later.
+ */
+const PENDING_SCROLL_TTL = 800;
+
+export interface RowScroller {
+  /**
+   * Scroll the row with this key into view. A row that hasn't laid out yet —
+   * one in a section the caller expanded in the same commit — is scrolled to
+   * as soon as it does, rather than being missed.
+   */
+  scrollToKey: (key: string) => void;
+}
+
 export interface ReorderableRenderInfo<T> {
   item: T;
   /** Call from a long-press to begin dragging this row. */
@@ -120,6 +139,13 @@ interface Props<T> {
    * ref because the caller needs the same clamped offset this component tracks.
    */
   scrollControlRef?: React.Ref<DragScroller>;
+  /**
+   * Filled with a handle for scrolling a single row into view by key, for
+   * jumping to a task from outside the list (the new-todos banner). Separate
+   * from `scrollControlRef` because that one is the drag autoscroll's contract
+   * — offsets in, offsets out — and knows nothing about rows.
+   */
+  rowScrollerRef?: React.Ref<RowScroller>;
 }
 
 const DEFAULT_ROW_HEIGHT = 52;
@@ -165,6 +191,7 @@ export function ReorderableList<T>({
   onEndReachedThreshold = 300,
   scrollEnabled = true,
   scrollControlRef,
+  rowScrollerRef,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -264,6 +291,20 @@ export function ReorderableList<T>({
   // needs the raw committed copy cleared, or the list stays stuck on it.
   useEffect(() => {
     if (activeIndexRef.current === null) setCommittedData(null);
+    // Forget the measurements of rows that are no longer in the list — a row
+    // hidden by a collapsed section leaves its last content-Y behind, and a
+    // position nothing is at is worse than no position: scrollToKey would
+    // scroll to where the row used to be instead of waiting for it to come
+    // back. Pruned from here rather than from the row's ref callback, which
+    // React tears down and re-runs on every render (the callback is inline),
+    // taking live measurements with it.
+    const live = new Set(data.map(keyExtractor));
+    for (const key of Array.from(layoutYRef.current.keys())) {
+      if (!live.has(key)) {
+        layoutYRef.current.delete(key);
+        heightsRef.current.delete(key);
+      }
+    }
     // A ScrollView's native scroll offset isn't automatically clamped when its
     // content shrinks (e.g. a bulk edit removes most of the visible rows) —
     // the viewport can be left scrolled past the end of the new, shorter
@@ -296,6 +337,38 @@ export function ReorderableList<T>({
       scrollRef.current?.scrollTo({ y, animated: false });
     },
   }), [scrollRef]);
+
+  // A key waiting for its row to lay out, armed by scrollToKey below and
+  // claimed by that row's onLayout.
+  const pendingScrollKeyRef = useRef<string | null>(null);
+  const pendingScrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingScroll = () => {
+    pendingScrollKeyRef.current = null;
+    if (pendingScrollTimerRef.current) clearTimeout(pendingScrollTimerRef.current);
+    pendingScrollTimerRef.current = null;
+  };
+  useEffect(() => clearPendingScroll, []);
+
+  // Deliberately NOT clamped to the content: contentHeightRef is only as fresh
+  // as the last onContentSizeChange, and the row this lands on is often one
+  // that just appeared — so a clamp computed here would under-scroll on
+  // exactly the jump it exists to serve. The scroll view clamps natively.
+  const scrollRowIntoView = useCallback((y: number) => {
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - ROW_SCROLL_MARGIN), animated: true });
+  }, [scrollRef]);
+
+  useImperativeHandle(rowScrollerRef, () => ({
+    scrollToKey: (key: string) => {
+      clearPendingScroll();
+      const y = layoutYRef.current.get(key);
+      if (y !== undefined) {
+        scrollRowIntoView(y);
+        return;
+      }
+      pendingScrollKeyRef.current = key;
+      pendingScrollTimerRef.current = setTimeout(clearPendingScroll, PENDING_SCROLL_TTL);
+    },
+  }), [scrollRowIntoView]);
 
   const stopAutoscroll = () => {
     if (autoscrollTimerRef.current !== null) {
@@ -876,6 +949,11 @@ export function ReorderableList<T>({
               onLayout={e => {
                 heightsRef.current.set(key, e.nativeEvent.layout.height);
                 layoutYRef.current.set(key, e.nativeEvent.layout.y);
+                // The row a scrollToKey is waiting on has arrived.
+                if (pendingScrollKeyRef.current === key) {
+                  clearPendingScroll();
+                  scrollRowIntoView(e.nativeEvent.layout.y);
+                }
                 // Re-measure against the fresh content-Y: the origin (and the
                 // row's own height) can move with the layout, and both feed the
                 // drop gap. The card's anchor is deliberately NOT re-pinned

@@ -37,6 +37,7 @@ import {
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
   categorySectionKeys as computeCategorySectionKeys,
+  findTaskJumpTarget,
   type LaterListItem,
   type CategoryListItem,
   type LaterTodaySectionData,
@@ -59,7 +60,7 @@ import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
-import { ReorderableList } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller } from '../components/ReorderableList';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { GroupDropTarget } from '../components/GroupDropTarget';
 import {
@@ -147,6 +148,11 @@ interface SubtaskEntry {
 // array per row per render and defeat TaskItem's shallow compare precisely
 // where the memo matters most — on the rows that have nothing to say.
 const NO_SUBTASKS: SubtaskEntry = { items: [], doneCount: 0 };
+
+// Breathing room left above a row jumped to from the new-todos banner, so it
+// lands just inside the top of the list rather than flush against it. Matches
+// ReorderableList's own margin, since either list can be the one that scrolls.
+const JUMP_VIEW_OFFSET = 24;
 
 // Category section header. When `onToggle` is given, the header is a
 // tappable collapse/expand control for its category (chevron reflects
@@ -445,8 +451,15 @@ export function TodayScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [quickAddType, setQuickAddType] = useState<QuickAddType>('task');
-  const [justCreatedId, setJustCreatedId] = useState<string | null>(null);
-  const justCreatedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
+  const flashTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // A row a jump is on its way to, held as state rather than scrolled straight
+  // from the tap: the jump can expand a section in the same batch, and the
+  // scroll has to happen against the list that expansion produced, not the one
+  // the tap was made on. The counter makes a repeat tap on the same row a new
+  // value, so it fires again instead of being deduped away.
+  const [pendingJump, setPendingJump] = useState<{ key: string; n: number } | null>(null);
+  const jumpCount = useRef(0);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -569,12 +582,13 @@ export function TodayScreen() {
     });
   }, [widgetCompletionIds]);
 
-  // Briefly flags a task so its row renders the "just created" highlight, then
-  // clears the flag once the animation has had time to finish.
-  const showJustCreated = (taskId: string) => {
-    if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
-    setJustCreatedId(taskId);
-    justCreatedTimeoutRef.current = setTimeout(() => setJustCreatedId(null), 1200);
+  // Briefly flags a task so its row tints — used to point at a task that was
+  // just created, and at one jumped to from the new-todos banner. Cleared once
+  // the animation has had time to finish.
+  const flashTask = (taskId: string) => {
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    setFlashTaskId(taskId);
+    flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
   };
 
   // Switch to whichever sub-view the new task actually landed in, so it's never
@@ -598,12 +612,12 @@ export function TodayScreen() {
       placeCreatedTask(task, dropped);
     }
     if (destination !== viewMode) setViewMode(destination);
-    showJustCreated(task.id);
+    flashTask(task.id);
   };
 
   useEffect(() => {
     return () => {
-      if (justCreatedTimeoutRef.current) clearTimeout(justCreatedTimeoutRef.current);
+      if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
     };
   }, []);
 
@@ -1095,16 +1109,20 @@ export function TodayScreen() {
       ? items.filter(item => item.type !== 'header' || item.label === LATER_TODAY_LABEL)
       : items;
 
-  const data: ListItem[] = useMemo(() => {
+  // Every row the current layout *has*, before anything the user has folded
+  // away is dropped. `data` below is this narrowed to what's on screen; this
+  // is what a jump searches, so a task inside a collapsed section can still be
+  // found and the section it's in opened (see jumpToTask).
+  const listItems: ListItem[] = useMemo(() => {
     if (pinnedViewActive) {
       const items: ListItem[] = [{ type: 'pinned-header' }];
       pinnedTasks.forEach(task => items.push({ type: 'pinned-task', task }));
       const restTasks = filtered.filter(t => !t.pinned);
       if (restTasks.length > 0) {
         items.push({ type: 'rest-header' });
-        if (restExpanded) items.push(...makeCategoryGroups(restTasks, allCategories));
+        items.push(...makeCategoryGroups(restTasks, allCategories));
       }
-      return stripCategoryHeaders(applyCategoryCollapse(items));
+      return items;
     }
 
     const ungrouped = filtered.filter(t => !t.groupId);
@@ -1112,12 +1130,17 @@ export function TodayScreen() {
     // but only while the list is in its hand-ordered state. Any other sort
     // reorders the tasks by something sortOrder says nothing about, so the
     // stacks go back to heading their section.
-    const items = makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
+    return makeCategoryGroups(ungrouped, allCategories, visibleGroupItems, {
       interleaveGroups: sort === 'default',
     });
-    return stripCategoryHeaders(applyCategoryCollapse(items));
+  }, [filtered, pinnedTasks, pinnedViewActive, allCategories, visibleGroupItems, sort]);
+
+  const data: ListItem[] = useMemo(() => {
+    const restAt = listItems.findIndex(item => item.type === 'rest-header');
+    const shown = !restExpanded && restAt >= 0 ? listItems.slice(0, restAt + 1) : listItems;
+    return stripCategoryHeaders(applyCategoryCollapse(shown));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, pinnedTasks, pinnedViewActive, restExpanded, allCategories, collapsedCategories, visibleGroupItems, hideCategories, sort]);
+  }, [listItems, restExpanded, collapsedCategories, hideCategories]);
 
   const listItemKey = (item: ListItem): string =>
     item.type === 'pinned-header' ? '__pinned-header__'
@@ -1126,6 +1149,29 @@ export function TodayScreen() {
     : item.type === 'header' ? `h-${item.label}`
     : item.type === 'group' ? `g-${item.group.id}`
     : item.task.id;
+
+  // Set by whichever of Today's two lists is mounted (see pinnedViewActive) —
+  // the pinned branch is a plain FlatList and scrolls by index instead.
+  const todayRowScroller = useRef<RowScroller | null>(null);
+
+  // The scroll half of a jump (see jumpToTask). In an effect so it runs
+  // against the committed list: expanding a section and asking for the jump
+  // land in the same batch, and `data` here is the list that batch produced.
+  // Deps are the request alone — it's cleared on arrival, so there's no second
+  // run to read a later `data` from.
+  useEffect(() => {
+    if (!pendingJump) return;
+    setPendingJump(null);
+    if (!pinnedViewActive) {
+      todayRowScroller.current?.scrollToKey(pendingJump.key);
+      return;
+    }
+    const index = data.findIndex(item => listItemKey(item) === pendingJump.key);
+    if (index >= 0) {
+      pinnedScroll.ref.current?.scrollToIndex({ index, animated: true, viewOffset: JUMP_VIEW_OFFSET });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingJump]);
 
   // Keys of task/group rows that sit under a real category header (i.e. not
   // the header-less loose group at top, and not "Later Today", which is a
@@ -1537,7 +1583,7 @@ export function TodayScreen() {
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
         hideTodayLabel
-        justCreated={task.id === justCreatedId}
+        highlighted={task.id === flashTaskId}
         autoComplete={autoCompletingIds.has(task.id)}
         // This list is `filtered`, i.e. visibleTasks — a row leaves it the
         // moment it stops being visible, which is what logging a unit does to
@@ -1782,7 +1828,7 @@ export function TodayScreen() {
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
-        justCreated={task.id === justCreatedId}
+        highlighted={task.id === flashTaskId}
         onApplyImport={handleApplyImport}
         onDismissImport={handleDismissImport}
       />
@@ -1899,11 +1945,49 @@ export function TodayScreen() {
     animateLayout();
     markTasksSeen(newTasks.map(t => t.id));
   };
-  // Opening a new task from the banner counts as seeing it, the same as
-  // tapping its row in the list does (see TaskItem.handleContentPress).
-  const openNewTask = (task: Task) => {
+  /**
+   * Take a title tapped in the new-todos banner to the row it stands for,
+   * rather than opening it: the banner's job is "what showed up and where is
+   * it", and the answer to the second half is a place in this list, not a
+   * sheet on top of it. Anything folded over the row — its category section,
+   * "Everything else", the stack it's filed in — opens on the way.
+   *
+   * Seeing where it landed counts as seeing it, the same as tapping the row
+   * itself does (see TaskItem.handleContentPress).
+   */
+  const jumpToTask = (task: Task) => {
     markTaskSeen(task.id);
-    openEditor(task);
+    // Resolved against the pre-collapse list, so a task folded away still has
+    // a row to aim at. Nothing at all means a filter is hiding it, and there's
+    // nowhere to scroll — open it instead of eating the tap.
+    const target = findTaskJumpTarget(listItems, task.id, listItemKey);
+    if (!target) {
+      openEditor(task);
+      return;
+    }
+    haptics.tap();
+    const expandCategory = target.category !== null && collapsedCategories.has(target.category);
+    const expandRest = target.inRest && !restExpanded;
+    if (expandCategory || expandRest) animateLayout();
+    if (expandCategory) {
+      setCollapsedCategories(prev => {
+        const next = new Set(prev);
+        next.delete(target.category!);
+        return next;
+      });
+    }
+    if (expandRest) setRestExpanded(true);
+    // The scroll lands on the stack's header, which doesn't move when the
+    // stack opens — but the row the user asked for is inside it, so open it.
+    // (No animateLayout here, for the reason TaskGroupHeader's own toggle
+    // gives: AnimatedCollapsible already drives this transition.)
+    if (target.groupId) {
+      const group = taskGroups.find(g => g.id === target.groupId);
+      if (group?.collapsed) setGroupCollapsed(group.id, false);
+    }
+    setExpandedTaskId(null);
+    setPendingJump({ key: target.key, n: jumpCount.current++ });
+    flashTask(task.id);
   };
 
   // Projects that have gone quiet. One bucketing pass inside a memo, not a
@@ -2069,7 +2153,7 @@ export function TodayScreen() {
         </ScrollView>
 
         {viewMode === 'today' && newTasks.length > 0 && (
-          <NewTasksBanner tasks={newTasks} onSelectTask={openNewTask} onDismiss={dismissNewTasksBanner} />
+          <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
 
         {/* "What's new" leads; "what's gone quiet" follows. */}
@@ -2137,7 +2221,7 @@ export function TodayScreen() {
                   showProject
                   showGroup
                   showActions={false}
-                  justCreated={item.task.id === justCreatedId}
+                  highlighted={item.task.id === flashTaskId}
                 />
               );
             }}
@@ -2202,6 +2286,15 @@ export function TodayScreen() {
             // the settled events), so this is free to.
             onScroll={recordPinnedScroll}
             scrollEventThrottle={16}
+            // A jump can aim at a row this list hasn't measured yet. The
+            // estimate gets the viewport close enough that the real frames
+            // are measured on the way past.
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              pinnedScroll.ref.current?.scrollToOffset({
+                offset: Math.max(0, index * averageItemLength - JUMP_VIEW_OFFSET),
+                animated: true,
+              });
+            }}
             renderItem={({ item }) => renderItem({ item })}
             contentContainerStyle={[styles.listContent, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             refreshControl={
@@ -2223,6 +2316,7 @@ export function TodayScreen() {
             // this control.
             scrollEnabled={!painting && !fabDragging && !draggingStackChild && !draggingSubtask}
             scrollControlRef={todayScrollControl}
+            rowScrollerRef={todayRowScroller}
             data={draggableData}
             keyExtractor={listItemKey}
             renderItem={renderItem}
@@ -2447,7 +2541,7 @@ export function TodayScreen() {
                   hideTodayLabel
                   showCategory
                   showProject
-                  justCreated={item.id === justCreatedId}
+                  highlighted={item.id === flashTaskId}
                 />
               );
             }}

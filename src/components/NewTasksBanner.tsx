@@ -25,8 +25,8 @@ const MAX_LIST_HEIGHT = Math.round(Dimensions.get('window').height * 0.32);
 
 interface Props {
   tasks: Task[];
-  /** Open a new task — the banner marks it seen on the caller's side. */
-  onSelectTask: (task: Task) => void;
+  /** Scroll the list below to a new task — the banner marks it seen on the caller's side. */
+  onJumpToTask: (task: Task) => void;
   onDismiss: () => void;
 }
 
@@ -38,10 +38,11 @@ interface Props {
  * It names the tasks rather than only counting them: a new task sorts into
  * its category like any other, so it can land at the bottom of a long list
  * (or under a collapsed header) where a bare count tells you nothing about
- * what showed up. Each title is tappable and carries its category, so the
- * banner answers both "what's new" and "where is it".
+ * what showed up. Each title carries its category and, tapped, scrolls the
+ * list to the row itself — so the banner answers both "what's new" and
+ * "where is it", the second one by pointing rather than describing.
  */
-export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
+export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const reduceMotion = useReduceMotion();
@@ -126,7 +127,7 @@ export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
           nestedScrollEnabled
         >
           {shown.map(task => (
-            <NewTaskRow key={task.id} task={task} styles={styles} colors={colors} onPress={() => onSelectTask(task)} />
+            <NewTaskRow key={task.id} task={task} styles={styles} onPress={() => onJumpToTask(task)} />
           ))}
           {remaining > 0 && (
             <TouchableOpacity
@@ -148,12 +149,10 @@ export function NewTasksBanner({ tasks, onSelectTask, onDismiss }: Props) {
 function NewTaskRow({
   task,
   styles,
-  colors,
   onPress,
 }: {
   task: Task;
   styles: ReturnType<typeof makeStyles>;
-  colors: Colors;
   onPress: () => void;
 }) {
   const categoryEmoji = useCategoryStore(s => (task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null));
@@ -167,14 +166,15 @@ function NewTaskRow({
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={categoryLabel ? `Open ${task.title}, in ${task.category}` : `Open ${task.title}`}
+      accessibilityLabel={
+        categoryLabel ? `Show ${task.title} in the list, in ${task.category}` : `Show ${task.title} in the list`
+      }
     >
       <View style={styles.dot} />
       <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
       {categoryLabel && (
         <Text style={styles.taskCategory} numberOfLines={1}>{categoryLabel}</Text>
       )}
-      <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
     </TouchableOpacity>
   );
 }
@@ -234,9 +234,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.warning,
   },
   taskTitle: { flexShrink: 1, color: colors.text, fontSize: font.sm },
+  // Sits with the title rather than pushed to the far edge: it qualifies the
+  // title ("Play violin, the one in Hobbies"), and a right-aligned column of
+  // them read as a separate list of its own — one that moved around, since a
+  // row without a category had nothing in it.
   taskCategory: {
     flexShrink: 0,
-    marginLeft: 'auto',
     color: colors.textSecondary,
     fontSize: font.xs,
   },
