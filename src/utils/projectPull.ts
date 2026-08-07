@@ -54,6 +54,29 @@ export const PULL_TODAY_BUDGET_MINUTES = 180;
 const QUEUE_LEAD = 18;
 const QUEUE_DEPTH = 6;
 
+/**
+ * Who is asking, which decides whether `nudgeCadenceDays` is a gate or just a
+ * sort key.
+ *
+ * 'nudge' — the app volunteering: the accent tint and "N projects gone quiet"
+ * on the Today options row, and the auto-schedule drip, which dates a task
+ * unattended. Both speak without being asked, so the cadence gates them. A
+ * project nobody opted in is silent, which is the whole point of the 0 default.
+ *
+ * 'ask' — the user tapped "Pull from projects". The cadence answers "when
+ * should I chase you unprompted", and that is not the question a tap on the
+ * button asks: tapping it *is* the nudge, so there is nothing left to opt into.
+ * Gating it too made the sheet inert for everyone — 0 is the default for new
+ * projects as well as the migration backfill, so every project ever created is
+ * excluded until its cadence is set by hand, and the sheet answered a board of
+ * entirely undated projects with "nothing waiting". The cadence still *ranks*
+ * here (see overdueBy), it just doesn't exclude.
+ *
+ * It also can't exclude honestly: 0 is both "I parked this project" and "I have
+ * never opened this picker", and nothing distinguishes them.
+ */
+export type StallMode = 'nudge' | 'ask';
+
 /** A project that has gone quiet, and why. */
 export interface ProjectStall {
   project: Project;
@@ -65,7 +88,13 @@ export interface ProjectStall {
   lastTouchedAt: string;
   quietDays: number;
   cadenceDays: number;
-  /** quietDays - cadenceDays; >= 0 for a stall. Drives the ordering. */
+  /**
+   * quietDays - cadenceDays. Drives the ordering, and does the right thing in
+   * both modes without a second sort key: in 'nudge' it's >= 0 by construction,
+   * and in 'ask' an un-opted-in project subtracts nothing, so it ranks on how
+   * long it's actually been quiet, while a project whose own cadence hasn't
+   * come round yet goes negative and sorts below the ones overdue for it.
+   */
   overdueBy: number;
 }
 
@@ -87,10 +116,52 @@ export interface ProjectPullProposal {
   selected: boolean;
 }
 
+/**
+ * Why the sheet has nothing to offer, when it has nothing to offer.
+ *
+ * There are seven ways to produce an empty plan and the sheet used to name one
+ * of them unconditionally ("every project has something scheduled"). On an
+ * install that predates the feature that message is the opposite of the truth:
+ * the migration backfills nudge_cadence_days to 0 — deliberately, so the
+ * feature doesn't start by nagging about projects nobody opted in — so every
+ * existing project reads as "never nudge me", and a board of entirely undated
+ * projects gets told they're all scheduled. Nothing else in the sheet points
+ * at the switch that's actually off, so the copy has to.
+ */
+export type PullEmptyReason =
+  /** Vacation mode silences the feature wholesale. */
+  | 'vacation'
+  /** No unarchived projects to pull from at all. */
+  | 'no-projects'
+  /** nudgeCadenceDays is 0 — the project has never been opted in. */
+  | 'cadence-off'
+  /** Stalled, but on auto-schedule, so the drip handles it instead. */
+  | 'auto-scheduled'
+  /** Quiet, but not yet for as long as its own cadence asks. */
+  | 'too-soon'
+  /** A member carries a date signal, so the project isn't silent. */
+  | 'has-schedule'
+  /** Only mid-chain steps left, which can't be dated. */
+  | 'no-pullable'
+  /** Nothing live left in it — empty, or finished. */
+  | 'no-live-tasks';
+
+export interface PullEmptyState {
+  reason: PullEmptyReason;
+  /** Unarchived projects this reason accounts for. */
+  count: number;
+  /** Unarchived projects considered. */
+  total: number;
+  /** 'too-soon' only: days until the nearest project goes quiet. */
+  daysUntilQuiet?: number;
+}
+
 export interface ProjectPullPlan {
   proposals: ProjectPullProposal[];
   /** Stalled projects that didn't fit in MAX_PULLED_PROJECTS. */
   overflowCount: number;
+  /** Populated only when there are no proposals; null otherwise. */
+  empty: PullEmptyState | null;
 }
 
 /**
@@ -116,6 +187,77 @@ export function lastTouchedAt(project: Project, allMembers: readonly Task[]): st
   return latest;
 }
 
+/** Top-level rows per project, in one pass. */
+function bucketByProject(tasks: readonly Task[]): Map<string, Task[]> {
+  const byProject = new Map<string, Task[]>();
+  for (const t of tasks) {
+    if (!t.projectId || t.parentId !== null) continue;
+    const bucket = byProject.get(t.projectId);
+    if (bucket) bucket.push(t);
+    else byProject.set(t.projectId, [t]);
+  }
+  return byProject;
+}
+
+/** Either the project has stalled, or here is the gate that said it hasn't. */
+type ProjectVerdict =
+  | { stall: ProjectStall; reason?: undefined; daysUntilQuiet?: undefined }
+  | { stall?: undefined; reason: PullEmptyReason; daysUntilQuiet?: number };
+
+/**
+ * The gates, in order, for one project — shared by findProjectStalls (which
+ * wants the stalls) and diagnosePullEmpty (which wants the refusals). Written
+ * once so the empty-state copy can't drift from the rule it's describing.
+ */
+function classifyProject(
+  project: Project,
+  allMembers: readonly Task[],
+  todayStart: Date,
+  mode: StallMode,
+): ProjectVerdict {
+  // 0 means "don't bring this up unasked", for a project deliberately parked —
+  // not a degenerate cadence. It silences the volunteered surfaces only; see
+  // StallMode for why a sheet the user opened themselves ignores it.
+  const cadenceDays = project.nudgeCadenceDays;
+  if (mode === 'nudge' && cadenceDays <= 0) return { reason: 'cadence-off' };
+
+  const members = allMembers.filter(t => !t.completed && !t.archived);
+  // No live members at all. Covers both the empty shell and the project whose
+  // members are all done — that one isn't silent, it's finished.
+  if (members.length === 0) return { reason: 'no-live-tasks' };
+
+  // One scheduled member and the project is not quiet. hasNoDateSignal is the
+  // same predicate the visibility gates use, so "stalled" means precisely
+  // "nothing in here can appear anywhere".
+  if (!members.every(hasNoDateSignal)) return { reason: 'has-schedule' };
+
+  const pullable = members.filter(isPullable);
+  if (pullable.length === 0) return { reason: 'no-pullable' };
+
+  const touched = lastTouchedAt(project, allMembers);
+  // Calendar days on the logical day boundary, never string-sliced ISO — see
+  // the timezone note on pinSuggest.overdueDays.
+  const quietDays = differenceInCalendarDays(todayStart, getDayStart(new Date(touched)));
+  // The cadence is a threshold only for the surfaces that speak first. Asked
+  // directly, a project that went quiet yesterday is still a fair suggestion —
+  // it just ranks below one that's been quiet a month (see overdueBy).
+  if (mode === 'nudge' && quietDays < cadenceDays) {
+    return { reason: 'too-soon', daysUntilQuiet: cadenceDays - quietDays };
+  }
+
+  return {
+    stall: {
+      project,
+      members,
+      pullable,
+      lastTouchedAt: touched,
+      quietDays,
+      cadenceDays,
+      overdueBy: quietDays - cadenceDays,
+    },
+  };
+}
+
 /**
  * Every project that has gone quiet, most overdue first.
  *
@@ -125,58 +267,21 @@ export function lastTouchedAt(project: Project, allMembers: readonly Task[]): st
 export function findProjectStalls(
   projects: readonly Project[],
   tasks: readonly Task[],
+  mode: StallMode = 'nudge',
 ): ProjectStall[] {
-  // Vacation mode silences the whole feature. Nudging someone to schedule more
-  // work is exactly what vacation mode exists to stop.
+  // Vacation mode silences the whole feature, in both modes — unlike the
+  // cadence, it's a deliberate, unambiguous "hide work from me" the user set
+  // today, and every route out of this sheet dates a task.
   if (useSettingsStore.getState().vacationMode) return [];
 
-  const byProject = new Map<string, Task[]>();
-  for (const t of tasks) {
-    if (!t.projectId || t.parentId !== null) continue;
-    const bucket = byProject.get(t.projectId);
-    if (bucket) bucket.push(t);
-    else byProject.set(t.projectId, [t]);
-  }
-
+  const byProject = bucketByProject(tasks);
   const todayStart = getCurrentDayStart();
   const stalls: ProjectStall[] = [];
 
   for (const project of projects) {
     if (project.archived) continue;
-    // 0 is an explicit "never ask about this one", for a project deliberately
-    // parked — not a degenerate cadence.
-    const cadenceDays = project.nudgeCadenceDays;
-    if (cadenceDays <= 0) continue;
-
-    const allMembers = byProject.get(project.id) ?? [];
-    const members = allMembers.filter(t => !t.completed && !t.archived);
-    // No live members at all. Covers both the empty shell and the project whose
-    // members are all done — that one isn't silent, it's finished.
-    if (members.length === 0) continue;
-
-    // One scheduled member and the project is not quiet. hasNoDateSignal is the
-    // same predicate the visibility gates use, so "stalled" means precisely
-    // "nothing in here can appear anywhere".
-    if (!members.every(hasNoDateSignal)) continue;
-
-    const pullable = members.filter(isPullable);
-    if (pullable.length === 0) continue;
-
-    const touched = lastTouchedAt(project, allMembers);
-    // Calendar days on the logical day boundary, never string-sliced ISO — see
-    // the timezone note on pinSuggest.overdueDays.
-    const quietDays = differenceInCalendarDays(todayStart, getDayStart(new Date(touched)));
-    if (quietDays < cadenceDays) continue;
-
-    stalls.push({
-      project,
-      members,
-      pullable,
-      lastTouchedAt: touched,
-      quietDays,
-      cadenceDays,
-      overdueBy: quietDays - cadenceDays,
-    });
+    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart, mode);
+    if (verdict.stall) stalls.push(verdict.stall);
   }
 
   // Ties resolve by the user's own project ordering, so the same board always
@@ -276,7 +381,123 @@ export function suggestPullDate(
 }
 
 /**
- * Build the plan the sheet reviews.
+ * Which reason to name when several apply. Ordered by how much it tells the
+ * user they can act on: an unset cadence is a switch they can flip, a project
+ * that isn't quiet yet has a date, and "everything's scheduled" is the one that
+ * needs no action at all.
+ */
+const REASON_PRIORITY: readonly PullEmptyReason[] = [
+  'cadence-off',
+  'too-soon',
+  'auto-scheduled',
+  'has-schedule',
+  'no-pullable',
+  'no-live-tasks',
+];
+
+/**
+ * Why an empty plan is empty — the most common reason across the board, ties
+ * broken by REASON_PRIORITY. Returns null if some project did stall after all,
+ * which only happens if this is called on a plan that wasn't empty.
+ *
+ * Runs its own pass rather than riding along with findProjectStalls, because
+ * the answer is only wanted on the rare open where the sheet has nothing, and
+ * the stall path runs on every Today render.
+ */
+export function diagnosePullEmpty(
+  projects: readonly Project[],
+  tasks: readonly Task[],
+  mode: StallMode = 'ask',
+): PullEmptyState | null {
+  if (useSettingsStore.getState().vacationMode) {
+    return { reason: 'vacation', count: 0, total: 0 };
+  }
+
+  const active = projects.filter(p => !p.archived);
+  if (active.length === 0) return { reason: 'no-projects', count: 0, total: 0 };
+
+  const byProject = bucketByProject(tasks);
+  const todayStart = getCurrentDayStart();
+  const counts = new Map<PullEmptyReason, number>();
+  let daysUntilQuiet: number | undefined;
+
+  for (const project of active) {
+    const verdict = classifyProject(project, byProject.get(project.id) ?? [], todayStart, mode);
+    // A stall that got here is one buildProjectPullPlan filtered out, which it
+    // only does for auto-schedule — that project is being handled, not ignored.
+    const reason = verdict.stall
+      ? verdict.stall.project.autoSchedule
+        ? ('auto-scheduled' as const)
+        : null
+      : verdict.reason;
+    if (!reason) continue;
+    counts.set(reason, (counts.get(reason) ?? 0) + 1);
+    if (
+      verdict.daysUntilQuiet !== undefined &&
+      (daysUntilQuiet === undefined || verdict.daysUntilQuiet < daysUntilQuiet)
+    ) {
+      daysUntilQuiet = verdict.daysUntilQuiet;
+    }
+  }
+
+  let best: PullEmptyReason | null = null;
+  for (const reason of REASON_PRIORITY) {
+    const count = counts.get(reason) ?? 0;
+    if (count === 0) continue;
+    if (best === null || count > (counts.get(best) ?? 0)) best = reason;
+  }
+  if (best === null) return null;
+
+  return {
+    reason: best,
+    count: counts.get(best) ?? 0,
+    total: active.length,
+    ...(best === 'too-soon' && daysUntilQuiet !== undefined ? { daysUntilQuiet } : {}),
+  };
+}
+
+/** The sheet's empty-state sentence. */
+export function describePullEmpty(state: PullEmptyState): string {
+  const { count, total } = state;
+  const projects = (n: number) => `${n} project${n === 1 ? '' : 's'}`;
+  // Named reason plus "and the rest didn't qualify either" — the head sentence
+  // must never imply it covers every project when it doesn't.
+  const rest = count > 0 && count < total ? ' The rest have nothing to pull yet.' : '';
+
+  switch (state.reason) {
+    case 'vacation':
+      return 'Vacation mode is on — project nudges are paused until you turn it off.';
+    case 'no-projects':
+      return 'No projects yet. Tasks filed under one can be pulled in from here.';
+    case 'cadence-off':
+      return count === total
+        ? 'No project is set to be nudged yet. Open a project and set “Nudge me” to have it show up here.'
+        : `${projects(count)} of ${total} aren't set to be nudged — set “Nudge me” on one to include it.${rest}`;
+    case 'too-soon':
+      return state.daysUntilQuiet !== undefined
+        ? `Nothing has been quiet long enough yet — the next one is due in ${state.daysUntilQuiet} day${state.daysUntilQuiet === 1 ? '' : 's'}.`
+        : 'Nothing has been quiet long enough yet.';
+    case 'auto-scheduled':
+      return `${count === 1 ? 'One quiet project is' : `${projects(count)} are quiet and`} on auto-schedule — the next task gets dated without you.${rest}`;
+    case 'has-schedule':
+      return count === total
+        ? 'Every project has something scheduled.'
+        : `${projects(count)} of ${total} already have something scheduled.${rest}`;
+    case 'no-pullable':
+      return count === total
+        ? 'Only mid-chain steps are left, and those get their turn by being completed, not by being dated.'
+        : `${projects(count)} of ${total} have only mid-chain steps left, which can't be dated.${rest}`;
+    case 'no-live-tasks':
+      return count === total
+        ? 'Nothing left to do in any project.'
+        : `${projects(count)} of ${total} have nothing left to do.${rest}`;
+  }
+}
+
+/**
+ * Build the plan the sheet reviews. 'ask' mode: the user opened this, so every
+ * quiet project is a candidate whether or not it was opted in for nudging (see
+ * StallMode), ranked by how overdue it is for attention.
  *
  * Projects on auto-schedule never appear here — the drip handles them, so they
  * can't be nagged and dripped at once. The two layers coordinate through the
@@ -287,7 +508,7 @@ export function buildProjectPullPlan(
   allTasks: readonly Task[],
   todaysTasks: readonly Task[],
 ): ProjectPullPlan {
-  const stalls = findProjectStalls(projects, allTasks).filter(s => !s.project.autoSchedule);
+  const stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
   const ctx = pullContext();
 
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {
@@ -301,7 +522,11 @@ export function buildProjectPullPlan(
     };
   });
 
-  return { proposals, overflowCount: Math.max(0, stalls.length - proposals.length) };
+  return {
+    proposals,
+    overflowCount: Math.max(0, stalls.length - proposals.length),
+    empty: proposals.length === 0 ? diagnosePullEmpty(projects, allTasks) : null,
+  };
 }
 
 /**
@@ -318,10 +543,15 @@ export function projectPullUpdates(date: Date): Partial<Task> {
 /**
  * The single task an auto-scheduled project should date for itself, or null if
  * it isn't due to. Layer B's entire decision.
+ *
+ * Stays in 'nudge' mode, and must: this dates a task with nobody watching, so
+ * the cadence is the only thing deciding when. (The editor already refuses to
+ * store autoSchedule without one, so the gate is never load-bearing here — but
+ * it's the gate that makes that invariant safe to rely on rather than assume.)
  */
 export function dripCandidate(project: Project, allTasks: readonly Task[]): Task | null {
   if (!project.autoSchedule) return null;
-  const stall = findProjectStalls([project], allTasks)[0];
+  const stall = findProjectStalls([project], allTasks, 'nudge')[0];
   if (!stall) return null;
   return rankPullCandidates(stall.pullable)[0] ?? null;
 }
