@@ -23,11 +23,14 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
+import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
+import type { ReminderKind } from '../types';
 
 interface Props {
   visible: boolean;
   value: Date | null;
-  onConfirm: (date: Date) => void;
+  kind: ReminderKind;
+  onConfirm: (date: Date, kind: ReminderKind) => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -37,7 +40,9 @@ const CARD_WIDTH = Math.min(SCREEN_WIDTH - 32, 380);
 const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - spacing.md * 2 - CAL_PADDING * 2) / 7);
 
-export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }: Props) {
+const alarmKitAvailable = isAlarmKitAvailable();
+
+export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -51,6 +56,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
   });
   const [nlText, setNlText] = useState('');
   const [pickerReady, setPickerReady] = useState(false);
+  const [selectedKind, setSelectedKind] = useState<ReminderKind>(kind);
 
   useEffect(() => {
     if (!visible) {
@@ -64,6 +70,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
     if (!value) t.setHours(9, 0, 0, 0);
     setTimeDate(t);
     setNlText('');
+    setSelectedKind(kind);
   }, [visible]);
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -96,7 +103,7 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
     if (!selectedDate) return;
     const result = new Date(selectedDate);
     result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-    onConfirm(result);
+    onConfirm(result, selectedKind);
   };
 
   return (
@@ -237,6 +244,52 @@ export function RemindMePicker({ visible, value, onConfirm, onClear, onCancel }:
             )}
 
             <View style={styles.sectionGap} />
+
+            {/* Alarm vs notification — only offered where AlarmKit can actually ring one */}
+            {alarmKitAvailable && (
+              <>
+                <View style={styles.kindSection}>
+                  <Text style={styles.sectionLabel}>Ring As</Text>
+                  <View style={styles.kindToggle}>
+                    <TouchableOpacity
+                      style={[styles.kindOption, selectedKind === 'notification' && styles.kindOptionSelected]}
+                      onPress={() => setSelectedKind('notification')}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Notification"
+                      accessibilityState={{ selected: selectedKind === 'notification' }}
+                    >
+                      <Ionicons
+                        name="notifications"
+                        size={16}
+                        color={selectedKind === 'notification' ? colors.onAccent : colors.textSecondary}
+                      />
+                      <Text style={[styles.kindLabel, selectedKind === 'notification' && styles.kindLabelSelected]}>
+                        Notification
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.kindOption, selectedKind === 'alarm' && styles.kindOptionSelected]}
+                      onPress={() => setSelectedKind('alarm')}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Alarm"
+                      accessibilityState={{ selected: selectedKind === 'alarm' }}
+                    >
+                      <Ionicons
+                        name="alarm"
+                        size={16}
+                        color={selectedKind === 'alarm' ? colors.onAccent : colors.textSecondary}
+                      />
+                      <Text style={[styles.kindLabel, selectedKind === 'alarm' && styles.kindLabelSelected]}>
+                        Alarm
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <View style={styles.sectionGap} />
+              </>
+            )}
 
             {/* Done button */}
             <TouchableOpacity
@@ -426,6 +479,37 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   timePickerWidget: {
     height: 150,
+  },
+  kindSection: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+  },
+  kindToggle: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+  },
+  kindOption: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgSecondary,
+  },
+  kindOptionSelected: {
+    backgroundColor: colors.accent,
+  },
+  kindLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  kindLabelSelected: {
+    color: colors.onAccent,
   },
   doneBtn: {
     marginHorizontal: spacing.md,

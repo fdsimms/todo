@@ -24,7 +24,7 @@ import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay } from '../types';
+import type { Task, Priority, Effort, RecurrenceType, ChainItem, TimeOfDay, ReminderKind } from '../types';
 import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, type Colors } from '../theme';
@@ -189,6 +189,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [windowPickerDate, setWindowPickerDate] = useState(new Date());
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
+  const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -287,6 +288,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTargetCount(task.targetCount ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
+      setReminderKind(task.reminderKind ?? 'notification');
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
       setRecurrenceMonthDay(task.recurrenceMonthDay ?? null);
@@ -306,7 +308,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification');
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -359,6 +361,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
+      reminderKind: task?.reminderKind ?? 'notification',
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
@@ -469,6 +472,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineMonthDay: recurrenceType === 'monthly' ? deadlineMonthDay : null,
       timeSegments, windowStart, windowEnd, targetCount, deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
+      reminderKind,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
       recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
@@ -664,8 +668,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode(mode);
   };
 
-  const confirmPicker = (confirmed: Date) => {
-    if (pickerMode === 'reminder') setReminderTime(confirmed);
+  const confirmPicker = (confirmed: Date, kind?: ReminderKind) => {
+    if (pickerMode === 'reminder') {
+      setReminderTime(confirmed);
+      if (kind) setReminderKind(kind);
+    }
     setPickerMode('none');
   };
 
@@ -739,6 +746,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
+      reminderKind,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
@@ -987,8 +995,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           <RemindMePicker
             visible={pickerMode !== 'none'}
             value={pickerDate}
+            kind={reminderKind}
             onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setPickerMode('none'); } : undefined}
+            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setPickerMode('none'); } : undefined}
             onCancel={() => setPickerMode('none')}
           />
           <WhenPicker
@@ -1439,12 +1448,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         )}
         <View style={styles.sep} />
         <EditorRow
-          icon="notifications"
+          icon={reminderKind === 'alarm' ? 'alarm' : 'notifications'}
           label="Remind me"
-          hint="Send a notification at this time"
+          hint={reminderKind === 'alarm' ? 'Ring an alarm at this time' : 'Send a notification at this time'}
           value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
           onPress={() => openPicker('reminder')}
-          onClear={reminderTime ? () => setReminderTime(null) : undefined}
+          onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); } : undefined}
         />
         <View style={styles.sep} />
         <EditorRow

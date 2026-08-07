@@ -6,6 +6,17 @@ import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
 import { displayTitleFor, isHiddenForVacation } from './visibilityUtils';
 import { agendaCounts, agendaBody, nextAgendaTime } from './dailyAgenda';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
+
+export { isAlarmKitAvailable, requestAlarmAuthorization };
+
+// A reminder rings as a native AlarmKit alarm only when the task asked for it
+// AND the platform can actually deliver one — everywhere else (older iOS,
+// Android, web, Expo Go) it silently falls back to a plain notification
+// rather than dropping the reminder.
+function usesAlarmKit(task: Task): boolean {
+  return task.reminderKind === 'alarm' && isAlarmKitAvailable();
+}
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -52,6 +63,16 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
   const triggerDate = new Date(task.reminderTime);
   if (triggerDate <= new Date()) return;
 
+  if (usesAlarmKit(task)) {
+    // Belt-and-suspenders: a reminder that switched from 'alarm' to
+    // 'notification' (or vice versa) must never leave a stale entry behind
+    // in the backend it no longer uses.
+    await Notifications.cancelScheduledNotificationAsync(task.id).catch(() => {});
+    await scheduleNativeAlarm(task.id, triggerDate, displayTitleFor(task) || 'Task reminder');
+    return;
+  }
+
+  await cancelNativeAlarm(task.id).catch(() => {});
   await Notifications.cancelScheduledNotificationAsync(task.id).catch(() => {});
   await Notifications.scheduleNotificationAsync({
     identifier: task.id,
@@ -70,6 +91,7 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
 
 export async function cancelTaskReminder(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(taskId).catch(() => {});
+  await cancelNativeAlarm(taskId).catch(() => {});
 }
 
 // iOS caps pending local notification requests at 64.
@@ -106,7 +128,10 @@ export interface PendingReminderStats {
  * nothing anywhere tells them.
  */
 export function pendingReminderStats(tasks: Task[], now: Date = new Date()): PendingReminderStats {
-  const wanted = upcomingReminders(tasks, now).length;
+  // AlarmKit alarms don't compete for the 64-notification OS cap — they're a
+  // separate subsystem from UNUserNotificationCenter — so they're excluded
+  // from the count Settings shows against that cap.
+  const wanted = upcomingReminders(tasks, now).filter(t => !usesAlarmKit(t)).length;
   const scheduled = Math.min(wanted, MAX_PENDING_REMINDERS);
   return { wanted, scheduled, dropped: wanted - scheduled };
 }
@@ -115,9 +140,17 @@ export async function rescheduleAllReminders(tasks: Task[]): Promise<void> {
   const now = new Date();
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 
-  const upcoming = upcomingReminders(tasks, now).slice(0, MAX_PENDING_REMINDERS);
+  const upcoming = upcomingReminders(tasks, now);
 
+  // AlarmKit alarms are untouched by cancelAllScheduledNotificationsAsync
+  // above (it only reaches UNUserNotificationCenter) and have no equivalent
+  // pending-request cap, so every one of them reschedules from the full,
+  // uncapped list rather than sharing the 64-slot budget below.
   for (const task of upcoming) {
+    if (usesAlarmKit(task)) await scheduleTaskReminder(task);
+  }
+
+  for (const task of upcoming.filter(t => !usesAlarmKit(t)).slice(0, MAX_PENDING_REMINDERS)) {
     await scheduleTaskReminder(task);
   }
 

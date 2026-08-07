@@ -17,6 +17,17 @@ jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },
 }));
 
+// Off by default — most tests exercise the plain-notification path. Tests
+// covering AlarmKit branching flip `mockAlarmKitAvailable` before importing
+// behavior that reads it, and reset it in afterEach.
+let mockAlarmKitAvailable = false;
+jest.mock('todo-alarmkit-bridge', () => ({
+  isAlarmKitAvailable: jest.fn(() => mockAlarmKitAvailable),
+  requestAlarmAuthorization: jest.fn().mockResolvedValue('authorized'),
+  scheduleNativeAlarm: jest.fn().mockResolvedValue(true),
+  cancelNativeAlarm: jest.fn().mockResolvedValue(true),
+}));
+
 // Mutable so the daily-agenda tests can drive the settings it reads. Safe to
 // close over even though the import below is hoisted above this declaration:
 // getState is only ever called from inside a scheduling function, never while
@@ -52,6 +63,7 @@ import {
   scheduleDailyAgenda,
   cancelDailyAgenda,
 } from '../utils/notifications';
+import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -97,6 +109,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   groupId: null,
   projectId: null,
   reminderTime: null,
+  reminderKind: 'notification',
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -123,6 +136,7 @@ beforeEach(() => {
   (Platform as any).OS = 'ios';
   for (const key of Object.keys(mockSettings)) delete mockSettings[key];
   Object.assign(mockSettings, DEFAULT_MOCK_SETTINGS);
+  mockAlarmKitAvailable = false;
 });
 
 // ─── requestNotificationPermissions ──────────────────────────────────────────
@@ -204,6 +218,30 @@ describe('scheduleTaskReminder', () => {
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(arg.content.body).toBe('You have a task coming up');
   });
+
+  it('schedules a plain notification for reminderKind "alarm" when AlarmKit is unavailable', async () => {
+    mockAlarmKitAvailable = false;
+    await scheduleTaskReminder(makeTask({ reminderTime: FUTURE, reminderKind: 'alarm' }));
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('schedules a native alarm instead of a notification when reminderKind is "alarm" and AlarmKit is available', async () => {
+    mockAlarmKitAvailable = true;
+    const task = makeTask({ id: 'task-alarm', title: 'Wake up', reminderTime: FUTURE, reminderKind: 'alarm' });
+    await scheduleTaskReminder(task);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith('task-alarm', new Date(FUTURE), 'Wake up');
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    // Still clears any stale plain notification left behind by a prior 'notification'-kind schedule.
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('task-alarm');
+  });
+
+  it('clears any stale native alarm when scheduling a plain notification', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleTaskReminder(makeTask({ id: 'task-1', reminderTime: FUTURE, reminderKind: 'notification' }));
+    expect(cancelNativeAlarm).toHaveBeenCalledWith('task-1');
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ─── cancelTaskReminder ───────────────────────────────────────────────────────
@@ -219,6 +257,12 @@ describe('cancelTaskReminder', () => {
       new Error('native error'),
     );
     await expect(cancelTaskReminder('task-1')).resolves.toBeUndefined();
+  });
+
+  it('cancels from both the notification and AlarmKit backends unconditionally', async () => {
+    await cancelTaskReminder('my-task-id');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('my-task-id');
+    expect(cancelNativeAlarm).toHaveBeenCalledWith('my-task-id');
   });
 });
 
@@ -265,6 +309,34 @@ describe('rescheduleAllReminders', () => {
     expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(1);
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(arg.identifier).toBe('b');
+  });
+
+  it('reschedules alarm-kind reminders through AlarmKit, uncapped and independent of the notification cap', async () => {
+    mockAlarmKitAvailable = true;
+    const alarmTasks = Array.from({ length: 70 }, (_, i) =>
+      makeTask({
+        id: `alarm-${i}`,
+        reminderKind: 'alarm',
+        reminderTime: new Date(Date.now() + (70 - i) * 60 * 1000).toISOString(),
+      })
+    );
+    await rescheduleAllReminders(alarmTasks);
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(70);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('caps only notification-kind reminders, leaving alarm-kind reminders unaffected by the same rebuild', async () => {
+    mockAlarmKitAvailable = true;
+    const tasks = [
+      ...Array.from({ length: 70 }, (_, i) =>
+        makeTask({ id: `notif-${i}`, reminderTime: new Date(Date.now() + (70 - i) * 60 * 1000).toISOString() })
+      ),
+      makeTask({ id: 'alarm-1', reminderKind: 'alarm', reminderTime: FUTURE }),
+    ];
+    await rescheduleAllReminders(tasks);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(64);
+    expect(scheduleNativeAlarm).toHaveBeenCalledTimes(1);
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith('alarm-1', new Date(FUTURE), expect.any(String));
   });
 
   it('schedules only the nearest MAX_PENDING_REMINDERS upcoming reminders, soonest first', async () => {
@@ -431,6 +503,25 @@ describe('pendingReminderStats', () => {
 
   it('is all zeroes with nothing scheduled', () => {
     expect(pendingReminderStats([], NOW)).toEqual({ wanted: 0, scheduled: 0, dropped: 0 });
+  });
+
+  it('excludes alarm-kind reminders from the notification cap when AlarmKit is available', () => {
+    mockAlarmKitAvailable = true;
+    const tasks = [
+      ...nUpcoming(2),
+      makeTask({ id: 'alarm-1', reminderKind: 'alarm', reminderTime: at(3) }),
+      makeTask({ id: 'alarm-2', reminderKind: 'alarm', reminderTime: at(4) }),
+    ];
+    expect(pendingReminderStats(tasks, NOW)).toEqual({ wanted: 2, scheduled: 2, dropped: 0 });
+  });
+
+  it('counts alarm-kind reminders against the cap when AlarmKit is unavailable (they fall back to notifications)', () => {
+    mockAlarmKitAvailable = false;
+    const tasks = [
+      ...nUpcoming(2),
+      makeTask({ id: 'alarm-1', reminderKind: 'alarm', reminderTime: at(3) }),
+    ];
+    expect(pendingReminderStats(tasks, NOW)).toEqual({ wanted: 3, scheduled: 3, dropped: 0 });
   });
 });
 

@@ -3,6 +3,7 @@ export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
+export type ReminderKind = 'notification' | 'alarm';
 
 export interface Category {
   id: string;
@@ -186,6 +187,10 @@ export interface Task {
   estimatedMinutes: number | null; // precise time estimate; effort is the derived coarse bucket
 
   reminderTime: string | null; // ISO datetime for scheduled notification
+  // 'alarm' rings as a native iOS system alarm (AlarmKit, iOS 26+) instead of
+  // a plain notification; falls back to 'notification' wherever AlarmKit is
+  // unavailable. Ignored when reminderTime is null.
+  reminderKind: ReminderKind;
 
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 
