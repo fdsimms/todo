@@ -48,7 +48,10 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
   { id: 'capture', title: 'Capture from Reminders', icon: 'mic-outline', tint: 'green', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
-  { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'orange' },
+  // Neutral from here down: the five tinted groups are things you configure,
+  // the grey ones are housekeeping. A second orange next to Day & time's read
+  // as an accident rather than as a category.
+  { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
   { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
   { id: 'about', title: 'About', icon: 'information-circle-outline', tint: 'neutral' },
 ];
