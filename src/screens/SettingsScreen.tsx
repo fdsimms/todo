@@ -21,7 +21,7 @@ import Constants from 'expo-constants';
 import { format } from 'date-fns/format';
 import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { formatHHMM } from '../utils/dateUtils';
-import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { useSettingsStore, type WeekStart, type FabHand } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -62,6 +62,11 @@ const THEME_OPTIONS: { mode: ThemeMode; label: string; icon: string }[] = [
 const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
   { value: 0, label: 'Sunday' },
   { value: 1, label: 'Monday' },
+];
+
+const FAB_HAND_OPTIONS: { value: FabHand; label: string; icon: string }[] = [
+  { value: 'right', label: 'Right', icon: 'hand-right' },
+  { value: 'left', label: 'Left', icon: 'hand-left' },
 ];
 
 type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | 'agenda' | null;
@@ -116,6 +121,7 @@ export function SettingsScreen() {
     appFont, setAppFont,
     use24HourTime, setUse24HourTime,
     weekStartsOn, setWeekStartsOn,
+    fabHand, setFabHand,
     hapticsEnabled, setHapticsEnabled,
     dailyAgendaEnabled, setDailyAgendaEnabled,
     dailyAgendaTime, setDailyAgendaTime,
@@ -433,6 +439,42 @@ export function SettingsScreen() {
                       style={[
                         styles.themeBtnText,
                         themeMode === opt.mode && styles.themeBtnTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.sep} />
+              <View style={[styles.row, { paddingBottom: spacing.xs }]}>
+                <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Add button</Text>
+                  <Text style={styles.rowHint}>
+                    Which corner the + button rests in, on every list
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.themeRow, { paddingTop: 0 }]}>
+                {FAB_HAND_OPTIONS.map(opt => (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.themeBtn, fabHand === opt.value && styles.themeBtnActive]}
+                    onPress={() => setFabHand(opt.value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: fabHand === opt.value }}
+                    accessibilityLabel={`Add button on the ${opt.label.toLowerCase()}`}
+                  >
+                    <Ionicons
+                      name={opt.icon as never}
+                      size={18}
+                      color={fabHand === opt.value ? colors.accent : colors.textSecondary}
+                    />
+                    <Text
+                      style={[
+                        styles.themeBtnText,
+                        fabHand === opt.value && styles.themeBtnTextActive,
                       ]}
                     >
                       {opt.label}

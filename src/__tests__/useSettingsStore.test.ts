@@ -301,6 +301,31 @@ describe('weekStartsOn', () => {
   });
 });
 
+describe('fabHand', () => {
+  it('defaults to the right corner, so an existing install is unchanged', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('right');
+  });
+
+  it('round-trips left', () => {
+    useSettingsStore.getState().setFabHand('left');
+    expect(dbSetSetting).toHaveBeenCalledWith('fabHand', 'left');
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'fabHand' ? 'left' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('left');
+  });
+
+  it('falls back to right for anything that is not exactly "left"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'fabHand' ? 'LEFT' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().fabHand).toBe('right');
+  });
+});
+
 describe('hapticsEnabled', () => {
   // Defaults on rather than off, so an install predating the setting doesn't
   // silently lose the haptics it already had.

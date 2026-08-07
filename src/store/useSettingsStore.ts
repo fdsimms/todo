@@ -13,6 +13,15 @@ export type PatchNoteQaStatus = 'pass' | 'fail';
 // answers cover is a worse row.
 export type WeekStart = 0 | 1;
 
+/**
+ * Which bottom corner the add button rests in — a reach preference, not a
+ * layout direction. Only the button moves: the app's other left-anchored
+ * decisions (the drawer's edge swipe, a row's leading checkbox, swipe
+ * directions) are deliberate and stay put, so this is not an RTL flag and
+ * nothing outside Fab.tsx reads it.
+ */
+export type FabHand = 'right' | 'left';
+
 interface SettingsStore {
   dayResetTime: string;   // "HH:MM" — when the logical day flips (default midnight "00:00")
   morningStart: string;   // "HH:MM" — when morning begins (default "06:00")
@@ -30,6 +39,7 @@ interface SettingsStore {
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
   weekStartsOn: WeekStart;
+  fabHand: FabHand;
   hapticsEnabled: boolean;
   // Today's sort & filter, persisted so they survive a cold launch. They're
   // view state rather than a preference — nothing in Settings shows them — but
@@ -79,6 +89,7 @@ interface SettingsStore {
   setDailyAgendaTime: (time: string) => void;
   setUse24HourTime: (on: boolean) => void;
   setWeekStartsOn: (day: WeekStart) => void;
+  setFabHand: (hand: FabHand) => void;
   setHapticsEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
@@ -107,6 +118,7 @@ const DEFAULT_SETTINGS = {
   appFont: DEFAULT_APP_FONT,
   use24HourTime: false,
   weekStartsOn: 0 as WeekStart,
+  fabHand: 'right' as FabHand,
   hapticsEnabled: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
@@ -159,6 +171,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   appFont: DEFAULT_APP_FONT,
   use24HourTime: false,
   weekStartsOn: 0,
+  fabHand: 'right',
   hapticsEnabled: true,
   sortOption: 'default',
   filterPriorities: [],
@@ -190,6 +203,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
     const use24HourTime = dbGetSetting('use24HourTime') === 'true';
     const weekStartsOn: WeekStart = dbGetSetting('weekStartsOn') === '1' ? 1 : 0;
+    const fabHand: FabHand = dbGetSetting('fabHand') === 'left' ? 'left' : 'right';
     // Defaults on rather than off, so an install that predates the setting
     // keeps the haptics it already had.
     const hapticsEnabled = dbGetSetting('hapticsEnabled') !== 'false';
@@ -218,7 +232,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -285,6 +299,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setWeekStartsOn(day: WeekStart) {
     dbSetSetting('weekStartsOn', String(day));
     set({ weekStartsOn: day });
+  },
+
+  setFabHand(hand: FabHand) {
+    dbSetSetting('fabHand', hand);
+    set({ fabHand: hand });
   },
 
   setHapticsEnabled(on: boolean) {
