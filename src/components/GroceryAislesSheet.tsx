@@ -53,6 +53,16 @@ type Tab = 'aisles' | 'stores';
  * ancestor of the scroll view for it to stand down" trap that a nested list
  * inside the grocery screen would hit.
  *
+ * **The whole row is the drag target, not the grip.** Both lists here are
+ * screen-style card rows, so they follow the rule every other `ReorderableList`
+ * row does (Categories, Templates, `TaskItem`, `GroceryRow`): long-press
+ * anywhere on the row. Binding `drag` to the grip glyph alone — the pattern the
+ * nested `SortableList` editors use, where a row already spends its own press
+ * on something else — left ~36pt of the row live and the rest claiming no JS
+ * responder at all, so a long-press on the aisle's name went to the scroll view
+ * and the drag simply never started. The grip stays as the affordance that says
+ * the row moves; it just isn't a button any more.
+ *
  * 'Other' is pinned last and can't be dragged — it's the catch-all every
  * unrecognised item falls into, and a catch-all in the middle of a walk order
  * is never what anyone meant.
@@ -63,6 +73,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleOrder = useGroceryStore(s => s.setAisleOrder);
+  const addAisle = useGroceryStore(s => s.addAisle);
   const renameAisle = useGroceryStore(s => s.renameAisle);
   const deleteAisle = useGroceryStore(s => s.deleteAisle);
   const items = useGroceryStore(useShallow(s => s.items));
@@ -175,14 +186,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   };
 
   const handleAdd = () => {
-    const trimmed = newAisle.trim();
-    if (!trimmed) return;
-    if (aisleOrder.some(a => a.toLowerCase() === trimmed.toLowerCase())) {
-      setNewAisle('');
-      return;
-    }
-    setAisleOrder([...draggable, trimmed]);
-    haptics.success();
+    // addAisle owns the dedupe (and the write), so a name that's already in the
+    // order just clears the field — the aisle the user asked for is there, and
+    // there's nothing to celebrate. `aisleOrder` is the pre-call snapshot.
+    const created = addAisle(newAisle);
+    if (!created) return;
+    if (!aisleOrder.includes(created)) haptics.success();
     setNewAisle('');
   };
 
@@ -246,8 +255,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         ) : (
         <>
         <Text style={styles.intro}>
-          Drag these into the order you walk your store. Your list follows the same order. Tap a
-          name to rename it.
+          Hold a row and drag it into the order you walk your store. Your list follows the same
+          order. Tap a name to rename it.
         </Text>
 
         <ReorderableList
@@ -264,17 +273,26 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
             const count = countFor(aisle);
             const editing = aisle === editingAisle;
             return (
-              <View style={[styles.row, isActive && styles.rowActive]}>
-                <TouchableOpacity
-                  onLongPress={drag}
-                  delayLongPress={interaction.delayLongPress}
-                  activeOpacity={interaction.activeOpacity}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Reorder ${aisle}`}
-                >
-                  <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.row, isActive && styles.rowActive]}
+                // Same shape as a store row: the row itself is the drag target
+                // and the rename tap both, and only the delete button claims a
+                // corner of its own. Wrapping the *label* in a touchable
+                // instead would put the dead zone back — a long press starting
+                // on the name would go to a child with no onLongPress, and the
+                // drag would never start across most of the row's width.
+                onPress={editing ? undefined : () => {
+                  setEditingAisle(aisle);
+                  setEditingName(aisle);
+                }}
+                onLongPress={drag}
+                delayLongPress={interaction.delayLongPress}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={count > 0 ? `${aisle}, ${count} on the list` : aisle}
+                accessibilityHint="Double tap to rename. Long press to reorder."
+              >
+                <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
                 {editing ? (
                   <TextInput
@@ -290,18 +308,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                     accessibilityLabel={`Rename ${aisle}`}
                   />
                 ) : (
-                  <TouchableOpacity
-                    style={styles.rowLabelWrap}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => {
-                      setEditingAisle(aisle);
-                      setEditingName(aisle);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Rename ${aisle}`}
-                  >
-                    <Text style={styles.rowLabel} numberOfLines={1}>{aisle}</Text>
-                  </TouchableOpacity>
+                  <Text style={styles.rowLabel} numberOfLines={1}>{aisle}</Text>
                 )}
 
                 {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
@@ -315,7 +322,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 >
                   <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             );
           }}
           ListFooterComponent={
@@ -419,17 +426,20 @@ function StoresTab({
           const count = shopCounts.get(shop.id) ?? 0;
           const editing = shop.id === editingShopId;
           return (
-            <View style={[styles.row, isActive && styles.rowActive]}>
-              <TouchableOpacity
-                onLongPress={drag}
-                delayLongPress={interaction.delayLongPress}
-                activeOpacity={interaction.activeOpacity}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Reorder ${shop.name}`}
-              >
-                <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.row, isActive && styles.rowActive]}
+              // The row is the drag target and the rename tap both, the way a
+              // category row on its screen is; the delete button is a nested
+              // touchable and claims its own corner.
+              onPress={editing ? undefined : () => onStartRename(shop.id, shop.name)}
+              onLongPress={drag}
+              delayLongPress={interaction.delayLongPress}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={count > 0 ? `${shop.name}, ${count} items` : shop.name}
+              accessibilityHint="Double tap to rename. Long press to reorder."
+            >
+              <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
               {editing ? (
                 <TextInput
@@ -445,15 +455,7 @@ function StoresTab({
                   accessibilityLabel={`Rename ${shop.name}`}
                 />
               ) : (
-                <TouchableOpacity
-                  style={styles.rowLabelWrap}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => onStartRename(shop.id, shop.name)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Rename ${shop.name}`}
-                >
-                  <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
-                </TouchableOpacity>
+                <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
               )}
 
               {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
@@ -467,7 +469,7 @@ function StoresTab({
               >
                 <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           );
         }}
         ListEmptyComponent={
@@ -546,8 +548,7 @@ function makeStyles(colors: Colors) {
     },
     rowActive: { backgroundColor: colors.bgTertiary },
     rowPinned: { opacity: 0.6 },
-    rowLabelWrap: { flex: 1 },
-    rowLabel: { flex: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    rowLabel:{ flex: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     renameInput: {
       flex: 1,
       fontSize: font.md,

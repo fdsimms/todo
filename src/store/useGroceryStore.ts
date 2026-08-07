@@ -152,6 +152,12 @@ interface GroceryStore {
 
   setAisleOrder: (order: string[]) => void;
   /**
+   * Creates an aisle at the end of the walk order. Returns the canonical name —
+   * the existing one when it's already there, so callers can select it either
+   * way — or null when the name is empty.
+   */
+  addAisle: (name: string) => string | null;
+  /**
    * Renames an aisle everywhere it's recorded: the walk order, every row filed
    * there, and every remembered filing that pointed at it. False when the name
    * is blank, taken, or the aisle can't be renamed ('Other').
@@ -669,6 +675,32 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         nextItems.map(i => i.aisle)
       ),
     });
+  },
+
+  /**
+   * Unlike addShop this hands back the existing aisle on a collision instead of
+   * refusing. A shop is a row with an id, so returning a different one silently
+   * files a trip against the wrong place; an aisle *is* its name, so the one
+   * already in the order is the same aisle the caller just asked for.
+   *
+   * Matching is case-insensitive because normalizeAisleOrder dedupes exactly —
+   * "produce" beside "Produce" would render as two sections of one aisle.
+   *
+   * This is also the only path that *persists* a new aisle: setAisleMany adds
+   * one to the in-memory order as a side effect of filing an item there, and
+   * normalizeAisleOrder recovers it at startup only for as long as some row
+   * still carries it. An aisle the user typed out is a decision about their
+   * store and outlives the item it was created for.
+   */
+  addAisle(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const existing = get().aisleOrder.find(a => a.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+    // setAisleOrder normalizes, so passing the order with 'Other' still in it
+    // is fine — it comes back forced last.
+    get().setAisleOrder([...get().aisleOrder, trimmed]);
+    return trimmed;
   },
 
   /**

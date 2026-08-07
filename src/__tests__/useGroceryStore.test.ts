@@ -567,6 +567,34 @@ describe('aisles', () => {
     expect(written[0]).toBe('Frozen');
     expect(written[written.length - 1]).toBe(OTHER_AISLE);
   });
+
+  it('addAisle appends a new aisle and persists it', () => {
+    const created = useGroceryStore.getState().addAisle('  Butcher  ');
+
+    expect(created).toBe('Butcher');
+    const order = useGroceryStore.getState().aisleOrder;
+    expect(order).toContain('Butcher');
+    // Last real slot: a new aisle goes to the end of the walk, and Other stays
+    // pinned behind it.
+    expect(order[order.length - 2]).toBe('Butcher');
+    expect(order[order.length - 1]).toBe(OTHER_AISLE);
+    // Unlike setAisleMany's side effect, a typed-out aisle is written down —
+    // it has to survive the item it was created for.
+    expect(dbSetGroceryAisleOrder).toHaveBeenCalledTimes(1);
+  });
+
+  it('addAisle hands back the existing aisle rather than duplicating it', () => {
+    // Case-insensitive, because normalizeAisleOrder dedupes exactly — 'produce'
+    // beside 'Produce' would render as two sections of one aisle.
+    expect(useGroceryStore.getState().addAisle('produce')).toBe('Produce');
+    expect(useGroceryStore.getState().aisleOrder.filter(a => a.toLowerCase() === 'produce')).toHaveLength(1);
+    expect(dbSetGroceryAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('addAisle refuses an empty name', () => {
+    expect(useGroceryStore.getState().addAisle('   ')).toBeNull();
+    expect(dbSetGroceryAisleOrder).not.toHaveBeenCalled();
+  });
 });
 
 // ─── renaming and deleting an aisle ──────────────────────────────────────────
@@ -675,11 +703,10 @@ describe('deleteAisle', () => {
     expect(useGroceryStore.getState().aisleOrder).not.toContain('Snacks');
   });
 
-  it('comes back when it is added again by name', () => {
+  it('comes back when it is added again by name — the tombstone lifts itself', () => {
     useGroceryStore.getState().deleteAisle('Snacks');
-    const order = useGroceryStore.getState().aisleOrder.filter(a => a !== OTHER_AISLE);
 
-    useGroceryStore.getState().setAisleOrder([...order, 'Snacks']);
+    useGroceryStore.getState().addAisle('Snacks');
 
     expect(useGroceryStore.getState().aisleOrder).toContain('Snacks');
     expect(useGroceryStore.getState().hiddenAisles).not.toContain('Snacks');

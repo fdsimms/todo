@@ -555,6 +555,19 @@ export function TodayScreen() {
     setViewMode('today');
   }
 
+  // The "Add Task" Home Screen quick action (openQuickAddFromShortcut() in
+  // navigationRef.ts) rides the same params object, stamped with its own
+  // fresh timestamp. An effect rather than the during-render handling above:
+  // there's no wrong-sub-view frame to avoid here, just a sheet appearing a
+  // frame after the tab does, which isn't visible.
+  const [handledOpenQuickAdd, setHandledOpenQuickAdd] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openQuickAdd === undefined || route.params.openQuickAdd === handledOpenQuickAdd) return;
+    setHandledOpenQuickAdd(route.params.openQuickAdd);
+    setQuickAddType('task');
+    setQuickAddVisible(true);
+  }, [route.params?.openQuickAdd, handledOpenQuickAdd]);
+
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
   // Handing a pending id off to a TaskItem via autoComplete triggers the real
