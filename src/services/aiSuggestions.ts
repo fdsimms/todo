@@ -1,5 +1,7 @@
 import type { Effort } from '../types';
-import { TITLE_MAX_LENGTH } from '../types';
+import { TITLE_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { groceryNameKey } from '../utils/groceryParse';
+import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -236,4 +238,200 @@ export async function suggestTemplateItems(
     });
   }
   return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);
+}
+
+// ─── Groceries ──────────────────────────────────────────────────────────────
+
+/** Names per aisle-sort call. A weekly list is well under this; the cap bounds a pathological one. */
+const MAX_AISLE_NAMES = 60;
+/** Characters of recipe text we'll send. Roughly a long recipe including method. */
+const MAX_RECIPE_CHARS = 4_000;
+const MAX_RECIPE_ITEMS = 40;
+
+/**
+ * Case-insensitively resolves a model-supplied aisle to the canonical spelling
+ * the app actually renders, or null if it invented one.
+ *
+ * Same discipline as the category handling above: never trust a returned
+ * string as an identifier. An aisle that isn't in the walk order would render
+ * its items in an unordered heap at the bottom of the list.
+ */
+function canonicalAisle(proposed: unknown, availableAisles: string[]): string | null {
+  if (typeof proposed !== 'string') return null;
+  const trimmed = proposed.trim();
+  if (!trimmed) return null;
+  return availableAisles.find(a => a.toLowerCase() === trimmed.toLowerCase()) ?? null;
+}
+
+/**
+ * Files items the offline lexicon didn't recognise into an aisle.
+ *
+ * Strictly a gap-filler: `aisleForName` handles the common shop with no
+ * network and no API key, and everything it misses already has a home in
+ * "Other". This just makes that home better. Returns a name → aisle map
+ * keyed by the exact strings passed in, so the caller can match them back
+ * without re-normalising.
+ */
+export async function suggestGroceryAisles(
+  names: string[],
+  availableAisles: string[],
+): Promise<Record<string, string>> {
+  const apiKey = useSettingsStore.getState().anthropicApiKey;
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+
+  const wanted = names.map(n => n.trim()).filter(Boolean).slice(0, MAX_AISLE_NAMES);
+  if (wanted.length === 0) return {};
+
+  const data = await callAnthropic({
+    max_tokens: 1000,
+    tools: [{
+      name: 'assign_aisles',
+      description: 'Assign each grocery item to the supermarket section it belongs in',
+      input_schema: {
+        type: 'object',
+        properties: {
+          assignments: {
+            type: 'array',
+            description: 'One entry per item given, in the same order.',
+            items: {
+              type: 'object',
+              properties: {
+                name: { type: 'string', description: 'The item name, copied exactly as given.' },
+                aisle: {
+                  type: 'string',
+                  description: `The section it belongs in. Must be exactly one of: ${availableAisles.join(', ')}.`,
+                },
+              },
+              required: ['name', 'aisle'],
+            },
+          },
+        },
+        required: ['assignments'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'assign_aisles' },
+    messages: [{
+      role: 'user',
+      content: [
+        'Assign each of these grocery items to the supermarket section where a shopper would find it.',
+        `Sections available: ${availableAisles.join(', ')}.`,
+        'Use "Other" only when an item genuinely fits none of the rest.',
+        `Items:\n${wanted.map(n => `- ${n}`).join('\n')}`,
+      ].join('\n\n'),
+    }],
+  }, apiKey);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { assignments?: Array<{ name?: unknown; aisle?: unknown }> } | undefined;
+  if (!input?.assignments) throw new Error('No suggestions returned');
+
+  // Match back against what we actually sent, so a hallucinated item can't
+  // enter the result and a renamed one can't silently miss.
+  const byLower = new Map(wanted.map(n => [n.toLowerCase(), n]));
+  const out: Record<string, string> = {};
+  for (const a of input.assignments) {
+    if (typeof a?.name !== 'string') continue;
+    const original = byLower.get(a.name.trim().toLowerCase());
+    if (!original) continue;
+    const aisle = canonicalAisle(a.aisle, availableAisles);
+    if (!aisle) continue;
+    out[original] = aisle;
+  }
+  return out;
+}
+
+export interface RecipeGroceryItem {
+  name: string;
+  /** Free text ("2 lb", "1 bunch"), or empty when the recipe didn't say. */
+  quantity: string;
+  aisle: string;
+}
+
+/**
+ * Pulls the shopping items out of a pasted recipe.
+ *
+ * The one genuinely hard thing here that a parser can't do: recipe
+ * ingredients are written for cooking, not for buying ("3 cloves garlic,
+ * minced" is one bulb of garlic), and the method section has to be ignored.
+ */
+export async function suggestRecipeGroceries(
+  text: string,
+  availableAisles: string[],
+): Promise<RecipeGroceryItem[]> {
+  const apiKey = useSettingsStore.getState().anthropicApiKey;
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+
+  const source = text.trim().slice(0, MAX_RECIPE_CHARS);
+  if (!source) return [];
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'extract_groceries',
+      description: 'Extract the shopping list implied by a recipe',
+      input_schema: {
+        type: 'object',
+        properties: {
+          items: {
+            type: 'array',
+            description: 'The things a shopper needs to buy for this recipe.',
+            items: {
+              type: 'object',
+              properties: {
+                name: {
+                  type: 'string',
+                  description: `What to buy, as it would be labelled in a shop — "garlic", not "3 cloves garlic, minced". Under ${GROCERY_NAME_MAX_LENGTH} characters.`,
+                },
+                quantity: {
+                  type: 'string',
+                  description: 'How much to buy, in shop terms ("2 lb", "1 bunch"). Empty string if the recipe does not say.',
+                },
+                aisle: {
+                  type: 'string',
+                  description: `Where to find it. Must be exactly one of: ${availableAisles.join(', ')}.`,
+                },
+              },
+              required: ['name', 'quantity', 'aisle'],
+            },
+          },
+        },
+        required: ['items'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_groceries' },
+    messages: [{
+      role: 'user',
+      content: [
+        'Extract the shopping list from this recipe.',
+        'Name each item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method, and skip water.',
+        `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
+        `Recipe:\n${source}`,
+      ].join('\n\n'),
+    }],
+  }, apiKey);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { items?: Array<{ name?: unknown; quantity?: unknown; aisle?: unknown }> } | undefined;
+  if (!input?.items) throw new Error('No suggestions returned');
+
+  const seen = new Set<string>();
+  const result: RecipeGroceryItem[] = [];
+  for (const item of input.items) {
+    if (typeof item?.name !== 'string') continue;
+    const name = item.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
+    if (!name) continue;
+    // Dedupe on the same key the catalog uses, so two spellings of the same
+    // thing don't both get offered.
+    const key = groceryNameKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      name,
+      quantity: typeof item.quantity === 'string'
+        ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+        : '',
+      aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
+    });
+  }
+  return result.slice(0, MAX_RECIPE_ITEMS);
 }

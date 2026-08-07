@@ -22,6 +22,7 @@ export interface SettingsSummaryInput {
   weekStartsOn: 0 | 1;
   dailyAgendaEnabled: boolean;
   remindersImportEnabled: boolean;
+  groceryImportEnabled: boolean;
   vacationMode: boolean;
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
@@ -75,9 +76,10 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
 
     notifications: s.dailyAgendaEnabled ? 'Daily agenda on' : 'Reminders only',
 
-    capture: s.remindersImportEnabled
-      ? 'Importing from Apple Reminders'
-      : 'Off — say “Hey Siri, remind me to…”',
+    capture: line(
+      s.remindersImportEnabled && 'Importing from Apple Reminders',
+      s.groceryImportEnabled && 'Groceries from Apple Reminders',
+    ) || 'Off — say “Hey Siri, remind me to…”',
 
     tasksProjects: line(
       s.vacationMode && 'Vacation on',

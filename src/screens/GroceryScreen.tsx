@@ -19,6 +19,9 @@ import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { InlineAction } from '../components/InlineAction';
+import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
@@ -57,6 +60,11 @@ export function GroceryScreen() {
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
+
+  // Every AI affordance is gated on this, so a user without a key never sees
+  // an entry point — the offline lexicon carries the feature on its own.
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
 
   const { sections, inCart, remaining } = useMemo(
@@ -67,6 +75,11 @@ export function GroceryScreen() {
   const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
   const listCount = remaining + checkedCount;
   const catalogCount = items.length;
+  // Only worth offering when the lexicon actually left a gap.
+  const unsortedCount = useMemo(
+    () => items.filter(i => i.onList && i.aisle === OTHER_AISLE).length,
+    [items]
+  );
 
   const rows = useMemo<ListRow[]>(() => {
     const out: ListRow[] = [];
@@ -151,6 +164,13 @@ export function GroceryScreen() {
       onPress: () => setBuyAgainOpen(true),
       accessibilityLabel: 'Buy again',
     });
+    if (anthropicApiKey) {
+      list.push({
+        icon: 'sparkles-outline',
+        onPress: () => setAiMode('recipe'),
+        accessibilityLabel: 'Add from a recipe',
+      });
+    }
     list.push({
       icon: 'bag-check-outline',
       onPress: confirmFinish,
@@ -160,7 +180,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, confirmFinish]);
+  }, [checkedCount, confirmFinish, anthropicApiKey]);
 
   const renderRow = useCallback(
     ({ item: row }: { item: ListRow }) => {
@@ -224,6 +244,16 @@ export function GroceryScreen() {
         contentContainerStyle={styles.list}
         ListFooterComponent={
           <View>
+            {!!anthropicApiKey && unsortedCount > 0 && (
+              <View style={styles.clearWrap}>
+                <InlineAction
+                  label={`Sort ${unsortedCount} into aisles`}
+                  icon="sparkles-outline"
+                  tint={colors.purple}
+                  onPress={() => setAiMode('tidy')}
+                />
+              </View>
+            )}
             {listCount > 0 && (
               <View style={styles.clearWrap}>
                 <InlineAction
@@ -259,6 +289,11 @@ export function GroceryScreen() {
         visible={editingId !== null}
         itemId={editingId}
         onClose={() => setEditingId(null)}
+      />
+      <GroceryAISheet
+        visible={aiMode !== null}
+        mode={aiMode ?? 'tidy'}
+        onClose={() => setAiMode(null)}
       />
     </View>
   );

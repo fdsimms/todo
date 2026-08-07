@@ -35,6 +35,14 @@ jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => ({ addTask: mockAddTask }) },
 }));
 
+// The second drain destination. Mocked out rather than imported for the same
+// reason as the task store: the real one reaches expo-sqlite, which doesn't
+// load under the node test env.
+const mockAddByName = jest.fn();
+jest.mock('../store/useGroceryStore', () => ({
+  useGroceryStore: { getState: () => ({ addByName: mockAddByName }) },
+}));
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSettings: Record<string, any> = {};
 jest.mock('../store/useSettingsStore', () => ({
@@ -293,5 +301,146 @@ describe('countImportableReminders', () => {
   it('returns null when the list cannot be read', async () => {
     mockCalendar.getRemindersAsync.mockRejectedValue(new Error('nope'));
     await expect(freshSync().countImportableReminders(LIST.id)).resolves.toBeNull();
+  });
+});
+
+// ─── the grocery destination ─────────────────────────────────────────────────
+
+const GROCERY_LIST = {
+  id: 'list-2',
+  title: 'Groceries',
+  allowsModifications: true,
+  source: { id: 's', name: 'iCloud', type: 'CalDAV' },
+};
+
+/** Points settings at the grocery list only, with the task import off. */
+function groceryOnly() {
+  mockSettings = {
+    remindersImportEnabled: false,
+    remindersImportListId: null,
+    remindersImportConfirmedListId: null,
+    groceryImportEnabled: true,
+    groceryImportListId: GROCERY_LIST.id,
+    groceryImportConfirmedListId: GROCERY_LIST.id,
+    initialized: true,
+  };
+  mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, GROCERY_LIST]);
+}
+
+describe('importReminders — the grocery destination', () => {
+  it('sends a reminder to the grocery list, not the Inbox', async () => {
+    groceryOnly();
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(1);
+    expect(mockAddByName).toHaveBeenCalledWith('milk');
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  // Same rule as the task side, and for the same reason: a failed delete
+  // leaves a visible duplicate, a failed create after a delete loses the
+  // capture silently.
+  it('creates the grocery item before deleting the reminder', async () => {
+    groceryOnly();
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+    const order: string[] = [];
+    mockAddByName.mockImplementation(() => order.push('create'));
+    mockCalendar.deleteReminderAsync.mockImplementation(async () => { order.push('delete'); });
+
+    await freshSync().importReminders();
+
+    expect(order).toEqual(['create', 'delete']);
+  });
+
+  it('reports a delete that failed after the item was created', async () => {
+    groceryOnly();
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'milk' })]);
+    mockCalendar.deleteReminderAsync.mockRejectedValue(new Error('nope'));
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(1);
+    expect(outcome.deleteFailed).toBe(1);
+  });
+
+  it('stays off until its own list is confirmed', async () => {
+    groceryOnly();
+    mockSettings.groceryImportConfirmedListId = 'a-different-list';
+    const outcome = await freshSync().importReminders();
+    expect(outcome.reason).toBe('no-list');
+    expect(mockAddByName).not.toHaveBeenCalled();
+  });
+
+  it('refuses a read-only list, which would otherwise re-import for ever', async () => {
+    groceryOnly();
+    mockCalendar.getCalendarsAsync.mockResolvedValue([
+      { ...GROCERY_LIST, allowsModifications: false },
+    ]);
+    const outcome = await freshSync().importReminders();
+    expect(outcome.reason).toBe('list-readonly');
+    expect(mockAddByName).not.toHaveBeenCalled();
+  });
+
+  it('reports a list that has gone from the device', async () => {
+    groceryOnly();
+    mockCalendar.getCalendarsAsync.mockResolvedValue([LIST]);
+    const outcome = await freshSync().importReminders();
+    expect(outcome.reason).toBe('list-missing');
+  });
+
+  it('does nothing when both destinations are off', async () => {
+    groceryOnly();
+    mockSettings.groceryImportEnabled = false;
+    const outcome = await freshSync().importReminders();
+    expect(outcome.reason).toBe('off');
+    expect(mockCalendar.getRemindersAsync).not.toHaveBeenCalled();
+  });
+
+  it('drains both destinations in one pass, each to its own sink', async () => {
+    mockSettings = {
+      remindersImportEnabled: true,
+      remindersImportListId: LIST.id,
+      remindersImportConfirmedListId: LIST.id,
+      groceryImportEnabled: true,
+      groceryImportListId: GROCERY_LIST.id,
+      groceryImportConfirmedListId: GROCERY_LIST.id,
+      initialized: true,
+    };
+    mockCalendar.getCalendarsAsync.mockResolvedValue([LIST, GROCERY_LIST]);
+    mockCalendar.getRemindersAsync.mockImplementation(async (ids: string[]) =>
+      ids[0] === LIST.id
+        ? [reminder('t1', { title: 'call the dentist' })]
+        : [reminder('g1', { title: 'milk' })]
+    );
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(2);
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+    expect(mockAddTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'call the dentist' }));
+    expect(mockAddByName).toHaveBeenCalledTimes(1);
+    expect(mockAddByName).toHaveBeenCalledWith('milk');
+  });
+
+  // One misconfigured destination must not strand the other.
+  it('still drains groceries when the task list has gone missing', async () => {
+    mockSettings = {
+      remindersImportEnabled: true,
+      remindersImportListId: 'a-list-that-vanished',
+      remindersImportConfirmedListId: 'a-list-that-vanished',
+      groceryImportEnabled: true,
+      groceryImportListId: GROCERY_LIST.id,
+      groceryImportConfirmedListId: GROCERY_LIST.id,
+      initialized: true,
+    };
+    mockCalendar.getCalendarsAsync.mockResolvedValue([GROCERY_LIST]);
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('g1', { title: 'milk' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.imported).toBe(1);
+    expect(mockAddByName).toHaveBeenCalledWith('milk');
   });
 });

@@ -12,7 +12,7 @@ import {
   requestRemindersPermission,
   type RemindersPermission,
 } from '../../utils/remindersImportSync';
-import { findReminderList } from '../../utils/remindersImport';
+import { findReminderList, reminderListOptions } from '../../utils/remindersImport';
 import type { Calendar as ReminderList } from 'expo-calendar';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction } from '../../theme';
@@ -37,6 +37,11 @@ export function RemindersCaptureSettings() {
   const remindersImportListId = useSettingsStore(s => s.remindersImportListId);
   const setRemindersImportListId = useSettingsStore(s => s.setRemindersImportListId);
   const setRemindersImportConfirmedListId = useSettingsStore(s => s.setRemindersImportConfirmedListId);
+  const groceryImportEnabled = useSettingsStore(s => s.groceryImportEnabled);
+  const setGroceryImportEnabled = useSettingsStore(s => s.setGroceryImportEnabled);
+  const groceryImportListId = useSettingsStore(s => s.groceryImportListId);
+  const setGroceryImportListId = useSettingsStore(s => s.setGroceryImportListId);
+  const setGroceryImportConfirmedListId = useSettingsStore(s => s.setGroceryImportConfirmedListId);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -66,9 +71,16 @@ export function RemindersCaptureSettings() {
   );
 
   const [listPickerOpen, setListPickerOpen] = useState(false);
+  const [groceryPickerOpen, setGroceryPickerOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const selectedReminderList = findReminderList(reminderLists ?? [], remindersImportListId);
+  const selectedGroceryList = findReminderList(reminderLists ?? [], groceryImportListId);
+  // The two destinations must be disjoint: handledIds is global, so a list
+  // wired to both would send each reminder to whichever drain reached it
+  // first — a coin toss between the Inbox and the grocery list.
+  const taskListChoices = reminderListOptions(reminderLists ?? [], groceryImportListId);
+  const groceryListChoices = reminderListOptions(reminderLists ?? [], remindersImportListId);
   const lastImport = lastImportOutcome();
 
   // The list row is also shown while its picker is open with the import still
@@ -77,6 +89,8 @@ export function RemindersCaptureSettings() {
   // accepted).
   const showListRow =
     remindersPermission === 'granted' && (remindersImportEnabled || listPickerOpen);
+  const showGroceryListRow =
+    remindersPermission === 'granted' && (groceryImportEnabled || groceryPickerOpen);
 
   /**
    * The gate in front of everything destructive. Naming the count *and* the
@@ -150,6 +164,71 @@ export function RemindersCaptureSettings() {
     // creating a reminder in someone's Reminders app just to look — so picking
     // is the first step rather than a correction to a guess.
     setListPickerOpen(true);
+  };
+
+  /**
+   * Same gate as confirmList, aimed at the grocery list. Kept as its own
+   * function rather than parameterised: the copy is what makes the alert a
+   * real decision, and "added to your Inbox" versus "added to your grocery
+   * list" is the whole difference.
+   */
+  const confirmGroceryList = async (list: ReminderList) => {
+    setGroceryPickerOpen(false);
+    const count = await countImportableReminders(list.id);
+    if (count === null) {
+      Alert.alert('Couldn’t read that list', 'Try again in a moment, or pick a different list.');
+      return;
+    }
+    const enable = () => {
+      setGroceryImportListId(list.id);
+      setGroceryImportConfirmedListId(list.id);
+      setGroceryImportEnabled(true);
+      setImportResult(null);
+    };
+    Alert.alert(
+      count === 0
+        ? `Send “${list.title}” to groceries?`
+        : `Send ${count} reminder${count === 1 ? '' : 's'} from “${list.title}” to groceries?`,
+      count === 0
+        ? 'Anything you add to this list will be added to your grocery list and then deleted from the Reminders app. Only the title comes across.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your grocery list and deleted from the Reminders app, along with anything you add later. Only the title comes across. Completed reminders are left alone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Import', style: 'destructive', onPress: enable },
+      ]
+    );
+  };
+
+  const onToggleGroceryImport = async () => {
+    if (groceryImportEnabled) {
+      setGroceryImportEnabled(false);
+      return;
+    }
+    if (remindersPermission === 'denied') {
+      Linking.openSettings();
+      return;
+    }
+    if (remindersPermission !== 'granted' && !(await requestRemindersPermission())) {
+      refreshRemindersState();
+      Alert.alert(
+        'Reminders access is off',
+        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    refreshRemindersState();
+    const lists = await listReminderLists();
+    setReminderLists(lists);
+    if (reminderListOptions(lists, remindersImportListId).length === 0) {
+      Alert.alert(
+        'No lists to import from',
+        remindersImportListId
+          ? 'The only list available is already being imported into your Inbox. A list can only feed one of the two.'
+          : 'There are no Reminders lists on this device that can be changed from here.'
+      );
+      return;
+    }
+    setGroceryPickerOpen(true);
   };
 
   const onImportNow = async () => {
@@ -237,7 +316,7 @@ export function RemindersCaptureSettings() {
             onPress={() => setListPickerOpen(!listPickerOpen)}
             accessibilityLabel="Choose the list to import from"
           />
-          {listPickerOpen && (reminderLists ?? []).map(list => {
+          {listPickerOpen && taskListChoices.map(list => {
             const selected = list.id === remindersImportListId;
             return (
               <React.Fragment key={list.id}>
@@ -288,10 +367,71 @@ export function RemindersCaptureSettings() {
         </>
       )}
 
+      <View style={styles.sep} />
+      <SettingsRow
+        icon="cart-outline"
+        iconColor={groceryImportEnabled ? colors.accent : undefined}
+        label="Send a list to Groceries"
+        hint={groceryImportEnabled
+          ? 'Reminders in this list become grocery items instead of tasks.'
+          : 'Point a second list at your grocery list, so “add milk to my Groceries list” lands there.'}
+        toggle={groceryImportEnabled}
+        onPress={onToggleGroceryImport}
+      />
+
+      {showGroceryListRow && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="list-outline"
+            iconColor={colors.accent}
+            label="Grocery list"
+            value={selectedGroceryList?.title ?? (groceryImportListId ? 'Unavailable' : 'Choose')}
+            onPress={() => setGroceryPickerOpen(!groceryPickerOpen)}
+            accessibilityLabel="Choose the list to import into groceries"
+          />
+          {groceryPickerOpen && groceryListChoices.map(list => {
+            const selected = list.id === groceryImportListId;
+            return (
+              <React.Fragment key={list.id}>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={() => confirmGroceryList(list)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`Send ${list.title} to groceries`}
+                >
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowLabel}>{list.title}</Text>
+                  </View>
+                  {selected && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                </TouchableOpacity>
+              </React.Fragment>
+            );
+          })}
+        </>
+      )}
+
+      {groceryImportEnabled && remindersPermission === 'granted' && reminderLists !== null
+        && groceryImportListId !== null && !selectedGroceryList && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="alert-circle-outline"
+            iconColor={colors.warning}
+            label="That grocery list isn’t on this device"
+            hint="Nothing is being imported into groceries. Pick another list above, or turn this off."
+          />
+        </>
+      )}
+
       {/* There's no change notification to subscribe to, so a reminder
           that syncs in from a Mac or Watch while the app is already
           open has nothing to wake the import. */}
-      {remindersImportEnabled && remindersPermission === 'granted' && selectedReminderList && (
+      {remindersPermission === 'granted'
+        && ((remindersImportEnabled && selectedReminderList) || (groceryImportEnabled && selectedGroceryList)) && (
         <>
           <View style={styles.sep} />
           <SettingsRow

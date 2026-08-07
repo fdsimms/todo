@@ -89,6 +89,13 @@ interface SettingsStore {
   remindersImportEnabled: boolean;
   remindersImportListId: string | null;
   remindersImportConfirmedListId: string | null;
+  // A second Reminders list, drained into the grocery list instead of the
+  // Inbox — which is what makes "Hey Siri, add milk to my Groceries list"
+  // land somewhere useful. Must never be the same list as the one above; the
+  // picker enforces that (see reminderListOptions' excludeId).
+  groceryImportEnabled: boolean;
+  groceryImportListId: string | null;
+  groceryImportConfirmedListId: string | null;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -129,6 +136,9 @@ interface SettingsStore {
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
+  setGroceryImportEnabled: (on: boolean) => void;
+  setGroceryImportListId: (id: string | null) => void;
+  setGroceryImportConfirmedListId: (id: string | null) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
@@ -154,6 +164,7 @@ const DEFAULT_SETTINGS = {
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
   remindersImportEnabled: false,
+  groceryImportEnabled: false,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -232,6 +243,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
+  groceryImportEnabled: false,
+  groceryImportListId: null,
+  groceryImportConfirmedListId: null,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   initialized: false,
@@ -272,6 +286,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     const remindersImportListId = dbGetSetting('remindersImportListId') || null;
     const remindersImportConfirmedListId = dbGetSetting('remindersImportConfirmedListId') || null;
+    const groceryImportEnabled = dbGetSetting('groceryImportEnabled') === 'true';
+    const groceryImportListId = dbGetSetting('groceryImportListId') || null;
+    const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
@@ -282,7 +299,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   /**
@@ -476,6 +493,21 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ remindersImportConfirmedListId: id });
   },
 
+  setGroceryImportEnabled(on: boolean) {
+    dbSetSetting('groceryImportEnabled', on ? 'true' : 'false');
+    set({ groceryImportEnabled: on });
+  },
+
+  setGroceryImportListId(id: string | null) {
+    dbSetSetting('groceryImportListId', id ?? '');
+    set({ groceryImportListId: id });
+  },
+
+  setGroceryImportConfirmedListId(id: string | null) {
+    dbSetSetting('groceryImportConfirmedListId', id ?? '');
+    set({ groceryImportConfirmedListId: id });
+  },
+
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
     set(state => {
       const next = { ...state.patchNotesQaStatus };
@@ -499,6 +531,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // the confirmation and swallow whatever had piled up meanwhile.
     dbSetSetting('remindersImportListId', '');
     dbSetSetting('remindersImportConfirmedListId', '');
-    set({ ...DEFAULT_SETTINGS, remindersImportListId: null, remindersImportConfirmedListId: null });
+    dbSetSetting('groceryImportListId', '');
+    dbSetSetting('groceryImportConfirmedListId', '');
+    set({
+      ...DEFAULT_SETTINGS,
+      remindersImportListId: null,
+      remindersImportConfirmedListId: null,
+      groceryImportListId: null,
+      groceryImportConfirmedListId: null,
+    });
   },
 }));

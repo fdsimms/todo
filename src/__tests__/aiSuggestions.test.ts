@@ -8,6 +8,8 @@
 import {
   suggestTaskAttributes,
   suggestTemplateItems,
+  suggestGroceryAisles,
+  suggestRecipeGroceries,
   describeAIError,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
@@ -453,5 +455,162 @@ describe('describeAIError', () => {
 
   it('falls back to a network message for a non-Error throw', () => {
     expect(describeAIError('some string')).toContain('connection');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Groceries
+// ---------------------------------------------------------------------------
+
+const AISLES = ['Produce', 'Dairy & Eggs', 'Pantry', 'Other'];
+
+describe('suggestGroceryAisles', () => {
+  it('maps each name to its aisle', async () => {
+    mockFetchOnce(
+      toolUseResponse('assign_aisles', {
+        assignments: [
+          { name: 'nduja', aisle: 'Pantry' },
+          { name: 'harissa paste', aisle: 'Pantry' },
+        ],
+      })
+    );
+    await expect(suggestGroceryAisles(['nduja', 'harissa paste'], AISLES)).resolves.toEqual({
+      nduja: 'Pantry',
+      'harissa paste': 'Pantry',
+    });
+  });
+
+  // Never trust a returned string as an identifier: an aisle outside the walk
+  // order would render its items in an unordered heap at the bottom.
+  it('drops an aisle the app does not have', async () => {
+    mockFetchOnce(
+      toolUseResponse('assign_aisles', {
+        assignments: [
+          { name: 'nduja', aisle: 'Charcuterie' },
+          { name: 'kale', aisle: 'Produce' },
+        ],
+      })
+    );
+    await expect(suggestGroceryAisles(['nduja', 'kale'], AISLES)).resolves.toEqual({
+      kale: 'Produce',
+    });
+  });
+
+  it('promotes a case-mismatched aisle to the canonical spelling', async () => {
+    mockFetchOnce(
+      toolUseResponse('assign_aisles', { assignments: [{ name: 'kale', aisle: 'produce' }] })
+    );
+    await expect(suggestGroceryAisles(['kale'], AISLES)).resolves.toEqual({ kale: 'Produce' });
+  });
+
+  it('drops a name it was never given', async () => {
+    mockFetchOnce(
+      toolUseResponse('assign_aisles', {
+        assignments: [
+          { name: 'kale', aisle: 'Produce' },
+          { name: 'a thing nobody asked about', aisle: 'Produce' },
+        ],
+      })
+    );
+    await expect(suggestGroceryAisles(['kale'], AISLES)).resolves.toEqual({ kale: 'Produce' });
+  });
+
+  it('matches a name back case-insensitively but returns the original spelling', async () => {
+    mockFetchOnce(
+      toolUseResponse('assign_aisles', { assignments: [{ name: 'KALE', aisle: 'Produce' }] })
+    );
+    await expect(suggestGroceryAisles(['Kale'], AISLES)).resolves.toEqual({ Kale: 'Produce' });
+  });
+
+  it('does not call the network for an empty list', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(suggestGroceryAisles(['  ', ''], AISLES)).resolves.toEqual({});
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a rate limit through the shared error copy', async () => {
+    mockFetchOnce({}, 429);
+    await expect(suggestGroceryAisles(['kale'], AISLES)).rejects.toThrow('API error 429');
+    expect(describeAIError(new Error('API error 429'))).toBe(
+      'Rate limited by Anthropic. Try again in a moment.'
+    );
+  });
+});
+
+describe('suggestRecipeGroceries', () => {
+  it('returns items with quantity and aisle', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', {
+        items: [
+          { name: 'garlic', quantity: '1 bulb', aisle: 'Produce' },
+          { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs' },
+        ],
+      })
+    );
+    await expect(suggestRecipeGroceries('some recipe', AISLES)).resolves.toEqual([
+      { name: 'garlic', quantity: '1 bulb', aisle: 'Produce' },
+      { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs' },
+    ]);
+  });
+
+  it('falls back to Other for an aisle the app does not have', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', {
+        items: [{ name: 'nduja', quantity: '', aisle: 'Charcuterie' }],
+      })
+    );
+    const result = await suggestRecipeGroceries('some recipe', AISLES);
+    expect(result[0].aisle).toBe('Other');
+  });
+
+  // Deduped on the catalog's own key, so two spellings of one thing aren't
+  // both offered and then both added.
+  it('dedupes on the grocery name key', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', {
+        items: [
+          { name: 'Garlic', quantity: '1 bulb', aisle: 'Produce' },
+          { name: 'garlic', quantity: '2 cloves', aisle: 'Produce' },
+        ],
+      })
+    );
+    const result = await suggestRecipeGroceries('some recipe', AISLES);
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('Garlic');
+  });
+
+  it('drops blank and non-string names', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', {
+        items: [
+          { name: '   ', quantity: '', aisle: 'Produce' },
+          { name: 42, quantity: '', aisle: 'Produce' },
+          { name: 'kale', quantity: '', aisle: 'Produce' },
+        ],
+      })
+    );
+    const result = await suggestRecipeGroceries('some recipe', AISLES);
+    expect(result.map(r => r.name)).toEqual(['kale']);
+  });
+
+  it('coerces a missing quantity to an empty string', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_groceries', { items: [{ name: 'kale', aisle: 'Produce' }] })
+    );
+    const result = await suggestRecipeGroceries('some recipe', AISLES);
+    expect(result[0].quantity).toBe('');
+  });
+
+  it('does not call the network for empty text', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(suggestRecipeGroceries('   ', AISLES)).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('throws when the model returns no tool use', async () => {
+    mockFetchOnce({ content: [{ type: 'text' }] });
+    await expect(suggestRecipeGroceries('some recipe', AISLES)).rejects.toThrow(
+      'No suggestions returned'
+    );
   });
 });
