@@ -14,10 +14,19 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { GroceryAddField, type GroceryAddFieldHandle } from './GroceryAddField';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, animation, type Colors } from '../theme';
+import type { GroceryItem } from '../types';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
+  /**
+   * The aisle the add button was dropped in, when this opening of the sheet
+   * came from a drag. Named in the header only — where the rows actually land
+   * is decided by the screen, which knows the seam and not just the section.
+   */
+  seedAisle?: string | null;
+  /** Every add, so a screen that placed this sheet can place what comes out of it. */
+  onAdded?: (items: GroceryItem[]) => void;
 }
 
 /**
@@ -32,7 +41,7 @@ interface Props {
  * used to have a pinned field and no FAB — the burst is preserved here, the
  * divergent chrome isn't.
  */
-export function GroceryAddSheet({ visible, onClose }: Props) {
+export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props) {
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -116,15 +125,24 @@ export function GroceryAddSheet({ visible, onClose }: Props) {
           ]}
         >
           <View style={styles.header}>
-            <Text style={styles.title}>
+            {/* The aisle stays in the title for the whole burst, not just the
+                first add: every item typed here goes to the same place, and
+                that's the one thing a drag said that a tap didn't. */}
+            <Text style={styles.title} numberOfLines={1}>
               {addedCount > 0
-                ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}`
-                : 'Add to the list'}
+                ? `Added ${addedCount} ${addedCount === 1 ? 'item' : 'items'}${seedAisle ? ` to ${seedAisle}` : ''}`
+                : seedAisle ? `Add to ${seedAisle}` : 'Add to the list'}
             </Text>
             <SheetHeaderButton label="Done" onPress={dismiss} />
           </View>
 
-          <GroceryAddField ref={fieldRef} onAdded={n => setAddedCount(c => c + n)} />
+          <GroceryAddField
+            ref={fieldRef}
+            onAdded={items => {
+              setAddedCount(c => c + items.length);
+              onAdded?.(items);
+            }}
+          />
         </Animated.View>
       </View>
     </Modal>
@@ -151,6 +169,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
   },
   title: {
+    // Shrinks rather than pushing Done off the card: a custom aisle name can be
+    // as long as the user cares to make it.
+    flexShrink: 1,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
     color: colors.textSecondary,

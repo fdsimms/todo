@@ -23,11 +23,15 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 
 interface Props {
-  /** Fired after anything is added, so the screen can scroll or flash a row. */
-  onAdded?: (count: number) => void;
+  /**
+   * Fired after anything is added, with the rows it put on the list in the
+   * order they were typed — the sheet counts them, and the screen places them
+   * when the sheet was opened by dropping the add button somewhere.
+   */
+  onAdded?: (items: GroceryItem[]) => void;
 }
 
 /** Lets the sheet focus the field once its entrance animation has settled. */
@@ -75,11 +79,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
-      addByName(trimmed);
+      const item = addByName(trimmed);
       haptics.tap();
       setText('');
       setStatus(null);
-      onAdded?.(1);
+      onAdded?.([item]);
     },
     [addByName, onAdded]
   );
@@ -118,7 +122,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           ? `${alreadyOnList.length} already on the list`
           : null
       );
-      onAdded?.(added.length);
+      onAdded?.(added);
     },
     [addManyFromText, onAdded, status]
   );

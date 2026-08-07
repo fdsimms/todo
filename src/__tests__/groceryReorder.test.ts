@@ -1,4 +1,10 @@
-import { resolveGroceryDrop, groceryDragRange, type GroceryDropRow } from '../utils/groceryReorder';
+import {
+  resolveGroceryDrop,
+  groceryDragRange,
+  placeNewGroceryItems,
+  type GroceryDropRow,
+  type KeyedGroceryDropRow,
+} from '../utils/groceryReorder';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
 
@@ -111,5 +117,129 @@ describe('groceryDragRange', () => {
     // Cart header first, so there is no aisle row to move among.
     expect(groceryDragRange([cart, row(makeItem('Bread'))], 1)).toEqual([1, 1]);
     expect(groceryDragRange([aisle('Dairy'), cart], 0)).toEqual([0, 0]);
+  });
+});
+
+// ─── placeNewGroceryItems ────────────────────────────────────────────────────
+
+describe('placeNewGroceryItems', () => {
+  const kAisle = (name: string): KeyedGroceryDropRow => ({
+    type: 'aisle', key: `aisle:${name}`, aisle: name,
+  });
+  const kRow = (item: GroceryItem): KeyedGroceryDropRow => ({
+    type: 'item', key: item.id, item,
+  });
+  const kCart: KeyedGroceryDropRow = { type: 'cartHeader', key: 'cartHeader' };
+
+  it('lands a new item on the seam below the row it was dropped on', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const eggs = makeItem('Eggs', { aisle: 'Dairy' });
+    const butter = makeItem('Butter', { aisle: 'Other' });
+
+    const placements = placeNewGroceryItems(
+      [kAisle('Dairy'), kRow(milk), kRow(eggs)],
+      milk.id,
+      false,
+      [butter],
+    );
+
+    expect(placements).toEqual([
+      { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: butter.id, sortOrder: 2, aisle: 'Dairy' },
+      { id: eggs.id, sortOrder: 3, aisle: 'Dairy' },
+    ]);
+  });
+
+  it('lands it above the row when the drop was on that row’s top half', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const butter = makeItem('Butter', { aisle: 'Other' });
+
+    const placements = placeNewGroceryItems([kAisle('Dairy'), kRow(milk)], milk.id, true, [butter]);
+
+    expect(placements).toEqual([
+      { id: butter.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: milk.id, sortOrder: 2, aisle: 'Dairy' },
+    ]);
+  });
+
+  it('takes the aisle of the header it was dropped on', () => {
+    const apples = makeItem('Apples', { aisle: 'Produce' });
+    // The lexicon filed it under Other; dropping on Produce overrides that,
+    // exactly as dragging the row there would.
+    const crisps = makeItem('Crisps', { aisle: 'Other' });
+
+    const placements = placeNewGroceryItems(
+      [kAisle('Produce'), kRow(apples)],
+      'aisle:Produce',
+      false,
+      [crisps],
+    );
+
+    expect(placements).toEqual([
+      { id: crisps.id, sortOrder: 1, aisle: 'Produce' },
+      { id: apples.id, sortOrder: 2, aisle: 'Produce' },
+    ]);
+  });
+
+  it('keeps a pasted block in the order it was typed', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const a = makeItem('Cheese', { aisle: 'Other' });
+    const b = makeItem('Yoghurt', { aisle: 'Other' });
+
+    const placements = placeNewGroceryItems([kAisle('Dairy'), kRow(milk)], milk.id, false, [a, b]);
+
+    expect(placements).toEqual([
+      { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: a.id, sortOrder: 2, aisle: 'Dairy' },
+      { id: b.id, sortOrder: 3, aisle: 'Dairy' },
+    ]);
+  });
+
+  it('moves a name that was already on the list rather than doubling it', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const apples = makeItem('Apples', { aisle: 'Produce' });
+
+    // "Apples" typed into a sheet opened by dropping in Dairy: addByName hands
+    // back the row that already exists, so it has to leave Produce.
+    const placements = placeNewGroceryItems(
+      [kAisle('Dairy'), kRow(milk), kAisle('Produce'), kRow(apples)],
+      milk.id,
+      false,
+      [apples],
+    );
+
+    expect(placements).toEqual([
+      { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: apples.id, sortOrder: 2, aisle: 'Dairy' },
+    ]);
+  });
+
+  it('leaves the cart section alone', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const bought = makeItem('Bread', { aisle: 'Bakery', checked: true });
+    const butter = makeItem('Butter', { aisle: 'Other' });
+
+    const placements = placeNewGroceryItems(
+      [kAisle('Dairy'), kRow(milk), kCart, kRow(bought)],
+      milk.id,
+      false,
+      [butter],
+    );
+
+    expect(placements).toEqual([
+      { id: milk.id, sortOrder: 1, aisle: 'Dairy' },
+      { id: butter.id, sortOrder: 2, aisle: 'Dairy' },
+    ]);
+  });
+
+  it('gives up when the anchor row is gone, rather than guessing a spot', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    const butter = makeItem('Butter', { aisle: 'Other' });
+    expect(placeNewGroceryItems([kAisle('Dairy'), kRow(milk)], 'gone', false, [butter])).toBeNull();
+  });
+
+  it('has nothing to place when nothing was added', () => {
+    const milk = makeItem('Milk', { aisle: 'Dairy' });
+    expect(placeNewGroceryItems([kAisle('Dairy'), kRow(milk)], milk.id, false, [])).toBeNull();
   });
 });
