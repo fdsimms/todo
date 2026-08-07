@@ -18,10 +18,18 @@ import {
   dbDeleteItemShopLink,
   dbGetLastShopId,
   dbSetLastShopId,
+  dbGetGroceryAisleOverrides,
+  dbSetGroceryAisleOverrides,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
-import { aisleForName, normalizeAisleOrder, OTHER_AISLE } from '../utils/groceryAisles';
+import {
+  aisleForName,
+  normalizeAisleOrder,
+  rememberAisles,
+  renameRememberedAisle,
+  OTHER_AISLE,
+} from '../utils/groceryAisles';
 
 /**
  * The grocery catalog, which is also the shopping list.
@@ -30,6 +38,13 @@ import { aisleForName, normalizeAisleOrder, OTHER_AISLE } from '../utils/grocery
  * that comes off the list stays in memory as catalog. Adding a name that's
  * already known flips `onList` instead of inserting — that single behaviour
  * (addByName below) is what gives autocomplete, Buy again and dedupe.
+ *
+ * `inCatalog` is the second axis, and it's what stops the catalog filling with
+ * things that were never really yours: a name typed for the first time is
+ * provisional, so taking it straight back off the list deletes it, while
+ * finishing or clearing a trip promotes what was on it. A row that was already
+ * catalog before this stint on the list is never touched by that — "remove"
+ * means remove from the list, exactly as it always did.
  *
  * Same discipline as every other store here: write to SQLite first, then set().
  */
@@ -72,6 +87,12 @@ interface GroceryStore {
   itemShops: ItemShopLink[];
   /** The store the last trip was finished at, if it still exists. */
   lastShopId: string | null;
+  /**
+   * name_key → the aisle the user last filed that item under. Consulted ahead
+   * of the lexicon when a row is created, so a correction sticks even after the
+   * row it was made on is gone. See rememberAisles.
+   */
+  aisleOverrides: Record<string, string>;
   /** Checked rows still holding their place in their own aisle. */
   cartHoldIds: string[];
   initialized: boolean;
@@ -107,6 +128,15 @@ interface GroceryStore {
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
+  /**
+   * Commit a drag on the list: each row's new rank in the walk order and the
+   * aisle it was dropped into. One action rather than a reorder plus a
+   * setAisleMany, because a drop decides both at once (see resolveGroceryDrop)
+   * and two writes would leave a frame where the item had moved but not moved
+   * aisle.
+   */
+  applyDrop: (placements: Array<{ id: string; sortOrder: number; aisle: string }>) => void;
+
   setAisleOrder: (order: string[]) => void;
 
   /** Null when the name collides with an existing store. */
@@ -121,6 +151,8 @@ interface GroceryStore {
 
   itemByNameKey: (key: string) => GroceryItem | null;
   itemById: (id: string) => GroceryItem | null;
+  /** The aisle the user has filed this name under before, if any. */
+  rememberedAisleFor: (name: string) => string | null;
 }
 
 function nextSortOrder(items: GroceryItem[]): number {
@@ -133,6 +165,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   shops: [],
   itemShops: [],
   lastShopId: null,
+  aisleOverrides: {},
   cartHoldIds: [],
   initialized: false,
 
@@ -153,7 +186,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
     }
-    set({ items, aisleOrder, shops, itemShops, lastShopId, cartHoldIds: [], initialized: true });
+    set({
+      items,
+      aisleOrder,
+      aisleOverrides: dbGetGroceryAisleOverrides(),
+      shops,
+      itemShops,
+      lastShopId,
+      cartHoldIds: [],
+      initialized: true,
+    });
   },
 
   /**
@@ -197,11 +239,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       id: generateId(),
       name,
       nameKey: key,
-      aisle: aisleForName(name) ?? OTHER_AISLE,
+      // Where the user put it last time beats where the lexicon thinks it
+      // goes — the lexicon is a guess about groceries, this is a fact about
+      // their shop. (An item still in the catalog never reaches here: it
+      // carries its own aisle, and the branch above keeps it.)
+      aisle: get().aisleOverrides[key] ?? aisleForName(name) ?? OTHER_AISLE,
       quantity,
       note: '',
       onList: true,
       checked: false,
+      // Provisional: a name nobody has bought, starred or finished a trip with
+      // is on the list, not in the catalog. removeFromList deletes it.
+      inCatalog: false,
       sortOrder: nextSortOrder(get().items),
       favorite: false,
       purchaseCount: 0,
@@ -291,12 +340,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (updates.length === 0) return;
 
     for (const u of updates) dbUpdateGroceryItem(u);
+    // Every call here is a deliberate filing — the item sheet's picker, or a
+    // reviewed-and-accepted AI tidy — so it's what gets remembered for the
+    // next time this name is typed.
+    const remembered = rememberAisles(get().aisleOverrides, updates);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({
       items: s.items.map(i => byId.get(i.id) ?? i),
       // A brand-new aisle (a custom one, or an AI suggestion) has to enter the
       // walk order or its section would render at the bottom, unordered.
       aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
     }));
   },
 
@@ -317,7 +373,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     const updated = { ...item, name: trimmed, nameKey: key };
     dbUpdateGroceryItem(updated);
-    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // The remembered aisle is keyed by name, so it has to follow the rename or
+    // it stays stranded under the old spelling — which is usually a typo the
+    // rename exists to fix.
+    const remembered = renameRememberedAisle(get().aisleOverrides, item.nameKey, key);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+    set(s => ({
+      items: s.items.map(i => (i.id === id ? updated : i)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
+    }));
     return true;
   },
 
@@ -332,15 +396,35 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   toggleFavorite(id) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const updated = { ...item, favorite: !item.favorite };
+    // Starring is the explicit "keep this one", so it promotes a provisional
+    // row. Unstarring doesn't demote: the row is in the catalog by then, and a
+    // mis-tap on a star shouldn't arm a delete.
+    const updated = {
+      ...item,
+      favorite: !item.favorite,
+      inCatalog: item.inCatalog || !item.favorite,
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  /** Takes a row off the list but keeps the catalog entry — "not this week". */
+  /**
+   * Takes a row off the list. A catalog row stays behind — "not this week" —
+   * but a provisional one goes altogether, because it only ever existed as this
+   * line of the list.
+   *
+   * The delete is deliberately not behind the confirm every other delete has.
+   * That confirm protects history, and a provisional row has none by
+   * definition: never bought, never starred, no purchase count to lose. The
+   * sheet says which of the two will happen before you tap.
+   */
   removeFromList(id) {
     const item = get().items.find(i => i.id === id);
     if (!item || !item.onList) return;
+    if (!item.inCatalog) {
+      get().deleteItem(id);
+      return;
+    }
     const updated = { ...item, onList: false, checked: false };
     dbUpdateGroceryItem(updated);
     set(s => ({
@@ -349,7 +433,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  /** The one real delete. There is no undo, so every caller confirms first. */
+  /**
+   * The one real delete. There is no undo, so every caller confirms first —
+   * except removeFromList on a provisional row, which has nothing to lose and
+   * says so on the button.
+   */
   deleteItem(id) {
     get().deleteItems([id]);
   },
@@ -399,7 +487,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       return {
         items: s.items.map(i =>
           done.has(i.id)
-            ? { ...i, onList: false, checked: false, purchaseCount: i.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+            ? {
+                ...i,
+                onList: false,
+                checked: false,
+                // Bought it, so it's yours now — whatever it was before the trip.
+                inCatalog: true,
+                purchaseCount: i.purchaseCount + 1,
+                lastPurchasedAt: purchasedAt,
+              }
             : i
         ),
         itemShops,
@@ -416,12 +512,48 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
-    // the ranking signal would teach autocomplete a lie.
+    // the ranking signal would teach autocomplete a lie. inCatalog *is* set —
+    // clearing parks the list rather than forgetting it, which is what the
+    // confirm promises, and it keeps !onList ⇒ inCatalog true.
     set(s => ({
-      items: s.items.map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      items: s.items.map(i =>
+        cleared.has(i.id) ? { ...i, onList: false, checked: false, inCatalog: true } : i
+      ),
       cartHoldIds: [],
     }));
     return ids.length;
+  },
+
+  applyDrop(placements) {
+    const byId = new Map(get().items.map(i => [i.id, i]));
+    const updates: GroceryItem[] = [];
+    // Only the rows that crossed a section header — a drag that merely
+    // reordered within an aisle says nothing about where the item lives.
+    const moved: Array<{ nameKey: string; aisle: string }> = [];
+    for (const p of placements) {
+      const item = byId.get(p.id);
+      if (!item) continue;
+      if (item.sortOrder === p.sortOrder && item.aisle === p.aisle) continue;
+      if (item.aisle !== p.aisle) moved.push({ nameKey: item.nameKey, aisle: p.aisle });
+      updates.push({ ...item, sortOrder: p.sortOrder, aisle: p.aisle });
+    }
+    if (updates.length === 0) return;
+
+    for (const u of updates) dbUpdateGroceryItem(u);
+    // Dragging a row into another aisle is the same statement the item sheet's
+    // picker makes, so it's remembered the same way.
+    const remembered = rememberAisles(get().aisleOverrides, moved);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
+    const updated = new Map(updates.map(u => [u.id, u]));
+    set(s => ({
+      items: s.items.map(i => updated.get(i.id) ?? i),
+      // Every aisle here came off a header that was already on screen, so this
+      // is belt and braces — but normalizing is what setAisleMany does, and an
+      // aisle missing from the order renders its section unplaced.
+      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOverrides: remembered ?? s.aisleOverrides,
+    }));
   },
 
   setAisleOrder(order) {
@@ -517,7 +649,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // confirmed it. Ranking reads that and declines to call it "usually".
     const link: ItemShopLink = { itemId, shopId, purchaseCount: 0, lastPurchasedAt: null };
     dbSetItemShopLink(link);
-    set(s => ({ itemShops: [...s.itemShops, link] }));
+
+    // ...and it promotes a provisional row, for the same reason starring does.
+    // Saying where you get something is a statement about the item, not about
+    // this week's list — but a provisional row is *deleted* when it comes off
+    // the list, so without this the assertion is thrown away by the next
+    // "Remove from list" and the store chip the user just tapped is gone.
+    const item = items.find(i => i.id === itemId)!;
+    const promoted = item.inCatalog ? null : { ...item, inCatalog: true };
+    if (promoted) dbUpdateGroceryItem(promoted);
+
+    set(s => ({
+      itemShops: [...s.itemShops, link],
+      items: promoted ? s.items.map(i => (i.id === itemId ? promoted : i)) : s.items,
+    }));
   },
 
   unlinkItemShop(itemId, shopId) {
@@ -538,5 +683,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   itemById(id) {
     return get().items.find(i => i.id === id) ?? null;
+  },
+
+  rememberedAisleFor(name) {
+    const key = groceryNameKey(name);
+    return (key && get().aisleOverrides[key]) || null;
   },
 }));

@@ -134,7 +134,11 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const confirmDelete = () => {
     Alert.alert(
       `Forget ${item.name}?`,
-      'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".',
+      // No pointer at "Remove from list" for a provisional row: it does the
+      // same thing there, so offering it as the gentler option is a lie.
+      item.inCatalog
+        ? 'This removes it from your catalog along with its history, and can’t be undone. To just take it off this week’s list, use "Remove from list".'
+        : 'This removes it altogether, and can’t be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -299,7 +303,14 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
               <Ionicons name="remove-circle-outline" size={iconSize.md} color={colors.textSecondary} />
               <View style={styles.actionBody}>
                 <Text style={styles.actionLabel}>Remove from list</Text>
-                <Text style={styles.actionHint}>Keeps it in your catalog for next time.</Text>
+                {/* The hint has to say which of the two things this does — a
+                    provisional row is deleted outright, and finding that out
+                    afterwards is the whole surprise this copy exists to avoid. */}
+                <Text style={styles.actionHint}>
+                  {item.inCatalog
+                    ? 'Keeps it in your catalog for next time.'
+                    : 'It isn’t in your catalog yet, so this forgets it entirely.'}
+                </Text>
               </View>
             </TouchableOpacity>
           )}

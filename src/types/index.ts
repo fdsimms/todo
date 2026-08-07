@@ -120,6 +120,12 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
+  // Opt-in: the project's hand-sorted order is a sequence, not a preference —
+  // each step is held back until the one above it is done (see
+  // utils/projectOrder.ts). Off by default, because a list of tasks that all
+  // happen to share a project is the normal case and gating it would hide work
+  // the user never asked to have hidden.
+  sequential: boolean;
 }
 
 // Fallback cadence for a project row written before the nudge columns existed,
@@ -502,6 +508,13 @@ export interface GroceryItem {
   onList: boolean;
   // Invariant: checked implies onList.
   checked: boolean;
+  // Whether the row has earned a place in the catalog in its own right, rather
+  // than only existing because it's on the list right now. A name typed for the
+  // first time is `false` — provisional — and taking it off the list deletes it
+  // instead of parking it; a trip that's finished or cleared promotes what was
+  // on it, as does starring. Invariant: !onList implies inCatalog, which is what
+  // lets Buy again and the pruner keep reading the whole off-list set.
+  inCatalog: boolean;
   sortOrder: number;
   favorite: boolean;
   // Bumped by finishShopping, never by clearList. Together with

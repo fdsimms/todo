@@ -80,6 +80,7 @@ jest.mock('../db/database', () => ({
   // useTaskStore.initialize() initialises the grocery store too, so its whole
   // read path has to be stubbed here even though nothing in this file is about
   // groceries.
+  dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
@@ -220,6 +221,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,
+  sequential: false,
   ...overrides,
 });
 
@@ -1334,6 +1336,33 @@ describe('completeTask', () => {
 
       store().uncompleteTask('t1');
       expect(collapsed()).toEqual([]);
+    });
+
+    // The two ways the hold can let a row go, which TaskItem has to tell apart:
+    // the row it releases on expiry is gone from the list and unmounts on its
+    // own, while the one it releases to an undo is still there — and still
+    // collapsed to nothing from the batch, unless the row puts itself back
+    // (see restoreFromCompletion in TaskItem).
+    it('drops a released row from the list on expiry, but keeps an uncompleted one', () => {
+      // Due today, like the completion-hold block above: an undated task never
+      // counts as visible in the first place, so the list assertions below
+      // would pass for the wrong reason.
+      const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+      useTaskStore.setState({ tasks: [makeTask({ id: 't1', dueDate: dueToday })] });
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(300);
+      expect(useTaskStore.getState().completionHoldIds).toEqual(['t1']);
+
+      store().uncompleteTask('t1');
+      expect(useTaskStore.getState().completionHoldIds).toEqual([]);
+      expect(store().visibleTasks().map(t => t.id)).toEqual(['t1']);
+
+      store().beginCompletionAnimation('t1');
+      store().completeTask('t1');
+      jest.advanceTimersByTime(1200);
+      expect(useTaskStore.getState().completionHoldIds).toEqual([]);
+      expect(store().visibleTasks()).toHaveLength(0);
     });
   });
 });
@@ -2568,6 +2597,61 @@ describe('reorderTasks', () => {
       { id: 'b', sortOrder: 1 },
       { id: 'a', sortOrder: 2 },
     ]);
+  });
+});
+
+// ─── reorderProjectTasks ─────────────────────────────────────────────────────
+
+describe('reorderProjectTasks', () => {
+  // The whole point of the separate action: renumbering the project 1..N would
+  // drag every dated member of it to the top of Today.
+  it('swaps the members between the slots they already held', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 40 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 90 }),
+        makeTask({ id: 'loose', sortOrder: 60 }),
+      ],
+    });
+    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(40);
+    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(90);
+    expect(tasks.find(t => t.id === 'loose')?.sortOrder).toBe(60);
+    expect(dbBatchUpdateSortOrders).toHaveBeenCalledWith([
+      { id: 'b', sortOrder: 40 },
+      { id: 'a', sortOrder: 90 },
+    ]);
+  });
+
+  it('leaves other projects, completed and archived members alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 20 }),
+        makeTask({ id: 'done', projectId: 'p1', sortOrder: 15, completed: true }),
+        makeTask({ id: 'filed', projectId: 'p1', sortOrder: 17, archived: true }),
+        makeTask({ id: 'other', projectId: 'p2', sortOrder: 12 }),
+      ],
+    });
+    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a', 'done', 'filed', 'other']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'done')?.sortOrder).toBe(15);
+    expect(tasks.find(t => t.id === 'filed')?.sortOrder).toBe(17);
+    expect(tasks.find(t => t.id === 'other')?.sortOrder).toBe(12);
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(10);
+  });
+
+  it('writes nothing when the drop changed nothing', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 20 }),
+      ],
+    });
+    (dbBatchUpdateSortOrders as jest.Mock).mockClear();
+    useTaskStore.getState().reorderProjectTasks('p1', ['a', 'b']);
+    expect(dbBatchUpdateSortOrders).not.toHaveBeenCalled();
   });
 });
 

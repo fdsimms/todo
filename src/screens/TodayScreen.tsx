@@ -37,6 +37,7 @@ import {
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
   categorySectionKeys as computeCategorySectionKeys,
+  sectionTaskIds as computeSectionTaskIds,
   findTaskJumpTarget,
   type LaterListItem,
   type CategoryListItem,
@@ -101,6 +102,7 @@ import {
 import { BulkActionBar } from '../components/BulkActionBar';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
@@ -148,6 +150,10 @@ interface SubtaskEntry {
 // array per row per render and defeat TaskItem's shallow compare precisely
 // where the memo matters most — on the rows that have nothing to say.
 const NO_SUBTASKS: SubtaskEntry = { items: [], doneCount: 0 };
+
+// Same idea for a header with no rows of its own to leave alongside (see
+// sectionTaskIds): one shared empty array rather than a fresh one per render.
+const NO_SECTION_TASKS: string[] = [];
 
 // Breathing room left above a row jumped to from the new-todos banner, so it
 // lands just inside the top of the list rather than flush against it. Matches
@@ -1183,6 +1189,12 @@ export function TodayScreen() {
     [data],
   );
 
+  // What each section header needs to know to leave with its rows when the last
+  // of them is ticked off (see CompletionCollapse). Built from `data` — the list
+  // as rendered — so a header whose rows a collapsed category has folded away
+  // isn't told they're all leaving.
+  const sectionTaskIds = useMemo(() => computeSectionTaskIds(data), [data]);
+
   // Local copy of data fed to ReorderableList. onReorder writes the settled
   // grouped layout here immediately so the list doesn't flash back to the
   // pre-drag order while the store write propagates; the render-time sync
@@ -1655,14 +1667,16 @@ export function TodayScreen() {
       // via the list wrapper's onTouchEnd.)
       const isCategory = item.label !== LATER_TODAY_LABEL;
       return (
-        <SectionHeader
-          label={isCategory ? categoryLabel(item.label, categories) : item.label}
-          styles={styles}
-          colors={colors}
-          collapsed={isCategory ? (autoCollapseForDrag || collapsedCategories.has(item.label)) : undefined}
-          onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
-          onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
-        />
+        <CompletionCollapse taskIds={sectionTaskIds.get(item.label) ?? NO_SECTION_TASKS}>
+          <SectionHeader
+            label={isCategory ? categoryLabel(item.label, categories) : item.label}
+            styles={styles}
+            colors={colors}
+            collapsed={isCategory ? (autoCollapseForDrag || collapsedCategories.has(item.label)) : undefined}
+            onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
+            onDrag={isCategory && drag && !selectionMode ? () => startCategoryDrag(item.label, drag) : undefined}
+          />
+        </CompletionCollapse>
       );
     }
     if (item.type === 'group') {

@@ -21,6 +21,10 @@ interface Props {
   item: GroceryItem;
   onToggle: (id: string) => void;
   onEdit: (id: string) => void;
+  /** Long-press starts a drag when given (see GroceryScreen); tap still toggles. */
+  drag?: () => void;
+  /** True on the copy rendered inside the floating drag card. */
+  isActive?: boolean;
 }
 
 /**
@@ -28,9 +32,13 @@ interface Props {
  *
  * Built for a hand holding a trolley: the whole row is the checkbox, the type
  * is a size up from a task row, and the box is 24pt rather than TaskItem's 20.
- * Long-press is the only other gesture — everything else is behind the item
- * sheet, because a mis-swipe in a supermarket aisle is a worse failure than an
- * extra tap.
+ * Long-press drags the row to another spot or another aisle; everything else is
+ * behind the item sheet, reached by the trailing ellipsis, because a mis-swipe
+ * in a supermarket aisle is a worse failure than an extra tap.
+ *
+ * Long-press used to open that sheet. It now drags, which is why the ellipsis
+ * is not optional decoration — it is the only way in to editing, and the reason
+ * moving the gesture cost nothing.
  *
  * Deliberately TouchableOpacity rather than PressableScale: this is a
  * full-width list row, and scaling one of those looks wrong (same rule
@@ -38,7 +46,13 @@ interface Props {
  * swipe-left = bulk select and swipe-right = "when", neither of which exists
  * here, so it would reveal panels that no-op.
  */
-export const GroceryRow = React.memo(function GroceryRow({ item, onToggle, onEdit }: Props) {
+export const GroceryRow = React.memo(function GroceryRow({
+  item,
+  onToggle,
+  onEdit,
+  drag,
+  isActive = false,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -50,15 +64,15 @@ export const GroceryRow = React.memo(function GroceryRow({ item, onToggle, onEdi
 
   return (
     <TouchableOpacity
-      style={[styles.row, item.checked && styles.rowChecked]}
+      style={[styles.row, item.checked && styles.rowChecked, isActive && styles.rowActive]}
       activeOpacity={interaction.activeOpacity}
       onPress={() => onToggle(item.id)}
-      onLongPress={() => onEdit(item.id)}
+      onLongPress={drag ?? (() => onEdit(item.id))}
       delayLongPress={interaction.delayLongPress}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: item.checked }}
       accessibilityLabel={label}
-      accessibilityHint="Long press to edit"
+      accessibilityHint={drag ? 'Long press to move to another aisle' : 'Long press to edit'}
     >
       <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
         {item.checked && (
@@ -122,6 +136,11 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       gap: spacing.md,
       minHeight: 52,
+    },
+    rowActive: {
+      // The lifted card, one surface brighter — the same "picked up" treatment
+      // a dragged aisle gets in GroceryAislesSheet.
+      backgroundColor: colors.bgTertiary,
     },
     rowChecked: {
       // The card keeps its full surface and only its *contents* mute. An

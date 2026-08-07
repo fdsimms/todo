@@ -19,7 +19,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck — ~10s
-npm test             # all 28 suites, 992 tests — ~4s, just run the whole thing
+npm test             # all 70 suites, 2,614 tests — ~4s, just run the whole thing
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
@@ -206,6 +206,9 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   in the item sheet to say "I can get this here". That's the whole distinction and it needs no
   second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing
   a habit), while `exclusiveShopFor` counts it (availability is exactly what the tap claimed).
+  **`linkItemShop` promotes a provisional row** (`inCatalog`), for the same reason starring does:
+  saying where you get something is a statement about the item, not about this week's list. Without
+  it the next "Remove from list" deletes the row and silently takes the assertion with it.
 - **Naming a store is optional and `null` is a real answer**, not a skipped step. It's a
   first-class pill in the finish sheet, it's the default until a trip has ever named one, and
   picking it finishes the trip exactly as every trip did before stores existed. A required

@@ -3,6 +3,8 @@ import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
+  dbGetGroceryAisleOverrides,
+  dbSetGroceryAisleOverrides,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
@@ -26,6 +28,8 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbSetGroceryAisleOrder: jest.fn(),
+  dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
+  dbSetGroceryAisleOverrides: jest.fn(),
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
@@ -53,6 +57,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
+    inCatalog: true,
     sortOrder: seq,
     favorite: false,
     purchaseCount: 0,
@@ -74,12 +79,23 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
   };
 }
 
-function seed(items: GroceryItem[], shops: Shop[] = [], itemShops: ItemShopLink[] = []) {
+// Everything past `items` is an options object rather than positional: three
+// independent slices of state hang off this store now, and `seed(x, {}, [], y)`
+// is unreadable at a glance.
+function seed(
+  items: GroceryItem[],
+  extra: {
+    aisleOverrides?: Record<string, string>;
+    shops?: Shop[];
+    itemShops?: ItemShopLink[];
+  } = {}
+) {
   useGroceryStore.setState({
     items,
     aisleOrder: [...DEFAULT_AISLES],
-    shops,
-    itemShops,
+    aisleOverrides: extra.aisleOverrides ?? {},
+    shops: extra.shops ?? [],
+    itemShops: extra.itemShops ?? [],
     lastShopId: null,
     cartHoldIds: [],
     initialized: true,
@@ -90,6 +106,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
+  (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
@@ -145,6 +162,16 @@ describe('addByName', () => {
     expect(item.onList).toBe(true);
     expect(item.checked).toBe(false);
     expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  // A name typed once is on the list, not in the catalog — see removeFromList.
+  it('starts a brand-new name provisional', () => {
+    expect(useGroceryStore.getState().addByName('nduja').inCatalog).toBe(false);
+  });
+
+  it('leaves a catalog row in the catalog when it comes back on the list', () => {
+    seed([makeItem({ name: 'Milk', onList: false, inCatalog: true })]);
+    expect(useGroceryStore.getState().addByName('milk').inCatalog).toBe(true);
   });
 
   it('files an unrecognised item under Other rather than leaving it aisle-less', () => {
@@ -319,6 +346,16 @@ describe('finishShopping', () => {
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
   });
 
+  it('promotes a provisional row that was actually bought', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, checked: true, inCatalog: false });
+    seed([nduja]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([nduja.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
   it('is a no-op with an empty trolley', () => {
     seed([makeItem({ name: 'Milk', onList: true })]);
     expect(useGroceryStore.getState().finishShopping()).toBe(0);
@@ -339,6 +376,19 @@ describe('clearList', () => {
     expect(after.onList).toBe(false);
     expect(after.purchaseCount).toBe(3);
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // The confirm says nothing is deleted, so clearing parks a provisional row
+  // rather than forgetting it — and that keeps !onList ⇒ inCatalog true.
+  it('parks a provisional row in the catalog rather than deleting it', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([nduja.id]);
+
+    useGroceryStore.getState().clearList();
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
   });
 });
 
@@ -391,6 +441,43 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().items[0].checked).toBe(false);
   });
 
+  it('removeFromList deletes a provisional row instead of parking it', () => {
+    // Typed once, never bought, never starred: it only existed as this line of
+    // the list, so leaving it behind is what fills the catalog with typos.
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+
+    useGroceryStore.getState().removeFromList(nduja.id);
+
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(nduja.id);
+    expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('removeFromList keeps a row that was in the catalog before this trip', () => {
+    // The whole point of the distinction: "not this week" must not forget
+    // something you buy most weeks.
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true, purchaseCount: 9 });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromList(milk.id);
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items[0].purchaseCount).toBe(9);
+  });
+
+  it('starring promotes a provisional row, unstarring does not demote it', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+
+    useGroceryStore.getState().toggleFavorite(nduja.id);
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+
+    // A mis-tap on a star must not arm a delete.
+    useGroceryStore.getState().toggleFavorite(nduja.id);
+    expect(useGroceryStore.getState().items[0].favorite).toBe(false);
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
   it('addExistingMany only touches rows that are off the list', () => {
     const milk = makeItem({ name: 'Milk', onList: false });
     const eggs = makeItem({ name: 'Eggs', onList: true });
@@ -424,6 +511,48 @@ describe('aisles', () => {
     expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
   });
 
+  it('applyDrop writes the new order and any aisle the drop changed', () => {
+    const apples = makeItem({ name: 'Apples', aisle: 'Produce', onList: true, sortOrder: 1 });
+    const milk = makeItem({ name: 'Milk', aisle: 'Dairy', onList: true, sortOrder: 2 });
+    const bread = makeItem({ name: 'Bread', aisle: 'Bakery', onList: true, sortOrder: 3 });
+    seed([apples, milk, bread]);
+
+    // Milk dragged up under the Produce header: same slot, new aisle.
+    useGroceryStore.getState().applyDrop([
+      { id: apples.id, sortOrder: 1, aisle: 'Produce' },
+      { id: milk.id, sortOrder: 2, aisle: 'Produce' },
+      { id: bread.id, sortOrder: 3, aisle: 'Bakery' },
+    ]);
+
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === milk.id)).toMatchObject({ sortOrder: 2, aisle: 'Produce' });
+    // Nothing else moved, so only the row that changed is written.
+    expect(dbUpdateGroceryItem).toHaveBeenCalledTimes(1);
+    expect((dbUpdateGroceryItem as jest.Mock).mock.calls[0][0].id).toBe(milk.id);
+  });
+
+  it('applyDrop takes a new aisle into the walk order and ignores unknown ids', () => {
+    const item = makeItem({ name: 'nduja', onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([
+      { id: item.id, sortOrder: 1, aisle: 'Butcher' },
+      { id: 'gone', sortOrder: 2, aisle: 'Butcher' },
+    ]);
+
+    expect(useGroceryStore.getState().items[0].aisle).toBe('Butcher');
+    expect(useGroceryStore.getState().aisleOrder).toContain('Butcher');
+  });
+
+  it('applyDrop writes nothing when the drop changed nothing', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy', onList: true, sortOrder: 3 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 3, aisle: 'Dairy' }]);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
   it('setAisleOrder persists a normalised order', () => {
     useGroceryStore.getState().setAisleOrder(['Frozen', 'Produce']);
 
@@ -448,7 +577,7 @@ describe('shops', () => {
   });
 
   it('addShop refuses a duplicate rather than handing back the existing one', () => {
-    seed([], [makeShop('Costco')]);
+    seed([], { shops: [makeShop('Costco')] });
 
     expect(useGroceryStore.getState().addShop('costco')).toBeNull();
     expect(dbInsertGroceryShop).not.toHaveBeenCalled();
@@ -472,7 +601,7 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     const links = [{ itemId: milk.id, shopId: costco.id, purchaseCount: 3, lastPurchasedAt: null }];
-    seed([milk], [costco], links);
+    seed([milk], { shops: [costco], itemShops: links });
 
     expect(useGroceryStore.getState().renameShop(costco.id, 'Costco Wholesale')).toBe(true);
 
@@ -483,7 +612,7 @@ describe('shops', () => {
   it('renameShop refuses a collision with another store', () => {
     const costco = makeShop('Costco');
     const safeway = makeShop('Safeway');
-    seed([], [costco, safeway]);
+    seed([], { shops: [costco, safeway] });
 
     expect(useGroceryStore.getState().renameShop(safeway.id, 'COSTCO')).toBe(false);
     expect(useGroceryStore.getState().shops.find(s => s.id === safeway.id)!.name).toBe('Safeway');
@@ -491,7 +620,7 @@ describe('shops', () => {
 
   it('renameShop allows a store to keep its own key (a capitalisation fix)', () => {
     const costco = makeShop('costco');
-    seed([], [costco]);
+    seed([], { shops: [costco] });
 
     expect(useGroceryStore.getState().renameShop(costco.id, 'Costco')).toBe(true);
     expect(useGroceryStore.getState().shops[0].name).toBe('Costco');
@@ -501,7 +630,7 @@ describe('shops', () => {
     const a = makeShop('Aldi');
     const b = makeShop('Big Y');
     const c = makeShop('Costco');
-    seed([], [a, b, c]);
+    seed([], { shops: [a, b, c] });
 
     useGroceryStore.getState().reorderShops([c.id, a.id, b.id]);
 
@@ -512,7 +641,7 @@ describe('shops', () => {
   it('reorderShops keeps a store the caller forgot rather than dropping it', () => {
     const a = makeShop('Aldi');
     const b = makeShop('Big Y');
-    seed([], [a, b]);
+    seed([], { shops: [a, b] });
 
     useGroceryStore.getState().reorderShops([b.id]);
 
@@ -523,14 +652,13 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const safeway = makeShop('Safeway');
     const milk = makeItem({ name: 'Milk' });
-    seed(
-      [milk],
-      [costco, safeway],
-      [
+    seed([milk], {
+      shops: [costco, safeway],
+      itemShops: [
         { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: null },
         { itemId: milk.id, shopId: safeway.id, purchaseCount: 1, lastPurchasedAt: null },
-      ]
-    );
+      ],
+    });
 
     useGroceryStore.getState().deleteShop(costco.id);
 
@@ -542,7 +670,7 @@ describe('shops', () => {
 
   it('deleteShop clears the remembered store when it was the one deleted', () => {
     const costco = makeShop('Costco');
-    seed([], [costco]);
+    seed([], { shops: [costco] });
     useGroceryStore.setState({ lastShopId: costco.id });
 
     useGroceryStore.getState().deleteShop(costco.id);
@@ -554,7 +682,7 @@ describe('shops', () => {
   it('linkItemShop asserts availability with no purchase behind it', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    seed([milk], [costco]);
+    seed([milk], { shops: [costco] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
 
@@ -567,9 +695,9 @@ describe('shops', () => {
   it('linkItemShop will not overwrite a link that already has purchases', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    seed([milk], [costco], [
+    seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 5, lastPurchasedAt: null },
-    ]);
+    ] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
 
@@ -577,8 +705,36 @@ describe('shops', () => {
     expect(dbSetItemShopLink).not.toHaveBeenCalled();
   });
 
+  // The seam between provisional rows and store links: a provisional row is
+  // deleted when it comes off the list, so an assertion that didn't promote
+  // would be silently discarded by the next "Remove from list".
+  it('linkItemShop promotes a provisional row, like starring does', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
+    seed([milk], { shops: [costco] });
+
+    useGroceryStore.getState().linkItemShop(milk.id, costco.id);
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+
+    // ...so taking it off the list now parks it instead of deleting it.
+    useGroceryStore.getState().removeFromList(milk.id);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+    expect(useGroceryStore.getState().itemShops).toHaveLength(1);
+  });
+
+  it('linkItemShop leaves an already-catalogued row alone', () => {
+    const costco = makeShop('Costco');
+    const milk = makeItem({ name: 'Milk', inCatalog: true });
+    seed([milk], { shops: [costco] });
+
+    useGroceryStore.getState().linkItemShop(milk.id, costco.id);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+
   it('linkItemShop ignores an unknown item or store', () => {
-    seed([], []);
+    seed([], { shops: [] });
     useGroceryStore.getState().linkItemShop('nope', 'also-nope');
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
@@ -587,10 +743,10 @@ describe('shops', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
     const eggs = makeItem({ name: 'Eggs' });
-    seed([milk, eggs], [costco], [
+    seed([milk, eggs], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null },
       { itemId: eggs.id, shopId: costco.id, purchaseCount: 1, lastPurchasedAt: null },
-    ]);
+    ] });
 
     useGroceryStore.getState().unlinkItemShop(milk.id, costco.id);
 
@@ -600,9 +756,9 @@ describe('shops', () => {
   it('deleting an item drops its links too', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk' });
-    seed([milk], [costco], [
+    seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 4, lastPurchasedAt: null },
-    ]);
+    ] });
 
     useGroceryStore.getState().deleteItem(milk.id);
 
@@ -633,7 +789,7 @@ describe('finishShopping with a store', () => {
   it('creates a link on the first trip and remembers the store', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], [costco]);
+    seed([milk], { shops: [costco] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping(costco.id);
@@ -649,9 +805,9 @@ describe('finishShopping with a store', () => {
   it('bumps an existing link on a repeat trip instead of adding a second', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
-    seed([milk], [costco], [
+    seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z' },
-    ]);
+    ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping(costco.id);
@@ -665,9 +821,9 @@ describe('finishShopping with a store', () => {
   it('turns a hand-asserted link into an observed one', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], [costco], [
+    seed([milk], { shops: [costco], itemShops: [
       { itemId: milk.id, shopId: costco.id, purchaseCount: 0, lastPurchasedAt: null },
-    ]);
+    ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping(costco.id);
@@ -679,9 +835,9 @@ describe('finishShopping with a store', () => {
     const costco = makeShop('Costco');
     const safeway = makeShop('Safeway');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], [costco, safeway], [
+    seed([milk], { shops: [costco, safeway], itemShops: [
       { itemId: milk.id, shopId: safeway.id, purchaseCount: 4, lastPurchasedAt: null },
-    ]);
+    ] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping(costco.id);
@@ -695,7 +851,7 @@ describe('finishShopping with a store', () => {
   // The point of the whole feature being additive: no store is a real answer.
   it('records no link when the trip names no store', () => {
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], [makeShop('Costco')]);
+    seed([milk], { shops: [makeShop('Costco')] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping();
@@ -710,7 +866,7 @@ describe('finishShopping with a store', () => {
 
   it('ignores a store id that no longer resolves', () => {
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], []);
+    seed([milk], { shops: [] });
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
@@ -721,7 +877,7 @@ describe('finishShopping with a store', () => {
 
   it('writes nothing at all when the trolley is empty', () => {
     const costco = makeShop('Costco');
-    seed([makeItem({ name: 'Milk', onList: true })], [costco]);
+    seed([makeItem({ name: 'Milk', onList: true })], { shops: [costco] });
 
     expect(useGroceryStore.getState().finishShopping(costco.id)).toBe(0);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
@@ -731,12 +887,100 @@ describe('finishShopping with a store', () => {
   it('clearList records no purchase anywhere, store or not', () => {
     const costco = makeShop('Costco');
     const milk = makeItem({ name: 'Milk', onList: true, checked: true });
-    seed([milk], [costco]);
+    seed([milk], { shops: [costco] });
     (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().clearList();
 
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     expect(useGroceryStore.getState().items[0].purchaseCount).toBe(0);
+  });
+});
+
+// ─── remembered aisles ───────────────────────────────────────────────────────
+
+describe('remembered aisles', () => {
+  it('setAisle records the filing under the item name', () => {
+    const item = makeItem({ name: 'Protein powder' });
+    seed([item]);
+
+    useGroceryStore.getState().setAisle(item.id, 'Household');
+
+    expect(dbSetGroceryAisleOverrides).toHaveBeenCalledWith({ 'protein powder': 'Household' });
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ 'protein powder': 'Household' });
+  });
+
+  it('a new row is filed where the user last put that name, over the lexicon', () => {
+    // The lexicon would say Dairy & Eggs; their shop keeps it somewhere else.
+    seed([], { aisleOverrides: { milk: 'Frozen' } });
+
+    const item = useGroceryStore.getState().addByName('Milk');
+
+    expect(item.aisle).toBe('Frozen');
+  });
+
+  it('survives the provisional row it was made on being deleted', () => {
+    // The case the memory exists for: a name typed for the first time is
+    // provisional, so taking it off the list deletes the row outright.
+    const item = useGroceryStore.getState().addByName('Nduja');
+    useGroceryStore.getState().setAisle(item.id, 'Butcher');
+    useGroceryStore.getState().removeFromList(item.id);
+    expect(useGroceryStore.getState().items).toEqual([]);
+
+    expect(useGroceryStore.getState().addByName('nduja').aisle).toBe('Butcher');
+  });
+
+  it('leaves an existing catalog row alone — its own aisle is already the truth', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy & Eggs' });
+    seed([item], { aisleOverrides: { milk: 'Frozen' } });
+
+    expect(useGroceryStore.getState().addByName('Milk').aisle).toBe('Dairy & Eggs');
+  });
+
+  it('applyDrop remembers a row dragged into another aisle', () => {
+    const item = makeItem({ name: 'Nduja', aisle: OTHER_AISLE, onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 2, aisle: 'Deli' }]);
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ nduja: 'Deli' });
+  });
+
+  it('applyDrop remembers nothing when the drag only reordered within an aisle', () => {
+    const item = makeItem({ name: 'Milk', aisle: 'Dairy & Eggs', onList: true, sortOrder: 1 });
+    seed([item]);
+
+    useGroceryStore.getState().applyDrop([{ id: item.id, sortOrder: 5, aisle: 'Dairy & Eggs' }]);
+
+    expect(dbSetGroceryAisleOverrides).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({});
+  });
+
+  it('follows a rename, so the filing survives fixing a typo', () => {
+    const item = makeItem({ name: 'Protien powder' });
+    seed([item], { aisleOverrides: { 'protien powder': 'Household' } });
+
+    useGroceryStore.getState().renameItem(item.id, 'Protein powder');
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ 'protein powder': 'Household' });
+    expect(dbSetGroceryAisleOverrides).toHaveBeenCalledWith({ 'protein powder': 'Household' });
+  });
+
+  it('writes nothing when the filing is the one already remembered', () => {
+    const item = makeItem({ name: 'Nduja', aisle: OTHER_AISLE });
+    seed([item], { aisleOverrides: { nduja: 'Deli' } });
+
+    useGroceryStore.getState().setAisle(item.id, 'Deli');
+
+    expect(dbSetGroceryAisleOverrides).not.toHaveBeenCalled();
+  });
+
+  it('initialize loads what was remembered', () => {
+    (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({ nduja: 'Deli' });
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().rememberedAisleFor('Nduja')).toBe('Deli');
+    expect(useGroceryStore.getState().rememberedAisleFor('Milk')).toBeNull();
   });
 });
