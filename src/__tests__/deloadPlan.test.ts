@@ -96,9 +96,9 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
       expect(p.selected).toBe(true);
       expect(p.blocker).toBeNull();
-      expect(p.date).not.toBeNull();
-      expect(p.date!.getTime()).toBeGreaterThan(today.getTime());
-      expect(p.reason).toBeTruthy();
+      expect(p.suggested).not.toBeNull();
+      expect(p.suggested!.date.getTime()).toBeGreaterThan(today.getTime());
+      expect(p.suggested!.reason).toBeTruthy();
     });
 
     it('orders proposals biggest-first so the top row recovers the most time', () => {
@@ -138,7 +138,7 @@ describe('buildDeloadPlan', () => {
       );
 
       const plan = buildDeloadPlan(tasks, tasks);
-      const days = plan.proposals.map(p => isoDate(p.date!));
+      const days = plan.proposals.map(p => isoDate(p.suggested!.date));
       expect(new Set(days).size).toBe(4);
     });
 
@@ -151,7 +151,7 @@ describe('buildDeloadPlan', () => {
 
       // With nothing else scheduled, the movable task should still get the
       // nearest day — the pinned row must not have consumed it.
-      expect(isoDate(movableProposal.date!)).toBe(isoDate(addDays(today, 1)));
+      expect(isoDate(movableProposal.suggested!.date)).toBe(isoDate(addDays(today, 1)));
     });
   });
 
@@ -168,7 +168,7 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
 
       expect(p.blocker).toBe(blocker);
-      expect(p.date).toBeNull();
+      expect(p.suggested).toBeNull();
       expect(p.selected).toBe(false);
       expect(p.blockerLabel).toBeTruthy();
     });
@@ -200,7 +200,7 @@ describe('buildDeloadPlan', () => {
       expect(p.blockerLabel).toBe('12-day streak');
       expect(p.selected).toBe(false);
       // Soft — the user can still opt in, so a destination is offered.
-      expect(p.date).not.toBeNull();
+      expect(p.suggested).not.toBeNull();
     });
 
     it('leaves a task with banked countdown time unchecked but movable', () => {
@@ -211,7 +211,7 @@ describe('buildDeloadPlan', () => {
       expect(p.blocker).toBe('started');
       expect(p.blockerLabel).toBe('Already started');
       expect(p.selected).toBe(false);
-      expect(p.date).not.toBeNull();
+      expect(p.suggested).not.toBeNull();
     });
 
     it('treats an untouched timed task as ordinary', () => {
@@ -228,7 +228,7 @@ describe('buildDeloadPlan', () => {
 
       expect(p.blocker).toBe('high-priority');
       expect(p.selected).toBe(false);
-      expect(p.date).not.toBeNull();
+      expect(p.suggested).not.toBeNull();
     });
 
     it('does not treat a first-day streak as a streak worth protecting', () => {
@@ -244,7 +244,7 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
 
       expect(p.blocker).toBe('deadline');
-      expect(p.date).toBeNull();
+      expect(p.suggested).toBeNull();
       expect(p.selected).toBe(false);
     });
 
@@ -256,7 +256,87 @@ describe('buildDeloadPlan', () => {
       });
       const plan = buildDeloadPlan([task], [task]);
       expect(plan.proposals[0].blocker).toBeNull();
-      expect(plan.proposals[0].date).not.toBeNull();
+      expect(plan.proposals[0].suggested).not.toBeNull();
+    });
+  });
+
+  describe('tomorrow', () => {
+    it('offers tomorrow alongside the suggested day', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, dueDate: today.toISOString() });
+      const [p] = buildDeloadPlan([task], [task]).proposals;
+
+      expect(isoDate(p.tomorrow!.date)).toBe(isoDate(addDays(today, 1)));
+      expect(p.tomorrow!.dayLabel).toBe('Tomorrow');
+    });
+
+    it('offers no tomorrow for a task that cannot move at all', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, pinned: true });
+      expect(buildDeloadPlan([task], [task]).proposals[0].tomorrow).toBeNull();
+    });
+
+    it('drops both destinations when even tomorrow is past the deadline', () => {
+      const task = makeTask({ id: 'a', estimatedMinutes: 30, deadline: today.toISOString() });
+      const [p] = buildDeloadPlan([task], [task]).proposals;
+
+      expect(p.blocker).toBe('deadline');
+      expect(p.suggested).toBeNull();
+      expect(p.tomorrow).toBeNull();
+    });
+
+    it('keeps tomorrow when only the suggested day is past the deadline', () => {
+      // Tomorrow is crowded enough that the engine looks further out — past a
+      // deadline that tomorrow itself still meets.
+      const filler = Array.from({ length: 6 }, (_, i) =>
+        makeTask({ id: `f${i}`, estimatedMinutes: 60, dueDate: addDays(today, 1).toISOString() })
+      );
+      const task = makeTask({
+        id: 'a',
+        estimatedMinutes: 30,
+        deadline: addDays(today, 1).toISOString(),
+      });
+
+      const [p] = buildDeloadPlan([task], [task, ...filler]).proposals;
+
+      expect(p.suggested).toBeNull();
+      expect(p.tomorrow).not.toBeNull();
+      // Not a blocker — the row is simply unavailable in the mode that lost it.
+      expect(p.blocker).toBeNull();
+    });
+
+    it('does not propose a daily task a week out', () => {
+      // The reported bug: a task that repeats every day was being sent to the
+      // lightest day of the week, which skips it six times over.
+      const daily = makeTask({
+        id: 'daily',
+        estimatedMinutes: 30,
+        recurrenceType: 'daily',
+        recurrenceInterval: 1,
+        dueDate: today.toISOString(),
+      });
+      const crowdTomorrow = Array.from({ length: 6 }, (_, i) =>
+        makeTask({ id: `f${i}`, estimatedMinutes: 60, dueDate: addDays(today, 1).toISOString() })
+      );
+
+      const [p] = buildDeloadPlan([daily], [daily, ...crowdTomorrow]).proposals;
+
+      expect(isoDate(p.suggested!.date)).toBe(isoDate(addDays(today, 1)));
+      expect(p.suggested!.reason).toBe('when it next repeats');
+    });
+
+    it('still spreads a rarely-repeating task across the week', () => {
+      const monthly = makeTask({
+        id: 'monthly',
+        estimatedMinutes: 30,
+        recurrenceType: 'monthly',
+        recurrenceInterval: 1,
+        dueDate: today.toISOString(),
+      });
+      const crowdTomorrow = Array.from({ length: 6 }, (_, i) =>
+        makeTask({ id: `f${i}`, estimatedMinutes: 60, dueDate: addDays(today, 1).toISOString() })
+      );
+
+      const [p] = buildDeloadPlan([monthly], [monthly, ...crowdTomorrow]).proposals;
+      expect(isoDate(p.suggested!.date)).not.toBe(isoDate(addDays(today, 1)));
     });
   });
 
@@ -272,8 +352,8 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
 
       expect(p.mode).toBe('defer');
-      const updates = deloadUpdates(p)!;
-      expect(updates.deferUntil).toBe(p.date!.toISOString());
+      const updates = deloadUpdates(p, p.suggested!.date)!;
+      expect(updates.deferUntil).toBe(p.suggested!.date.toISOString());
       expect(updates.dueDate).toBeUndefined();
     });
 
@@ -289,9 +369,9 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
 
       expect(p.mode).toBe('defer');
-      const updates = deloadUpdates(p)!;
+      const updates = deloadUpdates(p, p.suggested!.date)!;
       expect(updates.dueDate).toBeUndefined();
-      expect(updates.deferUntil).toBe(p.date!.toISOString());
+      expect(updates.deferUntil).toBe(p.suggested!.date.toISOString());
     });
 
     it('reschedules a one-off task so it does not arrive labelled overdue', () => {
@@ -300,15 +380,15 @@ describe('buildDeloadPlan', () => {
       const [p] = plan.proposals;
 
       expect(p.mode).toBe('reschedule');
-      const updates = deloadUpdates(p)!;
-      expect(updates.dueDate).toBe(p.date!.toISOString());
+      const updates = deloadUpdates(p, p.suggested!.date)!;
+      expect(updates.dueDate).toBe(p.suggested!.date.toISOString());
       expect(updates.deferUntil).toBeNull();
     });
 
     it('returns no updates for a task that cannot move', () => {
       const task = makeTask({ id: 'a', pinned: true, estimatedMinutes: 30 });
       const plan = buildDeloadPlan([task], [task]);
-      expect(deloadUpdates(plan.proposals[0])).toBeNull();
+      expect(deloadUpdates(plan.proposals[0], plan.proposals[0].suggested?.date ?? null)).toBeNull();
     });
   });
 

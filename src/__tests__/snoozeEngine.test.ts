@@ -200,6 +200,45 @@ describe('computeSnoozeSuggestion', () => {
     expect(isoDate(result.date)).toBe(isoDate(tomorrow));
   });
 
+  it('never proposes a day past a recurring task\'s own next occurrence', () => {
+    // A daily task pushed to the lightest day of the week isn't rescheduled,
+    // it's skipped six times over — so the window stops at tomorrow, however
+    // busy tomorrow is.
+    const today = new Date();
+    const task = makeTask({
+      id: 'snooze-me',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: today.toISOString(),
+    });
+    const crowd = Array.from({ length: 8 }, (_, i) =>
+      makeTask({ id: `busy${i}`, estimatedMinutes: 60, dueDate: addDays(today, 1).toISOString() })
+    );
+
+    const result = computeSnoozeSuggestion(task, [task, ...crowd]);
+
+    expect(isoDate(result.date)).toBe(isoDate(addDays(today, 1)));
+    expect(result.reason).toBe('when it next repeats');
+  });
+
+  it('lets an every-third-day task reach its third day', () => {
+    const today = new Date();
+    const task = makeTask({
+      id: 'snooze-me',
+      recurrenceType: 'daily',
+      recurrenceInterval: 3,
+      dueDate: today.toISOString(),
+    });
+    const crowd = [1, 2].flatMap(d =>
+      Array.from({ length: 8 }, (_, i) =>
+        makeTask({ id: `busy${d}-${i}`, estimatedMinutes: 60, dueDate: addDays(today, d).toISOString() })
+      )
+    );
+
+    const result = computeSnoozeSuggestion(task, [task, ...crowd]);
+    expect(isoDate(result.date)).toBe(isoDate(addDays(today, 3)));
+  });
+
   it('only suggests a day the category is scheduled for', () => {
     // Whichever of the next 7 days is NOT the category's scheduled day-of-week
     const tomorrow = addDays(new Date(), 1);
