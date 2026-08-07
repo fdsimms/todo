@@ -322,6 +322,20 @@ export const TaskItem = React.memo(function TaskItem({
   // during a burst it keeps its full height for as long as the tapping goes on.
   const [awaitingCollapse, setAwaitingCollapse] = useState(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
+  // True from the moment this row hands its completion over to the store until
+  // something puts the row back: by then it has faded to invisible and (once
+  // the burst settles) collapsed to zero height, so the only reason it is still
+  // on screen at all is the hold keeping it there.
+  const completionPlayedRef = useRef(false);
+  // Remounts the collapse wrapper below, for a row that has to come back after
+  // it already collapsed (see restoreFromCompletion). Putting collapseProgress
+  // back to 1 is not enough on its own: above 1 the animated style stops
+  // returning `height` at all, and Reanimated only ever applies the keys an
+  // updater *does* return — so the zero height committed on the collapse's last
+  // frame stays on the native view, exactly the trap AnimatedCollapsible's
+  // header describes. A freshly mounted view carries none of it, and this path
+  // is rare enough to afford one.
+  const [collapseGeneration, setCollapseGeneration] = useState(0);
   // Tints the row briefly so the user can tell which one is being pointed at.
   // Seeded at full strength for a row that mounts already flagged (a task that
   // was just created), so it can't paint one frame untinted before the effect
@@ -423,6 +437,34 @@ export const TaskItem = React.memo(function TaskItem({
       easing: Easing.inOut(Easing.cubic),
     });
   }, [collapseSignal, awaitingCollapse]);
+
+  // The other way that hold can end: the completion was taken back from outside
+  // this row — shake-to-undo, or a Logbook/bulk uncomplete while the window is
+  // still open — which never reaches handleUndoComplete. The task goes back to
+  // being live and visible, so this row isn't unmounted the way an expired hold
+  // unmounts it; it just stays put, invisible and zero-height, for as long as
+  // the screen is up. Under a stack that reads as the whole stack expanding to
+  // nothing, since TaskGroupHeader's tally counts the roster rather than what is
+  // on screen — "5/6" over an empty tray, with the sixth row sitting right
+  // there at no height.
+  //
+  // Keyed on the store's hold rather than on task.completed, because Today
+  // masks a held completion as incomplete (withHeldCompletions in useTaskStore):
+  // the prop reads the same whether the completion stood or was undone.
+  const completionHeld = useTaskStore(s => s.completionHoldIds.includes(task.id));
+  const wasCompletionHeldRef = useRef(completionHeld);
+  useEffect(() => {
+    const released = wasCompletionHeldRef.current && !completionHeld;
+    wasCompletionHeldRef.current = completionHeld;
+    if (!released || !completionPlayedRef.current) return;
+    // Read the row out of the store rather than trusting the prop: a hold that
+    // simply expired leaves the task completed and this row on its way out, and
+    // restoring that one would flash it back in for the frame before it goes.
+    const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+    if (!current || current.completed) return;
+    restoreFromCompletion(current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [completionHeld]);
 
   // A row unmounted mid-animation (screen change, filter change) never reaches
   // completeTask, so it has to let the batch go — otherwise the collapse it was
@@ -726,6 +768,7 @@ export const TaskItem = React.memo(function TaskItem({
       // Leaves the row invisible but full height; the store calls the collapse
       // in once the burst settles (see the collapseSignal effect above).
       setAwaitingCollapse(true);
+      completionPlayedRef.current = true;
       completeTask(task.id);
       endQuotaHold();
     });
@@ -853,6 +896,9 @@ export const TaskItem = React.memo(function TaskItem({
       pacingOutRef.current = false;
       setPacingOut(false);
       rowOpacity.setValue(1);
+      // Same reason the completion recovery remounts: this collapse committed a
+      // height, and winding collapseProgress back doesn't take it off again.
+      if (collapseStartedRef.current) setCollapseGeneration(g => g + 1);
       collapseStartedRef.current = false;
       collapseProgress.value = 1;
     });
@@ -892,26 +938,43 @@ export const TaskItem = React.memo(function TaskItem({
     if (autoComplete) handleComplete();
   }, [autoComplete]);
 
+  // Takes back the beats handleComplete played, and nothing else — no store
+  // calls — so both the in-flight cancel below and the after-the-fact recovery
+  // above can put the row back the same way.
+  const restoreFromCompletion = (current: Task) => {
+    completeAnimRef.current?.stop();
+    completeAnimRef.current = null;
+    completingRef.current = false;
+    completionPlayedRef.current = false;
+    checkScale.setValue(0);
+    circleScale.setValue(1);
+    rowOpacity.setValue(1);
+    // setValue stops the run-up mid-rise, so the meter drops back to the level
+    // the store still has it at — the last unit was never logged.
+    quotaFill.setValue(quotaFraction(current));
+    quotaDone.setValue(0);
+    setQuotaCompleting(false);
+    setQuotaToppedOut(false);
+    setCompleting(false);
+    setAwaitingCollapse(false);
+    // Only when a collapse actually committed a height — cancelling in flight
+    // (the path below) never gets that far, and shouldn't pay for a remount.
+    if (collapseStartedRef.current) setCollapseGeneration(g => g + 1);
+    collapseStartedRef.current = false;
+    collapseProgress.value = 1;
+  };
+
   const handleUndoComplete = async () => {
+    // Stopped before the await, not inside restoreFromCompletion: the
+    // sequence's own callback is otherwise free to land during it and complete
+    // the task after all.
     completeAnimRef.current?.stop();
     completeAnimRef.current = null;
     completingRef.current = false;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
     await haptics.tap();
-    checkScale.setValue(0);
-    circleScale.setValue(1);
-    rowOpacity.setValue(1);
-    // setValue stops the run-up mid-rise, so the meter drops back to the level
-    // the store still has it at — the last unit was never logged.
-    quotaFill.setValue(quotaFraction(task));
-    quotaDone.setValue(0);
-    setQuotaCompleting(false);
-    setQuotaToppedOut(false);
-    setCompleting(false);
-    setAwaitingCollapse(false);
-    collapseStartedRef.current = false;
-    collapseProgress.value = 1;
+    restoreFromCompletion(task);
   };
 
   const handleTitleTap = () => {
@@ -1717,6 +1780,9 @@ export const TaskItem = React.memo(function TaskItem({
   return (
     <>
       <Reanimated.View
+        // Changes only to force a fresh view when a collapsed row has to come
+        // back — see collapseGeneration.
+        key={collapseGeneration}
         style={collapseStyle}
         onLayout={handleItemLayout}
         // Faded out and holding its slot open for the rest of the burst — a tap

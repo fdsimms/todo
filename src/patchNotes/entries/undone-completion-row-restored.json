@@ -1,0 +1,4 @@
+{
+  "message": "Undoing a completion right after it happens brings the task's row back instead of leaving an invisible gap — a stack could look like it expanded to nothing",
+  "date": "2026-08-07"
+}
