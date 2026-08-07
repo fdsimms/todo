@@ -15,6 +15,7 @@ import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
+import { runStartupSequence } from './src/utils/startup';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
@@ -43,7 +44,22 @@ function AppContent() {
   );
 }
 
+// The ErrorBoundary has to be *above* everything that runs at launch, which
+// means App itself can hold nothing but the boundary. It used to render the
+// boundary and the whole startup sequence side by side — but a boundary only
+// catches what its children throw, so every one of those calls sat outside the
+// one thing meant to catch them, and React answers an uncaught error by
+// unmounting the root. The app got past the splash and went black, with the
+// message nowhere. AppRoot is a child, so now it doesn't.
 export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppRoot />
+    </ErrorBoundary>
+  );
+}
+
+function AppRoot() {
   const initTasks = useTaskStore(s => s.initialize);
   const initSettings = useSettingsStore(s => s.initialize);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
@@ -54,43 +70,52 @@ export default function App() {
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
 
   useEffect(() => {
-    // initTasks calls initDatabase() which creates all tables first
-    initTasks();
-    // Then load settings from the now-initialized DB
-    initSettings();
-    // The API key, which lives in the keychain rather than the settings table.
-    // Async and deliberately not awaited — nothing in the launch sequence below
-    // reads it, and the first thing that does is a suggestion the user asks for
-    // by tapping. It also migrates the old plaintext row on the first launch
-    // after the update, which needs the DB above to exist.
-    initSecrets();
-    // Sweep expired tasks now that settings (vacationMode, dayResetTime,
-    // autoRemoveExpiredTasks) are loaded for real, before vacation expiry
-    // can turn vacationMode back off — see issue #689.
-    sweepExpiredTasks();
-    // Turn vacation mode back off if its end date already passed while the
-    // app was closed
-    checkVacationExpiry();
-    // Close out quota tasks whose day ended unfinished while the app was
-    // closed, so a day you fell short on is logged as a partial instead of
-    // sitting overdue — also needs real settings (dayResetTime) loaded first.
-    rolloverQuotas();
-    // Let projects the user opted into auto-scheduling date their own next
-    // task if they've run dry. After rolloverQuotas, which can complete and
-    // spawn members and so change what a project counts as scheduled; and
-    // after initSettings, since "quiet" is measured in logical days.
-    dripStalledProjects();
-    // Enforce the completed-task retention window, if the user set one. Last
-    // of the maintenance passes on purpose: it only ever deletes rows old
-    // enough to be out of every other pass's reach, and running it after
-    // rolloverQuotas means a completion that pass just wrote is judged on the
-    // same footing as any other.
-    purgeOldCompletedTasks();
-    // Request notification permissions
-    requestNotificationPermissions();
-    // AlarmKit has its own authorization, separate from UNUserNotificationCenter
-    // above — only meaningful where the platform actually supports it.
-    if (isAlarmKitAvailable()) requestAlarmAuthorization();
+    // Every step is isolated (see src/utils/startup.ts): these are independent
+    // of one another, so one that throws costs its own step and nothing else.
+    // The order is still load-bearing — the comments below say why each sits
+    // where it does — runStartupSequence just refuses to let a failure halfway
+    // down take the app with it.
+    runStartupSequence([
+      // initTasks calls initDatabase() which creates all tables first
+      ['initialize tasks', initTasks],
+      // Then load settings from the now-initialized DB
+      ['load settings', initSettings],
+      // The API key, which lives in the keychain rather than the settings table.
+      // Async and deliberately not awaited — nothing in the launch sequence below
+      // reads it, and the first thing that does is a suggestion the user asks for
+      // by tapping. It also migrates the old plaintext row on the first launch
+      // after the update, which needs the DB above to exist.
+      ['load API key', initSecrets],
+      // Sweep expired tasks now that settings (vacationMode, dayResetTime,
+      // autoRemoveExpiredTasks) are loaded for real, before vacation expiry
+      // can turn vacationMode back off — see issue #689.
+      ['sweep expired tasks', sweepExpiredTasks],
+      // Turn vacation mode back off if its end date already passed while the
+      // app was closed
+      ['check vacation expiry', checkVacationExpiry],
+      // Close out quota tasks whose day ended unfinished while the app was
+      // closed, so a day you fell short on is logged as a partial instead of
+      // sitting overdue — also needs real settings (dayResetTime) loaded first.
+      ['roll over quotas', rolloverQuotas],
+      // Let projects the user opted into auto-scheduling date their own next
+      // task if they've run dry. After rolloverQuotas, which can complete and
+      // spawn members and so change what a project counts as scheduled; and
+      // after initSettings, since "quiet" is measured in logical days.
+      ['drip stalled projects', dripStalledProjects],
+      // Enforce the completed-task retention window, if the user set one. Last
+      // of the maintenance passes on purpose: it only ever deletes rows old
+      // enough to be out of every other pass's reach, and running it after
+      // rolloverQuotas means a completion that pass just wrote is judged on the
+      // same footing as any other.
+      ['purge old completed tasks', purgeOldCompletedTasks],
+      // Request notification permissions
+      ['request notification permissions', requestNotificationPermissions],
+      // AlarmKit has its own authorization, separate from UNUserNotificationCenter
+      // above — only meaningful where the platform actually supports it.
+      ['request alarm authorization', () => {
+        if (isAlarmKitAvailable()) requestAlarmAuthorization();
+      }],
+    ]);
   }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
@@ -113,14 +138,12 @@ export default function App() {
   useNotificationTapSync();
 
   return (
-    <ErrorBoundary>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <SafeAreaProvider>
-          <ThemeProvider>
-            <AppContent />
-          </ThemeProvider>
-        </SafeAreaProvider>
-      </GestureHandlerRootView>
-    </ErrorBoundary>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <AppContent />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
