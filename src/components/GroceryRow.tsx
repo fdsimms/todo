@@ -91,6 +91,20 @@ export const GroceryRow = React.memo(function GroceryRow({ item, onToggle, onEdi
           </Text>
         </View>
       )}
+
+      {/* Long-press opens the same sheet, but nothing on screen says so — and
+          quantity and a wrong aisle are things people genuinely fix. A quiet
+          trailing target is what makes that reachable without teaching a
+          gesture. */}
+      <TouchableOpacity
+        onPress={() => onEdit(item.id)}
+        activeOpacity={interaction.activeOpacity}
+        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+        accessibilityRole="button"
+        accessibilityLabel={`Edit ${item.name}`}
+      >
+        <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
     </TouchableOpacity>
   );
 });
@@ -110,9 +124,11 @@ function makeStyles(colors: Colors) {
       minHeight: 52,
     },
     rowChecked: {
-      // Dimmed rather than recoloured: the row is still legible from a
-      // trolley's distance, which is the point of leaving it on screen at all.
-      opacity: 0.55,
+      // The card keeps its full surface and only its *contents* mute. An
+      // opacity on the whole row reads fine in dark (#1C1C1E over #000) but
+      // dissolves in light, where a white card at 55% just fades into the
+      // #F2F2F7 page and the row stops looking like a row.
+      backgroundColor: colors.bgSunken,
     },
     checkbox: {
       width: CHECKBOX_SIZE,
@@ -126,6 +142,7 @@ function makeStyles(colors: Colors) {
     checkboxChecked: {
       backgroundColor: colors.green,
       borderColor: colors.green,
+      opacity: 0.7,
     },
     body: {
       flex: 1,

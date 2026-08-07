@@ -8,7 +8,6 @@ import {
   dbDeleteGroceryItem,
   dbFinishGroceryShopping,
   dbClearGroceryList,
-  dbBatchUpdateGrocerySortOrders,
 } from '../db/database';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
@@ -23,7 +22,6 @@ jest.mock('../db/database', () => ({
   dbDeleteGroceryItem: jest.fn(),
   dbFinishGroceryShopping: jest.fn().mockReturnValue([]),
   dbClearGroceryList: jest.fn().mockReturnValue([]),
-  dbBatchUpdateGrocerySortOrders: jest.fn(),
 }));
 
 let seq = 0;
@@ -385,32 +383,5 @@ describe('aisles', () => {
     const written = (dbSetGroceryAisleOrder as jest.Mock).mock.calls[0][0] as string[];
     expect(written[0]).toBe('Frozen');
     expect(written[written.length - 1]).toBe(OTHER_AISLE);
-  });
-});
-
-describe('reorderItems', () => {
-  it('redistributes only the slots those rows already hold', () => {
-    const a = makeItem({ name: 'Apples', sortOrder: 2 });
-    const b = makeItem({ name: 'Bananas', sortOrder: 5 });
-    const other = makeItem({ name: 'Milk', sortOrder: 3 });
-    seed([a, b, other]);
-
-    useGroceryStore.getState().reorderItems([b.id, a.id]);
-
-    const after = useGroceryStore.getState().items;
-    expect(after.find(i => i.id === b.id)!.sortOrder).toBe(2);
-    expect(after.find(i => i.id === a.id)!.sortOrder).toBe(5);
-    // A drag inside one aisle must not renumber anything in another.
-    expect(after.find(i => i.id === other.id)!.sortOrder).toBe(3);
-    expect(dbBatchUpdateGrocerySortOrders).toHaveBeenCalledTimes(1);
-  });
-
-  it('ignores an id it does not know', () => {
-    const a = makeItem({ name: 'Apples', sortOrder: 1 });
-    seed([a]);
-
-    useGroceryStore.getState().reorderItems([a.id, 'ghost']);
-
-    expect(dbBatchUpdateGrocerySortOrders).not.toHaveBeenCalled();
   });
 });

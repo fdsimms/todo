@@ -15,6 +15,10 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddField } from '../components/GroceryAddField';
 import { GroceryRow } from '../components/GroceryRow';
+import { BuyAgainSheet } from '../components/BuyAgainSheet';
+import { GroceryItemSheet } from '../components/GroceryItemSheet';
+import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
+import { InlineAction } from '../components/InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
@@ -50,12 +54,9 @@ export function GroceryScreen() {
   const clearList = useGroceryStore(s => s.clearList);
 
   const [cartOpen, setCartOpen] = useState(false);
-  // Wired from day one even though phase 1 ships no within-aisle drag: a
-  // SortableList added later is a *descendant* of this list's scroll view, and
-  // RN only stands a native scroll view down for an *ancestor* JS responder —
-  // so without this the drag would be silently dead on this screen.
-  const [draggingRow, setDraggingRow] = useState(false);
-
+  const [buyAgainOpen, setBuyAgainOpen] = useState(false);
+  const [aislesOpen, setAislesOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
 
   const { sections, inCart, remaining } = useMemo(
@@ -92,9 +93,8 @@ export function GroceryScreen() {
   );
 
   const handleEdit = useCallback((id: string) => {
-    // The item sheet lands next; long-press is wired now so the row's gesture
-    // surface doesn't change under the user when it does.
-    void id;
+    haptics.tap();
+    setEditingId(id);
   }, []);
 
   const confirmFinish = useCallback(() => {
@@ -136,14 +136,21 @@ export function GroceryScreen() {
   }, [clearList]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => {
+    // Clear list is deliberately NOT here. It's destructive-looking, rarely
+    // used, and the header is where you're tapping one-handed while walking —
+    // it lives at the foot of the list instead, which is where you look when
+    // you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
-    if (listCount > 0) {
-      list.push({
-        icon: 'trash-outline',
-        onPress: confirmClear,
-        accessibilityLabel: 'Clear the list',
-      });
-    }
+    list.push({
+      icon: 'options-outline',
+      onPress: () => setAislesOpen(true),
+      accessibilityLabel: 'Aisle order',
+    });
+    list.push({
+      icon: 'repeat-outline',
+      onPress: () => setBuyAgainOpen(true),
+      accessibilityLabel: 'Buy again',
+    });
     list.push({
       icon: 'bag-check-outline',
       onPress: confirmFinish,
@@ -153,7 +160,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [listCount, checkedCount, confirmClear, confirmFinish]);
+  }, [checkedCount, confirmFinish]);
 
   const renderRow = useCallback(
     ({ item: row }: { item: ListRow }) => {
@@ -212,11 +219,24 @@ export function GroceryScreen() {
         data={rows}
         keyExtractor={row => row.key}
         renderItem={renderRow}
-        scrollEnabled={!draggingRow}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         contentContainerStyle={styles.list}
-        ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
+        ListFooterComponent={
+          <View>
+            {listCount > 0 && (
+              <View style={styles.clearWrap}>
+                <InlineAction
+                  label="Clear the list"
+                  icon="trash-outline"
+                  variant="neutral"
+                  onPress={confirmClear}
+                />
+              </View>
+            )}
+            <View style={{ height: tabBarHeight + spacing.xl }} />
+          </View>
+        }
         ListEmptyComponent={
           <EmptyState
             icon="cart-outline"
@@ -226,9 +246,19 @@ export function GroceryScreen() {
                 ? 'Start typing above — everything you’ve bought before will come up.'
                 : 'Type what you need above. Paste a whole list and each line becomes an item.'
             }
+            actionLabel={catalogCount > 0 ? 'Buy again' : undefined}
+            onAction={catalogCount > 0 ? () => setBuyAgainOpen(true) : undefined}
             bottomOffset={tabBarHeight}
           />
         }
+      />
+
+      <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
+      <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      <GroceryItemSheet
+        visible={editingId !== null}
+        itemId={editingId}
+        onClose={() => setEditingId(null)}
       />
     </View>
   );
@@ -256,6 +286,10 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md + spacing.xs,
       paddingTop: spacing.lg,
       paddingBottom: spacing.xs,
+    },
+    clearWrap: {
+      alignItems: 'center',
+      marginTop: spacing.lg,
     },
     sectionTitle: {
       fontSize: font.xs,

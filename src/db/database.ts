@@ -1075,14 +1075,6 @@ export function dbDeleteGroceryItem(id: string): void {
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
-export function dbBatchUpdateGrocerySortOrders(updates: { id: string; sortOrder: number }[]): void {
-  db.withTransactionSync(() => {
-    for (const u of updates) {
-      db.runSync('UPDATE grocery_items SET sort_order = ? WHERE id = ?', [u.sortOrder, u.id]);
-    }
-  });
-}
-
 /**
  * Ends a shopping trip: everything in the trolley comes off the list and is
  * recorded as bought. Returns the ids it touched so the store can patch its

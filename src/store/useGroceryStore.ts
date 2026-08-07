@@ -5,7 +5,6 @@ import {
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
-  dbBatchUpdateGrocerySortOrders,
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
@@ -84,8 +83,6 @@ interface GroceryStore {
   /** Abandons the trip: everything comes off the list, nothing counts as bought. */
   clearList: () => number;
 
-  /** Reorders a run of rows among the sort_order slots they already hold. */
-  reorderItems: (orderedIds: string[]) => void;
   setAisleOrder: (order: string[]) => void;
 
   itemByNameKey: (key: string) => GroceryItem | null;
@@ -349,25 +346,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: [],
     }));
     return ids.length;
-  },
-
-  reorderItems(orderedIds) {
-    // Redistributes the sort_order slots those exact rows already occupy,
-    // rather than renumbering 1..N globally — so a drag inside Produce moves
-    // nothing in Dairy, and rows in other aisles keep their relative places.
-    const wanted = new Set(orderedIds);
-    const slots = get()
-      .items.filter(i => wanted.has(i.id))
-      .map(i => i.sortOrder)
-      .sort((a, b) => a - b);
-    if (slots.length !== orderedIds.length) return;
-
-    const updates = orderedIds.map((id, idx) => ({ id, sortOrder: slots[idx] }));
-    dbBatchUpdateGrocerySortOrders(updates);
-    const byId = new Map(updates.map(u => [u.id, u.sortOrder]));
-    set(s => ({
-      items: s.items.map(i => (byId.has(i.id) ? { ...i, sortOrder: byId.get(i.id)! } : i)),
-    }));
   },
 
   setAisleOrder(order) {
