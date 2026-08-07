@@ -66,7 +66,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     [projects]
   );
 
-  const { results, overflow } = useMemo(
+  const { results, total } = useMemo(
     () => quickSearch(tasks, query, projectNamesById),
     [tasks, query, projectNamesById]
   );
@@ -116,9 +116,6 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
 
   const trimmed = query.trim();
   const showNoMatches = trimmed.length > 0 && results.length === 0;
-  // The footer only needs a rule when there's something above it to separate it
-  // from — on an empty query the card is just the field and the button.
-  const hasContent = results.length > 0 || showNoMatches;
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
@@ -188,18 +185,14 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             <Text style={styles.noMatches}>No todos match “{trimmed}”</Text>
           )}
 
-          <View style={[styles.footer, hasContent && styles.footerDivided]}>
-            <InlineAction
-              label="Open in Search"
-              onPress={handleOpenFull}
-              accessibilityLabel={
-                overflow > 0
-                  ? `Open in Search, ${overflow} more ${overflow === 1 ? 'match' : 'matches'}`
-                  : 'Open in Search'
-              }
-            />
-            {overflow > 0 && <Text style={styles.footerCount}>{overflow} more</Text>}
-          </View>
+          {results.length > 0 && (
+            <View style={styles.footer}>
+              <InlineAction
+                label={total === 1 ? 'See 1 result' : `See all ${total} results`}
+                onPress={handleOpenFull}
+              />
+            </View>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -265,18 +258,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
     marginTop: spacing.xs,
-    paddingTop: spacing.xs,
-    paddingHorizontal: spacing.xs,
-  },
-  footerDivided: {
     paddingTop: 10,
+    paddingHorizontal: spacing.xs,
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
-  },
-  footerCount: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
   },
 });
