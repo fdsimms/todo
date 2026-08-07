@@ -7,7 +7,7 @@ import {
   rowIndexAtContentY,
   dragTranslation,
   reorderSubset,
-  clampCardToSlots,
+  alignmentMove,
 } from '../utils/reorder';
 
 describe('moveItem', () => {
@@ -117,25 +117,31 @@ describe('dropIndexFromTranslation', () => {
   });
 });
 
-describe('clampCardToSlots', () => {
-  it('leaves a card between the slots alone', () => {
-    expect(clampCardToSlots(120, 40, 300)).toBe(120);
+describe('alignmentMove', () => {
+  it('scrolls when there is offset to spend', () => {
+    // 200 down the screen, with 500 of scroll behind it: all scroll, no pad.
+    expect(alignmentMove(200, 500, 900)).toEqual({ scrollTo: 300, pad: 0 });
   });
 
-  it('holds a card dragged past either end at that end', () => {
-    expect(clampCardToSlots(900, 40, 300)).toBe(300);
-    expect(clampCardToSlots(-500, 40, 300)).toBe(40);
+  it('pads what the scroll cannot cover', () => {
+    // The collapse case: the list is already at the top, so every point of it
+    // has to come from empty space above the first row.
+    expect(alignmentMove(430, 0, 900)).toEqual({ scrollTo: 0, pad: 430 });
+    // Partly scrollable — 120 of offset to give back, 310 left over.
+    expect(alignmentMove(430, 120, 900)).toEqual({ scrollTo: 0, pad: 310 });
   });
 
-  it('does not care which slot is the higher one', () => {
-    // The range's last slot is above its first whenever the row being dragged
-    // is the bottom one of its run.
-    expect(clampCardToSlots(900, 300, 40)).toBe(300);
-    expect(clampCardToSlots(-500, 300, 40)).toBe(40);
+  it('scrolls the other way when the content has to move up', () => {
+    expect(alignmentMove(-200, 100, 900)).toEqual({ scrollTo: 300, pad: 0 });
+    // Nothing left to scroll into, so the rest comes off the pad.
+    expect(alignmentMove(-200, 800, 900)).toEqual({ scrollTo: 900, pad: -100 });
   });
 
-  it('pins to the one position available when the slots coincide', () => {
-    expect(clampCardToSlots(900, 88, 88)).toBe(88);
+  it('never scrolls past the ends of the content', () => {
+    expect(alignmentMove(500, 100, 900).scrollTo).toBe(0);
+    expect(alignmentMove(-5000, 0, 900).scrollTo).toBe(900);
+    // Content shorter than the viewport: no scrolling at all, so it's all pad.
+    expect(alignmentMove(300, 0, -40)).toEqual({ scrollTo: 0, pad: 300 });
   });
 });
 

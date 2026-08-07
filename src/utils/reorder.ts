@@ -175,26 +175,32 @@ export function dragTranslation(
 }
 
 /**
- * Hold the floating drag card inside the span of slots the drag can actually
- * reach — the drop positions at the two ends of its range, as on-screen tops.
+ * How far a list has to move for the slot a drag is aimed at to sit back under
+ * the floating card, split into the part scrolling can do and the part it
+ * can't.
  *
  * The card is anchored to the finger, which is right up until the list re-lays
  * out underneath it: a category header's drag collapses every section away, so
  * the rows it can move among close up to a short run at the top of the screen
  * while the finger stays wherever it grabbed from — a screenful below, if the
- * header was dragged from far down a scrolled list. Nothing about that is
- * recoverable by scrolling (the drag owns the touch), and the drop gap follows
- * the card, so the card being out there means the drop is too.
+ * header was dragged from far down a scrolled list. The card can't be the thing
+ * that gives way (see alignListToCard), so the list moves back under it.
  *
- * Clamping costs nothing while the finger is over the range — the card sits
- * under it exactly as before — and the two converge again the moment it comes
- * back, which is why this is a clamp rather than a re-anchor: an offset added
- * to the card would never be paid back.
+ * Scrolling is free — it moves the content without re-laying anything out — so
+ * it goes first, bounded by the offsets that exist. `pad` is the rest: pushing
+ * content *down* past a scroll offset of zero takes empty space above the first
+ * row, and a collapse that shortens a list is exactly what pins it to the top.
+ *
+ * `drop` is positive when the content has to move down the screen, which is a
+ * scroll toward zero — hence the sign flip on `scrollTo`.
  */
-export function clampCardToSlots(cardTop: number, firstSlotY: number, lastSlotY: number): number {
-  const lo = Math.min(firstSlotY, lastSlotY);
-  const hi = Math.max(firstSlotY, lastSlotY);
-  return Math.max(lo, Math.min(hi, cardTop));
+export function alignmentMove(
+  drop: number,
+  scrollOffset: number,
+  maxScrollOffset: number,
+): { scrollTo: number; pad: number } {
+  const scrollTo = Math.max(0, Math.min(Math.max(0, maxScrollOffset), scrollOffset - drop));
+  return { scrollTo, pad: drop - (scrollOffset - scrollTo) };
 }
 
 /**

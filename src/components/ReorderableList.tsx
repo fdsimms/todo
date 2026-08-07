@@ -18,7 +18,7 @@ import {
   dragTranslation,
   rowDragOffset,
   rowIndexAtContentY,
-  clampCardToSlots,
+  alignmentMove,
 } from '../utils/reorder';
 import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
@@ -172,6 +172,11 @@ export function ReorderableList<T>({
   // list. The card follows the finger in both axes (X is purely cosmetic —
   // drop targeting stays vertical).
   const [overlayBaseTop, setOverlayBaseTop] = useState(0);
+  // Empty space held above the first row for the duration of a drag, so a list
+  // that re-laid out under the card can be pushed back down under it even with
+  // no scroll offset left to spend (see alignListToCard). Zero at rest, and
+  // zero for every drag that doesn't move the list.
+  const [dragPadTop, setDragPadTop] = useState(0);
   const overlayY = useRef(new Animated.Value(0)).current;
   const overlayX = useRef(new Animated.Value(0)).current;
   const overlayScale = useRef(new Animated.Value(1.03)).current;
@@ -225,11 +230,6 @@ export function ReorderableList<T>({
   // anchor stops being re-pinnable: the row's slot has moved but the finger
   // hasn't, and the card belongs to the finger (see calibrateOverlayBase).
   const listMovedRef = useRef(false);
-  // How far the card has been shifted off the finger to keep it in reach of the
-  // list (see reanchorCardIntoRange). Kept apart from the finger baseline it
-  // corrects, because onPanResponderGrant rewrites that baseline on the first
-  // move of the drag and would otherwise wipe a correction made before it.
-  const cardShiftRef = useRef(0);
   const containerRef = useRef<View | null>(null);
   const rowViewsRef = useRef<Map<string, View>>(new Map());
 
@@ -302,6 +302,10 @@ export function ReorderableList<T>({
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
     setActiveIndex(null);
+    // The list goes back to its own layout in the same commit the drag ends,
+    // so the pad leaves with the rows it was holding down rather than in a
+    // frame of its own.
+    setDragPadTop(0);
     onDragEndRef.current?.({ committed });
     // Do NOT reset the overlay's animated values here: the native view obeys
     // setValue immediately, while React unmounts the overlay a frame later —
@@ -374,10 +378,18 @@ export function ReorderableList<T>({
     });
   };
 
-  // On-screen tops of the drop slots at the two ends of this drag's range —
-  // where the card would come to rest at either extreme, so they're the span it
-  // is allowed to float across (see clampCardToSlots). Null when there's
-  // nothing to measure against.
+  // Top edge of the floating card in the container's coordinates: the anchor
+  // it was pinned to when the finger took hold of the row, plus everything the
+  // finger has moved since. The single source of truth for where the card is —
+  // the drop gap, the autoscroll zones and the hit test all read it, so none of
+  // them can disagree with what the user can see.
+  const cardTopNow = (): number =>
+    overlayBaseTopRef.current + (lastPageYRef.current - startPageYRef.current);
+
+  // On-screen tops of the drop slots at the two ends of this drag's range — the
+  // positions the card would come to rest at if it were dropped at either
+  // extreme, so together they're the stretch of screen this drag can express.
+  // Null when there's nothing to measure against.
   const cardTopLimits = (): [number, number] | null => {
     const ai = activeIndexRef.current;
     const list = dataRef.current;
@@ -387,65 +399,18 @@ export function ReorderableList<T>({
     const lo = Math.max(0, Math.min(last, range[0]));
     const hi = Math.max(0, Math.min(last, range[1]));
     const scroll = scrollOffsetRef.current;
-    return [gapContentY(ai, lo) - scroll, gapContentY(ai, hi) - scroll];
+    const a = gapContentY(ai, lo) - scroll;
+    const b = gapContentY(ai, hi) - scroll;
+    return a <= b ? [a, b] : [b, a];
   };
 
-  // Where the finger is holding the card: the anchor it was pinned to when it
-  // took hold of the row, plus everything it has moved since (and any shift a
-  // re-layout has charged it — see reanchorCardIntoRange).
-  const cardTopRaw = (): number =>
-    overlayBaseTopRef.current + cardShiftRef.current + (lastPageYRef.current - startPageYRef.current);
-
-  // Top edge of the floating card in the container's coordinates: the above,
-  // held within the slots the drag can actually reach. The single source of
-  // truth for where the card is — the drop gap, the autoscroll zones and the
-  // hit test all read it, so none of them can disagree with what the user can
-  // see.
-  const cardTopNow = (): number => {
-    const raw = cardTopRaw();
+  // The card is somewhere no slot this drag can reach could follow it to, so
+  // the finger is holding a position the list can no longer express.
+  const cardIsStranded = (): boolean => {
     const limits = cardTopLimits();
-    return limits === null ? raw : clampCardToSlots(raw, limits[0], limits[1]);
-  };
-
-  // Draw the card wherever cardTopNow says it is. The overlay renders from this
-  // translate alone, so anything that can move the card without the finger
-  // moving — the list re-laying out under it, an autoscroll step sliding the
-  // clamp — has to run this, or the drawn card and the drop gap drift apart.
-  const syncOverlayToCard = () => {
-    overlayY.setValue(cardTopNow() - overlayBaseTopRef.current);
-  };
-
-  /**
-   * Hand the finger the card back after a re-layout stranded it out of reach.
-   *
-   * A card the clamp has to catch is one the list has moved out from under: the
-   * finger is holding a slot that no longer exists anywhere near it. Put the
-   * card back on the slot the drop is actually aimed at — the row's own
-   * placeholder at the start of a drag, whatever gap the user had opened later
-   * on — so the card is where the eye expects to find its row after the layout
-   * settles.
-   *
-   * The correction is carried alongside the finger's travel, not folded into
-   * the anchor: the anchor still describes the grab (see calibrateOverlayBase),
-   * and the finger keeps driving the card point for point from this moment on.
-   * Leaving the clamp to do this alone would instead give the drag a dead zone
-   * as deep as the distance the list moved — a category header grabbed from the
-   * bottom of a scrolled screen lands its run of headers a screenful above the
-   * finger, and every one of those points would have to be dragged back before
-   * the card left the end it was pressed against.
-   *
-   * The card is no longer under the finger afterwards — neither is the row it
-   * stands for, which is what a collapse does — but the drop gap follows the
-   * card, so what the user aims is what they see.
-   */
-  const reanchorCardIntoRange = () => {
-    const ai = activeIndexRef.current;
-    if (ai === null) return;
-    // In reach, so the finger is still the better authority — leave it alone.
-    if (cardTopRaw() === cardTopNow()) return;
-    const slot = gapContentY(ai, hoverIndexRef.current ?? ai) - scrollOffsetRef.current;
-    cardShiftRef.current += slot - cardTopRaw();
-    syncOverlayToCard();
+    if (limits === null) return false;
+    const top = cardTopNow();
+    return top < limits[0] || top > limits[1];
   };
 
   // Content-Y of the middle of the floating card, i.e. where it actually sits
@@ -523,9 +488,96 @@ export function ReorderableList<T>({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dropDisabled]);
 
+  /**
+   * Move the list back under the card after a re-layout has taken it away.
+   *
+   * A category header's drag auto-collapses every section in the tick it
+   * begins, which closes the run of headers it can move among up to the top of
+   * the screen. The finger doesn't move with it: grab a header from far down a
+   * scrolled list and the card is left holding a position a screenful below
+   * anything the drag can express — every drop aims at the bottom slot, the
+   * first half of the gesture does nothing, and there's no scrolling out of it
+   * because the drag owns the touch.
+   *
+   * The card can't be the thing that gives way. It is the one part of a drag
+   * the user is actually steering, and taking it off the finger costs both the
+   * co-location (the gesture stops reading as "I am holding this") and, once
+   * the offset is deep enough, whole slots at the far end that the finger can
+   * no longer reach without leaving the screen. So the list moves instead:
+   * enough that the slot the drop is aimed at — the row's own placeholder at
+   * the start of a drag — sits back under the card, exactly where the row was
+   * when the finger took hold of it.
+   *
+   * Scrolling does that for free wherever there's offset to spend, since it
+   * moves the content without re-laying anything out. What's left is padding
+   * above the first row, which is the only way to push content *down* past a
+   * scroll offset of zero — the case this exists for, since a collapse that
+   * shortens the list is exactly what pins it to the top. The pad is dropped
+   * again when the drag ends.
+   */
+  const alignListToCard = () => {
+    const ai = activeIndexRef.current;
+    if (ai === null || !cardIsStranded()) return;
+    const aimed = gapContentY(ai, hoverIndexRef.current ?? ai) - scrollOffsetRef.current;
+    // How far the content has to move down to put that slot under the card.
+    const drop = cardTopNow() - aimed;
+    if (Math.abs(drop) < 1) return;
+    const { scrollTo, pad } = alignmentMove(
+      drop,
+      scrollOffsetRef.current,
+      contentHeightRef.current - viewportHeightRef.current,
+    );
+    if (scrollTo !== scrollOffsetRef.current) {
+      scrollOffsetRef.current = scrollTo;
+      scrollRef.current?.scrollTo({ y: scrollTo, animated: false });
+    }
+    // Capped at a screenful: no layout this can be catching up with moved the
+    // list further than that, so a larger number is a stale measurement rather
+    // than a real gap, and the cap keeps it from compounding.
+    if (Math.abs(pad) >= 1) {
+      setDragPadTop(p => Math.max(0, Math.min(viewportHeightRef.current, p + pad)));
+    }
+    // No re-aim: the card lands back on the slot it was already aimed at, so
+    // the drop gap is where it should be and nothing has to move. Re-deriving
+    // it here would read the layout the pad hasn't been applied to yet and
+    // open the gap somewhere else for a frame.
+  };
+
+  /**
+   * Run the alignment once the layout it has to read has settled.
+   *
+   * A frame late on purpose: every slot it measures comes from the rows' own
+   * onLayout callbacks, which are still in flight when the events that trigger
+   * this fire. Both triggers — the content resizing and the dragged row
+   * reporting a new position — describe the same re-layout from different ends,
+   * so they're deduped into one pass rather than trusted individually; the pass
+   * itself is idempotent (it does nothing unless the card is stranded), which
+   * is what lets the pad it applies settle instead of compounding.
+   */
+  const alignPendingRef = useRef(false);
+  const scheduleAlignListToCard = () => {
+    if (alignPendingRef.current) return;
+    alignPendingRef.current = true;
+    requestAnimationFrame(() => {
+      alignPendingRef.current = false;
+      if (activeIndexRef.current === null || committingRef.current) return;
+      alignListToCard();
+    });
+  };
+
   const maybeAutoscroll = () => {
     const ai = activeIndexRef.current;
     if (ai === null) return;
+    // Nothing to scroll toward when every slot this drag can reach is already
+    // on screen — a collapsed category run is a handful of rows in a list whose
+    // remaining height is all footer, and scrolling that run away from the
+    // finger is the opposite of what reaching into the edge zone is asking for.
+    const limits = cardTopLimits();
+    const activeHeight = heightsRef.current.get(keyExtractor(dataRef.current[ai]!)) ?? DEFAULT_ROW_HEIGHT;
+    if (limits !== null && limits[0] >= 0 && limits[1] + activeHeight <= viewportHeightRef.current) {
+      stopAutoscroll();
+      return;
+    }
     // Card position within the viewport.
     const overlayTopNow = cardTopNow();
     const viewport = viewportHeightRef.current;
@@ -547,10 +599,6 @@ export function ReorderableList<T>({
         }
         scrollOffsetRef.current = next;
         scrollRef.current?.scrollTo({ y: next, animated: false });
-        // Scrolling slides the clamp's slots up the screen with the rest of
-        // the list, so a card resting against one has to be redrawn even though
-        // the finger hasn't moved.
-        syncOverlayToCard();
         updateHover();
       }, AUTOSCROLL_INTERVAL_MS);
     }
@@ -636,9 +684,9 @@ export function ReorderableList<T>({
    * up by a screenful of task rows), its new slot is nowhere near the finger,
    * and re-pinning to it is what left the card floating a screen from the
    * finger. Then the anchor stays put, the drop gap re-derives from the card,
-   * and the two still agree. Where the card *goes* when a re-layout leaves it
-   * out of reach of the list entirely is a separate question, settled by the
-   * finger's baseline rather than by the anchor — see reanchorCardIntoRange.
+   * and the two still agree. When the row's new slot is out of the card's reach
+   * altogether, it's the list that moves back under the card rather than the
+   * anchor that follows the row — see alignListToCard.
    */
   const calibrateOverlayBase = (key: string, rowTop: number) => {
     const rowView = rowViewsRef.current.get(key);
@@ -702,7 +750,6 @@ export function ReorderableList<T>({
     startPageYRef.current = 0;
     lastPageYRef.current = 0;
     startPageXRef.current = 0;
-    cardShiftRef.current = 0;
     const baseTop = rowTop - scrollOffsetRef.current;
     overlayBaseTopRef.current = baseTop;
     setOverlayBaseTop(baseTop);
@@ -747,7 +794,7 @@ export function ReorderableList<T>({
       onPanResponderMove: e => {
         if (activeIndexRef.current === null || committingRef.current) return;
         lastPageYRef.current = e.nativeEvent.pageY;
-        syncOverlayToCard();
+        overlayY.setValue(lastPageYRef.current - startPageYRef.current);
         const dx = e.nativeEvent.pageX - startPageXRef.current;
         overlayX.setValue(dx);
         updateHover();
@@ -811,18 +858,11 @@ export function ReorderableList<T>({
           listMovedRef.current = true;
           const key = keyExtractor(dataRef.current[ai]!);
           calibrateOverlayBase(key, layoutYRef.current.get(key) ?? 0);
-          // The re-layout can also leave the card out of reach of every slot it
-          // could drop into — a category drag collapses the header run up to
+          // The re-layout can also leave the card holding a position no slot
+          // can reach any more — a category drag collapses the header run up to
           // the top of the screen while the finger stays where it grabbed from,
-          // a screenful below. Bring it back to the list and count the drag
-          // from there. One frame later, because the rows' own onLayout
-          // callbacks — which the reachable slots are measured from — are still
-          // in flight at this point.
-          requestAnimationFrame(() => {
-            if (activeIndexRef.current === null || committingRef.current) return;
-            reanchorCardIntoRange();
-            updateHover();
-          });
+          // a screenful below. Move the list back under it.
+          scheduleAlignListToCard();
         }}
         contentContainerStyle={contentContainerStyle}
         refreshControl={refreshControl}
@@ -831,6 +871,7 @@ export function ReorderableList<T>({
         keyboardDismissMode="on-drag"
         {...keyboardScroll.props}
       >
+        {dragPadTop > 0 && <View style={{ height: dragPadTop }} pointerEvents="none" />}
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
           const key = keyExtractor(item);
@@ -862,7 +903,14 @@ export function ReorderableList<T>({
                 // once the row has moved in the list's layout — it belongs to
                 // the finger, and the gap re-derives from it (see
                 // calibrateOverlayBase).
-                if (isPlaceholder) calibrateOverlayBase(key, e.nativeEvent.layout.y);
+                if (isPlaceholder) {
+                  calibrateOverlayBase(key, e.nativeEvent.layout.y);
+                  // The dragged row reporting a new slot is the other half of
+                  // "the list moved under the drag" — a second, independent
+                  // trigger for the alignment, so it doesn't hang on the
+                  // content happening to change size as well.
+                  scheduleAlignListToCard();
+                }
               }}
             >
               {/* The dragged row is hidden in place (the floating card stands in
