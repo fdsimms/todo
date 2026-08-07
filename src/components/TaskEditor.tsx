@@ -46,6 +46,8 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
 import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestions';
 import { estimateEffort } from '../utils/effortEstimator';
+import { suggestSegment } from '../utils/rhythms';
+import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
 import { CollapsibleField } from './CollapsibleField';
@@ -207,6 +209,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortText, setCustomEffortText] = useState('');
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [effortNote, setEffortNote] = useState<string | null>(null);
+  const [segmentNote, setSegmentNote] = useState<string | null>(null);
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [logTimeText, setLogTimeText] = useState('');
   const [logTimeUnit, setLogTimeUnit] = useState<'min' | 'hr'>('min');
@@ -339,6 +342,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setLogTimeText(''); setLogTimeUnit('min');
     setDurationText(''); setDurationUnit('min');
     setEffortNote(null);
+    setSegmentNote(null);
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     setPendingCategory(null);
     setTimeout(() => titleRef.current?.focus(), 100);
@@ -968,6 +972,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setEffortNote(result.reason);
   };
 
+  // The time-of-day counterpart of handleEstimateEffort: same local-history
+  // lookup, same abstain-with-a-reason behaviour, reading completedAt instead
+  // of actualMinutes. See utils/rhythms.
+  const handleSuggestSegment = () => {
+    const result = suggestSegment(
+      title.trim(),
+      { category, tags, seriesId: task?.seriesId ?? null, excludeTaskId: task?.id ?? null },
+      useTaskStore.getState().tasks,
+      rhythmOptionsFromSettings(),
+    );
+    if (result) {
+      haptics.tap();
+      setTimeSegments([result.segment]);
+      setSegmentNote(result.reason);
+    } else {
+      setSegmentNote('Not enough history yet to tell when you do this.');
+    }
+  };
+
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
     ? timeSegments.map(capitalize).join(', ')
@@ -1346,25 +1369,43 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
         />
         {showTimeOfDay && (
-          <View style={styles.timePillRow}>
-            {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-              const active = timeSegments.includes(tod);
-              return (
-                <TouchableOpacity
-                  key={tod}
-                  style={[styles.timePill, active && styles.timePillActive]}
-                  onPress={() => {
-                    haptics.tap();
-                    setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
-                  }}
-                >
-                  <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                    {capitalize(tod)}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
+          <>
+            <View style={styles.timePillRow}>
+              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+                const active = timeSegments.includes(tod);
+                return (
+                  <TouchableOpacity
+                    key={tod}
+                    style={[styles.timePill, active && styles.timePillActive]}
+                    onPress={() => {
+                      haptics.tap();
+                      setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                    }}
+                  >
+                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                      {capitalize(tod)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <View style={styles.segmentSuggestRow}>
+              <TouchableOpacity
+                style={styles.suggestBtn}
+                onPress={handleSuggestSegment}
+                disabled={!title.trim()}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Suggest a time of day from past completions"
+              >
+                <Ionicons name="analytics-outline" size={12} color={colors.purple} />
+                <Text style={styles.suggestBtnText}>From history</Text>
+              </TouchableOpacity>
+              {segmentNote ? (
+                <Text style={styles.segmentNote}>{segmentNote}</Text>
+              ) : null}
+            </View>
+          </>
         )}
         <View style={styles.sep} />
         <EditorRow
@@ -2593,6 +2634,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   unitChipTextActive: { color: colors.text, fontWeight: '600' },
   effortNote: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
+  segmentSuggestRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap',
+    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+  },
+  segmentNote: { color: colors.textTertiary, fontSize: font.xs, flexShrink: 1 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
