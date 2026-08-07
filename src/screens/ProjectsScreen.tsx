@@ -39,14 +39,14 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatDueDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
 import type { Project } from '../types';
 
 function dateRangeLabel(project: Project): string | null {
   if (project.targetStartDate && project.targetEndDate) {
-    return `${formatStartDate(project.targetStartDate)} – ${formatDueDate(project.targetEndDate)}`;
+    return `${formatStartDate(project.targetStartDate)} – ${formatDeadlineDate(project.targetEndDate)}`;
   }
-  if (project.targetEndDate) return `By ${formatDueDate(project.targetEndDate)}`;
+  if (project.targetEndDate) return `By ${formatDeadlineDate(project.targetEndDate)}`;
   if (project.targetStartDate) return `From ${formatStartDate(project.targetStartDate)}`;
   return null;
 }

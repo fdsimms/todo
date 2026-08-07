@@ -28,7 +28,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
@@ -186,7 +186,7 @@ export const TaskItem = React.memo(function TaskItem({
           .filter(t => t.seriesId === task.seriesId && t.id !== task.id && !t.completed && !t.archived && t.dueDate)
           .map(t => t.dueDate!)
           .sort()
-          .map(iso => formatDueDate(iso))
+          .map(iso => formatScheduledDate(iso))
           .join(', ')
       : ''
   );
@@ -1053,13 +1053,13 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.deadlineBadge}
                 accessibilityLabel={
                   deadlineDays < 0
-                    ? `Deadline was ${formatDueDate(task.deadline!)}`
-                    : `Deadline ${formatDueDate(task.deadline!)}`
+                    ? `Deadline was ${formatDeadlineDate(task.deadline!)}`
+                    : `Deadline ${formatDeadlineDate(task.deadline!)}`
                 }
               >
                 <Ionicons name="flag" size={9} color={deadlineColor} />
                 <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {formatDueDate(task.deadline!)}
+                  {formatDeadlineDate(task.deadline!)}
                 </Text>
               </View>
             )}

@@ -1,6 +1,7 @@
 import {
   getDayStart,
-  formatDueDate,
+  formatDeadlineDate,
+  formatScheduledDate,
   formatStartDate,
   formatGroupHeader,
   getNextDueDate,
@@ -130,9 +131,9 @@ describe('getDayStart', () => {
   });
 });
 
-// ─── formatDueDate ────────────────────────────────────────────────────────────
+// ─── formatDeadlineDate ───────────────────────────────────────────────────────
 
-describe('formatDueDate', () => {
+describe('formatDeadlineDate', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(NOW);
@@ -143,38 +144,89 @@ describe('formatDueDate', () => {
   });
 
   it('returns "Today" for a date matching the current day', () => {
-    expect(formatDueDate(new Date(2025, 5, 10, 9, 0, 0).toISOString())).toBe('Today');
+    expect(formatDeadlineDate(new Date(2025, 5, 10, 9, 0, 0).toISOString())).toBe('Today');
   });
 
   it('returns "Tomorrow" for the next day', () => {
-    expect(formatDueDate(new Date(2025, 5, 11, 9, 0, 0).toISOString())).toBe('Tomorrow');
+    expect(formatDeadlineDate(new Date(2025, 5, 11, 9, 0, 0).toISOString())).toBe('Tomorrow');
   });
 
   it('returns overdue label for past dates', () => {
-    expect(formatDueDate(new Date(2025, 5, 7, 9, 0, 0).toISOString())).toBe('3d overdue');
-    expect(formatDueDate(new Date(2025, 5, 9, 9, 0, 0).toISOString())).toBe('1d overdue');
+    expect(formatDeadlineDate(new Date(2025, 5, 7, 9, 0, 0).toISOString())).toBe('3d overdue');
+    expect(formatDeadlineDate(new Date(2025, 5, 9, 9, 0, 0).toISOString())).toBe('1d overdue');
   });
 
   it('returns a day name for dates within the current week', () => {
     // June 12 (Thursday) is within the same Sun-Sat week as June 10 (Tuesday)
-    const result = formatDueDate(new Date(2025, 5, 12, 9, 0, 0).toISOString());
+    const result = formatDeadlineDate(new Date(2025, 5, 12, 9, 0, 0).toISOString());
     expect(result).toBe('Thursday');
   });
 
   it('returns "MMM d" for dates beyond this week', () => {
-    expect(formatDueDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
+    expect(formatDeadlineDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
   });
 
   it('returns "MMM d, yyyy" for dates in a different year', () => {
-    expect(formatDueDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
-    expect(formatDueDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
+    expect(formatDeadlineDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
+    expect(formatDeadlineDate(new Date(2029, 7, 19, 9, 0, 0).toISOString())).toBe('Aug 19, 2029');
   });
 
-  it('is not "overdue" for a task due on the logical day, checked after midnight but before dayResetTime', () => {
+  it('is not "overdue" for a deadline on the logical day, checked after midnight but before dayResetTime', () => {
     // It's 12:30 AM on June 11, but with a 4 AM reset the logical day is still June 10.
     jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
-    const dueToday = formatDueDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
+    const dueToday = formatDeadlineDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00');
     expect(dueToday).toBe('Today');
+  });
+});
+
+// ─── formatScheduledDate ──────────────────────────────────────────────────────
+
+describe('formatScheduledDate', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // Tue June 10, 2025
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns "Today" for a date matching the current day', () => {
+    expect(formatScheduledDate(new Date(2025, 5, 10, 9, 0, 0).toISOString())).toBe('Today');
+  });
+
+  it('returns "Tomorrow" for the next day', () => {
+    expect(formatScheduledDate(new Date(2025, 5, 11, 9, 0, 0).toISOString())).toBe('Tomorrow');
+  });
+
+  // The reason this formatter exists: a due date is the day a task becomes
+  // available, so a past one has elapsed, not lapsed. Only Task.deadline is
+  // ever "overdue".
+  it('reads a past date as elapsed, never as overdue', () => {
+    expect(formatScheduledDate(new Date(2025, 5, 9, 9, 0, 0).toISOString())).toBe('Yesterday');
+    expect(formatScheduledDate(new Date(2025, 5, 8, 9, 0, 0).toISOString())).toBe('2d ago');
+    expect(formatScheduledDate(new Date(2025, 5, 7, 9, 0, 0).toISOString())).toBe('3d ago');
+  });
+
+  // June 8 (Sunday) is in the same Sun-Sat week as June 10, but a past date
+  // takes the elapsed form rather than the weekday name — "Sunday" alone
+  // reads as upcoming.
+  it('prefers the elapsed form over a weekday name for a past date this week', () => {
+    expect(formatScheduledDate(new Date(2025, 5, 8, 9, 0, 0).toISOString())).toBe('2d ago');
+  });
+
+  it('returns a day name for dates within the current week', () => {
+    expect(formatScheduledDate(new Date(2025, 5, 12, 9, 0, 0).toISOString())).toBe('Thursday');
+  });
+
+  it('returns "MMM d" for dates beyond this week, and adds the year for another one', () => {
+    expect(formatScheduledDate(new Date(2025, 6, 15, 9, 0, 0).toISOString())).toBe('Jul 15');
+    expect(formatScheduledDate(new Date(2026, 0, 1, 9, 0, 0).toISOString())).toBe('Jan 1, 2026');
+  });
+
+  it('is still "Today" for a task dated on the logical day, checked before dayResetTime', () => {
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0));
+    expect(formatScheduledDate(new Date(2025, 5, 10, 18, 0, 0).toISOString(), '04:00')).toBe('Today');
   });
 });
 
@@ -224,9 +276,9 @@ describe('formatTaskDate', () => {
     jest.useRealTimers();
   });
 
-  it('reads as the deferred day rather than "overdue" for a task that was pushed back', () => {
+  it('reads as the deferred day for a task that was pushed back', () => {
     // Due Sunday, deliberately pushed to Thursday — it surfaces Thursday, so
-    // labelling it "2d overdue" would punish a move the user chose.
+    // dating it to Sunday would misreport a move the user chose.
     const task = {
       dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
       deferUntil: new Date(2025, 5, 12, 12, 0, 0).toISOString(),
@@ -234,9 +286,11 @@ describe('formatTaskDate', () => {
     expect(formatTaskDate(task)).toBe('Thursday');
   });
 
-  it('still reads as overdue when the task is genuinely late', () => {
+  // A do-date that has come and gone is a task sitting available, not a task
+  // that broke a promise — that word belongs to Task.deadline alone.
+  it('reads a past date as elapsed rather than overdue', () => {
     const task = { dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(), deferUntil: null };
-    expect(formatTaskDate(task)).toBe('3d overdue');
+    expect(formatTaskDate(task)).toBe('3d ago');
   });
 
   it('returns null when the task has no date at all', () => {

@@ -1,0 +1,4 @@
+{
+  "message": "A task's own date no longer reads as \"overdue\" once it passes — a date just decides when the task shows up, so a past one now reads \"Yesterday\" or \"2d ago\". Only a Deadline, which is a separate field, can be overdue",
+  "date": "2026-08-07"
+}

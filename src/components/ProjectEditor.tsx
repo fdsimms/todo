@@ -23,7 +23,7 @@ import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDueDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -246,7 +246,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         <EditorRow
           icon="flag-outline"
           label="Target date"
-          value={targetEndDate ? formatDueDate(targetEndDate.toISOString()) : undefined}
+          value={targetEndDate ? formatDeadlineDate(targetEndDate.toISOString()) : undefined}
           onPress={() => setShowEndDatePicker(true)}
           onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
         />

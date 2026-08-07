@@ -34,7 +34,7 @@ import {
   type TemplateAnchors,
   type ApplyTreeNode,
 } from '../utils/templateUtils';
-import { formatDueDate } from '../utils/dateUtils';
+import { formatScheduledDate } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
 import { CalendarPicker } from './CalendarPicker';
 import { EditorRow } from './EditorRow';
@@ -53,12 +53,12 @@ function itemSublabel(item: TemplateItem, anchors: TemplateAnchors): string | nu
   const due = resolveOffsetDate(anchor, item.dueOffsetDays);
   const defer = resolveOffsetDate(anchor, item.deferOffsetDays);
   if (due) {
-    parts.push(`Due ${formatDueDate(due)}`);
+    parts.push(`Due ${formatScheduledDate(due)}`);
   } else if (item.dueOffsetDays !== null) {
     parts.push(`Due ${formatOffsetLabel(item.dueOffsetDays).toLowerCase()}`);
   }
   if (defer) {
-    parts.push(`Hidden until ${formatDueDate(defer)}`);
+    parts.push(`Hidden until ${formatScheduledDate(defer)}`);
   } else if (item.deferOffsetDays !== null) {
     parts.push(`Hidden until ${formatOffsetLabel(item.deferOffsetDays).toLowerCase()}`);
   }
