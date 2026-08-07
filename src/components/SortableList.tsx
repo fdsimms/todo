@@ -65,6 +65,24 @@ interface Props<T extends { id: string }> {
    * empty gap.
    */
   placeholderStyle?: StyleProp<ViewStyle>;
+  /**
+   * A box this list writes its measurement accessor into, so something outside
+   * it — the in-card add button, which drops a *new* row between these ones —
+   * can read the same tops and heights the row drag reads.
+   *
+   * A box rather than a forwarded ref because `forwardRef` erases the generic,
+   * and it follows the shape FabDropZones' `scroller` already uses. The rows
+   * are only ever measured here: a second `onLayout` pass in the caller would
+   * be a second source for one geometry, and the two would drift the first time
+   * a row's padding changed.
+   */
+  metricsRef?: { current: SortableMetrics | null };
+}
+
+/** What a caller placing something among these rows needs to know about them. */
+export interface SortableMetrics {
+  /** Rows in the order currently on screen, in this list's own coordinates. */
+  rows: () => Array<{ id: string; top: number; height: number }>;
 }
 
 /**
@@ -92,6 +110,7 @@ export function SortableList<T extends { id: string }>({
   onDragOut,
   onDragStateChange,
   placeholderStyle,
+  metricsRef,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -170,6 +189,19 @@ export function SortableList<T extends { id: string }>({
     const key = keyAt(i);
     return (key !== null ? topsRef.current.get(key) : undefined) ?? 0;
   };
+
+  // Published every render so a late-mounting caller can't hold a stale closure.
+  // Reads dataRef (the committed order, not the data prop) for the same reason
+  // the gesture handlers do: it has to describe what is on screen right now.
+  if (metricsRef) {
+    metricsRef.current = {
+      rows: () => dataRef.current.map((item, i) => ({
+        id: item.id,
+        top: topAt(i),
+        height: heightAt(i),
+      })),
+    };
+  }
   const currentHeights = (): number[] => dataRef.current.map((_, i) => heightAt(i));
 
   const getRowOffset = (key: string): Animated.Value => {
