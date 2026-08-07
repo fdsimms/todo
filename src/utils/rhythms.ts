@@ -1,6 +1,7 @@
 import type { Task, TimeOfDay } from '../types';
 import { normalizeTitle } from './taskInstances';
 import { logicalDayStart } from './clockTime';
+import { isRealCompletion } from './missed';
 
 /**
  * When you actually get things done — the observed half of the app's schedule.
@@ -150,7 +151,7 @@ function completionsOf(tasks: readonly Task[], options: RhythmOptions): Date[] {
     // counting them would make a 6-subtask task look like a productive hour.
     if (task.parentId) continue;
     if (task.archived) continue;
-    if (!task.completed || !task.completedAt) continue;
+    if (!isRealCompletion(task) || !task.completedAt) continue;
     const at = new Date(task.completedAt);
     if (Number.isNaN(at.getTime())) continue;
     if (cutoff && at < cutoff) continue;
@@ -326,7 +327,7 @@ export function findSegmentMismatches(
     const key = cohortKeyOf(task);
     if (!key) continue;
 
-    if (task.completed && task.completedAt) {
+    if (isRealCompletion(task) && task.completedAt) {
       const declared = soleDeclaredSegment(task);
       if (!declared) continue;
       const at = new Date(task.completedAt);
@@ -431,7 +432,7 @@ export function suggestSegment(
   const pool = tasks.filter(t =>
     !t.parentId &&
     !t.archived &&
-    t.completed &&
+    isRealCompletion(t) &&
     t.completedAt &&
     t.id !== opts.excludeTaskId,
   );

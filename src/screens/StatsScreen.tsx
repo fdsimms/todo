@@ -23,6 +23,7 @@ import { spacing, font, fontWeight, radius, animation, type Colors } from '../th
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
+import { isRealCompletion } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
@@ -96,8 +97,11 @@ export function StatsScreen() {
   const reduceMotion = useReduceMotion();
   const now = useMemo(() => new Date(), []);
 
+  // Every count on this screen hangs off `done`, and every one of them is a
+  // claim about what the user achieved — so misses are excluded here once
+  // rather than at each read below. See Task.missedAt.
   const done = useMemo(
-    () => tasks.filter(t => !t.parentId && t.completed && t.completedAt),
+    () => tasks.filter(t => !t.parentId && isRealCompletion(t) && t.completedAt),
     [tasks],
   );
 

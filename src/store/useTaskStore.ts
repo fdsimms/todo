@@ -37,7 +37,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
-import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, sameTimeSegments } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -115,6 +115,7 @@ function newTaskFromDraft(
     notes: draft.notes ?? '',
     completed: false,
     completedAt: null,
+    missedAt: null,
     createdAt: now,
     seenAt: now,
     dueDate: draft.dueDate ?? null,
@@ -482,8 +483,23 @@ interface TaskStore {
   setLastAction: (action: UndoableAction | null) => void;
   undoLastAction: () => void;
   deleteTask: (id: string) => void;
-  completeTask: (id: string) => void;
+  completeTask: (id: string, options?: { missed?: boolean }) => void;
   uncompleteTask: (id: string) => void;
+  /**
+   * Closes out a recurring occurrence as *not done* and moves to the next one.
+   *
+   * Deliberately routed through completeTask rather than reimplemented: every
+   * hard part of rolling an occurrence over — chain steps, per-step scheduling,
+   * relative deadlines, reminder re-anchoring, series set rollover, the
+   * completion hold that animates the row out — is the same whether the
+   * occurrence was done or missed, and a second copy of it would drift.
+   * `missed` branches only the four things that genuinely differ: the stamp,
+   * the streak, the quota count, and the undo label.
+   *
+   * Recurring only, like the skip it replaces. "I didn't do this" needs a next
+   * occurrence to move on to; on a one-off it would just be a delete.
+   */
+  markMissed: (id: string) => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
@@ -505,6 +521,20 @@ interface TaskStore {
   // dating a member makes the project non-stalled, so a second call in the same
   // session finds nothing, exactly as rolloverQuotas' condition self-clears.
   dripStalledProjects: () => void;
+  /**
+   * Rolls a recurring task onto its next date in place, silently — no record,
+   * no history row, nothing in the Logbook.
+   *
+   * **Not user-facing any more.** It used to back a Skip button on the task row
+   * and a "Skip This Occurrence" branch in the delete prompts; those are now
+   * markMissed, because a silent roll-forward and an explicit "I didn't do
+   * this" look identical afterwards, and only one of them can be counted.
+   * Its single remaining caller is sweepExpiredTasks, which needs exactly the
+   * silence: that's an unattended background write, and stamping a miss the
+   * user never made would put fabricated entries in their Logbook.
+   *
+   * Don't wire a button to this — reach for markMissed.
+   */
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
   // Hides a recurring task indefinitely (unlike vacationPause, not tied to
@@ -652,10 +682,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // ends the series for good. Missing this morning's window is not "I'm
     // done with this habit", and a setting about tidying away time-limited
     // tasks must not quietly retire a daily one. An expired occurrence that
-    // still has a next date is rolled forward onto it instead, which is what
-    // skipNextRecurrence does when the user deals with an expired recurring
-    // task by hand. Only rows with nothing after them are deleted: one-offs,
-    // and series that have reached their recurrenceEndDate/recurrenceCount.
+    // still has a next date is rolled forward onto it instead. Only rows with
+    // nothing after them are deleted: one-offs, and series that have reached
+    // their recurrenceEndDate/recurrenceCount.
+    //
+    // Deliberately skipNextRecurrence and not markMissed, even though an
+    // expired occurrence is, in plain terms, one the user missed. This runs
+    // unattended at startup, and a miss is a claim about the user that shows
+    // up in their Logbook and their stats — the app doesn't get to enter those
+    // on their behalf for a window that closed while the app was shut.
     const rolled = expired.filter(isLiveRecurring);
     const doomed = expired.filter(t => !isLiveRecurring(t));
 
@@ -903,6 +938,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const resetForCopy = {
       completed: false,
       completedAt: null,
+      missedAt: null,
       createdAt: now,
       seenAt: now,
       pinned: false,
@@ -1124,7 +1160,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  completeTask(id) {
+  markMissed(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || task.recurrenceType === 'none') return;
+    // A recurring row can be showing in Later ahead of its own day, and you
+    // cannot have missed something that hasn't come round yet — completeTask
+    // refuses it outright (isRecurrenceNotYetDue), which would make every
+    // caller here a silent no-op: a dead button on the row, and a bulk delete
+    // that deletes nothing. The intent is the same either way — "deal with
+    // just this occurrence and move on" — so it degrades to the silent roll
+    // forward, which is exactly that minus a claim that isn't true yet.
+    if (isRecurrenceNotYetDue(task)) {
+      get().skipNextRecurrence(id);
+      return;
+    }
+    get().completeTask(id, { missed: true });
+  },
+
+  completeTask(id, options) {
+    const missed = options?.missed ?? false;
     // The row's animation is over whatever this call decides, so release it
     // from the collapse batch before the guards below — a completion that
     // turns out to be a no-op would otherwise hold the batch down for good.
@@ -1183,8 +1237,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const datesBySchedule = advancesBySchedule || stepsBySchedule;
 
     // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
+    // A miss skips all of it and breaks the streak outright (below). The gap
+    // check would eventually catch it anyway — it measures the distance to the
+    // next completion against the cadence — but only *lazily*, so the row would
+    // keep displaying "12 day streak" until the next time the task was done.
+    // An explicit miss is the one case where the break is known at the time.
     let newStreakCount = 1;
-    if (recurs && datesBySchedule && task.streakDate) {
+    if (!missed && recurs && datesBySchedule && task.streakDate) {
       const outcome = getStreakOutcome(task, dayResetTime);
       if (outcome === 'same-day') {
         newStreakCount = task.streakCount;
@@ -1199,23 +1258,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // own cadence, so a 5-step daily rotation advancing its streak once per
     // cycle would show a 5-day gap against an expected 1 and read as 'reset'
     // every single time round: a streak that can never exceed 1.
-    const streakAdvances = recurs && datesBySchedule;
+    const streakAdvances = !missed && recurs && datesBySchedule;
+    // A missed occurrence breaks the streak where a completed one advances it.
+    // Both write through the same previous* snapshot, so uncompleteTask undoes
+    // either one without needing to know which happened.
+    const streakBreaks = missed && recurs && datesBySchedule;
     const completed: Task = {
       ...task,
       completed: true,
       completedAt: now.toISOString(),
+      // What makes this row a miss rather than a completion. It is set
+      // alongside `completed`, never instead of it — see Task.missedAt.
+      missedAt: missed ? now.toISOString() : task.missedAt,
       // Pin is cleared once the completion hold below expires, not
       // immediately — otherwise a pinned row would vanish from the Pinned
       // section instantly instead of getting the same fade-out grace period
       // every other list gives a completed task.
-      streakCount: streakAdvances ? newStreakCount : task.streakCount,
-      streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+      streakCount: streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount,
+      streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
       previousStreakCount: task.streakCount,
       previousStreakDate: task.streakDate,
       // Completing a quota task outright (the last unit, a swipe, a bulk
       // action) means the whole quota is done, so the row reads 8/8 rather
-      // than being logged as a partial (see isQuotaPartial).
-      progressCount: isQuotaTask(task) ? task.targetCount! : task.progressCount,
+      // than being logged as a partial (see isQuotaPartial). A miss keeps
+      // whatever count it actually reached — that's the record of the day, the
+      // same way rolloverQuotas leaves a partial alone.
+      progressCount: isQuotaTask(task) && !missed ? task.targetCount! : task.progressCount,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -1295,6 +1363,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           id: generateId(),
           completed: false,
           completedAt: null,
+          missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
           dueDate: effectiveDue ? effectiveDue.toISOString() : null,
@@ -1302,8 +1371,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deferUntil: null,
           pinned: false, // pin resets on new occurrence
           progressCount: 0, // a quota starts the new day empty
-          streakCount: streakAdvances ? newStreakCount : task.streakCount,
-          streakDate: streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
+          // Carries the broken streak forward on a miss, not the pre-miss one:
+          // the streak lives on whichever row is currently running it, so
+          // resetting only the missed row would hand the next occurrence the
+          // old count straight back and the break would never be visible.
+          streakCount: streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount,
+          streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
           previousStreakCount: task.streakCount,
           previousStreakDate: task.streakDate,
           reminderTime: nextReminderTime,
@@ -1343,6 +1416,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           parentId: nextTask!.id,
           completed: false,
           completedAt: null,
+          missedAt: null,
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
         }));
@@ -1414,8 +1488,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // decides when a 100%-complete project actually gets archived. It rides on
     // the completion's own undo instead of setting its own entry: it wasn't a
     // separate action the user took, so undoing the tick has to take it back.
+    // Never on a miss: the setting archives a project whose work is *finished*,
+    // and projectProgress agrees (a group of nothing but missed rows isn't
+    // done). Filing a project away because its last task went undone would be
+    // the opposite of what the toggle promises.
     let autoArchivedProjectId: string | null = null;
-    if (task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
+    if (!missed && task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
       if (progress.total > 0 && progress.done === progress.total && project && !project.archived) {
@@ -1458,7 +1536,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     armCompletionCollapse();
 
     get().setLastAction({
-      label: 'Task completed',
+      label: missed ? 'Task marked missed' : 'Task completed',
       undo: () => {
         if (autoArchivedProjectId) {
           useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
@@ -1476,6 +1554,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ...task,
       completed: false,
       completedAt: null,
+      // Re-opening a missed occurrence puts it back on the board as ordinary
+      // outstanding work — the whole point of undoing a miss. Nothing else is
+      // needed to restore the streak it broke: the snapshot below covers it,
+      // exactly as it covers an undone completion.
+      missedAt: null,
       // Restore the streak to what it was before this completion, so
       // undoing a completion (e.g. from the Logbook) doesn't leave the
       // streak incremented for something that no longer happened.
@@ -1483,7 +1566,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: task.previousStreakDate,
       // A re-opened quota task sits one unit short of its target rather than
       // at a completed-looking 8/8 — undoing the last glass leaves you at 7/8.
-      progressCount: isQuotaTask(task) ? Math.max(0, task.targetCount! - 1) : task.progressCount,
+      // A missed one is exempt: marking missed never forced the count up to the
+      // target the way completing does, so its progressCount is already the
+      // real one and pulling it down to target-1 would invent progress.
+      progressCount:
+        isQuotaTask(task) && !isMissed(task) ? Math.max(0, task.targetCount! - 1) : task.progressCount,
     };
     dbUpdateTask(updated);
 
@@ -1641,6 +1728,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         id: generateId(),
         completed: false,
         completedAt: null,
+        missedAt: null,
         createdAt: now,
         seenAt: now,
         dueDate: nextDue.toISOString(),
@@ -2001,6 +2089,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       notes: '',
       completed: false,
       completedAt: null,
+      missedAt: null,
       createdAt: now,
       seenAt: now,
       dueDate: null,
@@ -2126,6 +2215,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       notes: '',
       completed: false,
       completedAt: null,
+      missedAt: null,
       createdAt: now,
       seenAt: now,
       dueDate: null,

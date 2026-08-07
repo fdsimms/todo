@@ -31,7 +31,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 // actually reads (title/notes/tags/category/priority/effort) get overridden
 // with the in-progress edits below.
 const BLANK_SNOOZE_TASK: Task = {
-  id: '', title: '', notes: '', completed: false, completedAt: null,
+  id: '', title: '', notes: '', completed: false, completedAt: null, missedAt: null,
   createdAt: '', seenAt: null, dueDate: null, deadline: null,
   deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null,

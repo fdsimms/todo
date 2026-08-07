@@ -36,6 +36,7 @@ const BASE: Task = {
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: new Date().toISOString(),
   seenAt: null,
   dueDate: null,

@@ -6,6 +6,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   title: 'Test Task',
   notes: '',
   completed: true,
+  missedAt: null,
   completedAt: '2025-01-01T00:00:00.000Z',
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
@@ -93,6 +94,20 @@ describe('onTimeSummary', () => {
       makeTask({ id: 'b', completed: true, completedAt: '2025-01-08T00:00:00.000Z', deadline: '2025-01-06T00:00:00.000Z' }),
     ];
     expect(onTimeSummary(tasks)).toEqual({ onTime: 1, total: 2, rate: 0.5 });
+  });
+
+  it('ignores an occurrence marked missed — it is history, not an achievement', () => {
+    const tasks = [
+      makeTask({ id: 'a', completed: true, completedAt: '2025-01-05T00:00:00.000Z', deadline: '2025-01-06T00:00:00.000Z' }),
+      makeTask({
+        id: 'b',
+        completed: true,
+        completedAt: '2025-01-05T00:00:00.000Z',
+        missedAt: '2025-01-05T00:00:00.000Z',
+        deadline: '2025-01-06T00:00:00.000Z',
+      }),
+    ];
+    expect(onTimeSummary(tasks)).toEqual({ onTime: 1, total: 1, rate: 1 });
   });
 
   it('ignores completed tasks with no deadline', () => {

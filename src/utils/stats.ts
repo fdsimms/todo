@@ -1,4 +1,5 @@
 import type { Task } from '../types';
+import { isRealCompletion } from './missed';
 
 export interface TimeTrackedSummary {
   /** Sum of actualMinutes across every completed, timed top-level task. */
@@ -31,7 +32,7 @@ export function onTimeSummary(tasks: readonly Task[]): OnTimeSummary {
   let onTime = 0;
   let total = 0;
   for (const t of tasks) {
-    if (t.parentId || !t.completed || !t.completedAt || !t.deadline) continue;
+    if (t.parentId || !isRealCompletion(t) || !t.completedAt || !t.deadline) continue;
     total++;
     if (t.completedAt <= t.deadline) onTime++;
   }
@@ -66,7 +67,7 @@ export function estimateAccuracy(tasks: readonly Task[]): EstimateAccuracy {
   let sum = 0;
   let count = 0;
   for (const t of tasks) {
-    if (t.parentId || !t.completed || t.actualMinutes == null) continue;
+    if (t.parentId || !isRealCompletion(t) || t.actualMinutes == null) continue;
     const estimate = t.previousOccurrenceId
       ? byId.get(t.previousOccurrenceId)?.estimatedMinutes ?? null
       : t.estimatedMinutes;

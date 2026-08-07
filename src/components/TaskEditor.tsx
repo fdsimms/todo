@@ -125,7 +125,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const applyTaskDates = useTaskStore(s => s.applyTaskDates);
   const updateTask = useTaskStore(s => s.updateTask);
   const deleteTask = useTaskStore(s => s.deleteTask);
-  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
+  const markMissed = useTaskStore(s => s.markMissed);
   const setLastAction = useTaskStore(s => s.setLastAction);
   const addSubtask = useTaskStore(s => s.addSubtask);
   const toggleSubtask = useTaskStore(s => s.toggleSubtask);
@@ -792,13 +792,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (task.recurrenceType !== 'none') {
       Alert.alert(
         'Delete recurring task',
-        'This task repeats. Skip just this occurrence, or delete it and stop the series?',
+        'This task repeats. Mark just this occurrence missed, or delete it and stop the series?',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Skip This Occurrence',
+            text: 'Mark Missed',
             onPress: () => {
-              skipNextRecurrence(task.id);
+              markMissed(task.id);
               onClose();
             },
           },
