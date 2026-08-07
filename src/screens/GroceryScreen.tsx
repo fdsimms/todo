@@ -12,7 +12,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
-import { GroceryAddField } from '../components/GroceryAddField';
+import { GroceryAddSheet } from '../components/GroceryAddSheet';
+import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
 import { GroceryRow } from '../components/GroceryRow';
 import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
@@ -59,6 +60,7 @@ export function GroceryScreen() {
   const applyDrop = useGroceryStore(s => s.applyDrop);
 
   const [cartOpen, setCartOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -150,28 +152,20 @@ export function GroceryScreen() {
   }, [clearList]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => {
-    // Clear list is deliberately NOT here. It's destructive-looking, rarely
-    // used, and the header is where you're tapping one-handed while walking —
-    // it lives at the foot of the list instead, which is where you look when
-    // you're done rather than mid-shop.
+    // Nothing that *adds* is here — the three ways onto the list all hang off
+    // the FAB, same as every other list screen. What's left is the two things
+    // you do to a list that already exists.
+    //
+    // Clear list is deliberately NOT here either. It's destructive-looking,
+    // rarely used, and the header is where you're tapping one-handed while
+    // walking — it lives at the foot of the list instead, which is where you
+    // look when you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
     list.push({
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),
       accessibilityLabel: 'Aisle order',
     });
-    list.push({
-      icon: 'basket-outline',
-      onPress: () => setBuyAgainOpen(true),
-      accessibilityLabel: 'Buy again',
-    });
-    if (anthropicApiKey) {
-      list.push({
-        icon: 'sparkles-outline',
-        onPress: () => setAiMode('recipe'),
-        accessibilityLabel: 'Add from a recipe',
-      });
-    }
     list.push({
       icon: 'bag-check-outline',
       onPress: confirmFinish,
@@ -181,7 +175,26 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, confirmFinish, anthropicApiKey]);
+  }, [checkedCount, confirmFinish]);
+
+  // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
+  // is gated on a key like every other AI affordance here, so a user without
+  // one just gets a two-item menu.
+  const addMenuItems = useMemo<FabMenuItem[]>(() => {
+    const list: FabMenuItem[] = [];
+    if (anthropicApiKey) {
+      list.push({ key: 'recipe', label: 'From a recipe', icon: 'sparkles-outline' });
+    }
+    list.push({ key: 'buyAgain', label: 'Buy again', icon: 'basket-outline' });
+    list.push({ key: 'item', label: 'Add an item', icon: 'add-circle-outline' });
+    return list;
+  }, [anthropicApiKey]);
+
+  const handleAddMenuSelect = useCallback((key: string) => {
+    if (key === 'recipe') setAiMode('recipe');
+    else if (key === 'buyAgain') setBuyAgainOpen(true);
+    else setAddOpen(true);
+  }, []);
 
   const renderRow = useCallback(
     ({ item: row, drag, isActive }: { item: ListRow; drag?: () => void; isActive?: boolean }) => {
@@ -242,8 +255,6 @@ export function GroceryScreen() {
         actions={actions}
       />
 
-      <GroceryAddField />
-
       <ReorderableList
         data={rows}
         keyExtractor={row => row.key}
@@ -278,7 +289,7 @@ export function GroceryScreen() {
                 />
               </View>
             )}
-            <View style={{ height: tabBarHeight + spacing.xl }} />
+            <View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />
           </View>
         }
         ListEmptyComponent={
@@ -287,16 +298,24 @@ export function GroceryScreen() {
             title="Nothing on the list"
             subtitle={
               catalogCount > 0
-                ? 'Start typing above — everything you’ve bought before will come up.'
-                : 'Type what you need above. Paste a whole list and each line becomes an item.'
+                ? 'Everything you’ve bought before is a tap away — or start typing and it’ll come up.'
+                : 'Tap + to add what you need. Paste a whole list and each line becomes an item.'
             }
-            actionLabel={catalogCount > 0 ? 'Buy again' : undefined}
-            onAction={catalogCount > 0 ? () => setBuyAgainOpen(true) : undefined}
+            actionLabel={catalogCount > 0 ? 'Buy again' : 'Add an item'}
+            onAction={catalogCount > 0 ? () => setBuyAgainOpen(true) : () => setAddOpen(true)}
             bottomOffset={tabBarHeight}
           />
         }
       />
 
+      <FabMenu
+        items={addMenuItems}
+        onSelect={handleAddMenuSelect}
+        bottom={insets.bottom + tabBarHeight + spacing.md}
+        accessibilityLabel="Add groceries"
+      />
+
+      <GroceryAddSheet visible={addOpen} onClose={() => setAddOpen(false)} />
       <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       <GroceryItemSheet
