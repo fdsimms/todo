@@ -9,8 +9,11 @@
  * Deliberately not pluralised in code. The unit is always read against the
  * target, and a target is >= 2 by definition (isQuotaTask), so the form the
  * user typed is the form that has to work — while naive English pluralisation
- * turns "glass" into "glasss" and "8oz" into "8ozs". The editor asks for the
- * plural in its placeholder instead, which costs nothing and can't be wrong.
+ * turns "glass" into "glasss" and "8oz" into "8ozs". What steers the user to
+ * the plural is the editor's live preview of the finished meter ("Shows as
+ * 0/12 8oz glasses"), not a rule and not the placeholder, which names the
+ * field rather than suggesting a value: a greyed "glasses" sitting next to
+ * 12× on a set of push-ups reads as an answer somebody already filled in.
  */
 
 /**

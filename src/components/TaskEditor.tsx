@@ -1575,7 +1575,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   style={styles.targetUnitInput}
                   value={targetUnit}
                   onChangeText={setTargetUnit}
-                  placeholder="glasses"
+                  placeholder="units"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
