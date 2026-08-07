@@ -77,6 +77,7 @@ jest.mock('../db/database', () => ({
   // untouched by this file's subject.
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
+  dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
   // useTaskStore.initialize() initialises the grocery store too, so its whole
   // read path has to be stubbed here even though nothing in this file is about
   // groceries.

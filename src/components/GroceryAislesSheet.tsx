@@ -29,7 +29,7 @@ import { EmptyState } from './EmptyState';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
 import { haptics } from '../utils/haptics';
-import { SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
+import { AISLE_NAME_MAX_LENGTH, SHOP_NAME_MAX_LENGTH, type Shop } from '../types';
 
 interface Props {
   visible: boolean;
@@ -74,6 +74,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleOrder = useGroceryStore(s => s.setAisleOrder);
   const addAisle = useGroceryStore(s => s.addAisle);
+  const renameAisle = useGroceryStore(s => s.renameAisle);
+  const deleteAisle = useGroceryStore(s => s.deleteAisle);
   const items = useGroceryStore(useShallow(s => s.items));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -86,6 +88,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const [newAisle, setNewAisle] = useState('');
   const [newShop, setNewShop] = useState('');
   const [editingShopId, setEditingShopId] = useState<string | null>(null);
+  // The aisle being renamed is identified by its name — an aisle *is* its name
+  // here, which is exactly why renaming one has to rewrite every row filed
+  // under it. Only one tab renders at a time, so the two share the draft text.
+  const [editingAisle, setEditingAisle] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
   useEffect(() => {
@@ -94,6 +100,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
       setNewAisle('');
       setNewShop('');
       setEditingShopId(null);
+      setEditingAisle(null);
     }
   }, [visible]);
 
@@ -146,6 +153,38 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
   const countFor = (aisle: string) => items.filter(i => i.aisle === aisle && i.onList).length;
 
+  const commitAisleRename = () => {
+    if (!editingAisle) return;
+    const trimmed = editingName.trim();
+    // A blank, a no-op or a collision just closes the field rather than
+    // trapping the user in it — the old name is still there and still works.
+    if (trimmed) renameAisle(editingAisle, trimmed);
+    setEditingAisle(null);
+  };
+
+  const confirmDeleteAisle = (aisle: string) => {
+    // Everything filed here, not just what's on the list this week — the aisle
+    // lives on the catalog row, so an off-list item moves too.
+    const filed = items.filter(i => i.aisle === aisle).length;
+    Alert.alert(
+      `Delete ${aisle}?`,
+      filed > 0
+        ? `${filed} ${filed === 1 ? 'item moves' : 'items move'} to ${OTHER_AISLE}. You can file them somewhere else afterwards.`
+        : `Nothing is filed here. You can add it back at any time.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteAisle(aisle);
+            haptics.warning();
+          },
+        },
+      ]
+    );
+  };
+
   const handleAdd = () => {
     // addAisle owns the dedupe (and the write), so a name that's already in the
     // order just clears the field — the aisle the user asked for is there, and
@@ -175,6 +214,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => {
                   haptics.tap();
+                  // Both tabs share the draft text, and the field that owns it
+                  // unmounts with the tab — so its onBlur never fires.
+                  setEditingAisle(null);
+                  setEditingShopId(null);
                   setTab(t);
                 }}
                 accessibilityRole="button"
@@ -213,7 +256,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         <>
         <Text style={styles.intro}>
           Hold a row and drag it into the order you walk your store. Your list follows the same
-          order.
+          order. Tap a name to rename it.
         </Text>
 
         <ReorderableList
@@ -228,19 +271,57 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           onReorder={reordered => setAisleOrder(reordered)}
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
+            const editing = aisle === editingAisle;
             return (
               <TouchableOpacity
                 style={[styles.row, isActive && styles.rowActive]}
+                // Same shape as a store row: the row itself is the drag target
+                // and the rename tap both, and only the delete button claims a
+                // corner of its own. Wrapping the *label* in a touchable
+                // instead would put the dead zone back — a long press starting
+                // on the name would go to a child with no onLongPress, and the
+                // drag would never start across most of the row's width.
+                onPress={editing ? undefined : () => {
+                  setEditingAisle(aisle);
+                  setEditingName(aisle);
+                }}
                 onLongPress={drag}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={count > 0 ? `${aisle}, ${count} on the list` : aisle}
-                accessibilityHint="Long press to reorder."
+                accessibilityHint="Double tap to rename. Long press to reorder."
               >
                 <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
-                <Text style={styles.rowLabel} numberOfLines={1}>{aisle}</Text>
-                {count > 0 && <Text style={styles.rowCount}>{count}</Text>}
+
+                {editing ? (
+                  <TextInput
+                    style={styles.renameInput}
+                    value={editingName}
+                    onChangeText={setEditingName}
+                    onBlur={commitAisleRename}
+                    onSubmitEditing={commitAisleRename}
+                    autoFocus
+                    autoCorrect={false}
+                    returnKeyType="done"
+                    maxLength={AISLE_NAME_MAX_LENGTH}
+                    accessibilityLabel={`Rename ${aisle}`}
+                  />
+                ) : (
+                  <Text style={styles.rowLabel} numberOfLines={1}>{aisle}</Text>
+                )}
+
+                {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
+
+                <TouchableOpacity
+                  onPress={() => confirmDeleteAisle(aisle)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Delete ${aisle}`}
+                >
+                  <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
+                </TouchableOpacity>
               </TouchableOpacity>
             );
           }}
@@ -265,7 +346,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   onSubmitEditing={handleAdd}
                   blurOnSubmit={false}
                   autoCorrect={false}
-                  maxLength={32}
+                  maxLength={AISLE_NAME_MAX_LENGTH}
                   accessibilityLabel="New aisle name"
                 />
                 <InlineAction

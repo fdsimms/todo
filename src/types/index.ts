@@ -579,6 +579,10 @@ export interface ItemShopLink {
 // of other chips in a sheet, not a list row that owns its width.
 export const SHOP_NAME_MAX_LENGTH = 40;
 
+// Shorter again: an aisle is a section header above a list of items, and the
+// longest built-in ('Meat & Seafood') is 14.
+export const AISLE_NAME_MAX_LENGTH = 32;
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',

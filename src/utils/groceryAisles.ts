@@ -231,6 +231,50 @@ export function rememberAisles(
 }
 
 /**
+ * Retargets every filing that pointed at `from` onto `to`, so renaming an aisle
+ * carries the memory with it — a name typed again after the rename lands in the
+ * renamed section rather than falling back to the lexicon's guess.
+ *
+ * Returns null when nothing matched, so callers can skip the write.
+ */
+export function remapRememberedAisle(
+  current: Readonly<Record<string, string>>,
+  from: string,
+  to: string
+): Record<string, string> | null {
+  if (!from || !to || from === to) return null;
+  let next: Record<string, string> | null = null;
+  for (const [key, aisle] of Object.entries(current)) {
+    if (aisle !== from) continue;
+    next = next ?? { ...current };
+    next[key] = to;
+  }
+  return next;
+}
+
+/**
+ * Drops every filing that pointed at a deleted aisle.
+ *
+ * Deliberately a delete rather than a rewrite to 'Other': the aisle is gone,
+ * and recording "the user files chips under Other" is a claim they never made,
+ * which would also outrank the lexicon for ever. Forgetting lets the next add
+ * guess again.
+ */
+export function forgetRememberedAisle(
+  current: Readonly<Record<string, string>>,
+  aisle: string
+): Record<string, string> | null {
+  if (!aisle) return null;
+  let next: Record<string, string> | null = null;
+  for (const [key, value] of Object.entries(current)) {
+    if (value !== aisle) continue;
+    next = next ?? { ...current };
+    delete next[key];
+  }
+  return next;
+}
+
+/**
  * Follows a remembered aisle across a rename, so correcting a typo doesn't
  * strand the filing under the misspelling.
  */
@@ -256,8 +300,20 @@ export function renameRememberedAisle(
  * first, then anything new appended — and 'Other' is forced last however it
  * arrived, because a catch-all in the middle of a walk order is never what
  * anyone meant.
+ *
+ * `hidden` is what makes deleting or renaming a *built-in* aisle stick: the
+ * defaults pass would otherwise put 'Snacks' straight back the next time this
+ * runs, and the delete would look like it silently failed. It suppresses only
+ * that pass — an aisle a live row still carries comes back regardless, because
+ * a section with no place in the order renders unplaced, which is worse than a
+ * resurrected name.
  */
-export function normalizeAisleOrder(stored: string[] | null, used: readonly string[] = []): string[] {
+export function normalizeAisleOrder(
+  stored: string[] | null,
+  used: readonly string[] = [],
+  hidden: readonly string[] = []
+): string[] {
+  const suppressed = new Set(hidden);
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (aisle: string) => {
@@ -268,11 +324,40 @@ export function normalizeAisleOrder(stored: string[] | null, used: readonly stri
   };
 
   for (const aisle of stored ?? []) push(aisle);
-  for (const aisle of DEFAULT_AISLES) push(aisle);
+  for (const aisle of DEFAULT_AISLES) {
+    if (!suppressed.has(aisle)) push(aisle);
+  }
   // An aisle a row carries but the order has never heard of — a custom one
   // from a device whose settings row didn't survive, or an AI suggestion.
   for (const aisle of used) push(aisle);
 
   out.push(OTHER_AISLE);
   return out;
+}
+
+/**
+ * The built-in aisles a saved walk order leaves out — the tombstone list
+ * `normalizeAisleOrder` needs to keep a deletion from being undone on the next
+ * read. Derived from the order the user just saved rather than tracked
+ * separately, so "the list you saved is the list you get" and nothing can drift
+ * between the two.
+ */
+export function hiddenDefaultAisles(order: readonly string[]): string[] {
+  const present = new Set(order);
+  return DEFAULT_AISLES.filter(a => a !== OTHER_AISLE && !present.has(a));
+}
+
+/**
+ * Pins a proposed aisle to one that actually exists, falling back to Other.
+ *
+ * The lexicon and the remembered filings both name aisles by string and neither
+ * knows what the user has deleted — so without this, deleting 'Snacks' and then
+ * typing "chips" files the new row under 'Snacks' and `normalizeAisleOrder`'s
+ * `used` pass dutifully brings the section back.
+ */
+export function placeAisle(aisle: string | null | undefined, order: readonly string[]): string {
+  if (!aisle) return OTHER_AISLE;
+  // An empty order means nothing has loaded yet, not that every aisle is gone.
+  if (order.length === 0) return aisle;
+  return order.includes(aisle) ? aisle : OTHER_AISLE;
 }

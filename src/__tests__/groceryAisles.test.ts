@@ -4,7 +4,11 @@ import {
   OTHER_AISLE,
   aisleForName,
   normalizeAisleOrder,
+  hiddenDefaultAisles,
+  placeAisle,
   rememberAisles,
+  remapRememberedAisle,
+  forgetRememberedAisle,
   renameRememberedAisle,
 } from '../utils/groceryAisles';
 
@@ -109,6 +113,92 @@ describe('normalizeAisleOrder', () => {
     const result = normalizeAisleOrder(['', '   ', 'Produce']);
     expect(result).not.toContain('');
     expect(result).toContain('Produce');
+  });
+
+  it('keeps a hidden default out, so a delete survives the next read', () => {
+    const result = normalizeAisleOrder(['Produce'], [], ['Snacks']);
+    expect(result).not.toContain('Snacks');
+    expect(result).toContain('Bakery');
+  });
+
+  it('brings a hidden aisle back if a row still carries it — unplaced is worse', () => {
+    const result = normalizeAisleOrder(['Produce'], ['Snacks'], ['Snacks']);
+    expect(result).toContain('Snacks');
+  });
+});
+
+// ─── deleting and renaming ───────────────────────────────────────────────────
+
+describe('hiddenDefaultAisles', () => {
+  it('names the built-ins a saved order left out', () => {
+    expect(hiddenDefaultAisles(['Produce', 'Bakery'])).toContain('Snacks');
+    expect(hiddenDefaultAisles(['Produce', 'Bakery'])).not.toContain('Produce');
+  });
+
+  it('never hides Other, which is the floor', () => {
+    expect(hiddenDefaultAisles([])).not.toContain(OTHER_AISLE);
+  });
+
+  it('is empty when nothing was removed', () => {
+    expect(hiddenDefaultAisles([...DEFAULT_AISLES])).toEqual([]);
+  });
+
+  it('ignores custom aisles, which need no tombstone', () => {
+    expect(hiddenDefaultAisles([...DEFAULT_AISLES, 'Butcher'])).toEqual([]);
+  });
+});
+
+describe('placeAisle', () => {
+  it('keeps an aisle that still exists', () => {
+    expect(placeAisle('Produce', ['Produce', OTHER_AISLE])).toBe('Produce');
+  });
+
+  it('falls back to Other for a deleted one, so it cannot resurrect itself', () => {
+    expect(placeAisle('Snacks', ['Produce', OTHER_AISLE])).toBe(OTHER_AISLE);
+  });
+
+  it('falls back to Other for no guess at all', () => {
+    expect(placeAisle(null, ['Produce', OTHER_AISLE])).toBe(OTHER_AISLE);
+  });
+
+  it('trusts the guess when no order has loaded yet', () => {
+    expect(placeAisle('Produce', [])).toBe('Produce');
+  });
+});
+
+describe('remapRememberedAisle', () => {
+  it('carries every filing onto the renamed aisle', () => {
+    const result = remapRememberedAisle({ nduja: 'Deli', salami: 'Deli', milk: 'Frozen' }, 'Deli', 'Charcuterie');
+    expect(result).toEqual({ nduja: 'Charcuterie', salami: 'Charcuterie', milk: 'Frozen' });
+  });
+
+  it('returns null when nothing pointed there', () => {
+    expect(remapRememberedAisle({ milk: 'Frozen' }, 'Deli', 'Charcuterie')).toBeNull();
+    expect(remapRememberedAisle({ milk: 'Frozen' }, 'Frozen', 'Frozen')).toBeNull();
+  });
+
+  it('never mutates what it was given', () => {
+    const current = { nduja: 'Deli' };
+    remapRememberedAisle(current, 'Deli', 'Charcuterie');
+    expect(current).toEqual({ nduja: 'Deli' });
+  });
+});
+
+describe('forgetRememberedAisle', () => {
+  it('drops the filings rather than rewriting them to Other', () => {
+    // Rewriting would record a filing the user never made, and it would
+    // outrank the lexicon for ever after.
+    expect(forgetRememberedAisle({ nduja: 'Deli', milk: 'Frozen' }, 'Deli')).toEqual({ milk: 'Frozen' });
+  });
+
+  it('returns null when nothing pointed there', () => {
+    expect(forgetRememberedAisle({ milk: 'Frozen' }, 'Deli')).toBeNull();
+  });
+
+  it('never mutates what it was given', () => {
+    const current = { nduja: 'Deli' };
+    forgetRememberedAisle(current, 'Deli');
+    expect(current).toEqual({ nduja: 'Deli' });
   });
 });
 

@@ -181,6 +181,30 @@ A task the user gave more than one date ("walk the neighbour's dog on the 10th a
 - **Counting**: `groupRoster()` collapses a series to one entry, same as it does recurrence tombstones — otherwise a stack holding a 2-date series reads as 2 members. `getRepeatedInstances()` skips series rows so a deliberate schedule isn't reported as an ad-hoc repeat. **Cascades must expand it again**: the roster names one row per member, so `deleteGroup({cascade:true})` collapsing to it deleted one date of a set and orphaned the rest.
 - **`projectProgress` has its own collapse and can't reuse the roster** (`src/store/useProjectStore.ts`). Same disease — a recurring member's tombstones grew the denominator forever — but the cure differs: the roster drops old completions, which is right for a stack (they aren't members) and wrong for a project, where a one-off finished last week is exactly a member and exactly done. So it groups rows by identity (`seriesId`, else the root of the `previousOccurrenceId` chain) and counts each once, done only when nothing in it is outstanding.
 
+### Grocery aisles — a name is the identity, so deleting one needs a tombstone
+
+An aisle is a *string*, held in three places at once: `aisleOrder` (a settings key), the `aisle`
+column on every row, and the values of `aisleOverrides` (the remembered filings). So `renameAisle`
+has to rewrite all three, and `deleteAisle` has to move the rows to `Other` — every row, not just
+this week's list, since the aisle lives on the catalog row.
+
+**`normalizeAisleOrder` re-appends `DEFAULT_AISLES` on every read**, which is the feature (a bigger
+default list ships with no migration) and is also why a delete can't just drop the name from the
+order — it would be back on the next launch. `hiddenAisles` (`grocery_aisle_hidden`) is the
+tombstone that stops it, and it is **derived from the order being saved** by `commitAisleOrder`,
+never edited directly: whatever the caller left out is a deletion, so the two can't drift, and
+re-adding a deleted built-in by name un-hides it for free. The `used` pass still overrides a
+tombstone — a section with no place in the order renders unplaced, which is worse than a
+resurrected name, and after a delete nothing carries it anyway.
+
+**`addByName` clamps through `placeAisle`.** Neither the lexicon nor a remembered filing knows what
+the user deleted, so without it, deleting Snacks and typing "chips" files the new row under Snacks
+and `used` brings the section straight back. For the same reason `deleteAisle` *forgets* the filings
+that pointed at the aisle rather than rewriting them to `Other`: rewriting asserts a filing the user
+never made, and it would outrank the lexicon for ever after.
+
+`Other` can't be renamed or deleted — it's the floor `aisleForName` returning null lands on.
+
 ### Grocery stores (`Shop`) — which shop has which items
 
 The rest of the grocery feature isn't written up here yet; this section covers only stores, which
