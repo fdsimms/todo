@@ -22,10 +22,18 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
-import { SortableList } from './SortableList';
+import { MiniFabList } from './MiniFabList';
 import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import type { FabMenuItem } from './Fab';
+
+// Rendered bottom-up, so "New task" lands nearest the button — the same
+// most-used-closest ordering AddTaskFab uses for the screen menu.
+const ADD_TO_STACK_ITEMS: FabMenuItem[] = [
+  { key: 'existing', label: 'Add existing', icon: 'albums-outline' },
+  { key: 'new', label: 'New task', icon: 'add' },
+];
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -85,6 +93,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
+  // Where the add button was dropped, if it was dragged rather than tapped.
+  // Null means the end, which is where both a tap and the store's own append
+  // put it. Cleared whenever the thing it seeded closes.
+  const [pendingChildIndex, setPendingChildIndex] = useState<number | null>(null);
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
 
@@ -96,6 +108,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     setCategory(group.category);
     setShowExistingPicker(false);
     setExistingSearch('');
+    setPendingChildIndex(null);
     setOpenFields({});
   }, [group]);
 
@@ -114,6 +127,48 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const members = group ? groupRosterOf(group.id) : [];
   const dueToday = members.filter(isRelevantToGroupToday);
   const doneToday = dueToday.filter(c => c.completed).length;
+
+  /**
+   * Moves a just-added task to the seam the add button was dropped on.
+   *
+   * Both store adds append, so placement is a renumber afterwards. What matters
+   * is *which* order gets handed back: the **roster** order, never a
+   * hand-rolled full one. reorderGroupChildren reads groupChildrenOf — every
+   * row including the completed occurrences the roster hides — and folds the
+   * subset into it with reorderSubset, which lays the ids given back into the
+   * slots they already occupy and leaves the tombstones where they are.
+   *
+   *   roster [A, B] + tombstone T between them, dropped at seam 1:
+   *   all     = [A, T, B, new]      ordered = [A, new, B]
+   *   result  = [A, T, new, B]  →   roster reads A, new, B
+   *
+   * Renumbering `members` 1..n directly would instead give the tombstones the
+   * live members' numbers.
+   */
+  const placeInStack = (createdId: string, index: number | null) => {
+    if (!group || index === null || index >= members.length) return;
+    const ids = members.map(m => m.id);
+    ids.splice(Math.max(0, index), 0, createdId);
+    reorderGroupChildren(group.id, ids);
+  };
+
+  const commitChild = (title: string) => {
+    const trimmed = title.trim();
+    if (!group || !trimmed) return;
+    const index = pendingChildIndex;
+    const created = addNewGroupedTask(group.id, trimmed);
+    placeInStack(created.id, index);
+    // The field closes on submit here (returnKeyType="done", no
+    // blurOnSubmit={false}), so there's no burst to keep together.
+  };
+
+  const commitExisting = (taskId: string) => {
+    if (!group) return;
+    addExistingToGroup(taskId, group.id);
+    placeInStack(taskId, pendingChildIndex);
+    // The picker stays open for a run of adds, so walk the seam along.
+    setPendingChildIndex(i => (i === null ? null : i + 1));
+  };
 
   // Capped so a large task list doesn't render hundreds of rows into an
   // unvirtualized ScrollView; matchCount (pre-slice) drives the "showing 30
@@ -313,10 +368,22 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
               {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
             </Text>
           </View>
-          <SortableList
+          <MiniFabList
             data={members}
             onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
             onDragStateChange={setDraggingChild}
+            accessibilityLabel="Add task to this stack"
+            fabHidden={addingChild}
+            menuItems={ADD_TO_STACK_ITEMS}
+            onAdd={index => {
+              setPendingChildIndex(index);
+              setAddingChild(true);
+            }}
+            onMenuSelect={(key, index) => {
+              setPendingChildIndex(index);
+              if (key === 'new') setAddingChild(true);
+              else setShowExistingPicker(true);
+            }}
             renderItem={(child, _i, drag) => {
               const subtitle = memberSchedule(child);
               return (
@@ -352,76 +419,64 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 </View>
               );
             }}
+            footer={<>
+              {addingChild && (
+                <View style={styles.subtaskInputRow}>
+                  <TextInput
+                    autoFocus
+                    style={styles.subtaskInput}
+                    value={newChildTitle}
+                    onChangeText={setNewChildTitle}
+                    placeholder="New task title"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={TITLE_MAX_LENGTH}
+                    returnKeyType="done"
+                    onSubmitEditing={() => {
+                      commitChild(newChildTitle);
+                      setNewChildTitle('');
+                      haptics.tap();
+                    }}
+                    onBlur={() => {
+                      commitChild(newChildTitle);
+                      setNewChildTitle('');
+                      setAddingChild(false);
+                      setPendingChildIndex(null);
+                    }}
+                  />
+                </View>
+              )}
+              {showExistingPicker && (
+                <View style={styles.existingPicker}>
+                  <TextInput
+                    style={styles.existingSearch}
+                    value={existingSearch}
+                    onChangeText={setExistingSearch}
+                    placeholder="Search tasks…"
+                    placeholderTextColor={colors.textTertiary}
+                  />
+                  {eligibleForAdd.map(t => (
+                    <TouchableOpacity
+                      key={t.id}
+                      style={styles.existingRow}
+                      onPress={() => { commitExisting(t.id); haptics.tap(); }}
+                    >
+                      <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
+                      <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                    </TouchableOpacity>
+                  ))}
+                  {eligibleForAdd.length === 0 && (
+                    <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
+                )}
+                  {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
+                    <Text style={styles.existingEmpty}>
+                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
+                    </Text>
+                )}
+                </View>
+              )}
+            </>}
           />
 
-          {addingChild && (
-            <View style={styles.subtaskInputRow}>
-              <TextInput
-                autoFocus
-                style={styles.subtaskInput}
-                value={newChildTitle}
-                onChangeText={setNewChildTitle}
-                placeholder="New task title"
-                placeholderTextColor={colors.textTertiary}
-                maxLength={TITLE_MAX_LENGTH}
-                returnKeyType="done"
-                onSubmitEditing={() => {
-                  const t = newChildTitle.trim();
-                  if (t) addNewGroupedTask(group.id, t);
-                  setNewChildTitle('');
-                  haptics.tap();
-                }}
-                onBlur={() => {
-                  const t = newChildTitle.trim();
-                  if (t) addNewGroupedTask(group.id, t);
-                  setNewChildTitle('');
-                  setAddingChild(false);
-                }}
-              />
-            </View>
-          )}
-
-          <View style={styles.actionPillRow}>
-            {!addingChild && (
-              <InlineAction icon="add" label="New task" onPress={() => setAddingChild(true)} />
-            )}
-            <InlineAction
-              icon={showExistingPicker ? 'chevron-up' : 'chevron-down'}
-              label="Add existing"
-              variant="neutral"
-              onPress={() => setShowExistingPicker(v => !v)}
-            />
-          </View>
-
-          {showExistingPicker && (
-            <View style={styles.existingPicker}>
-              <TextInput
-                style={styles.existingSearch}
-                value={existingSearch}
-                onChangeText={setExistingSearch}
-                placeholder="Search tasks…"
-                placeholderTextColor={colors.textTertiary}
-              />
-              {eligibleForAdd.map(t => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.existingRow}
-                  onPress={() => { addExistingToGroup(t.id, group.id); haptics.tap(); }}
-                >
-                  <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
-                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                </TouchableOpacity>
-              ))}
-              {eligibleForAdd.length === 0 && (
-                <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
-              )}
-              {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
-                <Text style={styles.existingEmpty}>
-                  Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
-                </Text>
-              )}
-            </View>
-          )}
         </View>
       </View>
     </EditorSheet>
@@ -471,7 +526,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm, paddingVertical: 8,
     backgroundColor: colors.bgTertiary, borderRadius: radius.full, minWidth: 100,
   },
-  actionPillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.sm },
   subtaskHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   subtaskProgress: { color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium },
   childRow: {
