@@ -32,6 +32,17 @@ import {
   MAX_PENDING_REMINDERS,
   type NotificationPermission,
 } from '../utils/notifications';
+import {
+  countImportableReminders,
+  getRemindersPermission,
+  importReminders,
+  lastImportOutcome,
+  listReminderLists,
+  requestRemindersPermission,
+  type RemindersPermission,
+} from '../utils/remindersImportSync';
+import { findReminderList } from '../utils/remindersImport';
+import type { Calendar as ReminderList } from 'expo-calendar';
 import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -61,7 +72,7 @@ const WEEK_START_OPTIONS: { value: WeekStart; label: string }[] = [
   { value: 1, label: 'Monday' },
 ];
 
-type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | 'agenda' | null;
+type ActivePicker = 'dayReset' | 'afternoon' | 'evening' | 'night' | 'activeStart' | 'activeEnd' | 'agenda' | 'remindersList' | null;
 
 /**
  * Writes a parsed backup over everything and brings the app back up on it.
@@ -122,6 +133,9 @@ export function SettingsScreen() {
     vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
+    remindersImportEnabled, setRemindersImportEnabled,
+    remindersImportListId, setRemindersImportListId,
+    setRemindersImportConfirmedListId,
     resetToDefaults,
   } = useSettingsStore();
 
@@ -139,19 +153,129 @@ export function SettingsScreen() {
     getNotificationPermission().then(setNotifPermission).catch(() => setNotifPermission(null));
   }, []);
 
+  // Same two states for the Reminders import below, refreshed by the same
+  // effect for the same reason — its permission row also sends people to the
+  // system Settings app, and the list of Reminders lists can change while
+  // they're over there too.
+  const [remindersPermission, setRemindersPermission] = useState<RemindersPermission | null>(null);
+  const [reminderLists, setReminderLists] = useState<ReminderList[] | null>(null);
+  const refreshRemindersState = React.useCallback(() => {
+    getRemindersPermission()
+      .then(async permission => {
+        setRemindersPermission(permission);
+        setReminderLists(permission === 'granted' ? await listReminderLists() : null);
+      })
+      .catch(() => setRemindersPermission(null));
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       refreshNotifPermission();
+      refreshRemindersState();
       const sub = AppState.addEventListener('change', state => {
-        if (state === 'active') refreshNotifPermission();
+        if (state === 'active') {
+          refreshNotifPermission();
+          refreshRemindersState();
+        }
       });
       return () => sub.remove();
-    }, [refreshNotifPermission])
+    }, [refreshNotifPermission, refreshRemindersState])
   );
 
   const askForNotifications = async () => {
     await requestNotificationPermissions();
     refreshNotifPermission();
+  };
+
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+  const selectedReminderList = findReminderList(reminderLists ?? [], remindersImportListId);
+  const lastImport = lastImportOutcome();
+
+  /**
+   * The gate in front of everything destructive. Naming the count *and* the
+   * list is what makes it a real decision rather than a dialog to dismiss —
+   * and it's raised here, at the tap, never from the drain, which can run on a
+   * cold launch with no screen mounted to answer it.
+   *
+   * Keyed on the list id, so switching list asks again instead of quietly
+   * swallowing whatever has piled up in the new one.
+   */
+  const confirmList = async (list: ReminderList) => {
+    setActivePicker(null);
+    const count = await countImportableReminders(list.id);
+    if (count === null) {
+      Alert.alert('Couldn’t read that list', 'Try again in a moment, or pick a different list.');
+      return;
+    }
+    const enable = () => {
+      setRemindersImportListId(list.id);
+      setRemindersImportConfirmedListId(list.id);
+      setRemindersImportEnabled(true);
+      setImportResult(null);
+    };
+    Alert.alert(
+      count === 0
+        ? `Import from “${list.title}”?`
+        : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
+      count === 0
+        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. Only the title comes across.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. Only the title comes across — dates, notes and alarms are dropped. Completed reminders are left alone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Import', style: 'destructive', onPress: enable },
+      ]
+    );
+  };
+
+  /**
+   * Turning it on never flips the switch by itself — permission first, then a
+   * list, then the confirmation, and only its Import button enables anything.
+   * Turning it off is immediate: stopping a destructive thing needs no gate.
+   */
+  const onToggleRemindersImport = async () => {
+    if (remindersImportEnabled) {
+      setRemindersImportEnabled(false);
+      return;
+    }
+    if (remindersPermission === 'denied') {
+      Linking.openSettings();
+      return;
+    }
+    if (remindersPermission !== 'granted' && !(await requestRemindersPermission())) {
+      refreshRemindersState();
+      Alert.alert(
+        'Reminders access is off',
+        'Importing needs permission to read and delete reminders. Turn it on for this app in the Settings app, then try again.'
+      );
+      return;
+    }
+    refreshRemindersState();
+    const lists = await listReminderLists();
+    setReminderLists(lists);
+    if (lists.length === 0) {
+      Alert.alert(
+        'No lists to import from',
+        'There are no Reminders lists on this device that can be changed from here.'
+      );
+      return;
+    }
+    // No API tells us which list Siri writes to, and probing for it would mean
+    // creating a reminder in someone's Reminders app just to look — so picking
+    // is the first step rather than a correction to a guess.
+    setActivePicker('remindersList');
+  };
+
+  const onImportNow = async () => {
+    if (importBusy) return;
+    setImportBusy(true);
+    setImportResult(null);
+    try {
+      const outcome = await importReminders();
+      setImportResult(outcome.imported > 0 ? `Imported ${outcome.imported}` : 'Nothing new');
+    } finally {
+      setImportBusy(false);
+    }
   };
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
@@ -233,6 +357,12 @@ export function SettingsScreen() {
   };
 
   const [activePicker, setActivePicker] = useState<ActivePicker>(null);
+  // The Reminders list row is also shown while its picker is open with the
+  // import still off — that's the first-enable sequence, where choosing a list
+  // comes *before* the switch flips (nothing turns on until the confirmation
+  // is accepted).
+  const showReminderListRow =
+    remindersPermission === 'granted' && (remindersImportEnabled || activePicker === 'remindersList');
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
   const [showPatchNotes, setShowPatchNotes] = useState(false);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
@@ -620,6 +750,197 @@ export function SettingsScreen() {
               Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, overdue and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count.
             </Text>
           </View>
+
+          {/* Apple Reminders — labelled in full throughout, because "reminders"
+              already means the per-task notification in the section above. */}
+          {Platform.OS === 'ios' && (
+            <View style={styles.section}>
+              <Text style={styles.sectionLabel}>Apple Reminders</Text>
+              <View style={styles.card}>
+                <TouchableOpacity
+                  style={styles.row}
+                  onPress={onToggleRemindersImport}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: remindersImportEnabled }}
+                  accessibilityLabel="Import from the Reminders app"
+                >
+                  <Ionicons
+                    name="arrow-down-circle-outline"
+                    size={18}
+                    color={remindersImportEnabled ? colors.accent : colors.textSecondary}
+                  />
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowLabel}>Import from Reminders</Text>
+                    <Text style={styles.rowHint}>
+                      {remindersImportEnabled
+                        ? selectedReminderList
+                          ? `On — anything in “${selectedReminderList.title}” is added to your Inbox and removed from the Reminders app`
+                          : 'On — but the list it was importing from is no longer available'
+                        : 'Off — nothing is read from the Reminders app'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, remindersImportEnabled && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, remindersImportEnabled && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+
+                {/* Denied stays visible even with the import off — that's the
+                    state where the switch above looks broken. */}
+                {(remindersImportEnabled || remindersPermission === 'denied') && (
+                  <>
+                    <View style={styles.sep} />
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={
+                        remindersPermission === 'denied' ? () => Linking.openSettings()
+                        : remindersPermission === 'undetermined' ? async () => {
+                            await requestRemindersPermission();
+                            refreshRemindersState();
+                          }
+                        : undefined
+                      }
+                      disabled={remindersPermission !== 'denied' && remindersPermission !== 'undetermined'}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole={
+                        remindersPermission === 'denied' || remindersPermission === 'undetermined' ? 'button' : undefined
+                      }
+                      accessibilityLabel={
+                        remindersPermission === 'granted' ? 'Reminders access is allowed'
+                        : remindersPermission === 'denied' ? 'Reminders access is blocked. Opens the system Settings app.'
+                        : remindersPermission === 'undetermined' ? 'Reminders access not enabled yet. Double tap to allow.'
+                        : 'Reminders access'
+                      }
+                    >
+                      <Ionicons
+                        name={remindersPermission === 'granted' ? 'lock-open-outline' : 'lock-closed-outline'}
+                        size={18}
+                        color={remindersPermission === 'granted' ? colors.accent : remindersPermission === 'denied' ? colors.warning : colors.textSecondary}
+                      />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>Reminders access</Text>
+                        <Text style={styles.rowHint}>
+                          {remindersPermission === 'granted' ? 'Allowed — this app can read and remove reminders in the list below'
+                            : remindersPermission === 'denied' ? 'Blocked. Nothing can be imported until you turn it back on for this app.'
+                            : remindersPermission === 'undetermined' ? 'Not enabled yet — nothing can be imported until you allow it'
+                            : remindersPermission === 'unsupported' ? 'Not available on this platform'
+                            : 'Checking…'}
+                        </Text>
+                      </View>
+                      {remindersPermission === 'denied' && <Text style={styles.rowValue}>Open Settings</Text>}
+                      {remindersPermission === 'undetermined' && <Text style={styles.rowValue}>Allow</Text>}
+                    </TouchableOpacity>
+                  </>
+                )}
+
+                {showReminderListRow && (
+                  <>
+                    <View style={styles.sep} />
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={() => setActivePicker(activePicker === 'remindersList' ? null : 'remindersList')}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Choose the list to import from"
+                    >
+                      <Ionicons name="list-outline" size={18} color={colors.accent} />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>List</Text>
+                      </View>
+                      <Text style={styles.rowValue}>
+                        {selectedReminderList?.title ?? (remindersImportListId ? 'Unavailable' : 'Choose')}
+                      </Text>
+                    </TouchableOpacity>
+                    {activePicker === 'remindersList' && (reminderLists ?? []).map(list => {
+                      const selected = list.id === remindersImportListId;
+                      return (
+                        <React.Fragment key={list.id}>
+                          <View style={styles.sep} />
+                          <TouchableOpacity
+                            style={styles.row}
+                            onPress={() => confirmList(list)}
+                            activeOpacity={interaction.activeOpacity}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected }}
+                            accessibilityLabel={`Import from ${list.title}`}
+                          >
+                            <View style={styles.rowContent}>
+                              <Text style={styles.rowLabel}>{list.title}</Text>
+                            </View>
+                            {selected && <Ionicons name="checkmark" size={18} color={colors.accent} />}
+                          </TouchableOpacity>
+                        </React.Fragment>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Only worth saying once they're actually biting — each of
+                    these is a way the import stops without any other symptom. */}
+                {remindersImportEnabled && remindersPermission === 'granted' && reminderLists !== null
+                  && remindersImportListId !== null && !selectedReminderList && (
+                  <>
+                    <View style={styles.sep} />
+                    <View style={styles.row}>
+                      <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>That list isn’t on this device</Text>
+                        <Text style={styles.rowHint}>
+                          Nothing is being imported. Pick another list above, or turn this off.
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {remindersImportEnabled && (lastImport?.deleteFailed ?? 0) > 0 && (
+                  <>
+                    <View style={styles.sep} />
+                    <View style={styles.row}>
+                      <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>
+                          {lastImport!.deleteFailed} reminder{lastImport!.deleteFailed === 1 ? '' : 's'} couldn’t be removed
+                        </Text>
+                        <Text style={styles.rowHint}>
+                          {lastImport!.deleteFailed === 1 ? 'Its task is' : 'Their tasks are'} in your Inbox and
+                          {lastImport!.deleteFailed === 1 ? ' it is' : ' they are'} skipped for now. Delete
+                          {lastImport!.deleteFailed === 1 ? ' it' : ' them'} in the Reminders app so nothing comes back next time.
+                        </Text>
+                      </View>
+                    </View>
+                  </>
+                )}
+
+                {/* There's no change notification to subscribe to, so a reminder
+                    that syncs in from a Mac or Watch while the app is already
+                    open has nothing to wake the import. */}
+                {remindersImportEnabled && remindersPermission === 'granted' && selectedReminderList && (
+                  <>
+                    <View style={styles.sep} />
+                    <TouchableOpacity
+                      style={styles.row}
+                      onPress={onImportNow}
+                      disabled={importBusy}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel="Import waiting reminders now"
+                    >
+                      <Ionicons name="refresh-outline" size={18} color={colors.accent} />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>Import now</Text>
+                        {importResult && <Text style={styles.rowHint}>{importResult}</Text>}
+                      </View>
+                      {importBusy && <ActivityIndicator size="small" color={colors.textSecondary} />}
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+              <Text style={styles.sectionFooter}>
+                Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. Only the title comes across — dates, notes and alarms are dropped, so everything waits in your Inbox until you file it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone.
+              </Text>
+            </View>
+          )}
 
           {/* Day segments */}
           <View style={styles.section}>

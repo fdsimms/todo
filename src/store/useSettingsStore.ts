@@ -52,6 +52,15 @@ interface SettingsStore {
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
+  // capture story, since Siri needs no app name to add a reminder. Off by
+  // default and never inferred: importing *deletes* the reminder, so it only
+  // ever runs against a list the user picked and confirmed by name and count.
+  // That's what the third field is for — it holds the list the confirmation was
+  // given for, so changing list re-asks rather than swallowing a fresh backlog.
+  remindersImportEnabled: boolean;
+  remindersImportListId: string | null;
+  remindersImportConfirmedListId: string | null;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -83,6 +92,9 @@ interface SettingsStore {
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setHideCategories: (on: boolean) => void;
+  setRemindersImportEnabled: (on: boolean) => void;
+  setRemindersImportListId: (id: string | null) => void;
+  setRemindersImportConfirmedListId: (id: string | null) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
@@ -106,12 +118,18 @@ const DEFAULT_SETTINGS = {
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  remindersImportEnabled: false,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
 // String(), so only scalars belong in it — an array would land as "" (or
 // "1,2") and read back as garbage. The persisted sort & filter are kept out
 // for that reason and because they aren't preferences anyone sets in Settings.
+// A nullable string can't go in either (String(null) is the literal "null",
+// which reads back as a truthy id) — resetToDefaults clears the two Reminders
+// list ids by hand instead, and it has to: turning the feature off without
+// clearing the confirmed-list id would let a later re-enable skip the
+// confirmation that is the whole safeguard.
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
@@ -160,6 +178,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  remindersImportEnabled: false,
+  remindersImportListId: null,
+  remindersImportConfirmedListId: null,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   initialized: false,
@@ -194,6 +215,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
+    const remindersImportListId = dbGetSetting('remindersImportListId') || null;
+    const remindersImportConfirmedListId = dbGetSetting('remindersImportConfirmedListId') || null;
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
@@ -204,7 +228,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -338,6 +362,21 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ hideCategories: on });
   },
 
+  setRemindersImportEnabled(on: boolean) {
+    dbSetSetting('remindersImportEnabled', on ? 'true' : 'false');
+    set({ remindersImportEnabled: on });
+  },
+
+  setRemindersImportListId(id: string | null) {
+    dbSetSetting('remindersImportListId', id ?? '');
+    set({ remindersImportListId: id });
+  },
+
+  setRemindersImportConfirmedListId(id: string | null) {
+    dbSetSetting('remindersImportConfirmedListId', id ?? '');
+    set({ remindersImportConfirmedListId: id });
+  },
+
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {
     set(state => {
       const next = { ...state.patchNotesQaStatus };
@@ -355,6 +394,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     Object.entries(DEFAULT_SETTINGS).forEach(([key, value]) => {
       dbSetSetting(key, String(value));
     });
-    set(DEFAULT_SETTINGS);
+    // Not in DEFAULT_SETTINGS because String(null) doesn't round-trip — see the
+    // note above it. Clearing both matters: a reset that turned the import off
+    // but left the confirmed-list id in place would let re-enabling later skip
+    // the confirmation and swallow whatever had piled up meanwhile.
+    dbSetSetting('remindersImportListId', '');
+    dbSetSetting('remindersImportConfirmedListId', '');
+    set({ ...DEFAULT_SETTINGS, remindersImportListId: null, remindersImportConfirmedListId: null });
   },
 }));
