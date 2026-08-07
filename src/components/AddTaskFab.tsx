@@ -9,10 +9,10 @@ export type AddTaskType = 'chain' | 'stack' | 'template' | 'task';
 // task with one picker pre-opened, which the Repeat row in quick add already
 // does in the same number of taps.
 const ITEMS: FabMenuItem[] = [
-  { key: 'chain', label: 'Chain', icon: 'link' },
+  { key: 'chain', label: 'Chain', icon: 'git-commit' },
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
-  { key: 'task', label: 'Task', icon: 'checkmark-circle' },
+  { key: 'task', label: 'Task', icon: 'checkbox' },
 ];
 
 interface Props {

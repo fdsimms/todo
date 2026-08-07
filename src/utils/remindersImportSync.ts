@@ -9,6 +9,7 @@ import {
   findReminderList,
   importableReminders,
   isImportableList,
+  pendingImportFor,
   reminderListOptions,
 } from './remindersImport';
 
@@ -143,11 +144,6 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
 }
 
 /**
- * Reads the chosen Reminders list, turns each reminder into a task, and deletes
- * it. See the notes on ordering and isolation inside — this is the one thing in
- * the app that destroys data the user owns somewhere else.
- */
-/**
  * Where a drained list's reminders go. Two destinations exist because a
  * dictated "buy milk" and a dictated "call the dentist" want different homes,
  * and Siri can only tell them apart by which list you named.
@@ -181,10 +177,17 @@ function drainTargets(): DrainTarget[] {
   return targets;
 }
 
+/**
+ * Reads each configured Reminders list, turns every reminder into a task or a
+ * grocery item, and deletes it. See the notes on ordering and isolation inside
+ * — this is the one thing in the app that destroys data the user owns
+ * somewhere else.
+ */
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
 
-  const { remindersImportEnabled, groceryImportEnabled } = useSettingsStore.getState();
+  const { remindersImportEnabled, groceryImportEnabled, remindersImportReview } =
+    useSettingsStore.getState();
   if (!remindersImportEnabled && !groceryImportEnabled) return NOTHING('off');
 
   const targets = drainTargets();
@@ -204,6 +207,9 @@ async function drainOnce(): Promise<ImportOutcome> {
     let deleteFailed = 0;
     let sawList = false;
     let sawWritableList = false;
+    // One clock for the whole drain, so a batch of reminders parsed together
+    // can't straddle a minute boundary and land on different days.
+    const now = new Date();
 
     // Each target is drained in full before the next. handledIds, `draining`
     // and `rerunRequested` stay global and stay correct: EventKit ids are
@@ -241,12 +247,30 @@ async function drainOnce(): Promise<ImportOutcome> {
           // didn't create.
           const name = draft.title?.trim();
           if (!name) continue;
+          // Nothing schedule-shaped is read here, and that's deliberate: a
+          // grocery item has no dueDate, recurrence or reminder for a parsed
+          // schedule to land on. "Milk every Tuesday" means buy milk, and the
+          // list already remembers that you buy it weekly.
+          //
           // addByName rather than a raw insert, so a dictated "2 lb chicken"
           // splits its quantity off and a name already in the catalog is
           // re-listed instead of duplicated — same as typing it.
           useGroceryStore.getState().addByName(name);
         } else {
-          addTask(draft);
+          // Everything the reminder implies about scheduling. Pure and
+          // synchronous, and done before the create so a parse that somehow
+          // threw could never leave a deleted reminder behind — though it
+          // can't: the whole path is string and date arithmetic over data
+          // already in hand.
+          const pending = pendingImportFor(reminder, now);
+          // With review on, the schedule waits beside the task as a suggestion
+          // and the row stays bare enough for isInboxTask — a capture nobody
+          // has read must not file itself onto Today. With review off the user
+          // has said they trust the parse, so it applies on the way in.
+          const scheduled = pending
+            ? (remindersImportReview ? { pendingImport: pending } : pending)
+            : null;
+          addTask({ ...draft, ...scheduled });
         }
         // Recorded the moment the row exists, before the delete is even
         // attempted — that's what makes it cover both failure modes above.

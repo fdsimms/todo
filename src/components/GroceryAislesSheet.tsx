@@ -121,7 +121,9 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           ListFooterComponent={
             <View style={styles.footer}>
               <View style={[styles.row, styles.rowPinned]}>
-                <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textTertiary} />
+                {/* Not the ellipsis: that means "open this row's editor"
+                    app-wide, and Other has nothing to open. */}
+                <Ionicons name="arrow-down-outline" size={iconSize.md} color={colors.textTertiary} />
                 <Text style={styles.rowLabel}>{OTHER_AISLE}</Text>
                 <Text style={styles.rowPinnedNote}>always last</Text>
               </View>

@@ -873,6 +873,17 @@ export function TodayScreen() {
     enterSelectionMode(id);
   }, [enterSelectionMode]);
 
+  // Read off the store rather than closed over, so these stay referentially
+  // stable and TaskItem's memo keeps holding — the same reason every other row
+  // handler here takes an id instead of being made per row.
+  const handleApplyImport = useCallback((id: string) => {
+    useTaskStore.getState().applyPendingImport(id);
+  }, []);
+
+  const handleDismissImport = useCallback((id: string) => {
+    useTaskStore.getState().dismissPendingImport(id);
+  }, []);
+
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
     // The draft carries everything the sheet had, including the seeded
     // category; only the placement is let go of, and the editor has no notion
@@ -1772,6 +1783,8 @@ export function TodayScreen() {
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
         justCreated={task.id === justCreatedId}
+        onApplyImport={handleApplyImport}
+        onDismissImport={handleDismissImport}
       />
     );
   };
@@ -1865,7 +1878,7 @@ export function TodayScreen() {
 
   const emptyComponent = isEmptyDatabase ? (
     <EmptyState
-      icon="sparkles-outline"
+      icon="rocket-outline"
       title="Welcome to your list"
       subtitle="Add your first task to get started"
       actionLabel="Add a task"
@@ -1996,7 +2009,7 @@ export function TodayScreen() {
       : []),
     ...(viewMode === 'today' && pinnedTasks.length < MAX_SUGGESTED_PINS && visibleTasks.length > 0
       ? [{
-          icon: 'sparkles' as const,
+          icon: 'color-wand' as const,
           onPress: () => setSuggestedPinsVisible(true),
           active: pinnedTasks.length === 0,
           tint: 'orange' as const,
@@ -2146,7 +2159,7 @@ export function TodayScreen() {
             ListEmptyComponent={
               isEmptyDatabase ? (
                 <EmptyState
-                  icon="sparkles-outline"
+                  icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
                   actionLabel="Add a task"
@@ -2446,7 +2459,7 @@ export function TodayScreen() {
             ListEmptyComponent={
               isEmptyDatabase ? (
                 <EmptyState
-                  icon="sparkles-outline"
+                  icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
                   actionLabel="Add a task"
@@ -2455,7 +2468,7 @@ export function TodayScreen() {
                 />
               ) : (
                 <EmptyState
-                  icon="layers-outline"
+                  icon="calendar-clear-outline"
                   title="Nothing unscheduled"
                   subtitle="Tasks with no due date land here once they're organized"
                   bottomOffset={tabBarHeight}
@@ -2498,7 +2511,7 @@ export function TodayScreen() {
             ListEmptyComponent={
               isEmptyDatabase ? (
                 <EmptyState
-                  icon="sparkles-outline"
+                  icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
                   actionLabel="Add a task"

@@ -160,7 +160,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Aisle order',
     });
     list.push({
-      icon: 'repeat-outline',
+      icon: 'basket-outline',
       onPress: () => setBuyAgainOpen(true),
       accessibilityLabel: 'Buy again',
     });

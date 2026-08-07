@@ -319,6 +319,29 @@ export interface Task {
   // (see updateTask). Applied on top of this task when its completion spawns
   // the next occurrence, so a one-off edit doesn't become the series template.
   seriesDefaults: Partial<Task> | null;
+
+  // Fields an Apple Reminders import parsed out of a reminder but has NOT
+  // applied — a proposal shown as a chip on the Inbox row, applied only when
+  // the user taps it (see applyPendingImport / dismissPendingImport).
+  //
+  // It has to live beside the task rather than on it, because every field it
+  // carries (dueDate, recurrence, reminderTime, timeSegments) is one that
+  // isInboxTask treats as "this task has been filed" — writing any of them at
+  // import time would eject the capture from the Inbox onto Today or Later
+  // before the user had seen it. isInboxTask deliberately ignores this field
+  // for the same reason it ignores notes: a suggestion isn't a schedule.
+  //
+  // Unlike the derived flags elsewhere in this app, this one is stored rather
+  // than computed — and it must be. The EventKit fields it came from are
+  // destroyed with the reminder seconds after the import, so there is nothing
+  // left to re-derive it from. It's also inert: nothing in the app can
+  // invalidate it, so it needs none of the cascades a stored isBlocked would.
+  //
+  // Partial<Task> rather than Partial<TaskDraft> for two reasons: TaskDraft is
+  // Omit<Task, …> below, so naming it here would make Task's own keyof depend
+  // on itself; and applying is a straight spread into updateTask, which takes
+  // Partial<Task>.
+  pendingImport: Partial<Task> | null;
 }
 
 export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt'>;

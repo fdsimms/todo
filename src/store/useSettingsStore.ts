@@ -17,10 +17,14 @@ export type WeekStart = 0 | 1;
 
 /**
  * Which bottom corner the add button rests in — a reach preference, not a
- * layout direction. Only the button moves: the app's other left-anchored
- * decisions (the drawer's edge swipe, a row's leading checkbox, swipe
- * directions) are deliberate and stay put, so this is not an RTL flag and
- * nothing outside Fab.tsx reads it.
+ * layout direction. Only the add affordances move: the app's other
+ * left-anchored decisions (the drawer's edge swipe, a row's leading checkbox,
+ * swipe directions) are deliberate and stay put, so this is not an RTL flag.
+ *
+ * Read by Fab.tsx (the screen button and its menu), MiniFabList.tsx — which
+ * puts the in-card add button in the matching corner of the subtasks and stack
+ * cards, so both buttons fall under the same thumb — and DemoBanner.tsx, which
+ * parks itself in whichever corner the button isn't using.
  */
 export type FabHand = 'right' | 'left';
 
@@ -96,6 +100,12 @@ interface SettingsStore {
   groceryImportEnabled: boolean;
   groceryImportListId: string | null;
   groceryImportConfirmedListId: string | null;
+  // Whether the schedule an import parses out of a reminder — its due date,
+  // repeat, and alarm — waits on the Inbox row as a suggestion the user taps
+  // to accept, or is simply applied. On by default: applying is what takes a
+  // capture out of the Inbox and onto Today, and a voice note nobody has read
+  // yet is exactly the thing that should not schedule itself.
+  remindersImportReview: boolean;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -139,6 +149,7 @@ interface SettingsStore {
   setGroceryImportEnabled: (on: boolean) => void;
   setGroceryImportListId: (id: string | null) => void;
   setGroceryImportConfirmedListId: (id: string | null) => void;
+  setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
@@ -165,6 +176,7 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   remindersImportEnabled: false,
   groceryImportEnabled: false,
+  remindersImportReview: true,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -246,6 +258,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   groceryImportEnabled: false,
   groceryImportListId: null,
   groceryImportConfirmedListId: null,
+  remindersImportReview: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   initialized: false,
@@ -284,6 +297,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
+    // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
+    // install that predates the setting has no row, and the usual comparison
+    // would read that absence as "apply without asking", which is the opposite
+    // of the safe default. Same pattern as hapticsEnabled above.
+    const remindersImportReview = dbGetSetting('remindersImportReview') !== 'false';
     const remindersImportListId = dbGetSetting('remindersImportListId') || null;
     const remindersImportConfirmedListId = dbGetSetting('remindersImportConfirmedListId') || null;
     const groceryImportEnabled = dbGetSetting('groceryImportEnabled') === 'true';
@@ -300,6 +318,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportReview, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   /**
@@ -506,6 +525,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setGroceryImportConfirmedListId(id: string | null) {
     dbSetSetting('groceryImportConfirmedListId', id ?? '');
     set({ groceryImportConfirmedListId: id });
+  },
+
+  setRemindersImportReview(on: boolean) {
+    dbSetSetting('remindersImportReview', on ? 'true' : 'false');
+    set({ remindersImportReview: on });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {

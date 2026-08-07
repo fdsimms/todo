@@ -41,6 +41,7 @@ const BLANK_SNOOZE_TASK: Task = {
   targetCount: null, progressCount: 0,
   tags: [], category: null, sortOrder: 0, pinned: false, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', linkUrl: null, blockedById: null,
+  pendingImport: null,
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, showStreak: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false,

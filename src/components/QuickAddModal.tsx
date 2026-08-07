@@ -91,10 +91,10 @@ type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'seg
 
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
 const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { key: 'task', label: 'Task', icon: 'checkmark-circle-outline' },
+  { key: 'task', label: 'Task', icon: 'checkbox-outline' },
   { key: 'timed', label: 'Timed', icon: 'timer-outline' },
   { key: 'target', label: 'Target', icon: 'speedometer-outline' },
-  { key: 'chain', label: 'Chain', icon: 'link-outline' },
+  { key: 'chain', label: 'Chain', icon: 'git-commit-outline' },
 ];
 
 /** Known app name for a link scheme, else the raw URL. */
@@ -1482,7 +1482,7 @@ export function QuickAddModal({
                   disabled={!title.trim()}
                   activeOpacity={interaction.activeOpacity}
                 >
-                  <Ionicons name="stopwatch-outline" size={12} color={colors.purple} />
+                  <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
                   <Text style={styles.effortAiBtnText}>Estimate</Text>
                 </TouchableOpacity>
               </View>

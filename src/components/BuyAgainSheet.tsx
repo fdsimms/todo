@@ -199,7 +199,10 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
               <View style={styles.pruneWrap}>
                 <InlineAction
                   label={`Forget ${pruneable.length} unused`}
-                  icon="sparkles-outline"
+                  // color-wand, not sparkles: sparkles means "calls
+                  // api.anthropic.com / needs a key" app-wide, and this is a
+                  // local heuristic over purchase counts.
+                  icon="color-wand-outline"
                   variant="neutral"
                   onPress={confirmPrune}
                 />
@@ -208,7 +211,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           }
           ListEmptyComponent={
             <EmptyState
-              icon="repeat-outline"
+              icon="basket-outline"
               title={query.trim() ? 'Nothing matches' : 'Nothing to buy again yet'}
               subtitle={
                 query.trim()

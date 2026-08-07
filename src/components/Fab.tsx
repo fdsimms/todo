@@ -31,11 +31,46 @@ export interface FabDragHandlers {
 }
 
 /** How far the well behind the dragged button extends past the button itself. */
-const WELL_PADDING = 8;
+export const WELL_PADDING = 8;
 
 /**
- * The corner the button rests in, read from settings in the two places that
- * build styles so no caller has to know about it. Everything handed lives in
+ * The circle itself — fill, glow and geometry — as one definition, because
+ * MiniFab draws the same button inside an editor card and these are exactly the
+ * declarations that drift when they're copied (the accent `shadowColor` most of
+ * all: it's what makes the button glow its own colour rather than cast a grey
+ * drop shadow, and it's the easiest one to leave out).
+ */
+export function fabCircle(colors: Colors, size: number) {
+  return {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    backgroundColor: colors.accent,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    shadowColor: colors.accent,
+  };
+}
+
+/**
+ * Recolours the circle for the moment a release would cancel. A style swap and
+ * not an animated overlay because `shadowColor` goes with it — a red face over
+ * an accent halo reads as the wrong button lit from behind by the right one.
+ */
+export function fabCancelCircle(colors: Colors) {
+  return { backgroundColor: colors.red, shadowColor: colors.red };
+}
+
+/** Glyph size for a given button size — 56 and 48 are the screen tiers, 36 the in-card one. */
+export function fabGlyphSize(size: number): number {
+  if (size >= FAB_SIZE) return 28;
+  return size >= 48 ? 24 : 20;
+}
+
+/**
+ * The corner the button rests in, read from settings here so no caller has to
+ * know about it — by the resting button, by the menu that opens off it, and by
+ * FabMenu to place that menu's anchor. Everything handed lives in
  * `makeStyles` — mirroring the button is four declarations, because the drag it
  * supports is measured vertically and radially and so is already hand-blind:
  * `zoneAtY` compares a pageY against bands, `resolveFabDrop` splits a row at
@@ -149,7 +184,7 @@ function FabButton({
     });
   }, [dragX, dragY, wellOpacity]);
 
-  const iconSize = size >= FAB_SIZE ? 28 : 24;
+  const iconSize = fabGlyphSize(size);
 
   return (
     <Animated.View
@@ -195,13 +230,12 @@ function FabButton({
         ) : null}
         <PressableScale
           style={[
-            styles.fab,
-            { width: size, height: size, borderRadius: size / 2 },
+            fabCircle(colors, size),
             shadows.fab,
             // Over the well the button becomes the cancel button, so what's
             // under the finger says what the release does — the well itself is
             // hidden beneath it at exactly that moment.
-            cancelArmed && styles.fabCancel,
+            cancelArmed && fabCancelCircle(colors),
             disabled && dimWhenDisabled && styles.fabDisabled,
           ]}
           pressScale={0.9}
@@ -274,6 +308,103 @@ export interface FabMenuItem {
   icon: React.ComponentProps<typeof Ionicons>['name'];
 }
 
+/** Where an open menu hangs from, in screen coordinates. */
+export interface FabMenuAnchor {
+  bottom: number;
+  left?: number;
+  right?: number;
+  /** Which way the pills grow — they're wider than the button. */
+  alignItems: 'flex-start' | 'flex-end';
+}
+
+interface FabMenuOverlayProps {
+  items: FabMenuItem[];
+  visible: boolean;
+  /** 0 closed, 1 open. Owned by the caller so it can drive the resting button too. */
+  anim: Animated.Value;
+  onSelect: (key: string) => void;
+  onDismiss: () => void;
+  anchor: FabMenuAnchor;
+  size: number;
+  /** Tighter pills for the in-card button, whose menu opens mid-sheet. */
+  compact?: boolean;
+}
+
+/**
+ * The opened menu — backdrop, staggered pills, and the close button the resting
+ * FAB turns into.
+ *
+ * Split out so `MiniFab` can open the same menu from inside an editor card
+ * without a second copy of the stagger, the spring or the dismiss-then-select
+ * ordering (that ordering matters: `onSelect` runs in the close animation's
+ * completion callback, so a sheet the selection opens isn't racing this Modal's
+ * dismissal). Only the anchor differs — the screen version hangs off a corner,
+ * the in-card one off wherever the button measured itself to be.
+ */
+export function FabMenuOverlay({
+  items, visible, anim, onSelect, onDismiss, anchor, size, compact,
+}: FabMenuOverlayProps) {
+  const colors = useColors();
+  const { shadows } = useTheme();
+  const hand = useFabHand();
+  const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
+
+  const gap = compact ? spacing.sm : spacing.md;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onDismiss}>
+        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: anim }]} />
+      </TouchableOpacity>
+      <View
+        style={[
+          styles.menuContainer,
+          { bottom: anchor.bottom, left: anchor.left, right: anchor.right, alignItems: anchor.alignItems },
+        ]}
+        pointerEvents="box-none"
+      >
+        {items.map((item, i) => {
+          const translateY = anim.interpolate({
+            inputRange: [0, 1],
+            outputRange: [16 + (items.length - i) * 4, 0],
+          });
+          return (
+            <Animated.View
+              key={item.key}
+              style={{
+                opacity: anim,
+                transform: [{ translateY }, { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
+                marginBottom: gap,
+              }}
+            >
+              <PressableScale
+                style={[styles.menuItem, compact && styles.menuItemCompact, shadows.fab]}
+                pressScale={0.95}
+                onPress={() => onSelect(item.key)}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+              >
+                <Ionicons name={item.icon} size={compact ? 18 : 20} color={colors.onAccent} />
+                <Text style={[styles.menuItemText, compact && styles.menuItemTextCompact]}>
+                  {item.label}
+                </Text>
+              </PressableScale>
+            </Animated.View>
+          );
+        })}
+        <PressableScale
+          style={[fabCircle(colors, size), shadows.fab]}
+          pressScale={0.9}
+          onPress={onDismiss}
+          accessibilityLabel="Close"
+        >
+          <Ionicons name="close" size={fabGlyphSize(size)} color={colors.onAccent} />
+        </PressableScale>
+      </View>
+    </Modal>
+  );
+}
+
 interface FabMenuProps {
   /** Rendered bottom-up: the last item ends up closest to the button, so put the most-used one there. */
   items: FabMenuItem[];
@@ -308,14 +439,9 @@ export function FabMenu({
   drag, dragHint = 'Drag onto the list to add a task there, or back to the button to cancel',
   dragLabel,
 }: FabMenuProps) {
-  const colors = useColors();
-  const { shadows } = useTheme();
   const hand = useFabHand();
-  const styles = useMemo(() => makeStyles(colors, hand), [colors, hand]);
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
-
-  const circle = [styles.fab, { width: size, height: size, borderRadius: size / 2 }, shadows.fab];
 
   const open = () => {
     haptics.impactLight();
@@ -352,43 +478,20 @@ export function FabMenu({
         dragLabel={dragLabel}
       />
 
-      <Modal visible={menuVisible} transparent animationType="none" onRequestClose={() => close()}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => close()}>
-          <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: anim }]} />
-        </TouchableOpacity>
-        <View style={[styles.menuContainer, { bottom }]} pointerEvents="box-none">
-          {items.map((item, i) => {
-            const translateY = anim.interpolate({
-              inputRange: [0, 1],
-              outputRange: [16 + (items.length - i) * 4, 0],
-            });
-            return (
-              <Animated.View
-                key={item.key}
-                style={{
-                  opacity: anim,
-                  transform: [{ translateY }, { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] }) }],
-                  marginBottom: spacing.md,
-                }}
-              >
-                <PressableScale
-                  style={[styles.menuItem, shadows.fab]}
-                  pressScale={0.95}
-                  onPress={() => handleSelect(item.key)}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.label}
-                >
-                  <Ionicons name={item.icon} size={20} color={colors.onAccent} />
-                  <Text style={styles.menuItemText}>{item.label}</Text>
-                </PressableScale>
-              </Animated.View>
-            );
-          })}
-          <PressableScale style={circle} pressScale={0.9} onPress={() => close()} accessibilityLabel="Close">
-            <Ionicons name="close" size={size >= FAB_SIZE ? 28 : 24} color={colors.onAccent} />
-          </PressableScale>
-        </View>
-      </Modal>
+      <FabMenuOverlay
+        items={items}
+        visible={menuVisible}
+        anim={anim}
+        onSelect={handleSelect}
+        onDismiss={() => close()}
+        size={size}
+        anchor={{
+          bottom,
+          left: hand === 'left' ? spacing.lg : undefined,
+          right: hand === 'left' ? undefined : spacing.lg,
+          alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
+        }}
+      />
     </>
   );
 }
@@ -406,12 +509,6 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     right: hand === 'left' ? undefined : spacing.lg,
     zIndex: 20,
   },
-  fab: {
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.accent,
-  },
   fabDisabled: {
     backgroundColor: colors.bgQuaternary,
     shadowColor: 'transparent',
@@ -419,13 +516,11 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
   backdrop: {
     backgroundColor: colors.backdrop,
   },
+  // left/right/alignItems come from the caller's anchor — the pills are wider
+  // than the button and grow away from whichever corner it sits in, and the
+  // in-card button's corner is measured rather than known.
   menuContainer: {
     position: 'absolute',
-    left: hand === 'left' ? spacing.lg : undefined,
-    right: hand === 'left' ? undefined : spacing.lg,
-    // The pills are wider than the button and grow away from its corner, so this
-    // has to follow the hand or they hang off the opposite edge of the screen.
-    alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
   },
   menuItem: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
@@ -434,8 +529,15 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     backgroundColor: colors.accent,
     shadowColor: colors.accent,
   },
+  // Scaled to the 36pt button the way the 52pt pill is scaled to the 56pt one.
+  menuItemCompact: {
+    paddingHorizontal: spacing.md, height: 40,
+  },
   menuItemText: {
     color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold,
+  },
+  menuItemTextCompact: {
+    fontSize: font.sm,
   },
   dragRow: {
     // Reversed on the left so the drop label still trails *into* the screen
@@ -478,12 +580,5 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     // Tinted rather than filled: the button lands on top of this, and a solid
     // red disc under a solid red button reads as one shape twice the size.
     backgroundColor: colors.red + '26',
-  },
-  // Recolours the glow with the circle — shadowColor is the reason this is a
-  // style swap and not an animated overlay, since a red face over an accent
-  // halo reads as the wrong button lit from behind by the right one.
-  fabCancel: {
-    backgroundColor: colors.red,
-    shadowColor: colors.red,
   },
 });

@@ -75,6 +75,7 @@ const BASE: Task = {
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
 };
 
 function makeTask(overrides: Partial<Task>): Task {

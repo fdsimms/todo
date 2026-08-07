@@ -15,6 +15,22 @@ function parseTimeSegments(raw: unknown): TimeOfDay[] {
   return [s as TimeOfDay];
 }
 
+// Deliberately more forgiving than series_defaults' bare JSON.parse one row
+// below: a suggestion nobody has approved yet is recoverable (the reminder is
+// gone, but the title still says what the user asked for), whereas a throw in
+// here takes the whole task row — and every row after it — down with it. Drop
+// the chip, keep the task.
+function parsePendingImport(raw: unknown): Partial<Task> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw as string) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return parsed as Partial<Task>;
+  } catch {
+    return null;
+  }
+}
+
 const REAL_DB_NAME = 'todo.db';
 const DEMO_DB_NAME = 'demo.db';
 
@@ -288,6 +304,10 @@ export function initDatabase(): void {
     // from an earlier build still picks the index up.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_items_name_key ON grocery_items(name_key)',
     'CREATE INDEX IF NOT EXISTS idx_grocery_items_on_list ON grocery_items(on_list)',
+    // Nullable, and null is the value every existing row wants: a task nobody
+    // imported from Reminders has no suggestion pending. JSON, like
+    // series_defaults, because it holds a Partial<Task> rather than a scalar.
+    'ALTER TABLE tasks ADD COLUMN pending_import TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -580,6 +600,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     archivedAt: (row.archived_at as string) ?? null,
     linkUrl: (row.link_url as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
+    pendingImport: parsePendingImport(row.pending_import),
   };
 }
 
@@ -600,8 +621,8 @@ export function dbInsertTask(task: Task): void {
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
-      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -628,6 +649,7 @@ export function dbInsertTask(task: Task): void {
       task.blockedById ?? null,
       task.reminderKind,
       task.chainStepOnSchedule ? 1 : 0,
+      task.pendingImport ? JSON.stringify(task.pendingImport) : null,
     ]
   );
 }
@@ -644,7 +666,7 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
-      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?
+      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -672,6 +694,7 @@ export function dbUpdateTask(task: Task): void {
       task.blockedById ?? null,
       task.reminderKind,
       task.chainStepOnSchedule ? 1 : 0,
+      task.pendingImport ? JSON.stringify(task.pendingImport) : null,
       task.id,
     ]
   );

@@ -183,6 +183,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
   ...overrides,
 });
 
@@ -5246,5 +5247,207 @@ describe('blocking', () => {
     });
 
     expect(useTaskStore.getState().waitingTasks().map(t => t.id)).toEqual(['w2', 'w1', 'w3']);
+  });
+});
+
+describe('pending Apple Reminders imports', () => {
+  const SUGGESTION = {
+    recurrenceType: 'daily' as const,
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    title: 'go running',
+  };
+
+  it('leaves a task with a pending suggestion in the Inbox', () => {
+    // The regression that matters most. Every field the suggestion holds is one
+    // isInboxTask treats as "filed" — if any of them leaked onto the row, or if
+    // isInboxTask ever started reading pendingImport, an unreviewed voice
+    // capture would file itself onto Today and the whole feature would be
+    // pointless.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'imported',
+          title: 'go running every day after completion',
+          pendingImport: SUGGESTION,
+        }),
+      ],
+    });
+
+    expect(useTaskStore.getState().inboxTasks().map(t => t.id)).toEqual(['imported']);
+  });
+
+  it('applies the suggestion and clears it, which is what takes the task out of the Inbox', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'go running every day after completion',
+      pendingImport: SUGGESTION,
+    });
+
+    useTaskStore.getState().applyPendingImport(task.id);
+
+    const applied = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(applied.recurrenceType).toBe('daily');
+    expect(applied.recurrenceFromCompletion).toBe(true);
+    expect(applied.title).toBe('go running');
+    expect(applied.pendingImport).toBeNull();
+    expect(useTaskStore.getState().inboxTasks()).toEqual([]);
+  });
+
+  it('dismisses the suggestion, keeping the title exactly as it was dictated', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'go running every day after completion',
+      pendingImport: SUGGESTION,
+    });
+
+    useTaskStore.getState().dismissPendingImport(task.id);
+
+    const kept = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(kept.pendingImport).toBeNull();
+    // The stripped title was never written to the row, so there is nothing to
+    // put back — the task still says what the user said.
+    expect(kept.title).toBe('go running every day after completion');
+    expect(kept.recurrenceType).toBe('none');
+    expect(useTaskStore.getState().inboxTasks().map(t => t.id)).toEqual([task.id]);
+  });
+
+  it('schedules the notification when an applied suggestion carries a reminder', () => {
+    const at = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const task = useTaskStore.getState().addTask({
+      title: 'Pay rent',
+      pendingImport: { reminderTime: at },
+    });
+    (scheduleTaskReminder as jest.Mock).mockClear();
+
+    useTaskStore.getState().applyPendingImport(task.id);
+
+    // updateTask reschedules whenever reminderTime is among the updates; this
+    // is the path a suggestion's alarm actually arrives by.
+    expect(scheduleTaskReminder).toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.reminderTime).toBe(at);
+  });
+
+  it('does nothing for a task with no suggestion, or one that is gone', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Plain' });
+
+    useTaskStore.getState().applyPendingImport(task.id);
+    useTaskStore.getState().dismissPendingImport(task.id);
+    useTaskStore.getState().applyPendingImport('does-not-exist');
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.title).toBe('Plain');
+  });
+});
+
+// ─── placing a newly added task at a chosen seam ─────────────────────────────
+//
+// The in-card add button (MiniFab) can be dropped between two rows rather than
+// tapped. Both store adds append, so the editors place by adding and then
+// handing the whole intended order back — these cover that two-step, which is
+// the part that can silently put a row somewhere nobody asked for.
+
+describe('placing a new subtask at an index', () => {
+  const seed = () => useTaskStore.setState({
+    tasks: [
+      makeTask({ id: 'p' }),
+      makeTask({ id: 'a', parentId: 'p', sortOrder: 1 }),
+      makeTask({ id: 'b', parentId: 'p', sortOrder: 2 }),
+    ],
+  });
+
+  // What TaskEditor's commitSubtask does: snapshot, add, splice, renumber.
+  const addAt = (index: number) => {
+    const ids = useTaskStore.getState().subtasksOf('p').map(s => s.id);
+    const created = useTaskStore.getState().addSubtask('p', 'new');
+    ids.splice(index, 0, created.id);
+    useTaskStore.getState().reorderSubtasks('p', ids);
+    return created;
+  };
+
+  it('drops the new subtask into the middle of its siblings', () => {
+    seed();
+    const created = addAt(1);
+    expect(useTaskStore.getState().subtasksOf('p').map(s => s.id)).toEqual(['a', created.id, 'b']);
+  });
+
+  it('places at the very front', () => {
+    seed();
+    const created = addAt(0);
+    expect(useTaskStore.getState().subtasksOf('p').map(s => s.id)).toEqual([created.id, 'a', 'b']);
+  });
+
+  it('renumbers the whole run 1..n, leaving no gaps behind', () => {
+    seed();
+    addAt(1);
+    expect(useTaskStore.getState().subtasksOf('p').map(s => s.sortOrder)).toEqual([1, 2, 3]);
+  });
+
+  it('leaves another parent\'s subtasks alone', () => {
+    seed();
+    useTaskStore.setState({
+      tasks: [...useTaskStore.getState().tasks, makeTask({ id: 'q-sub', parentId: 'q', sortOrder: 7 })],
+    });
+    addAt(0);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'q-sub')!.sortOrder).toBe(7);
+  });
+});
+
+describe('placing a new stack member at an index', () => {
+  // A roster of two with a completion tombstone sitting between them — the
+  // shape that makes this more than a splice. The roster hides the tombstone,
+  // so the editor can only hand back roster order, and reorderGroupChildren
+  // has to fold that back into the full child list.
+  const seedWithTombstone = (tombstoneOrder: number) => {
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'g1' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'A', groupId: 'g1', sortOrder: tombstoneOrder === 1 ? 2 : 1 }),
+        makeTask({
+          id: 'T', groupId: 'g1', sortOrder: tombstoneOrder,
+          completed: true, completedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
+        }),
+        makeTask({ id: 'B', groupId: 'g1', sortOrder: 3 }),
+      ],
+    });
+  };
+
+  // What TaskGroupEditor's commitChild does.
+  const addAt = (index: number) => {
+    const ids = useTaskStore.getState().groupRosterOf('g1').map(m => m.id);
+    const created = useTaskStore.getState().addNewGroupedTask('g1', 'new');
+    ids.splice(index, 0, created.id);
+    useTaskStore.getState().reorderGroupChildren('g1', ids);
+    return created;
+  };
+
+  it('places the new member in roster order, tombstone in the middle', () => {
+    seedWithTombstone(2);
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['A', 'B']);
+    const created = addAt(1);
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id))
+      .toEqual(['A', created.id, 'B']);
+  });
+
+  it('leaves the tombstone in its own slot rather than renumbering over it', () => {
+    seedWithTombstone(2);
+    addAt(1);
+    // The tombstone keeps the position it held among ALL the children; only
+    // the roster's own ids were rearranged around it.
+    const all = useTaskStore.getState().groupChildrenOf('g1').map(t => t.id);
+    expect(all).toHaveLength(4);
+    expect(all[1]).toBe('T');
+  });
+
+  it('handles a tombstone sitting at the front', () => {
+    seedWithTombstone(1);
+    const created = addAt(1);
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id))
+      .toEqual(['A', created.id, 'B']);
+    expect(useTaskStore.getState().groupChildrenOf('g1')[0].id).toBe('T');
+  });
+
+  it('places at the front of the roster', () => {
+    seedWithTombstone(2);
+    const created = addAt(0);
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id))
+      .toEqual([created.id, 'A', 'B']);
   });
 });

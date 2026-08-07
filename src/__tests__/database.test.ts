@@ -164,6 +164,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
   ...overrides,
 });
 
@@ -447,6 +448,27 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     dbInsertTask(makeTask({ id: 'no-series-defaults' }));
     const [t] = dbGetAllTasks();
     expect(t.seriesDefaults).toBeNull();
+  });
+
+  it('round-trips pendingImport through both insert and update', () => {
+    const pending = {
+      recurrenceType: 'daily' as const,
+      recurrenceInterval: 1,
+      recurrenceFromCompletion: true,
+      title: 'go running',
+    };
+    dbInsertTask(makeTask({ id: 'with-pending', pendingImport: pending }));
+    expect(dbGetAllTasks()[0].pendingImport).toEqual(pending);
+
+    // Applying or dismissing a suggestion clears it through dbUpdateTask, so
+    // the update half has to carry the column too.
+    dbUpdateTask(makeTask({ id: 'with-pending', pendingImport: null }));
+    expect(dbGetAllTasks()[0].pendingImport).toBeNull();
+  });
+
+  it('returns null pendingImport when unset, as every pre-existing row is', () => {
+    dbInsertTask(makeTask({ id: 'no-pending' }));
+    expect(dbGetAllTasks()[0].pendingImport).toBeNull();
   });
 
   it('round-trips previousStreakCount and previousStreakDate', () => {

@@ -91,6 +91,7 @@ const BASE: Task = {
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
 };
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({ ...BASE, ...overrides });

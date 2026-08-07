@@ -274,9 +274,19 @@ export type FabHomeState =
   /** Brought back to the resting spot. A release here cancels. */
   | 'returned';
 
-/** The state a gesture translated by `dx`/`dy` is in, given whether it has ever left home. */
-export function fabHomeState(dx: number, dy: number, hasLeftHome: boolean): FabHomeState {
-  if (!isOverFabHome(dx, dy)) return 'outside';
+/**
+ * The state a gesture translated by `dx`/`dy` is in, given whether it has ever
+ * left home. `radius` follows the button being dragged — the in-card button is
+ * 36pt across, and CANCEL_RADIUS's 44 around it would swallow the two rows
+ * above it, leaving most of a short list undroppable.
+ */
+export function fabHomeState(
+  dx: number,
+  dy: number,
+  hasLeftHome: boolean,
+  radius: number = CANCEL_RADIUS,
+): FabHomeState {
+  if (!isOverFabHome(dx, dy, radius)) return 'outside';
   return hasLeftHome ? 'returned' : 'inside';
 }
 
@@ -339,4 +349,64 @@ export interface DragScroller {
   /** Largest scrollable offset — content height less viewport height, floored at 0. */
   getMaxOffset: () => number;
   scrollToOffset: (y: number) => void;
+}
+
+/* ── The in-card add button ──────────────────────────────────────────────────
+ *
+ * The same drag, one card wide: the subtasks card and the stack's task card
+ * each carry their own small button that drops a new row at a chosen seam.
+ *
+ * It deliberately does NOT go through zoneAtY/resolveFabDrop. Those exist to
+ * disambiguate five heterogeneous zone kinds (task, header, group, pinned,
+ * rest) across a window-space snapshot with a scroll offset folded into it, and
+ * they answer with an anchorKey/before pair because Today's quick-add sheet
+ * sits between the drop and the commit, by which time indices have moved. None
+ * of that is true here: the list is flat and homogeneous, it cannot scroll
+ * while the drag is in flight (the sheet stands down for it), it is measured in
+ * one local coordinate space, and the commit is synchronous. So the whole
+ * answer is an integer seam, and the functions below are correspondingly small.
+ */
+
+/** A row of a flat mini list, in its own container's coordinates. */
+export interface MiniRow {
+  top: number;
+  height: number;
+}
+
+/**
+ * Cancel radius for the in-card button, CANCEL_RADIUS scaled from the 56pt
+ * screen button to the 36pt one. See fabHomeState's `radius`.
+ */
+export const MINI_CANCEL_RADIUS = 28;
+
+/**
+ * The seam (0..rows.length) a drop at container-local `y` lands in.
+ *
+ * Total, unlike zoneAtY — every y has an answer, so there is no slop to tune
+ * and no "no target" case. That's not a shortcut: below the last row means the
+ * end of the list, which is exactly what tapping the button already does, so
+ * the two agree instead of one silently downgrading to the other.
+ *
+ * Zero-height rows are stepped over and never landed on, the same rule
+ * dropIndexFromTranslation follows — a collapsed row has no midpoint to cross,
+ * and a seam pointing at one would place the new row somewhere invisible.
+ */
+export function miniDropIndex(rows: MiniRow[], y: number): number {
+  let index = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r || !(r.height > 0)) continue;
+    if (y >= r.top + r.height / 2) index = i + 1;
+    else break;
+  }
+  return index;
+}
+
+/** Container-local Y to draw the insertion line at for a given seam. */
+export function miniDropIndicatorY(rows: MiniRow[], index: number): number {
+  if (rows.length === 0) return 0;
+  const i = Math.max(0, Math.min(rows.length, index));
+  if (i === 0) return rows[0].top;
+  const prev = rows[i - 1];
+  return prev.top + prev.height;
 }

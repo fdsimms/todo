@@ -146,7 +146,7 @@ export function TodayOptionsMenu({
             accessibilityLabel="Hide category headers"
           >
             <Ionicons
-              name="list-outline"
+              name="eye-off-outline"
               size={18}
               color={hideCategories ? colors.accent : colors.textSecondary}
             />
