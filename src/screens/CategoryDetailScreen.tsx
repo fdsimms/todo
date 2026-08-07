@@ -57,6 +57,9 @@ export function CategoryDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // True while a subtask inside the expanded row is mid-drag; the list has to
+  // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   const {
     selectionMode,
     selectedIds,
@@ -163,7 +166,7 @@ export function CategoryDetailScreen() {
         <PaintSelectionProvider {...paintProps}>
           <FlatList
             ref={keyboardScroll.ref}
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
             keyExtractor={t => t.id}
             {...keyboardScroll.props}
@@ -185,6 +188,7 @@ export function CategoryDetailScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
+                  onSubtaskDragStateChange={setDraggingSubtask}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}

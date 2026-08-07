@@ -62,6 +62,9 @@ export function ProjectDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // True while a subtask inside the expanded row is mid-drag; the list has to
+  // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -201,7 +204,7 @@ export function ProjectDetailScreen() {
         <PaintSelectionProvider {...paintProps}>
           <FlatList
             ref={keyboardScroll.ref}
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
             {...keyboardScroll.props}
@@ -223,6 +226,7 @@ export function ProjectDetailScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
+                  onSubtaskDragStateChange={setDraggingSubtask}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
@@ -281,6 +285,7 @@ export function ProjectDetailScreen() {
                           subtaskCount={subs.length}
                           subtaskDoneCount={subs.filter(t => t.completed).length}
                           subtasks={subs}
+                          onSubtaskDragStateChange={setDraggingSubtask}
                           spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
                           selectionMode={selectionMode}
                           selected={selectedIds.has(task.id)}

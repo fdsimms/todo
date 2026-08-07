@@ -101,6 +101,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
+  chainStepOnSchedule: false,
   vacationPause: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -489,8 +490,8 @@ describe('pinReason', () => {
   it('names the term that earned the task its place', () => {
     expect(pinReason(makeTask({ priority: 4 }), [], ctx)).toBe('Urgent priority');
     expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 15) }), [], ctx)).toBe('Due today');
-    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 14) }), [], ctx)).toBe('1 day overdue');
-    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 10) }), [], ctx)).toBe('5 days overdue');
+    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 14) }), [], ctx)).toBe('Waiting 1 day');
+    expect(pinReason(makeTask({ dueDate: storedDate(2026, 2, 10) }), [], ctx)).toBe('Waiting 5 days');
   });
 
   it('prefers the highest-scoring term when several apply', () => {

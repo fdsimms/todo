@@ -28,7 +28,7 @@ import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDueDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown } from '../utils/dateUtils';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
@@ -98,6 +98,16 @@ interface Props {
   justCreated?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
+  /**
+   * Fires true/false around a drag of the row's inline subtask list. The
+   * enclosing list has to switch its own `scrollEnabled` off for the duration:
+   * a native scroll view only stands down for a JS responder that is one of
+   * its *ancestors*, and `SortableList`'s lives below it, so without this the
+   * scroll claims the touch on the first finger move and the row is put
+   * straight back down. Must be stable across renders (a `useState` setter is
+   * ideal) or the memo below stops holding.
+   */
+  onSubtaskDragStateChange?: (dragging: boolean) => void;
   /** True where the list drops a row the moment it stops being visible — i.e. Today's own list, and only for rows it holds on visibility (a pinned row stays whether or not it's due). Logging a unit that puts a daily target back on pace does exactly that, so the row plays itself out before it goes instead of blinking away mid-tap. */
   hidesWhenOnPace?: boolean;
 }
@@ -172,6 +182,7 @@ export const TaskItem = React.memo(function TaskItem({
   justCreated = false,
   autoComplete = false,
   hidesWhenOnPace = false,
+  onSubtaskDragStateChange,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -186,7 +197,7 @@ export const TaskItem = React.memo(function TaskItem({
           .filter(t => t.seriesId === task.seriesId && t.id !== task.id && !t.completed && !t.archived && t.dueDate)
           .map(t => t.dueDate!)
           .sort()
-          .map(iso => formatDueDate(iso))
+          .map(iso => formatScheduledDate(iso))
           .join(', ')
       : ''
   );
@@ -1053,13 +1064,13 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.deadlineBadge}
                 accessibilityLabel={
                   deadlineDays < 0
-                    ? `Deadline was ${formatDueDate(task.deadline!)}`
-                    : `Deadline ${formatDueDate(task.deadline!)}`
+                    ? `Deadline was ${formatDeadlineDate(task.deadline!)}`
+                    : `Deadline ${formatDeadlineDate(task.deadline!)}`
                 }
               >
                 <Ionicons name="flag" size={9} color={deadlineColor} />
                 <Text style={[styles.deadlineBadgeText, { color: deadlineColor }]} numberOfLines={1}>
-                  {formatDueDate(task.deadline!)}
+                  {formatDeadlineDate(task.deadline!)}
                 </Text>
               </View>
             )}
@@ -1290,6 +1301,7 @@ export const TaskItem = React.memo(function TaskItem({
                 task.notes.length > 0 && styles.sectionDivider,
               ]}>
                 <SortableList
+                  onDragStateChange={onSubtaskDragStateChange}
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
                   renderItem={(sub, i, drag) => (

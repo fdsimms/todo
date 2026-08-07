@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Animated,
 } from 'react-native';
+import type { TimeOfDay } from '../types';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -24,8 +25,23 @@ import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
+import {
+  buildRhythmProfile,
+  findSegmentMismatches,
+  describeRhythm,
+  formatHour,
+  segmentOf,
+  type SegmentMismatch,
+} from '../utils/rhythms';
+import { rhythmOptionsFromSettings } from '../utils/rhythmsSettings';
+import { PressableScale } from '../components/PressableScale';
+import { animateLayout } from '../utils/layoutAnimation';
+import { haptics } from '../utils/haptics';
 
 const BAR_HEIGHT = 96;
+// Shallower than the 7-day chart: 24 bars is a wide, low shape, and a tall one
+// would push the headline under it off the first screen.
+const HOUR_BAR_HEIGHT = 64;
 const HABIT_DAYS = 30;
 
 // Sections cascade in on mount: each fades and rises with a small delay.
@@ -55,6 +71,10 @@ function StaggerIn({ index, children }: { index: number; children: React.ReactNo
       {children}
     </Animated.View>
   );
+}
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function expectedCount(recurrenceType: string, interval: number): number {
@@ -110,6 +130,69 @@ export function StatsScreen() {
   );
 
   const barMax = useMemo(() => Math.max(1, ...chartBars.map(b => b.count)), [chartBars]);
+
+  // When the user actually finishes things, and where that disagrees with the
+  // time of day their tasks claim. Both read the same completion history the
+  // sections above do — see utils/rhythms.
+  const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const morningStart = useSettingsStore(s => s.morningStart);
+  const afternoonStart = useSettingsStore(s => s.afternoonStart);
+  const eveningStart = useSettingsStore(s => s.eveningStart);
+  const nightStart = useSettingsStore(s => s.nightStart);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+
+  // Subscribed to individually above so the memo re-runs when a boundary
+  // moves; rhythmOptionsFromSettings reads the same values back off the store.
+  const rhythmOptions = useMemo(
+    () => rhythmOptionsFromSettings(),
+    [morningStart, afternoonStart, eveningStart, nightStart, dayResetTime],
+  );
+
+  const rhythm = useMemo(
+    () => buildRhythmProfile(tasks, rhythmOptions),
+    [tasks, rhythmOptions],
+  );
+
+  const rhythmMax = useMemo(() => Math.max(1, ...rhythm.byHour), [rhythm]);
+
+  const hourBars = useMemo(
+    () => rhythm.byHour.map((count, hour) => ({
+      hour,
+      count,
+      // A representative moment inside the hour, so each bar takes the colour
+      // of the segment it belongs to under the user's own boundaries.
+      segment: segmentOf(new Date(2026, 0, 1, hour, 30), rhythmOptions.boundaries),
+    })),
+    [rhythm, rhythmOptions],
+  );
+
+  const mismatches = useMemo(
+    () => findSegmentMismatches(tasks, rhythmOptions).slice(0, 5),
+    [tasks, rhythmOptions],
+  );
+
+  const rhythmHeadline = useMemo(
+    () => describeRhythm(rhythm, use24HourTime),
+    [rhythm, use24HourTime],
+  );
+
+  const updateTask = useTaskStore(s => s.updateTask);
+  const segmentColors: Record<TimeOfDay, string> = {
+    morning: colors.timeMorning,
+    afternoon: colors.timeAfternoon,
+    evening: colors.timeEvening,
+    night: colors.timeNight,
+  };
+
+  // Re-files every live row still carrying the label that isn't sticking.
+  // Default scope, so the change follows the task forward: timeSegments is a
+  // CONTENT_FIELD, so a series fans it out to its later dates and a recurring
+  // task carries it onto the next occurrence it spawns.
+  const applyMismatch = (m: SegmentMismatch) => {
+    haptics.success();
+    animateLayout();
+    m.taskIds.forEach(id => updateTask(id, { timeSegments: [m.observed] }));
+  };
 
   // Bars grow up from the baseline once on mount (height isn't supported by
   // the native driver, so this one runs on the JS thread).
@@ -236,9 +319,87 @@ export function StatsScreen() {
           </View>
           </StaggerIn>
 
+          {/* When completions actually land, by clock hour */}
+          {rhythm.sampleCount > 0 && (
+            <StaggerIn index={2}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>WHEN YOU GET THINGS DONE</Text>
+              <View style={styles.card}>
+                <View style={styles.hourChartInner}>
+                  {hourBars.map(({ hour, count, segment }) => (
+                    <View key={hour} style={styles.hourCol}>
+                      <View style={styles.hourTrack}>
+                        <Animated.View
+                          style={[
+                            styles.hourBar,
+                            {
+                              height: chartProgress.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0%', `${Math.max(2, Math.round((count / rhythmMax) * 100))}%`],
+                              }),
+                              backgroundColor: count > 0 ? segmentColors[segment] : colors.bgQuaternary,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.hourLabelRow}>
+                  {hourBars.map(({ hour }) => (
+                    <View key={hour} style={styles.hourCol}>
+                      {hour % 6 === 0 && (
+                        <Text style={styles.hourLabel} numberOfLines={1}>
+                          {formatHour(hour, use24HourTime)}
+                        </Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+                {rhythmHeadline && (
+                  <View style={[styles.row, styles.rowTopBorder]}>
+                    <Text style={styles.rowText}>{rhythmHeadline}</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/* Declared time of day vs. the one the history shows */}
+          {mismatches.length > 0 && (
+            <StaggerIn index={3}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>MARKED ONE TIME, DONE ANOTHER</Text>
+              <View style={styles.card}>
+                {mismatches.map((m, i) => (
+                  <View key={m.key} style={[styles.row, i < mismatches.length - 1 && styles.rowBorder]}>
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.instanceTitle} numberOfLines={1}>{m.title}</Text>
+                      <Text style={styles.instanceMeta}>{m.reason}</Text>
+                    </View>
+                    <PressableScale
+                      style={[styles.segmentFix, { backgroundColor: segmentColors[m.observed] + '33' }]}
+                      onPress={() => applyMismatch(m)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Move ${m.title} to ${m.observed}`}
+                      accessibilityHint={`Currently marked ${m.declared}`}
+                    >
+                      <Ionicons name="arrow-forward" size={12} color={segmentColors[m.observed]} />
+                      <Text style={[styles.segmentFixText, { color: segmentColors[m.observed] }]}>
+                        {capitalize(m.observed)}
+                      </Text>
+                    </PressableScale>
+                  </View>
+                ))}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
           {/* Time tracked */}
           {timeTracked.trackedCount > 0 && (
-            <StaggerIn index={2}>
+            <StaggerIn index={4}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>TIME TRACKED</Text>
               <View style={styles.card}>
@@ -267,7 +428,7 @@ export function StatsScreen() {
 
           {/* On-time completion, for tasks that had a deadline */}
           {onTime.total > 0 && (
-            <StaggerIn index={3}>
+            <StaggerIn index={5}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>ON TIME</Text>
               <View style={styles.card}>
@@ -286,7 +447,7 @@ export function StatsScreen() {
 
           {/* Streak leaderboard */}
           {streaks.length > 0 && (
-            <StaggerIn index={4}>
+            <StaggerIn index={6}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>STREAK LEADERBOARD</Text>
               <View style={styles.card}>
@@ -307,7 +468,7 @@ export function StatsScreen() {
 
           {/* Habit completion rates */}
           {habits.length > 0 && (
-            <StaggerIn index={5}>
+            <StaggerIn index={7}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>HABIT COMPLETION (LAST 30 DAYS)</Text>
               <View style={styles.card}>
@@ -340,7 +501,7 @@ export function StatsScreen() {
 
           {/* Repeated non-recurring tasks — "instances" of the same task */}
           {repeated.length > 0 && (
-            <StaggerIn index={6}>
+            <StaggerIn index={8}>
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>REPEATED TASKS</Text>
               <View style={styles.card}>
@@ -439,6 +600,38 @@ const makeStyles = (colors: Colors) =>
       fontWeight: '500',
       textAlign: 'center',
     },
+    // 24 columns rather than 7, so the bars are thin and the labels can't sit
+    // under every one — every sixth hour is marked instead.
+    hourChartInner: {
+      flexDirection: 'row',
+      paddingHorizontal: spacing.sm,
+      paddingTop: spacing.md,
+    },
+    hourCol: {
+      flex: 1,
+      alignItems: 'center',
+    },
+    hourTrack: {
+      width: '100%',
+      height: HOUR_BAR_HEIGHT,
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+    },
+    hourBar: {
+      width: '62%',
+      borderRadius: 2,
+    },
+    hourLabelRow: {
+      flexDirection: 'row',
+      paddingHorizontal: spacing.sm,
+      paddingTop: 4,
+      paddingBottom: spacing.sm,
+    },
+    hourLabel: {
+      color: colors.textTertiary,
+      fontSize: 10,
+      fontWeight: '500',
+    },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -449,6 +642,25 @@ const makeStyles = (colors: Colors) =>
     rowBorder: {
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.separator,
+    },
+    rowTopBorder: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.separator,
+    },
+    // Tinted like a tag chip (colour + '33'), which is the app's established
+    // way of tinting a pill to a data-driven colour rather than the accent.
+    segmentFix: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 5,
+      borderRadius: radius.full,
+      flexShrink: 0,
+    },
+    segmentFixText: {
+      fontSize: font.sm,
+      fontWeight: '600',
     },
     rank: {
       width: 28,

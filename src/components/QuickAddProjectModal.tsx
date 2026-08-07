@@ -23,7 +23,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { TITLE_MAX_LENGTH, type Project } from '../types';
 
@@ -337,12 +337,12 @@ export function QuickAddProjectModal({
               onPress={() => setEndPickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={targetEndDate ? `Target date: ${formatDueDate(targetEndDate.toISOString())}` : 'Set target date'}
+              accessibilityLabel={targetEndDate ? `Target date: ${formatDeadlineDate(targetEndDate.toISOString())}` : 'Set target date'}
             >
               <Ionicons name="flag-outline" size={13} color={targetEndDate ? colors.accent : colors.textTertiary} />
               {targetEndDate != null && (
                 <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {formatDueDate(targetEndDate.toISOString())}
+                  {formatDeadlineDate(targetEndDate.toISOString())}
                 </Text>
               )}
             </TouchableOpacity>

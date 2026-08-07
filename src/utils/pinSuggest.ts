@@ -352,7 +352,7 @@ export function pinReason(task: Task, listed: Task[], ctx: PinContext): string |
   if (late != null && late >= 0) {
     candidates.push({
       score: dueScore(task, ctx),
-      label: late === 0 ? 'Due today' : `${late} day${late === 1 ? '' : 's'} overdue`,
+      label: late === 0 ? 'Due today' : `Waiting ${late} day${late === 1 ? '' : 's'}`,
     });
   }
 

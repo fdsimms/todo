@@ -30,20 +30,20 @@ describe('agendaCounts', () => {
     expect(agendaCounts(tasks, DAY, '00:00').due).toBe(2);
   });
 
-  it('counts anything dated before the target day as overdue', () => {
+  it('counts anything dated before the target day as carried over', () => {
     const tasks = [
       makeTask({ id: 'a', dueDate: iso(2026, 7, 5) }),
       makeTask({ id: 'b', dueDate: iso(2026, 6, 30) }),
       makeTask({ id: 'c', dueDate: iso(2026, 7, 6) }),
     ];
     const counts = agendaCounts(tasks, DAY, '00:00');
-    expect(counts.overdue).toBe(2);
+    expect(counts.carriedOver).toBe(2);
     expect(counts.due).toBe(1);
   });
 
   it('does not count a task dated after the target day at all', () => {
     const counts = agendaCounts([makeTask({ dueDate: iso(2026, 7, 20) })], DAY, '00:00');
-    expect(counts).toEqual({ due: 0, overdue: 0, deadlines: 0 });
+    expect(counts).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
   });
 
   it('counts deadlines falling on the target day', () => {
@@ -56,7 +56,7 @@ describe('agendaCounts', () => {
 
   it('counts a task in both due and deadlines when it is both', () => {
     const task = makeTask({ dueDate: iso(2026, 7, 6), deadline: iso(2026, 7, 6) });
-    expect(agendaCounts([task], DAY, '00:00')).toEqual({ due: 1, overdue: 0, deadlines: 1 });
+    expect(agendaCounts([task], DAY, '00:00')).toEqual({ due: 1, carriedOver: 0, deadlines: 1 });
   });
 
   it('ignores completed, archived and subtask rows', () => {
@@ -65,15 +65,15 @@ describe('agendaCounts', () => {
       makeTask({ id: 'b', dueDate: iso(2026, 7, 6), archived: true }),
       makeTask({ id: 'c', dueDate: iso(2026, 7, 6), parentId: 'a' }),
     ];
-    expect(agendaCounts(tasks, DAY, '00:00')).toEqual({ due: 0, overdue: 0, deadlines: 0 });
+    expect(agendaCounts(tasks, DAY, '00:00')).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
   });
 
   it('ignores an undated task entirely', () => {
-    expect(agendaCounts([makeTask({})], DAY, '00:00')).toEqual({ due: 0, overdue: 0, deadlines: 0 });
+    expect(agendaCounts([makeTask({})], DAY, '00:00')).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
   });
 
   it('is empty for no tasks', () => {
-    expect(agendaCounts([], DAY, '00:00')).toEqual({ due: 0, overdue: 0, deadlines: 0 });
+    expect(agendaCounts([], DAY, '00:00')).toEqual({ due: 0, carriedOver: 0, deadlines: 0 });
   });
 
   // dayResetTime moves which calendar day a timestamp belongs to, and the
@@ -88,23 +88,23 @@ describe('agendaCounts', () => {
 
 describe('agendaBody', () => {
   it('lists each non-zero count', () => {
-    expect(agendaBody({ due: 4, overdue: 2, deadlines: 1 })).toBe('4 due · 2 overdue · 1 deadline');
+    expect(agendaBody({ due: 4, carriedOver: 2, deadlines: 1 })).toBe('4 due · 2 carried over · 1 deadline');
   });
 
   it('leaves out the zeroes', () => {
-    expect(agendaBody({ due: 3, overdue: 0, deadlines: 0 })).toBe('3 due');
-    expect(agendaBody({ due: 0, overdue: 2, deadlines: 0 })).toBe('2 overdue');
+    expect(agendaBody({ due: 3, carriedOver: 0, deadlines: 0 })).toBe('3 due');
+    expect(agendaBody({ due: 0, carriedOver: 2, deadlines: 0 })).toBe('2 carried over');
   });
 
   it('pluralises deadlines only', () => {
-    expect(agendaBody({ due: 1, overdue: 1, deadlines: 1 })).toBe('1 due · 1 overdue · 1 deadline');
-    expect(agendaBody({ due: 0, overdue: 0, deadlines: 2 })).toBe('2 deadlines');
+    expect(agendaBody({ due: 1, carriedOver: 1, deadlines: 1 })).toBe('1 due · 1 carried over · 1 deadline');
+    expect(agendaBody({ due: 0, carriedOver: 0, deadlines: 2 })).toBe('2 deadlines');
   });
 
   // The whole design of the feature: a daily notification that fires on empty
   // days is the one people turn off.
   it('returns null when there is nothing on the day', () => {
-    expect(agendaBody({ due: 0, overdue: 0, deadlines: 0 })).toBeNull();
+    expect(agendaBody({ due: 0, carriedOver: 0, deadlines: 0 })).toBeNull();
   });
 });
 

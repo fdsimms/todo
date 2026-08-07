@@ -155,6 +155,7 @@ function newTaskFromDraft(
     chainEnabled: draft.chainEnabled ?? false,
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
+    chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
     vacationPause: draft.vacationPause ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
@@ -1138,10 +1139,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // of a plain recurring task with no chain at all — never on a mid-chain
     // step, which always advances immediately.
     const advancesBySchedule = !chainAdvances || atChainEnd;
+    // Per-step scheduling ("Next step: on the next repeat") makes every step
+    // wait for the recurrence instead of spawning immediately, so the chain
+    // rotates one step per occurrence. It needs a schedule to wait for, hence
+    // the `recurs` guard — the flag is inert on a chain with no Repeat set.
+    const stepsBySchedule = chainAdvances && recurs && task.chainStepOnSchedule;
+    // Deliberately two flags, not one. `advancesBySchedule` is the recurrence's
+    // *bookkeeping* — recurrenceCount, recurrenceEndDate — and stays once per
+    // full cycle in both modes, because "repeat 10 times" means ten times
+    // through the chain rather than ten steps. `datesBySchedule` is the
+    // narrower question of whether the row we spawn gets a scheduled date,
+    // which per-step mode answers yes to on every step. Collapsing them would
+    // let a mid-chain step burn a cycle of the count and let the end date
+    // strand a chain half-finished.
+    const datesBySchedule = advancesBySchedule || stepsBySchedule;
 
     // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
     let newStreakCount = 1;
-    if (recurs && advancesBySchedule && task.streakDate) {
+    if (recurs && datesBySchedule && task.streakDate) {
       const outcome = getStreakOutcome(task, dayResetTime);
       if (outcome === 'same-day') {
         newStreakCount = task.streakCount;
@@ -1151,7 +1166,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // else 'reset': missed too many cadence units → reset to 1 (already set above)
     }
 
-    const streakAdvances = recurs && advancesBySchedule;
+    // Per step, not per cycle, when the steps are scheduled — and that isn't a
+    // preference. getStreakOutcome measures the gap against the recurrence's
+    // own cadence, so a 5-step daily rotation advancing its streak once per
+    // cycle would show a 5-day gap against an expected 1 and read as 'reset'
+    // every single time round: a streak that can never exceed 1.
+    const streakAdvances = recurs && datesBySchedule;
     const completed: Task = {
       ...task,
       completed: true,
@@ -1181,7 +1201,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The recurrence's schedule only decides the date at the point it
       // actually applies (see advancesBySchedule above) — everywhere else
       // there's no date to compute.
-      const nextDue = recurs && advancesBySchedule ? getNextDueDate(task, dayResetTime) : null;
+      const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime) : null;
       // Skip the spawn only when we actually consulted the schedule and it
       // says the series has ended — a mid-chain step never consults it, so
       // it always spawns regardless of recurrenceEndDate/recurrenceCount.
@@ -1211,6 +1231,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           chainAdvances && !advancesBySchedule && !hasNoDateSignal(task)
             ? (() => { const d = getCurrentDayStart(); d.setHours(12, 0, 0, 0); return d; })()
             : null;
+        // Under per-step scheduling nextDue is set on every step, so it wins
+        // and midChainDue never applies. The one case it still catches there
+        // is a rotation whose recurrenceEndDate has passed: getNextDueDate
+        // returns null, and the remaining steps land on today rather than
+        // losing their date and dropping out of view. Ending the *repeat* is
+        // not a request to abandon the run that's already in progress — the
+        // spawn-skip below is likewise gated on advancesBySchedule, so a
+        // rotation can only stop at the wrap, never half-finished.
         const effectiveDue = nextDue ?? midChainDue;
         let nextReminderTime: string | null = effective.reminderTime;
         if (effectiveDue && effective.reminderTime) {
@@ -1710,13 +1738,39 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // consults the recurrence schedule, so skipping one should only move the
     // chain position — pushing dueDate/recurrenceCount here would burn a full
     // cycle of the recurrence on a step that isn't scheduled at all.
+    const { dayResetTime } = useSettingsStore.getState();
     const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
     const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
     if (chainAdvances && !atChainEnd) {
-      get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+      // With per-step scheduling the step being skipped occupies a day of its
+      // own, so moving the position isn't enough — the date has to move with
+      // it or the next step stays parked on the day the skipped one had.
+      // recurrenceCount is left alone in both modes: skipping a step isn't
+      // skipping a cycle (same reasoning as completeTask's two flags).
+      if (!task.chainStepOnSchedule) {
+        get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+        return;
+      }
+      const stepDue = getNextDueDate(task, dayResetTime);
+      if (!stepDue) {
+        get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+        return;
+      }
+      let stepReminderTime: string | null = task.reminderTime;
+      if (task.reminderTime) {
+        const original = new Date(task.reminderTime);
+        const next = new Date(stepDue);
+        next.setHours(original.getHours(), original.getMinutes(), 0, 0);
+        stepReminderTime = next.toISOString();
+      }
+      get().updateTask(id, {
+        chainIndex: task.chainIndex + 1,
+        dueDate: stepDue.toISOString(),
+        deferUntil: null,
+        reminderTime: stepReminderTime,
+      });
       return;
     }
-    const { dayResetTime } = useSettingsStore.getState();
     const nextDue = getNextDueDate(task, dayResetTime);
     if (!nextDue) return;
     let nextReminderTime: string | null = task.reminderTime;
@@ -1959,6 +2013,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
+      chainStepOnSchedule: false,
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,
@@ -2082,6 +2137,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
+      chainStepOnSchedule: false,
       vacationPause: false,
       timerStartedAt: null,
       actualMinutes: null,

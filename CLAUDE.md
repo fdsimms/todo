@@ -227,9 +227,25 @@ And one about config plugins generally, learned here: **leaving a package out of
 `plugins` does not stop its config plugin running.** Expo autolinks the plugin of any dependency
 shipping an `app.plugin.js`, so `expo-calendar`'s ran unasked and wrote two `NSCalendars*` usage
 strings this app has no business declaring, plus Android `READ_CALENDAR`/`WRITE_CALENDAR`. The
-way to *narrow* a plugin is to list it with options — `calendarPermission: false` deletes the
-key, since `createPermissionsPlugin` treats `false` as a removal — and the Android half needs
+way to *narrow* a plugin is to list it with options, and the Android half needs
 `android.blockedPermissions`, which the plugin adds unconditionally regardless of its options.
+
+**But `calendarPermission` must stay a real string, and this is the one that bricked the app.**
+`createPermissionsPlugin` treats `false` as a removal, so setting it deleted
+`NSCalendarsUsageDescription`/`NSCalendarsFullAccessUsageDescription` — which reads as exactly
+right, since nothing here ever touches a calendar. It isn't. `CalendarModule`'s `OnCreate`
+registers a `CalendarPermissionsRequester` and initialises a static `EKEventStore` **whether or
+not the app ever calls a calendar API**, and touching EventKit's calendar entity with no usage
+description raises an `NSException` inside module registration.
+
+What that costs is the whole app, not the feature. Expo registers modules in one pass in
+autolinking order, so the throw took out `expo-calendar` *and every module alphabetically after
+it* — font, constants, sqlite, notifications, all of them. Fifteen of twenty modules never
+registered. The app then died on the first `requireNativeModule` the bundle happened to reach,
+which was `ExpoFontLoader` (via `@expo/vector-icons`, which imports `expo-font` on line 1), and
+the black screen that produced is why `index.js` prints the registered-module list on failure —
+**that list is the diagnostic**: a short one means registration aborted, and the first missing
+package alphabetically is the culprit, not the module named in the error.
 
 The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
 user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
@@ -371,7 +387,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 `src/components/SortableList.tsx` — the nested list (a stack's children on Today, subtasks, chain steps) — is now **the same design and shares the same math**: rows render in their original order and are displaced by an `Animated` `translateY`, the dragged row becomes an invisible placeholder carrying the drop slot, and a finger-anchored card floats above. Same rule: styling, durations and haptics are safe; render order, the animation driver and the responder lifecycle are not. It used to re-render the rows in swapped order on every hover change instead, which is what made a drag inside a stack snap rather than animate. Two things are deliberately not copied over, because it doesn't own a scroll view: there is no autoscroll and no `measureLayout` calibration (its rows are direct children, so `onLayout`'s `y` *is* the card's anchor), and the card is clamped to the first/last row's slot **unless** the caller passes `onDragOut` — every other caller sits inside a rounded `overflow: hidden` card that would slice the card at the edge. The one caller that does pass it (Today) instead unclips its container for the duration, via `TaskGroupBody`'s `dragging` → `AnimatedCollapsible`'s `clip`.
 
-**A `SortableList` rendered inside a scrollable must turn that scrollable off for the duration of a drag** — pass `onDragStateChange` and wire it to the container's `scrollEnabled` (see `TaskGroupEditor`, or `draggingStackChild` in `TodayScreen`). Without it the drag doesn't happen at all: a native scroll view only stands down for a JS responder that is one of its **ancestors** (`_shouldDisableScrollInteraction` walks `superview`, not the subtree), and `SortableList`'s responder is a descendant — so the scroll claims the touch on the first finger move and the row is put straight back down. `ReorderableList` is immune because it owns the scroll view it drags inside of and sets `scrollEnabled` itself. Still unwired: the inline subtask list in `TaskItem`, which would need the flag plumbed up to each screen that renders it.
+**A `SortableList` rendered inside a scrollable must turn that scrollable off for the duration of a drag** — pass `onDragStateChange` and wire it to the container's `scrollEnabled` (see `TaskGroupEditor`, or `draggingStackChild` in `TodayScreen`). Without it the drag doesn't happen at all: a native scroll view only stands down for a JS responder that is one of its **ancestors** (`_shouldDisableScrollInteraction` walks `superview`, not the subtree), and `SortableList`'s responder is a descendant — so the scroll claims the touch on the first finger move and the row is put straight back down. `ReorderableList` is immune because it owns the scroll view it drags inside of and sets `scrollEnabled` itself. The inline subtask list in `TaskItem` can't reach its own container, so it re-exposes the flag as the `onSubtaskDragStateChange` prop — **every screen rendering a `TaskItem` has to pass it** (a `useState` setter, so the row's memo still holds) and add it to its list's `scrollEnabled`, or subtask drag is silently dead on that screen.
 
 Both lists fire the drag-lift haptic themselves (`startDrag`), so callers must not add their own.
 

@@ -258,6 +258,12 @@ export function initDatabase(): void {
     // shares the tasks column's tolerance for the legacy plain-string format.
     'ALTER TABLE categories ADD COLUMN default_time_segments TEXT',
     'ALTER TABLE tasks ADD COLUMN reminder_kind TEXT',
+    // Named chain_* rather than cycle_* like its three siblings: those keep the
+    // pre-rename name only because renaming them needs a data migration for
+    // existing installs (see rowToTask). A new column has no such cost, so it
+    // gets the name the feature actually has. Defaults to 0 = "right away",
+    // which is how every chain has always behaved.
+    'ALTER TABLE tasks ADD COLUMN chain_step_on_schedule INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -531,6 +537,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     chainEnabled: Boolean(row.cycle_enabled),
     chainIndex: (row.cycle_index as number) ?? 0,
     chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
+    chainStepOnSchedule: Boolean(row.chain_step_on_schedule),
     vacationPause: Boolean(row.vacation_pause),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
@@ -568,8 +575,8 @@ export function dbInsertTask(task: Task): void {
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
-      show_streak, blocked_by_id, reminder_kind
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -595,6 +602,7 @@ export function dbInsertTask(task: Task): void {
       task.showStreak ? 1 : 0,
       task.blockedById ?? null,
       task.reminderKind,
+      task.chainStepOnSchedule ? 1 : 0,
     ]
   );
 }
@@ -611,7 +619,7 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
-      show_streak=?, blocked_by_id=?, reminder_kind=?
+      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -638,6 +646,7 @@ export function dbUpdateTask(task: Task): void {
       task.showStreak ? 1 : 0,
       task.blockedById ?? null,
       task.reminderKind,
+      task.chainStepOnSchedule ? 1 : 0,
       task.id,
     ]
   );

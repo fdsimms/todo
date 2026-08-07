@@ -61,6 +61,9 @@ export function TagsScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // True while a subtask inside the expanded row is mid-drag; the list has to
+  // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const allTasks = useTaskStore(s => s.tasks);
   const {
@@ -250,7 +253,7 @@ export function TagsScreen() {
             <PaintSelectionProvider {...paintProps}>
               <FlatList
                 ref={keyboardScroll.ref}
-                scrollEnabled={!painting}
+                scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 {...keyboardScroll.props}
@@ -273,6 +276,7 @@ export function TagsScreen() {
                       subtaskCount={subs.length}
                       subtaskDoneCount={subs.filter(t => t.completed).length}
                       subtasks={subs}
+                      onSubtaskDragStateChange={setDraggingSubtask}
                       selectionMode={selectionMode}
                       selected={selectedIds.has(item.id)}
                       onSelect={() => toggleSelection(item.id)}

@@ -1388,6 +1388,9 @@ export function TodayScreen() {
   // be told to stop scrolling for the drag to survive the first finger move
   // (see SortableList's onDragStateChange).
   const [draggingStackChild, setDraggingStackChild] = useState(false);
+  // Same deal one level down: a drag of the inline subtask list inside an
+  // expanded row (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   // The group whose long-press is currently calling drag(), handed to
   // onDragBegin so the state above is only ever set once the list has
   // actually taken the drag.
@@ -1500,6 +1503,7 @@ export function TodayScreen() {
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
+        onSubtaskDragStateChange={setDraggingSubtask}
         // The one prop here that isn't stable, and knowingly so: ReorderableList
         // builds a fresh `drag` per row on every render (it closes over the row
         // key to call startDrag), so a reorderable row re-renders with its list
@@ -1702,6 +1706,7 @@ export function TodayScreen() {
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
+        onSubtaskDragStateChange={setDraggingSubtask}
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
@@ -1761,6 +1766,7 @@ export function TodayScreen() {
         subtaskCount={subs.items.length}
         subtaskDoneCount={subs.doneCount}
         subtasks={subs.items}
+        onSubtaskDragStateChange={setDraggingSubtask}
         selectionMode={selectionMode}
         selected={selectedIds.has(task.id)}
         onSelect={toggleSelection}
@@ -2083,7 +2089,7 @@ export function TodayScreen() {
         >
         {viewMode === 'later' && (
           <ReorderableList
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={laterDraggableData}
             keyExtractor={item => item.key}
             renderItem={({ item, drag, isActive }) => {
@@ -2106,6 +2112,7 @@ export function TodayScreen() {
                   subtaskCount={subs.items.length}
                   subtaskDoneCount={subs.doneCount}
                   subtasks={subs.items}
+                  onSubtaskDragStateChange={setDraggingSubtask}
                   drag={selectionMode || !drag ? undefined : drag}
                   isActive={isActive}
                   selectionMode={selectionMode}
@@ -2171,7 +2178,7 @@ export function TodayScreen() {
         {viewMode === 'today' && pinnedViewActive && (
           <FlatList
             ref={pinnedScroll.ref}
-            scrollEnabled={!painting && !fabDragging && !draggingStackChild}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChild && !draggingSubtask}
             data={data}
             keyExtractor={listItemKey}
             keyboardShouldPersistTaps="handled"
@@ -2201,7 +2208,7 @@ export function TodayScreen() {
             // The user can't scroll during an add-button drag (the button's
             // responder has the touch); the drag scrolls it instead, through
             // this control.
-            scrollEnabled={!painting && !fabDragging && !draggingStackChild}
+            scrollEnabled={!painting && !fabDragging && !draggingStackChild && !draggingSubtask}
             scrollControlRef={todayScrollControl}
             data={draggableData}
             keyExtractor={listItemKey}
@@ -2403,7 +2410,7 @@ export function TodayScreen() {
         {viewMode === 'unscheduled' && (
           <FlatList
             ref={unscheduledScroll.ref}
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={unscheduledTasks}
             keyExtractor={t => t.id}
             {...unscheduledScroll.props}
@@ -2419,6 +2426,7 @@ export function TodayScreen() {
                   subtaskCount={subs.items.length}
                   subtaskDoneCount={subs.doneCount}
                   subtasks={subs.items}
+                  onSubtaskDragStateChange={setDraggingSubtask}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
                   onSelect={toggleSelection}
@@ -2471,7 +2479,7 @@ export function TodayScreen() {
         {viewMode === 'inbox' && (
           <FlatList
             ref={inboxScroll.ref}
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
             keyExtractor={listItemKey}
             {...inboxScroll.props}

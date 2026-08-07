@@ -274,6 +274,18 @@ export interface Task {
   chainEnabled: boolean;
   chainIndex: number;        // index of the currently active ChainItem
   chainItems: ChainItem[];
+  // When the next step arrives. false (default) = right away, the moment the
+  // current one is completed — the chain is a sequence you work through in one
+  // sitting. true = on the recurrence's next occurrence, so the steps rotate
+  // one per scheduled day rather than running back to back.
+  //
+  // Only meaningful alongside a repeat: with recurrenceType 'none' there is no
+  // schedule to wait for, so completeTask ignores it and the editor disables
+  // the control. Note the recurrence's own bookkeeping — recurrenceCount and
+  // recurrenceEndDate — still advances once per full cycle in either mode
+  // (see advancesBySchedule in completeTask), because "repeat 10 times" means
+  // ten times through the chain, not ten steps.
+  chainStepOnSchedule: boolean;
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 

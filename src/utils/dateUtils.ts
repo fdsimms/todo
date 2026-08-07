@@ -14,7 +14,7 @@ import { differenceInCalendarYears } from 'date-fns/differenceInCalendarYears';
 import { setDate } from 'date-fns/setDate';
 import { lastDayOfMonth } from 'date-fns/lastDayOfMonth';
 import type { Task } from '../types';
-import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken } from './clockTime';
+import { hhmmToDate, formatHHMM as formatClockTime, clockTimeToken, logicalDayStart } from './clockTime';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 
 /**
@@ -22,18 +22,10 @@ import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
  * If dayResetTime is "02:00" and it's 1:30 AM, we're still in the previous logical day.
  */
 export function getDayStart(date: Date = new Date(), dayResetTime?: string): Date {
-  const rt = dayResetTime ?? useSettingsStore.getState().dayResetTime;
-  const [h, m] = rt.split(':').map(Number);
-
-  const resetOnDate = new Date(date);
-  resetOnDate.setHours(h, m, 0, 0);
-
-  // Before the reset hour → still belongs to the previous logical day
-  if (date < resetOnDate) {
-    resetOnDate.setDate(resetOnDate.getDate() - 1);
-  }
-
-  return resetOnDate;
+  // The math itself lives in the store-free clockTime module, so the modules
+  // that can't reach the store share this one rather than forking it; all this
+  // wrapper adds is the setting.
+  return logicalDayStart(date, dayResetTime ?? useSettingsStore.getState().dayResetTime);
 }
 
 export function getCurrentDayStart(): Date {
@@ -136,8 +128,8 @@ export function isBeforeDayReset(dayResetTime?: string): boolean {
  * task pushed to a later day keeps its dueDate and gains a later deferUntil
  * (see deferTask/deferGroup — deferring deliberately leaves dueDate alone so a
  * recurring task's schedule grid doesn't rotate). It surfaces on the deferred
- * day, so showing the dueDate would label a move the user *chose* as "2d
- * overdue". Falls back to whichever of the two is set.
+ * day, so showing the dueDate would date a move the user *chose* to two days
+ * ago. Falls back to whichever of the two is set.
  */
 export function getEffectiveTaskDate(
   task: Pick<Task, 'dueDate' | 'deferUntil'>,
@@ -151,16 +143,51 @@ export function getEffectiveTaskDate(
   return task.deferUntil ?? task.dueDate;
 }
 
-/** formatDueDate applied to getEffectiveTaskDate — the label for a task's own date. */
+/** formatScheduledDate applied to getEffectiveTaskDate — the label for a task's own date. */
 export function formatTaskDate(
   task: Pick<Task, 'dueDate' | 'deferUntil'>,
   dayResetTime?: string,
 ): string | null {
   const iso = getEffectiveTaskDate(task, dayResetTime);
-  return iso ? formatDueDate(iso, dayResetTime) : null;
+  return iso ? formatScheduledDate(iso, dayResetTime) : null;
 }
 
-export function formatDueDate(iso: string, dayResetTime?: string): string {
+/**
+ * A date that decides *when a task shows up* — `dueDate`/`deferUntil`, and the
+ * other dates of a series. Nothing here can be missed: the day arrives, the
+ * task becomes available, and it stays available until it's done. So a past
+ * one reads as elapsed ("2d ago"), never as late.
+ *
+ * **"Overdue" belongs to `Task.deadline` and nothing else** — that's the
+ * separate, optional field for a date there's an actual cost to blowing past,
+ * and it has its own formatter (formatDeadlineDate) and its own flag badge on
+ * the row. Labelling a do-date "2d overdue" tells someone they're behind on a
+ * task that was only ever scheduled, and hands the word to the field where it
+ * means nothing, leaving the field where it means something with no way to
+ * sound more serious.
+ *
+ * It keeps the day count where formatStartDate (same reasoning, project start
+ * dates) drops to a calendar date, because "sitting here two days" is exactly
+ * what a task row is trying to say — a project start four months back isn't.
+ */
+export function formatScheduledDate(iso: string, dayResetTime?: string): string {
+  const d = new Date(iso);
+  const today = getDayStart(new Date(), dayResetTime);
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
+  const diff = differenceInCalendarDays(d, today);
+  if (diff === -1) return 'Yesterday';
+  if (diff < 0) return `${Math.abs(diff)}d ago`;
+  if (isSameWeek(d, today, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
+  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
+}
+
+/**
+ * A date that can actually be missed — `Task.deadline`, and a project's
+ * targetEndDate. This is the only formatter that says "overdue", and it is
+ * never correct on a `dueDate`; use formatScheduledDate there.
+ */
+export function formatDeadlineDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
   const today = getDayStart(new Date(), dayResetTime);
   if (isSameDay(d, today)) return 'Today';
@@ -172,9 +199,10 @@ export function formatDueDate(iso: string, dayResetTime?: string): string {
 }
 
 /**
- * Like formatDueDate, but for a project's targetStartDate — which marks when
- * to start thinking about/doing the project, not a deadline. A past start
- * date should just read as its calendar date, not "Nd overdue".
+ * Like formatScheduledDate, but for a project's targetStartDate — which marks
+ * when to start thinking about/doing the project. A start date months back is
+ * just when the project began, so it reads as its calendar date rather than
+ * carrying a day count nobody is counting.
  */
 export function formatStartDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);

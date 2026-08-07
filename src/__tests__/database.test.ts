@@ -141,6 +141,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
+  chainStepOnSchedule: false,
   vacationPause: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -342,6 +343,18 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.tags).toEqual(tags);
     expect(t.recurrenceDays).toEqual(recurrenceDays);
     expect(t.chainItems).toEqual(chainItems);
+  });
+
+  it('round-trips chainStepOnSchedule through both insert and update', () => {
+    dbInsertTask(makeTask({ id: 'rot', chainStepOnSchedule: true }));
+    expect(dbGetAllTasks()[0].chainStepOnSchedule).toBe(true);
+    // Both statements bind it positionally at the end of a long placeholder
+    // list, so exercise the update path too — a misaligned parameter there
+    // writes a neighbouring column's value instead of failing.
+    dbUpdateTask({ ...dbGetAllTasks()[0], chainStepOnSchedule: false, title: 'Renamed' });
+    const [t] = dbGetAllTasks();
+    expect(t.chainStepOnSchedule).toBe(false);
+    expect(t.title).toBe('Renamed');
   });
 
   it('deserialises timeSegments from a JSON array', () => {

@@ -1,6 +1,5 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import * as Calendar from 'expo-calendar';
 import type { Calendar as ReminderList, Reminder } from 'expo-calendar';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -11,6 +10,22 @@ import {
   isImportableList,
   reminderListOptions,
 } from './remindersImport';
+
+/**
+ * Required where it's used rather than imported at the top. `expo-calendar`
+ * resolves its native half with `requireNativeModule` at module scope, which
+ * throws when that half isn't in the binary — and a static import here would
+ * hoist that throw into the app's own bundle evaluation, killing the whole
+ * bundle before React mounts rather than just this feature. The type-only
+ * import above is erased at compile time and carries no such risk.
+ *
+ * Every caller below already runs inside a try/catch that reports 'unsupported'
+ * or 'error', which is exactly the right answer for a device whose Reminders
+ * bridge isn't there.
+ */
+function calendar(): typeof import('expo-calendar') {
+  return require('expo-calendar');
+}
 
 export type RemindersPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';
 
@@ -66,7 +81,7 @@ export function lastImportOutcome(): ImportOutcome | null {
 export async function getRemindersPermission(): Promise<RemindersPermission> {
   if (Platform.OS !== 'ios') return 'unsupported';
   try {
-    const existing = await Calendar.getRemindersPermissionsAsync();
+    const existing = await calendar().getRemindersPermissionsAsync();
     if (existing.granted) return 'granted';
     return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
   } catch {
@@ -77,9 +92,9 @@ export async function getRemindersPermission(): Promise<RemindersPermission> {
 export async function requestRemindersPermission(): Promise<boolean> {
   if (Platform.OS !== 'ios') return false;
   try {
-    const existing = await Calendar.getRemindersPermissionsAsync();
+    const existing = await calendar().getRemindersPermissionsAsync();
     if (existing.granted) return true;
-    const result = await Calendar.requestRemindersPermissionsAsync();
+    const result = await calendar().requestRemindersPermissionsAsync();
     return result.granted;
   } catch {
     return false;
@@ -93,7 +108,7 @@ export async function listReminderLists(): Promise<ReminderList[]> {
     // EntityTypes.REMINDER must be passed explicitly: with no argument the
     // native module asks for calendar permission as well as reminders, and
     // this app never wants the former.
-    const lists = await Calendar.getCalendarsAsync(Calendar.EntityTypes.REMINDER);
+    const lists = await calendar().getCalendarsAsync(calendar().EntityTypes.REMINDER);
     return reminderListOptions(lists);
   } catch {
     return [];
@@ -122,7 +137,7 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
   // wrapper throw without a date window, and the window it then demands is
   // matched against the *due date* — which a reminder dictated to Siri hasn't
   // got. See the header comment in remindersImport.ts.
-  const reminders = await Calendar.getRemindersAsync([listId], null, null, null);
+  const reminders = await calendar().getRemindersAsync([listId], null, null, null);
   return importableReminders(reminders, handledIds);
 }
 
@@ -151,7 +166,7 @@ async function drainOnce(): Promise<ImportOutcome> {
     // predicateForReminders(in: []) — undocumented territory whose downside, if
     // an empty array behaved like nil, is deleting every reminder on the
     // device. Cheap to rule out, not worth inferring.
-    const lists = await Calendar.getCalendarsAsync(Calendar.EntityTypes.REMINDER);
+    const lists = await calendar().getCalendarsAsync(calendar().EntityTypes.REMINDER);
     const list = findReminderList(lists, remindersImportListId);
     if (!list) return NOTHING('list-missing');
     // Permissions on a shared list can change after it was picked.
@@ -186,7 +201,7 @@ async function drainOnce(): Promise<ImportOutcome> {
       imported += 1;
 
       try {
-        await Calendar.deleteReminderAsync(reminder.id!);
+        await calendar().deleteReminderAsync(reminder.id!);
       } catch {
         // Isolated on purpose: one reminder in a strange state must not strand
         // the rest of the batch.

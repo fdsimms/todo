@@ -1,4 +1,4 @@
 {
-  "message": "Fixed the app opening to a black screen after the splash. A single failing startup step could take the whole app down with it — now it's logged and skipped, and anything else that goes wrong shows a message instead of nothing.",
+  "message": "Fixed the app opening to a black screen after the splash. A permission description trimmed from the Apple Reminders feature stopped most of the app's system components from starting up at all.",
   "date": "2026-08-07"
 }
