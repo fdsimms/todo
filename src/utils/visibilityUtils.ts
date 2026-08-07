@@ -56,43 +56,84 @@ export function isHiddenForVacation(task: Task): boolean {
   return isCategoryHiddenOnVacation(task.category);
 }
 
+// A clock time placed on one *logical* day's timeline — the day that starts at
+// `dayStart` (a getCurrentDayStart()-shaped instant: a calendar date at
+// dayResetTime) and runs the 24 hours from there.
+//
+// The wrap is the whole point. A clock time earlier than dayResetTime belongs
+// to the small hours at the *end* of that logical day, not to the morning at
+// its start, so it lands on the next calendar date. Comparing raw
+// hours-and-minutes instead — which is what the category schedule used to do —
+// makes every window slam shut at wall-clock midnight, because `now` wraps to
+// 00:00 while the window's start stays at 18:00: with a 4 AM reset the user is
+// still four hours from the day turning over, and an entire category's tasks
+// drop off Today and re-advertise themselves as "Tomorrow". Same bug the
+// per-task gates had before they were anchored (see getWindowThreshold), and
+// the same fix.
+function onLogicalDay(dayStart: Date, hhmm: string): Date {
+  const [h, m] = hhmm.split(':').map(Number);
+  const t = new Date(dayStart);
+  t.setHours(h, m, 0, 0);
+  if (t < dayStart) t.setDate(t.getDate() + 1);
+  return t;
+}
+
+// The window's closing instant on the logical day that starts at `dayStart`.
+//
+// Once both ends are placed by onLogicalDay, "20:00–02:00" resolves the way it
+// reads — the end lands six hours after the start rather than eighteen before
+// it — so an evening category can legitimately run into the small hours. It
+// used to be unrepresentable: an end whose raw minutes were below the start's
+// made `nowMins >= start && nowMins < end` unsatisfiable, so a category set to
+// close at or after midnight never appeared at all, on any day.
+//
+// An end that still isn't after the start (a window straddling dayResetTime
+// itself, e.g. 02:00–06:00 under a 4 AM reset) has no closing time on this
+// logical day, so it runs to the day's end instead — the same resolution
+// effectiveWindowEnd gives a per-task window it can't place, and for the same
+// reason: an inverted span would read as closed before it ever opened.
+function categoryWindowEnd(dayStart: Date, cat: Category): Date {
+  const start = onLogicalDay(dayStart, cat.scheduleStart!);
+  const end = onLogicalDay(dayStart, cat.scheduleEnd!);
+  if (end > start) return end;
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+  return dayEnd;
+}
+
 function isCategoryScheduleActive(category: string | null): boolean {
   if (!category) return true;
   const cat = useCategoryStore.getState().getCategoryByName(category);
   if (!cat || !cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return true;
 
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  if (!cat.scheduleDays.includes(dayOfWeek)) return false;
+  // The *logical* day's day-of-week, not the wall clock's — the schedule's
+  // days name the user's days, and someone up at 1 AM on a 4 AM reset is still
+  // in Thursday. Reading the wall clock dropped a Mon–Thu category at midnight.
+  const dayStart = getCurrentDayStart();
+  if (!cat.scheduleDays.includes(dayStart.getDay())) return false;
 
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const [sh, sm] = cat.scheduleStart.split(':').map(Number);
-  const [eh, em] = cat.scheduleEnd.split(':').map(Number);
-  return nowMins >= sh * 60 + sm && nowMins < eh * 60 + em;
+  const now = new Date();
+  return now >= onLogicalDay(dayStart, cat.scheduleStart) && now < categoryWindowEnd(dayStart, cat);
 }
 
 function getNextCategoryWindowStart(cat: Category): Date | null {
   if (!cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return null;
 
+  // Walks logical days rather than calendar ones, so each candidate start is
+  // placed by the same rule isCategoryScheduleActive opens the window with —
+  // otherwise Later could name a moment at which the task still wouldn't show.
+  // Starts at i = 0 because the current logical day's window may not have
+  // opened yet (before its start, or in the small hours ahead of a start that
+  // wraps past midnight).
   const now = new Date();
-  const [sh, sm] = cat.scheduleStart.split(':').map(Number);
-  const nowMins = now.getHours() * 60 + now.getMinutes();
-  const startMins = sh * 60 + sm;
-  const dayOfWeek = now.getDay();
+  const dayStart = getCurrentDayStart();
 
-  if (cat.scheduleDays.includes(dayOfWeek) && nowMins < startMins) {
-    const next = new Date(now);
-    next.setHours(sh, sm, 0, 0);
-    return next;
-  }
-
-  for (let i = 1; i <= 7; i++) {
-    const candidate = new Date(now);
-    candidate.setDate(candidate.getDate() + i);
-    if (cat.scheduleDays.includes(candidate.getDay())) {
-      candidate.setHours(sh, sm, 0, 0);
-      return candidate;
-    }
+  for (let i = 0; i <= 7; i++) {
+    const candidateDay = new Date(dayStart);
+    candidateDay.setDate(candidateDay.getDate() + i);
+    if (!cat.scheduleDays.includes(candidateDay.getDay())) continue;
+    const start = onLogicalDay(candidateDay, cat.scheduleStart);
+    if (start > now) return start;
   }
 
   return null;
