@@ -515,6 +515,13 @@ export interface GroceryItem {
   onList: boolean;
   // Invariant: checked implies onList.
   checked: boolean;
+  // Whether the row has earned a place in the catalog in its own right, rather
+  // than only existing because it's on the list right now. A name typed for the
+  // first time is `false` — provisional — and taking it off the list deletes it
+  // instead of parking it; a trip that's finished or cleared promotes what was
+  // on it, as does starring. Invariant: !onList implies inCatalog, which is what
+  // lets Buy again and the pruner keep reading the whole off-list set.
+  inCatalog: boolean;
   sortOrder: number;
   favorite: boolean;
   // Bumped by finishShopping, never by clearList. Together with
@@ -530,6 +537,47 @@ export interface GroceryItem {
 // title, and a long one wrecks the row layout at the bigger grocery font size.
 export const GROCERY_NAME_MAX_LENGTH = 80;
 export const GROCERY_QUANTITY_MAX_LENGTH = 24;
+
+// A place you shop. "Store" everywhere the user can read; `Shop` in code,
+// because `store` is already Zustand's word here (useGroceryStore,
+// useTaskStore) and `useGroceryStoreStore` is not a name anyone should type.
+// Same split as Stack/TaskGroup.
+export interface Shop {
+  id: string;
+  // As typed — the label. "Trader Joe's", not "trader joe s".
+  name: string;
+  // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, same as
+  // GroceryItem.nameKey, so two spellings of one store can't both exist.
+  nameKey: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+// One (item, shop) pair — an aggregate, deliberately NOT a log of trips.
+//
+// A row per item per trip would grow without bound, which is the disease the
+// whole grocery catalog was designed around: GroceryItem is a forever-row
+// carrying counters rather than a completion tombstone per shop. This is that
+// same decision one level down, so the table is bounded by (items × stores you
+// actually shop at) instead of by how long you've had the app.
+//
+// INVARIANT: item.purchaseCount >= sum of its links' purchaseCount. Trips
+// finished before this feature shipped — and any trip finished without picking
+// a store — bump the item and write no link. So the item-level count is the
+// total and these are partial: never sum links to get a total, and never
+// render "6 of 7 trips".
+export interface ItemShopLink {
+  itemId: string;
+  shopId: string;
+  // 0 means asserted by hand ("I get this at Costco") and never observed on a
+  // trip. That's the whole distinction — it doesn't need a second flag.
+  purchaseCount: number;
+  lastPurchasedAt: string | null;
+}
+
+// Shorter than a grocery item's: this is a chip label that has to sit in a row
+// of other chips in a sheet, not a list row that owns its width.
+export const SHOP_NAME_MAX_LENGTH = 40;
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [

@@ -2,7 +2,6 @@ import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   FlatList,
   StyleSheet,
@@ -32,6 +31,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
 
 type RootStackParamList = {
@@ -363,6 +363,11 @@ export function ProjectDetailScreen() {
           onRequestClose={() => setShowExistingPicker(false)}
         >
           <View style={[styles.pickerRoot, { paddingTop: insets.top + spacing.md }]}>
+            {/* Deliberately not `DetailHeader`: that's the back-chevron bar a
+                pushed screen gets, and this is the Cancel/title/confirm bar
+                every sheet in the app gets (fourteen of them, all built the
+                same way out of `SheetHeaderButton`). Two idioms, already
+                decomposed — the button is the shared part, the row isn't. */}
             <View style={styles.detailHeader}>
               <SheetHeaderButton
                 label="Cancel"
@@ -371,19 +376,17 @@ export function ProjectDetailScreen() {
                 accessibilityLabel="Close"
               />
               <Text style={styles.detailTitleText}>Add Existing Task</Text>
-              <View style={{ width: 48 }} />
+              {/* Balances Cancel so the title stays optically centered. */}
+              <View style={styles.headerSpacer} />
             </View>
-            <View style={styles.searchRow}>
-              <Ionicons name="search" size={16} color={colors.textTertiary} />
-              <TextInput
-                autoFocus
-                style={styles.searchInput}
-                value={existingSearch}
-                onChangeText={setExistingSearch}
-                placeholder="Search tasks"
-                placeholderTextColor={colors.textTertiary}
-              />
-            </View>
+            <SearchField
+              autoFocus
+              style={styles.searchBar}
+              value={existingSearch}
+              onChangeText={setExistingSearch}
+              placeholder="Search tasks"
+              accessibilityLabel="Search tasks to add"
+            />
             <FlatList
               data={eligibleForAdd}
               keyExtractor={t => t.id}
@@ -465,6 +468,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.separator,
   },
+  headerSpacer: { width: 48 },
   detailTitleText: {
     flex: 1,
     textAlign: 'center',
@@ -505,23 +509,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    backgroundColor: colors.bgSecondary,
+  searchBar: {
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
     marginBottom: spacing.sm,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    paddingVertical: 0,
   },
   pickerRow: {
     flexDirection: 'row',

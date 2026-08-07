@@ -57,6 +57,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { EditorGroup } from './EditorGroup';
 import { CountStepper } from './CountStepper';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -1257,912 +1258,1199 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       />
 
       {/* Schedule — when the task surfaces, and how it repeats */}
-      <Text style={styles.groupLabel}>Schedule</Text>
-      <View style={styles.optionsCard}>
-        <EditorRow
-          icon="calendar"
-          label="Date"
-          hint="The day it shows up on Today"
-          value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
-          onPress={() => setShowWhenPicker(true)}
-          onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
-        />
-        <View style={styles.sep} />
-        <EditorRow
-          icon="calendar-number-outline"
-          label="More dates"
-          hint="The same task on several days — each date gets its own row"
-          value={
-            extraDates.length > 0
-              ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
-              : undefined
-          }
-          onPress={() => setShowDatesPicker(true)}
-          onClear={extraDates.length > 0 ? () => setExtraDates([]) : undefined}
-        />
-        {extraDates.length > 0 && (
-          <View style={styles.scheduleRow}>
-            <TouchableOpacity
-              style={[styles.schedulePill, !seriesRepeats && styles.schedulePillActive]}
-              onPress={() => setSeriesRepeats(false)}
-            >
-              <Text style={[styles.schedulePillText, !seriesRepeats && styles.schedulePillTextActive]}>
-                Just these dates
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.schedulePill, seriesRepeats && styles.schedulePillActive]}
-              onPress={() => setSeriesRepeats(true)}
-            >
-              <Text style={[styles.schedulePillText, seriesRepeats && styles.schedulePillTextActive]}>
-                Every month
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        {extraDates.length > 0 && seriesRepeats && (
-          <Text style={styles.seriesRepeatHint}>
-            {`Comes back on the ${seriesMonthDaysFrom([...(dueDate ? [dueDate] : []), ...extraDates])
-              .map(d => (d === -1 ? 'last day' : ordinal(d)))
-              .join(' and ')} of every month, once all of this month's are done.`}
-          </Text>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="flag-outline"
-          label="Deadline"
-          hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
-          value={
-            deadlineOffsetDays !== null
-              ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
-              : deadlineMonthDay !== null
-              ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
-              : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
-          }
-          onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
-          onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); } : undefined}
-        />
-        {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (
-          <>
-            <View style={styles.scheduleRow}>
-              <TouchableOpacity
-                style={[styles.schedulePill, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillActive]}
-                onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(null); }}
-              >
-                <Text style={[styles.schedulePillText, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillTextActive]}>
-                  Fixed date
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.schedulePill, deadlineOffsetDays !== null && styles.schedulePillActive]}
-                onPress={() => {
-                  setDeadlineMonthDay(null);
-                  setDeadlineOffsetDays(prev => {
-                    if (prev !== null) return prev;
-                    if (deadline && dueDate) {
-                      const diff = differenceInCalendarDays(dueDate, deadline);
-                      if (diff > 0) return diff;
-                    }
-                    return 1;
-                  });
-                }}
-              >
-                <Text style={[styles.schedulePillText, deadlineOffsetDays !== null && styles.schedulePillTextActive]}>
-                  Before due date
-                </Text>
-              </TouchableOpacity>
-              {recurrenceType === 'monthly' && (
+      <EditorGroup
+        label="Schedule"
+        startOpen
+        rows={[
+          {
+            key: 'date', label: 'Date', primary: true, set: !!dueDate,
+            node: (
+              <>
+            <EditorRow
+              icon="calendar"
+              label="Date"
+              hint="The day it shows up on Today"
+              value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
+              onPress={() => setShowWhenPicker(true)}
+              onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
+            />
+              </>
+            ),
+          },
+          {
+            key: 'moreDates', label: 'More dates', set: extraDates.length > 0,
+            node: (
+              <>
+            <EditorRow
+              icon="calendar-number-outline"
+              label="More dates"
+              hint="The same task on several days — each date gets its own row"
+              value={
+                extraDates.length > 0
+                  ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
+                  : undefined
+              }
+              onPress={() => setShowDatesPicker(true)}
+              onClear={extraDates.length > 0 ? () => setExtraDates([]) : undefined}
+            />
+            {extraDates.length > 0 && (
+              <View style={styles.scheduleRow}>
                 <TouchableOpacity
-                  style={[styles.schedulePill, deadlineMonthDay !== null && styles.schedulePillActive]}
-                  onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(prev => prev ?? -1); }}
+                  style={[styles.schedulePill, !seriesRepeats && styles.schedulePillActive]}
+                  onPress={() => setSeriesRepeats(false)}
                 >
-                  <Text style={[styles.schedulePillText, deadlineMonthDay !== null && styles.schedulePillTextActive]}>
-                    Day of month
+                  <Text style={[styles.schedulePillText, !seriesRepeats && styles.schedulePillTextActive]}>
+                    Just these dates
                   </Text>
                 </TouchableOpacity>
-              )}
-            </View>
-            {deadlineOffsetDays !== null && (
-              <View style={styles.intervalRow}>
                 <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setDeadlineOffsetDays(d => Math.max(1, (d ?? 1) - 1))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Decrease deadline offset"
+                  style={[styles.schedulePill, seriesRepeats && styles.schedulePillActive]}
+                  onPress={() => setSeriesRepeats(true)}
                 >
-                  <Ionicons name="remove" size={16} color={colors.text} />
+                  <Text style={[styles.schedulePillText, seriesRepeats && styles.schedulePillTextActive]}>
+                    Every month
+                  </Text>
                 </TouchableOpacity>
-                <Text style={styles.intervalValue}>{deadlineOffsetDays}</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setDeadlineOffsetDays(d => (d ?? 0) + 1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Increase deadline offset"
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalLabel}>
-                  {deadlineOffsetDays === 1 ? 'day before due, every occurrence' : 'days before due, every occurrence'}
-                </Text>
               </View>
             )}
-            {deadlineMonthDay !== null && (
+            {extraDates.length > 0 && seriesRepeats && (
+              <Text style={styles.seriesRepeatHint}>
+                {`Comes back on the ${seriesMonthDaysFrom([...(dueDate ? [dueDate] : []), ...extraDates])
+                  .map(d => (d === -1 ? 'last day' : ordinal(d)))
+                  .join(' and ')} of every month, once all of this month's are done.`}
+              </Text>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'deadline', label: 'Deadline', primary: true, set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
+            node: (
+              <>
+            <EditorRow
+              icon="flag-outline"
+              label="Deadline"
+              hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
+              value={
+                deadlineOffsetDays !== null
+                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
+                  : deadlineMonthDay !== null
+                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
+                  : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
+              }
+              onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
+              onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); } : undefined}
+            />
+            {recurrenceType !== 'none' && (deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) && (
               <>
                 <View style={styles.scheduleRow}>
                   <TouchableOpacity
-                    style={[styles.schedulePill, deadlineMonthDay > 0 && styles.schedulePillActive]}
-                    onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? new Date()).getDate())}
+                    style={[styles.schedulePill, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillActive]}
+                    onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(null); }}
                   >
-                    <Text style={[styles.schedulePillText, deadlineMonthDay > 0 && styles.schedulePillTextActive]}>
-                      On a day
+                    <Text style={[styles.schedulePillText, deadlineOffsetDays === null && deadlineMonthDay === null && styles.schedulePillTextActive]}>
+                      Fixed date
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.schedulePill, deadlineMonthDay === -1 && styles.schedulePillActive]}
-                    onPress={() => setDeadlineMonthDay(-1)}
+                    style={[styles.schedulePill, deadlineOffsetDays !== null && styles.schedulePillActive]}
+                    onPress={() => {
+                      setDeadlineMonthDay(null);
+                      setDeadlineOffsetDays(prev => {
+                        if (prev !== null) return prev;
+                        if (deadline && dueDate) {
+                          const diff = differenceInCalendarDays(dueDate, deadline);
+                          if (diff > 0) return diff;
+                        }
+                        return 1;
+                      });
+                    }}
                   >
-                    <Text style={[styles.schedulePillText, deadlineMonthDay === -1 && styles.schedulePillTextActive]}>
-                      Last day
+                    <Text style={[styles.schedulePillText, deadlineOffsetDays !== null && styles.schedulePillTextActive]}>
+                      Before due date
                     </Text>
                   </TouchableOpacity>
+                  {recurrenceType === 'monthly' && (
+                    <TouchableOpacity
+                      style={[styles.schedulePill, deadlineMonthDay !== null && styles.schedulePillActive]}
+                      onPress={() => { setDeadlineOffsetDays(null); setDeadlineMonthDay(prev => prev ?? -1); }}
+                    >
+                      <Text style={[styles.schedulePillText, deadlineMonthDay !== null && styles.schedulePillTextActive]}>
+                        Day of month
+                      </Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-                {deadlineMonthDay > 0 && (
+                {deadlineOffsetDays !== null && (
                   <View style={styles.intervalRow}>
-                    <Text style={styles.intervalLabel}>On the</Text>
                     <TouchableOpacity
                       style={styles.intervalBtn}
-                      onPress={() => setDeadlineMonthDay(Math.max(1, deadlineMonthDay - 1))}
+                      onPress={() => setDeadlineOffsetDays(d => Math.max(1, (d ?? 1) - 1))}
                       accessibilityRole="button"
-                      accessibilityLabel="Decrease day of month"
+                      accessibilityLabel="Decrease deadline offset"
                     >
                       <Ionicons name="remove" size={16} color={colors.text} />
                     </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{ordinal(deadlineMonthDay)}</Text>
+                    <Text style={styles.intervalValue}>{deadlineOffsetDays}</Text>
                     <TouchableOpacity
                       style={styles.intervalBtn}
-                      onPress={() => setDeadlineMonthDay(Math.min(31, deadlineMonthDay + 1))}
+                      onPress={() => setDeadlineOffsetDays(d => (d ?? 0) + 1)}
                       accessibilityRole="button"
-                      accessibilityLabel="Increase day of month"
+                      accessibilityLabel="Increase deadline offset"
                     >
                       <Ionicons name="add" size={16} color={colors.text} />
                     </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>
+                      {deadlineOffsetDays === 1 ? 'day before due, every occurrence' : 'days before due, every occurrence'}
+                    </Text>
                   </View>
+                )}
+                {deadlineMonthDay !== null && (
+                  <>
+                    <View style={styles.scheduleRow}>
+                      <TouchableOpacity
+                        style={[styles.schedulePill, deadlineMonthDay > 0 && styles.schedulePillActive]}
+                        onPress={() => setDeadlineMonthDay(deadlineMonthDay > 0 ? deadlineMonthDay : (dueDate ?? new Date()).getDate())}
+                      >
+                        <Text style={[styles.schedulePillText, deadlineMonthDay > 0 && styles.schedulePillTextActive]}>
+                          On a day
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.schedulePill, deadlineMonthDay === -1 && styles.schedulePillActive]}
+                        onPress={() => setDeadlineMonthDay(-1)}
+                      >
+                        <Text style={[styles.schedulePillText, deadlineMonthDay === -1 && styles.schedulePillTextActive]}>
+                          Last day
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {deadlineMonthDay > 0 && (
+                      <View style={styles.intervalRow}>
+                        <Text style={styles.intervalLabel}>On the</Text>
+                        <TouchableOpacity
+                          style={styles.intervalBtn}
+                          onPress={() => setDeadlineMonthDay(Math.max(1, deadlineMonthDay - 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Decrease day of month"
+                        >
+                          <Ionicons name="remove" size={16} color={colors.text} />
+                        </TouchableOpacity>
+                        <Text style={styles.intervalValue}>{ordinal(deadlineMonthDay)}</Text>
+                        <TouchableOpacity
+                          style={styles.intervalBtn}
+                          onPress={() => setDeadlineMonthDay(Math.min(31, deadlineMonthDay + 1))}
+                          accessibilityRole="button"
+                          accessibilityLabel="Increase day of month"
+                        >
+                          <Ionicons name="add" size={16} color={colors.text} />
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="time-outline"
-          label="Time of day"
-          hint="Hold it back until a part of the day"
-          value={timeOfDaySummary}
-          expanded={showTimeOfDay}
-          onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
-          onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
-        />
-        {showTimeOfDay && (
-          <>
-            <View style={styles.timePillRow}>
-              {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
-                const active = timeSegments.includes(tod);
-                return (
-                  <TouchableOpacity
-                    key={tod}
-                    style={[styles.timePill, active && styles.timePillActive]}
-                    onPress={() => {
-                      haptics.tap();
-                      setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
-                    }}
-                  >
-                    <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
-                      {capitalize(tod)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={styles.segmentSuggestRow}>
-              <TouchableOpacity
-                style={styles.suggestBtn}
-                onPress={handleSuggestSegment}
-                disabled={!title.trim()}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Suggest a time of day from past completions"
-              >
-                <Ionicons name="analytics-outline" size={12} color={colors.purple} />
-                <Text style={styles.suggestBtnText}>From history</Text>
-              </TouchableOpacity>
-              {segmentNote ? (
-                <Text style={styles.segmentNote}>{segmentNote}</Text>
-              ) : null}
-            </View>
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="timer-outline"
-          label="Time window"
-          hint="Only active for part of the day, then expires"
-          value={timeWindowSummary}
-          expanded={showTimeWindow}
-          onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
-          onClear={(windowStart || windowEnd)
-            ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
-            : undefined}
-        />
-        {showTimeWindow && (
-          <>
-            <View style={styles.windowPillRow}>
-              <TouchableOpacity
-                style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
-                onPress={() => openWindowPicker('start')}
-              >
-                <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
-                  {windowStart ? formatHHMM(windowStart) : 'Start'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
-                onPress={() => openWindowPicker('end')}
-              >
-                <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
-                  {windowEnd ? formatHHMM(windowEnd) : 'End'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-            {windowPickerMode !== 'none' && (
+              </>
+            ),
+          },
+          {
+            key: 'timeOfDay', label: 'Time of day', primary: true, set: timeSegments.length > 0,
+            node: (
               <>
-                <DateTimePicker
-                  value={windowPickerDate}
-                  mode="time"
-                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                  onChange={(_e, d) => d && setWindowPickerDate(d)}
-                  themeVariant={isDark ? 'dark' : 'light'}
-                  style={styles.windowPickerWidget}
-                />
-                <View style={styles.pickerButtons}>
-                  <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
-                    <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+            <EditorRow
+              icon="time-outline"
+              label="Time of day"
+              hint="Hold it back until a part of the day"
+              value={timeOfDaySummary}
+              expanded={showTimeOfDay}
+              onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
+              onClear={timeSegments.length > 0 ? () => setTimeSegments([]) : undefined}
+            />
+            {showTimeOfDay && (
+              <>
+                <View style={styles.timePillRow}>
+                  {(['morning', 'afternoon', 'evening', 'night'] as TimeOfDay[]).map(tod => {
+                    const active = timeSegments.includes(tod);
+                    return (
+                      <TouchableOpacity
+                        key={tod}
+                        style={[styles.timePill, active && styles.timePillActive]}
+                        onPress={() => {
+                          haptics.tap();
+                          setTimeSegments(prev => prev.includes(tod) ? [] : [tod]);
+                        }}
+                      >
+                        <Text style={[styles.timePillText, active && styles.timePillTextActive]}>
+                          {capitalize(tod)}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={styles.segmentSuggestRow}>
+                  <TouchableOpacity
+                    style={styles.suggestBtn}
+                    onPress={handleSuggestSegment}
+                    disabled={!title.trim()}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Suggest a time of day from past completions"
+                  >
+                    <Ionicons name="analytics-outline" size={12} color={colors.purple} />
+                    <Text style={styles.suggestBtnText}>From history</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                    <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
-                  </TouchableOpacity>
+                  {segmentNote ? (
+                    <Text style={styles.segmentNote}>{segmentNote}</Text>
+                  ) : null}
                 </View>
               </>
             )}
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon="speedometer-outline"
-          label="Daily target"
-          hint="Log it several times a day; only shows up when you fall behind"
-          value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
-          expanded={showTargetCount}
-          onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
-          onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
-        />
-        {showTargetCount && (
-          <>
-            <View style={styles.targetStepperRow}>
-              <CountStepper
-                value={targetCount}
-                onChange={next => {
-                  setTargetCount(next);
-                  // A quota only makes sense day to day: the count resets
-                  // because each new occurrence starts at zero, so without
-                  // a daily repeat there'd be nothing to reset it.
-                  if (next !== null) enableRecurrence();
-                }}
-                min={MIN_TARGET_COUNT}
-                max={MAX_TARGET_COUNT}
-                // The floor clears it, so the row's × isn't the only way out of
-                // being a quota once you've opened this.
-                allowNull
-                emptyLabel="Off"
-                format={n => `${n}×`}
-                label="Daily target"
-                describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
-              />
-              {/* The unit is only ever read next to the count, so it's typed
-                  next to it too — and it's hidden while there's no count,
-                  since on its own it labels nothing. */}
-              {targetCount !== null && (
-                <TextInput
-                  style={styles.targetUnitInput}
-                  value={targetUnit}
-                  onChangeText={setTargetUnit}
-                  placeholder="units"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={MAX_TARGET_UNIT_LENGTH}
-                  autoCapitalize="none"
-                  returnKeyType="done"
-                  accessibilityLabel="Unit for the daily target, optional"
-                />
-              )}
-            </View>
-            {/* Says what the row will read as rather than what the field is
-                for: the unit's whole job is how the meter comes out, and a
-                preview answers "plural or singular?" without a rule to
-                explain. */}
-            <Text style={styles.targetStepperCaption}>
-              {targetCount === null
-                ? 'Not a daily target'
-                : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)}, a day`}
-            </Text>
-          </>
-        )}
-        <View style={styles.sep} />
-        <EditorRow
-          icon={reminderKind === 'alarm' ? 'alarm' : 'notifications'}
-          label="Remind me"
-          hint={reminderKind === 'alarm' ? 'Ring an alarm at this time' : 'Send a notification at this time'}
-          value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
-          onPress={() => openPicker('reminder')}
-          onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); } : undefined}
-        />
-        <View style={styles.sep} />
-        <EditorRow
-          icon="hourglass-outline"
-          label="Waiting on"
-          hint="Stay hidden until another task is done"
-          value={
-            blockerTask
-              ? displayTitleFor(blockerTask)
-              : blockedById ? 'Task no longer exists' : undefined
-          }
-          onPress={() => setShowBlockerPicker(true)}
-          onClear={blockedById ? () => setBlockedById(null) : undefined}
-        />
-        <View style={styles.sep} />
-        <EditorRow
-          icon="repeat"
-          label="Repeat"
-          hint="Come back on a schedule after each completion"
-          value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
-          onPress={enableRecurrence}
-          onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
-        />
-        {recurrenceType !== 'none' && (
-          <RecurrencePicker
-            recurrenceType={recurrenceType}
-            onChangeType={setRecurrenceType}
-            recurrenceInterval={recurrenceInterval}
-            onChangeInterval={setRecurrenceInterval}
-            recurrenceDays={recurrenceDays}
-            onChangeDays={setRecurrenceDays}
-            recurrenceMonthDay={recurrenceMonthDay}
-            onChangeMonthDay={setRecurrenceMonthDay}
-            seedMonthDay={() => (dueDate ?? new Date()).getDate()}
-            recurrenceFromCompletion={recurrenceFromCompletion}
-            onChangeFromCompletion={setRecurrenceFromCompletion}
-            recurrenceCount={recurrenceCount}
-            onChangeCount={setRecurrenceCount}
-            weekOrdinal={{
-              value: recurrenceWeekOrdinal,
-              onChange: setRecurrenceWeekOrdinal,
-              seedWeekday: () => (dueDate ?? new Date()).getDay(),
-            }}
-            onSelectEndNever={setRecurrenceEndNever}
-            onSelectEndCount={setRecurrenceEndAfterCount}
-            endDate={{
-              value: recurrenceEndDate,
-              onSelect: setRecurrenceEndOnDate,
-              onOpenPicker: () => setShowEndDatePicker(true),
-            }}
-          />
-        )}
-        <View style={styles.sep} />
-        <View style={styles.cardSection}>
-          <View style={styles.chainHeader}>
-            <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
-            <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
-            <TouchableOpacity
-              style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-              onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-              accessibilityRole="switch"
-              accessibilityLabel="Chain"
-              accessibilityState={{ checked: chainEnabled }}
-            >
-              <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
-            </TouchableOpacity>
-          </View>
-          {!chainEnabled && (
-            <Text style={styles.chainHint}>
-              Step through a list of items, one per completion — finishing one reveals the next.
-              {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
-            </Text>
-          )}
-          {chainEnabled && (
-            <>
-              <SortableList
-                onDragStateChange={setDraggingRow}
-                data={chainItems}
-                onReorder={(newData) => {
-                  const activeItemId = chainItems[chainIndex]?.id;
-                  setChainItems(newData);
-                  const newIdx = newData.findIndex(item => item.id === activeItemId);
-                  if (newIdx !== -1) setChainIndex(newIdx);
-                }}
-                renderItem={(item, displayIndex, drag) => {
-                  const actualIdx = chainItems.findIndex(c => c.id === item.id);
-                  const isCurrentStep = actualIdx === chainIndex;
-                  return (
-                    <View style={styles.chainItemRow}>
-                      <TouchableOpacity
-                        onPress={() => setChainIndex(actualIdx)}
-                        hitSlop={6}
-                        style={styles.chainItemIndexBtn}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Set current step to ${item.title}`}
-                      >
-                        <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
-                          <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
-                            {displayIndex + 1}
-                          </Text>
-                        </View>
+              </>
+            ),
+          },
+          {
+            key: 'timeWindow', label: 'Time window', set: !!windowStart || !!windowEnd,
+            node: (
+              <>
+            <EditorRow
+              icon="timer-outline"
+              label="Time window"
+              hint="Only active for part of the day, then expires"
+              value={timeWindowSummary}
+              expanded={showTimeWindow}
+              onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
+              onClear={(windowStart || windowEnd)
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+                : undefined}
+            />
+            {showTimeWindow && (
+              <>
+                <View style={styles.windowPillRow}>
+                  <TouchableOpacity
+                    style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
+                    onPress={() => openWindowPicker('start')}
+                  >
+                    <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
+                      {windowStart ? formatHHMM(windowStart) : 'Start'}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
+                    onPress={() => openWindowPicker('end')}
+                  >
+                    <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
+                      {windowEnd ? formatHHMM(windowEnd) : 'End'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {windowPickerMode !== 'none' && (
+                  <>
+                    <DateTimePicker
+                      value={windowPickerDate}
+                      mode="time"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      onChange={(_e, d) => d && setWindowPickerDate(d)}
+                      themeVariant={isDark ? 'dark' : 'light'}
+                      style={styles.windowPickerWidget}
+                    />
+                    <View style={styles.pickerButtons}>
+                      <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
+                        <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                       </TouchableOpacity>
-                      <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                        {item.title}
-                      </Text>
-                      <ChainStepMinutes
-                        value={item.estimatedMinutes}
-                        label={item.title}
-                        onChange={mins => setChainItems(prev => prev.map(
-                          c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
-                        ))}
-                      />
-                      <TouchableOpacity
-                        onLongPress={drag}
-                        delayLongPress={150}
-                        hitSlop={8}
-                        style={styles.dragHandle}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Reorder chain step ${item.title}`}
-                      >
-                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        onPress={() => {
-                          // Track the active step by id (like onReorder above) rather
-                          // than by index — deleting an earlier step shifts every later
-                          // index down, so re-clamping the old chainIndex against the
-                          // new length silently lands on the wrong step.
-                          const activeItemId = chainItems[chainIndex]?.id;
-                          const next = chainItems.filter((_, j) => j !== actualIdx);
-                          setChainItems(next);
-                          if (activeItemId === item.id) {
-                            // The active step itself was deleted — land on whatever now
-                            // occupies its old slot (i.e. the step after it).
-                            setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
-                          } else {
-                            const newIdx = next.findIndex(c => c.id === activeItemId);
-                            setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
-                          }
-                        }}
-                        hitSlop={8}
-                        style={styles.chainItemDelete}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Remove chain step ${item.title}`}
-                      >
-                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
+                        <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
                       </TouchableOpacity>
                     </View>
-                  );
+                  </>
+                )}
+              </>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'dailyTarget', label: 'Daily target', set: targetCount !== null,
+            node: (
+              <>
+            <EditorRow
+              icon="speedometer-outline"
+              label="Daily target"
+              hint="Log it several times a day; only shows up when you fall behind"
+              value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
+              expanded={showTargetCount}
+              onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
+              onClear={targetCount !== null ? () => { setTargetCount(null); setTargetUnit(''); setShowTargetCount(false); } : undefined}
+            />
+            {showTargetCount && (
+              <>
+                <View style={styles.targetStepperRow}>
+                  <CountStepper
+                    value={targetCount}
+                    onChange={next => {
+                      setTargetCount(next);
+                      // A quota only makes sense day to day: the count resets
+                      // because each new occurrence starts at zero, so without
+                      // a daily repeat there'd be nothing to reset it.
+                      if (next !== null) enableRecurrence();
+                    }}
+                    min={MIN_TARGET_COUNT}
+                    max={MAX_TARGET_COUNT}
+                    // The floor clears it, so the row's × isn't the only way out of
+                    // being a quota once you've opened this.
+                    allowNull
+                    emptyLabel="Off"
+                    format={n => `${n}×`}
+                    label="Daily target"
+                    describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
+                  />
+                  {/* The unit is only ever read next to the count, so it's typed
+                      next to it too — and it's hidden while there's no count,
+                      since on its own it labels nothing. */}
+                  {targetCount !== null && (
+                    <TextInput
+                      style={styles.targetUnitInput}
+                      value={targetUnit}
+                      onChangeText={setTargetUnit}
+                      placeholder="units"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={MAX_TARGET_UNIT_LENGTH}
+                      autoCapitalize="none"
+                      returnKeyType="done"
+                      accessibilityLabel="Unit for the daily target, optional"
+                    />
+                  )}
+                </View>
+                {/* Says what the row will read as rather than what the field is
+                    for: the unit's whole job is how the meter comes out, and a
+                    preview answers "plural or singular?" without a rule to
+                    explain. */}
+                <Text style={styles.targetStepperCaption}>
+                  {targetCount === null
+                    ? 'Not a daily target'
+                    : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)}, a day`}
+                </Text>
+              </>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
+            node: (
+              <>
+            <EditorRow
+              icon={reminderKind === 'alarm' ? 'alarm' : 'notifications'}
+              label="Remind me"
+              hint={reminderKind === 'alarm' ? 'Ring an alarm at this time' : 'Send a notification at this time'}
+              value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
+              onPress={() => openPicker('reminder')}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); } : undefined}
+            />
+              </>
+            ),
+          },
+          {
+            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
+            node: (
+              <>
+            <EditorRow
+              icon="hourglass-outline"
+              label="Waiting on"
+              hint="Stay hidden until another task is done"
+              value={
+                blockerTask
+                  ? displayTitleFor(blockerTask)
+                  : blockedById ? 'Task no longer exists' : undefined
+              }
+              onPress={() => setShowBlockerPicker(true)}
+              onClear={blockedById ? () => setBlockedById(null) : undefined}
+            />
+              </>
+            ),
+          },
+          {
+            key: 'repeat', label: 'Repeat', primary: true, set: recurrenceType !== 'none',
+            node: (
+              <>
+            <EditorRow
+              icon="repeat"
+              label="Repeat"
+              hint="Come back on a schedule after each completion"
+              value={recurrenceType !== 'none' ? formatRecurrenceSummary(recurrenceType, recurrenceInterval) : undefined}
+              onPress={enableRecurrence}
+              onClear={recurrenceType !== 'none' ? () => setRecurrenceType('none') : undefined}
+            />
+            {recurrenceType !== 'none' && (
+              <RecurrencePicker
+                recurrenceType={recurrenceType}
+                onChangeType={setRecurrenceType}
+                recurrenceInterval={recurrenceInterval}
+                onChangeInterval={setRecurrenceInterval}
+                recurrenceDays={recurrenceDays}
+                onChangeDays={setRecurrenceDays}
+                recurrenceMonthDay={recurrenceMonthDay}
+                onChangeMonthDay={setRecurrenceMonthDay}
+                seedMonthDay={() => (dueDate ?? new Date()).getDate()}
+                recurrenceFromCompletion={recurrenceFromCompletion}
+                onChangeFromCompletion={setRecurrenceFromCompletion}
+                recurrenceCount={recurrenceCount}
+                onChangeCount={setRecurrenceCount}
+                weekOrdinal={{
+                  value: recurrenceWeekOrdinal,
+                  onChange: setRecurrenceWeekOrdinal,
+                  seedWeekday: () => (dueDate ?? new Date()).getDay(),
+                }}
+                onSelectEndNever={setRecurrenceEndNever}
+                onSelectEndCount={setRecurrenceEndAfterCount}
+                endDate={{
+                  value: recurrenceEndDate,
+                  onSelect: setRecurrenceEndOnDate,
+                  onOpenPicker: () => setShowEndDatePicker(true),
                 }}
               />
-              {addingChainItem ? (
-                <View style={styles.chainInputRow}>
-                  <View style={styles.chainItemDot}>
-                    <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
-                  </View>
-                  <TextInput
-                    ref={chainInputRef}
-                    autoFocus
-                    style={styles.chainInput}
-                    value={newChainItemTitle}
-                    onChangeText={setNewChainItemTitle}
-                    placeholder="Item title"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      chainItemSavedRef.current = true;
-                      const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
-                      setNewChainItemTitle('');
-                      setTimeout(() => {
-                        chainItemSavedRef.current = false;
-                        chainInputRef.current?.focus();
-                      }, 50);
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'chain', label: 'Chain', set: chainEnabled,
+            node: (
+              <>
+            <View style={styles.cardSection}>
+              <View style={styles.chainHeader}>
+                <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
+                <TouchableOpacity
+                  style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
+                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Chain"
+                  accessibilityState={{ checked: chainEnabled }}
+                >
+                  <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
+                </TouchableOpacity>
+              </View>
+              {!chainEnabled && (
+                <Text style={styles.chainHint}>
+                  Step through a list of items, one per completion — finishing one reveals the next.
+                  {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
+                </Text>
+              )}
+              {chainEnabled && (
+                <>
+                  <SortableList
+                    onDragStateChange={setDraggingRow}
+                    data={chainItems}
+                    onReorder={(newData) => {
+                      const activeItemId = chainItems[chainIndex]?.id;
+                      setChainItems(newData);
+                      const newIdx = newData.findIndex(item => item.id === activeItemId);
+                      if (newIdx !== -1) setChainIndex(newIdx);
                     }}
-                    onBlur={() => {
-                      if (chainItemSavedRef.current) return;
-                      const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
-                      setNewChainItemTitle('');
-                      setAddingChainItem(false);
+                    renderItem={(item, displayIndex, drag) => {
+                      const actualIdx = chainItems.findIndex(c => c.id === item.id);
+                      const isCurrentStep = actualIdx === chainIndex;
+                      return (
+                        <View style={styles.chainItemRow}>
+                          <TouchableOpacity
+                            onPress={() => setChainIndex(actualIdx)}
+                            hitSlop={6}
+                            style={styles.chainItemIndexBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Set current step to ${item.title}`}
+                          >
+                            <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
+                              <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
+                                {displayIndex + 1}
+                              </Text>
+                            </View>
+                          </TouchableOpacity>
+                          <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
+                            {item.title}
+                          </Text>
+                          <ChainStepMinutes
+                            value={item.estimatedMinutes}
+                            label={item.title}
+                            onChange={mins => setChainItems(prev => prev.map(
+                              c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                            ))}
+                          />
+                          <TouchableOpacity
+                            onLongPress={drag}
+                            delayLongPress={150}
+                            hitSlop={8}
+                            style={styles.dragHandle}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Reorder chain step ${item.title}`}
+                          >
+                            <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              // Track the active step by id (like onReorder above) rather
+                              // than by index — deleting an earlier step shifts every later
+                              // index down, so re-clamping the old chainIndex against the
+                              // new length silently lands on the wrong step.
+                              const activeItemId = chainItems[chainIndex]?.id;
+                              const next = chainItems.filter((_, j) => j !== actualIdx);
+                              setChainItems(next);
+                              if (activeItemId === item.id) {
+                                // The active step itself was deleted — land on whatever now
+                                // occupies its old slot (i.e. the step after it).
+                                setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                              } else {
+                                const newIdx = next.findIndex(c => c.id === activeItemId);
+                                setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                              }
+                            }}
+                            hitSlop={8}
+                            style={styles.chainItemDelete}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Remove chain step ${item.title}`}
+                          >
+                            <Ionicons name="close" size={14} color={colors.textTertiary} />
+                          </TouchableOpacity>
+                        </View>
+                      );
                     }}
                   />
-                </View>
-              ) : (
-                <InlineAction
-                  icon="add"
-                  label="Add item"
-                  onPress={() => setAddingChainItem(true)}
-                  style={styles.addBtnSpacing}
-                />
+                  {addingChainItem ? (
+                    <View style={styles.chainInputRow}>
+                      <View style={styles.chainItemDot}>
+                        <Text style={styles.chainItemDotText}>{chainItems.length + 1}</Text>
+                      </View>
+                      <TextInput
+                        ref={chainInputRef}
+                        autoFocus
+                        style={styles.chainInput}
+                        value={newChainItemTitle}
+                        onChangeText={setNewChainItemTitle}
+                        placeholder="Item title"
+                        placeholderTextColor={colors.textTertiary}
+                        maxLength={TITLE_MAX_LENGTH}
+                        returnKeyType="done"
+                        onSubmitEditing={() => {
+                          chainItemSavedRef.current = true;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
+                          setNewChainItemTitle('');
+                          setTimeout(() => {
+                            chainItemSavedRef.current = false;
+                            chainInputRef.current?.focus();
+                          }, 50);
+                        }}
+                        onBlur={() => {
+                          if (chainItemSavedRef.current) return;
+                          const t = newChainItemTitle.trim();
+                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
+                          setNewChainItemTitle('');
+                          setAddingChainItem(false);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <InlineAction
+                      icon="add"
+                      label="Add item"
+                      onPress={() => setAddingChainItem(true)}
+                      style={styles.addBtnSpacing}
+                    />
+                  )}
+                  {chainItems.length > 0 && (
+                    <Text style={styles.chainCurrentHint}>
+                      Times are per step; a step left blank uses the task's own estimate.
+                    </Text>
+                  )}
+                  {chainItems.length > 1 && (
+                    <View style={styles.chainModeBlock}>
+                      <Text style={styles.chainModeLabel}>Next step</Text>
+                      <View style={styles.chainModeRow}>
+                        {([false, true] as const).map(onSchedule => {
+                          const active = chainStepOnSchedule === onSchedule;
+                          // "On the next repeat" needs a repeat to wait for. Shown
+                          // disabled rather than hidden so the choice — and the
+                          // fact that Repeat is what unlocks it — stays visible.
+                          const disabled = onSchedule && recurrenceType === 'none';
+                          return (
+                            <TouchableOpacity
+                              key={String(onSchedule)}
+                              style={[
+                                styles.chainModePill,
+                                active && styles.chainModePillActive,
+                                disabled && styles.chainModePillDisabled,
+                              ]}
+                              disabled={disabled}
+                              onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
+                              activeOpacity={interaction.activeOpacity}
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected: active, disabled }}
+                              accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
+                            >
+                              <Text
+                                style={[
+                                  styles.chainModePillText,
+                                  active && styles.chainModePillTextActive,
+                                  disabled && styles.chainModePillTextDisabled,
+                                ]}
+                              >
+                                {onSchedule ? 'On the next repeat' : 'Right away'}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                      <Text style={styles.chainCurrentHint}>
+                        {recurrenceType === 'none'
+                          ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                          : chainStepOnSchedule
+                            ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
+                            : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                      </Text>
+                    </View>
+                  )}
+                  {chainIndex < chainItems.length && chainItems.length > 1 && (
+                    <Text style={styles.chainCurrentHint}>
+                      {(() => {
+                        // Timing lives in the Next step block above, so this stays
+                        // about position — with one exception. In "Right away" mode
+                        // the wrap is the single step that *does* wait for the
+                        // repeat, which is exactly what that block doesn't say and
+                        // what makes step 1 look like it should have been today's.
+                        const prefix = 'Tap a number to set the current position.';
+                        if (chainIndex === chainItems.length - 1) {
+                          return recurrenceType === 'none'
+                            ? `${prefix} This is the last step — the chain ends here.`
+                            : `${prefix} Last step — the chain starts over on the next repeat.`;
+                        }
+                        return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
+                      })()}
+                    </Text>
+                  )}
+                </>
               )}
-              {chainItems.length > 0 && (
-                <Text style={styles.chainCurrentHint}>
-                  Times are per step; a step left blank uses the task's own estimate.
-                </Text>
-              )}
-              {chainItems.length > 1 && (
-                <View style={styles.chainModeBlock}>
-                  <Text style={styles.chainModeLabel}>Next step</Text>
-                  <View style={styles.chainModeRow}>
-                    {([false, true] as const).map(onSchedule => {
-                      const active = chainStepOnSchedule === onSchedule;
-                      // "On the next repeat" needs a repeat to wait for. Shown
-                      // disabled rather than hidden so the choice — and the
-                      // fact that Repeat is what unlocks it — stays visible.
-                      const disabled = onSchedule && recurrenceType === 'none';
-                      return (
-                        <TouchableOpacity
-                          key={String(onSchedule)}
-                          style={[
-                            styles.chainModePill,
-                            active && styles.chainModePillActive,
-                            disabled && styles.chainModePillDisabled,
-                          ]}
-                          disabled={disabled}
-                          onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
-                          activeOpacity={interaction.activeOpacity}
-                          accessibilityRole="radio"
-                          accessibilityState={{ selected: active, disabled }}
-                          accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
-                        >
-                          <Text
-                            style={[
-                              styles.chainModePillText,
-                              active && styles.chainModePillTextActive,
-                              disabled && styles.chainModePillTextDisabled,
-                            ]}
-                          >
-                            {onSchedule ? 'On the next repeat' : 'Right away'}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  <Text style={styles.chainCurrentHint}>
-                    {recurrenceType === 'none'
-                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
-                      : chainStepOnSchedule
-                        ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
-                        : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
-                  </Text>
-                </View>
-              )}
-              {chainIndex < chainItems.length && chainItems.length > 1 && (
-                <Text style={styles.chainCurrentHint}>
-                  {(() => {
-                    // Timing lives in the Next step block above, so this stays
-                    // about position — with one exception. In "Right away" mode
-                    // the wrap is the single step that *does* wait for the
-                    // repeat, which is exactly what that block doesn't say and
-                    // what makes step 1 look like it should have been today's.
-                    const prefix = 'Tap a number to set the current position.';
-                    if (chainIndex === chainItems.length - 1) {
-                      return recurrenceType === 'none'
-                        ? `${prefix} This is the last step — the chain ends here.`
-                        : `${prefix} Last step — the chain starts over on the next repeat.`;
-                    }
-                    return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
-                  })()}
-                </Text>
-              )}
-            </>
-          )}
-        </View>
-      </View>
+            </View>
+              </>
+            ),
+          },
+        ]}
+      />
 
       {/* Organize — collapsed to the chosen value until you tap in */}
-      <Text style={styles.groupLabel}>Organize</Text>
-      <View style={styles.sectionCard}>
-        {/* Until this row existed the editor never mentioned stacks at
-            all: a task couldn't tell you it was in one, and the only ways
-            out were the stack editor's ✕ and dragging the row out of the
-            group on Today. It leads the section because it's what the
-            locked Category row below points at. */}
-        {/* Only when there's something to pick. An empty picker would teach
-            nothing — stacks are created from the + menu on Today, not here. */}
-        {allGroups.length > 0 && (
-          <>
-            <CollapsibleField
-              label="Stack"
-              summary={selectedGroup ? selectedGroup.title : undefined}
-              hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
-              expanded={fieldOpen('stack')}
-              onToggle={() => toggleField('stack')}
-            >
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !groupId && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
-                >
-                  <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {allGroups.map(g => (
-                  <TouchableOpacity
-                    key={g.id}
-                    style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
-                    onPress={() => {
-                      haptics.tap();
-                      setGroupId(g.id);
-                      // A stack owns its members' category (see addExistingToGroup),
-                      // so adopt it here rather than letting the locked row keep
-                      // showing a value the save is about to overwrite.
-                      setCategory(g.category);
-                      closeField('stack');
-                    }}
-                  >
-                    <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </CollapsibleField>
-            <View style={styles.cardSep} />
-          </>
-        )}
-        <CollapsibleField
-          label="Category"
-          summary={category ? categoryLabel(category, categories) : undefined}
-          hint="One home for the task — drives the Categories screen and its filters."
-          expanded={fieldOpen('category')}
-          onToggle={() => toggleField('category')}
-          // A stack owns its members' category, so there's nothing to pick
-          // here while the task is in one — the value would be overwritten
-          // by the next cascade. Changing it means changing the stack's,
-          // or leaving the stack.
-          locked={selectedGroup !== null}
-          lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
-        >
-          <View style={styles.pillRow}>
-            <TouchableOpacity
-              style={[styles.pill, !category && styles.pillActiveNeutral]}
-              onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
-            >
-              <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
-            </TouchableOpacity>
-            {allCategories.map(cat => (
-              <TouchableOpacity
-                key={cat}
-                style={[styles.pill, category === cat && styles.pillActiveNeutral]}
-                onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+      <EditorGroup
+        label="Organize"
+        divider="full"
+        rows={[
+          // Only when there is something to pick. An empty picker would teach
+          // nothing — stacks are created from the + menu on Today, not here.
+          ...(allGroups.length > 0 ? [{
+            key: 'stack', label: 'Stack', set: !!selectedGroup,
+            node: (
+              <>
+              <CollapsibleField
+                label="Stack"
+                summary={selectedGroup ? selectedGroup.title : undefined}
+                hint="Groups this task with others you do together. The stack sets the shared category for everything in it."
+                expanded={fieldOpen('stack')}
+                onToggle={() => toggleField('stack')}
               >
-                <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
-              </TouchableOpacity>
-            ))}
-            {addingCategory ? (
-              <TextInput
-                autoFocus
-                style={styles.tagInput}
-                value={newCategory}
-                onChangeText={setNewCategory}
-                onSubmitEditing={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeField('category'); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                onBlur={() => {
-                  const c = newCategory.trim();
-                  if (c) { addCategory(c); setCategory(c); closeField('category'); }
-                  setNewCategory(''); setAddingCategory(false);
-                }}
-                placeholder="category name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="words"
-              />
-            ) : (
-              <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
-            )}
-          </View>
-        </CollapsibleField>
-
-        {projects.length > 0 && (
-          <>
-            <View style={styles.cardSep} />
-            <CollapsibleField
-              label="Project"
-              summary={projects.find(p => p.id === project)?.title}
-              hint="Files the task under a project so it counts toward that project's progress."
-              expanded={fieldOpen('project')}
-              onToggle={() => toggleField('project')}
-            >
-              <View style={styles.pillRow}>
-                <TouchableOpacity
-                  style={[styles.pill, !project && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); setProject(null); closeField('project'); }}
-                >
-                  <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
-                </TouchableOpacity>
-                {projects.map(p => (
+                <View style={styles.pillRow}>
                   <TouchableOpacity
-                    key={p.id}
-                    style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
-                    onPress={() => { haptics.tap(); setProject(p.id); closeField('project'); }}
+                    style={[styles.pill, !groupId && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setGroupId(null); closeField('stack'); }}
                   >
-                    <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
+                    <Text style={[styles.pillText, !groupId && styles.pillTextActive]}>None</Text>
                   </TouchableOpacity>
-                ))}
-              </View>
-            </CollapsibleField>
-          </>
-        )}
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Tags"
-          summary={tags.length > 0 ? tags.join(', ') : undefined}
-          hint="Free-form labels. A task can carry several, and you can filter or search by them."
-          expanded={fieldOpen('tags')}
-          onToggle={() => toggleField('tags')}
-          right={!!anthropicApiKey && (
-            <TouchableOpacity
-              style={styles.suggestBtn}
-              onPress={handleSuggest}
-              disabled={aiLoading || !title.trim()}
-              hitSlop={8}
-            >
-              {aiLoading
-                ? <ActivityIndicator size="small" color={colors.purple} />
-                : (
-                  <>
-                    <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-                    <Text style={styles.suggestBtnText}>Suggest</Text>
-                  </>
-                )
-              }
-            </TouchableOpacity>
-          )}
-        >
-          <View style={styles.tagRow}>
-            {tags.map(tag => (
+                  {allGroups.map(g => (
+                    <TouchableOpacity
+                      key={g.id}
+                      style={[styles.pill, groupId === g.id && styles.pillActiveNeutral]}
+                      onPress={() => {
+                        haptics.tap();
+                        setGroupId(g.id);
+                        // A stack owns its members' category (see addExistingToGroup),
+                        // so adopt it here rather than letting the locked row keep
+                        // showing a value the save is about to overwrite.
+                        setCategory(g.category);
+                        closeField('stack');
+                      }}
+                    >
+                      <Text style={[styles.pillText, groupId === g.id && styles.pillTextActive]} numberOfLines={1}>{g.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'category', label: 'Category', primary: true, set: !!category,
+            node: (
+              <>
+          <CollapsibleField
+            label="Category"
+            summary={category ? categoryLabel(category, categories) : undefined}
+            hint="One home for the task — drives the Categories screen and its filters."
+            expanded={fieldOpen('category')}
+            onToggle={() => toggleField('category')}
+            // A stack owns its members' category, so there's nothing to pick
+            // here while the task is in one — the value would be overwritten
+            // by the next cascade. Changing it means changing the stack's,
+            // or leaving the stack.
+            locked={selectedGroup !== null}
+            lockedHint={selectedGroup ? `From the ${selectedGroup.title} stack.` : undefined}
+          >
+            <View style={styles.pillRow}>
               <TouchableOpacity
-                key={tag}
-                style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
-                onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
+                style={[styles.pill, !category && styles.pillActiveNeutral]}
+                onPress={() => { haptics.tap(); setCategory(null); closeField('category'); }}
               >
-                <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
-                <Ionicons name="close" size={12} color={tagColor(tag)} />
+                <Text style={[styles.pillText, !category && styles.pillTextActive]}>None</Text>
               </TouchableOpacity>
-            ))}
-            {addingTag ? (
-              <TextInput
-                autoFocus
-                style={styles.tagInput}
-                value={newTag}
-                onChangeText={setNewTag}
-                onSubmitEditing={addTagFromInput}
-                onBlur={addTagFromInput}
-                placeholder="tag name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="none"
-              />
-            ) : (
-              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              {allCategories.map(cat => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.pill, category === cat && styles.pillActiveNeutral]}
+                  onPress={() => { haptics.tap(); setCategory(cat); closeField('category'); }}
+                >
+                  <Text style={[styles.pillText, category === cat && styles.pillTextActive]}>{categoryLabel(cat, categories)}</Text>
+                </TouchableOpacity>
+              ))}
+              {addingCategory ? (
+                <TextInput
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newCategory}
+                  onChangeText={setNewCategory}
+                  onSubmitEditing={() => {
+                    const c = newCategory.trim();
+                    if (c) { addCategory(c); setCategory(c); closeField('category'); }
+                    setNewCategory(''); setAddingCategory(false);
+                  }}
+                  onBlur={() => {
+                    const c = newCategory.trim();
+                    if (c) { addCategory(c); setCategory(c); closeField('category'); }
+                    setNewCategory(''); setAddingCategory(false);
+                  }}
+                  placeholder="category name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="words"
+                />
+              ) : (
+                <InlineAction icon="add" label="New" accessibilityLabel="New category" onPress={() => setAddingCategory(true)} />
+              )}
+            </View>
+          </CollapsibleField>
+              </>
+            ),
+          },
+          ...(projects.length > 0 ? [{
+            key: 'project', label: 'Project', primary: true, set: !!project,
+            node: (
+              <>
+              <CollapsibleField
+                label="Project"
+                summary={projects.find(p => p.id === project)?.title}
+                hint="Files the task under a project so it counts toward that project's progress."
+                expanded={fieldOpen('project')}
+                onToggle={() => toggleField('project')}
+              >
+                <View style={styles.pillRow}>
+                  <TouchableOpacity
+                    style={[styles.pill, !project && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); setProject(null); closeField('project'); }}
+                  >
+                    <Text style={[styles.pillText, !project && styles.pillTextActive]}>None</Text>
+                  </TouchableOpacity>
+                  {projects.map(p => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={[styles.pill, project === p.id && styles.pillActiveNeutral]}
+                      onPress={() => { haptics.tap(); setProject(p.id); closeField('project'); }}
+                    >
+                      <Text style={[styles.pillText, project === p.id && styles.pillTextActive]}>{p.title}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'tags', label: 'Tags', primary: true, set: tags.length > 0,
+            node: (
+              <>
+          <CollapsibleField
+            label="Tags"
+            summary={tags.length > 0 ? tags.join(', ') : undefined}
+            hint="Free-form labels. A task can carry several, and you can filter or search by them."
+            expanded={fieldOpen('tags')}
+            onToggle={() => toggleField('tags')}
+            right={!!anthropicApiKey && (
+              <TouchableOpacity
+                style={styles.suggestBtn}
+                onPress={handleSuggest}
+                disabled={aiLoading || !title.trim()}
+                hitSlop={8}
+              >
+                {aiLoading
+                  ? <ActivityIndicator size="small" color={colors.purple} />
+                  : (
+                    <>
+                      <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                      <Text style={styles.suggestBtnText}>Suggest</Text>
+                    </>
+                  )
+                }
+              </TouchableOpacity>
             )}
-          </View>
-          {allTags.filter(t => !tags.includes(t)).length > 0 && (
-            <View style={styles.tagSuggestions}>
-              {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+          >
+            <View style={styles.tagRow}>
+              {tags.map(tag => (
                 <TouchableOpacity
                   key={tag}
-                  style={styles.tagSuggestion}
-                  onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                  style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => { haptics.tap(); setTags(prev => prev.filter(t => t !== tag)); }}
                 >
-                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                  <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                  <Ionicons name="close" size={12} color={tagColor(tag)} />
+                </TouchableOpacity>
+              ))}
+              {addingTag ? (
+                <TextInput
+                  autoFocus
+                  style={styles.tagInput}
+                  value={newTag}
+                  onChangeText={setNewTag}
+                  onSubmitEditing={addTagFromInput}
+                  onBlur={addTagFromInput}
+                  placeholder="tag name"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                />
+              ) : (
+                <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+              )}
+            </View>
+            {allTags.filter(t => !tags.includes(t)).length > 0 && (
+              <View style={styles.tagSuggestions}>
+                {allTags.filter(t => !tags.includes(t)).slice(0, 6).map(tag => (
+                  <TouchableOpacity
+                    key={tag}
+                    style={styles.tagSuggestion}
+                    onPress={() => { haptics.tap(); setTags(prev => [...prev, tag]); }}
+                  >
+                    <Text style={styles.tagSuggestionText}>{tag}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </CollapsibleField>
+              </>
+            ),
+          },
+        ]}
+      />
+
+      {/* Priority + Effort */}
+      <EditorGroup
+        label="Priority & effort"
+        divider="full"
+        rows={[
+          {
+            key: 'priority', label: 'Priority', primary: true, set: priority > 0,
+            node: (
+              <>
+          <CollapsibleField
+            label="Priority"
+            summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
+            hint="Ranks the task against everything else on Today."
+            expanded={fieldOpen('priority')}
+            onToggle={() => toggleField('priority')}
+          >
+            <View style={styles.pillRow}>
+              {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+                <TouchableOpacity
+                  key={p}
+                  style={[
+                    styles.pill,
+                    priority === p && p === 0 && styles.pillActiveNeutral,
+                    priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
+                  ]}
+                  onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
+                >
+                  <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
+                    {PRIORITY_LABELS[p]}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
-          )}
-        </CollapsibleField>
-      </View>
-
-      {/* Priority + Effort */}
-      <Text style={styles.groupLabel}>Priority & effort</Text>
-      <View style={styles.sectionCard}>
-        <CollapsibleField
-          label="Priority"
-          summary={priority > 0 ? PRIORITY_LABELS[priority] : undefined}
-          hint="Ranks the task against everything else on Today."
-          expanded={fieldOpen('priority')}
-          onToggle={() => toggleField('priority')}
-        >
-          <View style={styles.pillRow}>
-            {([0, 1, 2, 3, 4] as Priority[]).map(p => (
+          </CollapsibleField>
+              </>
+            ),
+          },
+          {
+            key: 'effort', label: 'Effort', primary: true, set: !!effort,
+            node: (
+              <>
+          <CollapsibleField
+            label="Effort"
+            summary={effortSummary}
+            emptySummary="Not set"
+            hint="Roughly how long this takes, so a day's list can be sized realistically."
+            expanded={fieldOpen('effort')}
+            onToggle={() => toggleField('effort')}
+            right={(
               <TouchableOpacity
-                key={p}
-                style={[
-                  styles.pill,
-                  priority === p && p === 0 && styles.pillActiveNeutral,
-                  priority === p && p > 0 && { backgroundColor: PRIORITY_COLORS[p] },
-                ]}
-                onPress={() => { haptics.tap(); setPriority(p); closeField('priority'); }}
+                style={styles.suggestBtn}
+                onPress={handleEstimateEffort}
+                disabled={!title.trim()}
+                hitSlop={8}
               >
-                <Text style={[styles.pillText, priority === p && styles.pillTextActive]}>
-                  {PRIORITY_LABELS[p]}
-                </Text>
+                <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
+                <Text style={styles.suggestBtnText}>Estimate</Text>
               </TouchableOpacity>
-            ))}
-          </View>
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Effort"
-          summary={effortSummary}
-          emptySummary="Not set"
-          hint="Roughly how long this takes, so a day's list can be sized realistically."
-          expanded={fieldOpen('effort')}
-          onToggle={() => toggleField('effort')}
-          right={(
-            <TouchableOpacity
-              style={styles.suggestBtn}
-              onPress={handleEstimateEffort}
-              disabled={!title.trim()}
-              hitSlop={8}
+            )}
+          >
+            <View style={styles.pillRow}>
+              {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
+                const active = !customEffortActive && effort === e;
+                const presetMins = EFFORT_MINUTES[e];
+                return (
+                  <TouchableOpacity
+                    key={e}
+                    style={[styles.pill, active && styles.pillActiveNeutral]}
+                    onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                  >
+                    <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                      {e === 0 ? '—' : EFFORT_LABELS[e]}
+                    </Text>
+                    {presetMins != null ? (
+                      <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
+                    ) : null}
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
+                onPress={openCustomEffort}
+              >
+                <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
+                  {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
+                </Text>
+                <Text style={styles.pillHint}>exact</Text>
+              </TouchableOpacity>
+            </View>
+            {customEffortOpen && (
+              <View style={styles.customEffortRow}>
+                <TextInput
+                  style={styles.customEffortInput}
+                  value={customEffortText}
+                  onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                  keyboardType="number-pad"
+                  placeholder="0"
+                  placeholderTextColor={colors.textTertiary}
+                  autoFocus
+                />
+                <View style={styles.unitToggle}>
+                  {(['min', 'hr'] as const).map(u => (
+                    <TouchableOpacity
+                      key={u}
+                      style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
+                      onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                    >
+                      <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            )}
+            {effortNote ? (
+              <Text style={styles.effortNote}>{effortNote}</Text>
+            ) : null}
+          </CollapsibleField>
+              </>
+            ),
+          },
+          // Subtasks are only a thing once the task exists to hang them off.
+          ...(task ? [{
+            key: 'subtasks', label: 'Subtasks', primary: true, set: subtasks.length > 0,
+            node: (
+              <>
+            <CollapsibleField
+              label="Subtasks"
+              summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
+              emptySummary="None"
+              expanded={fieldOpen('subtasks', subtasks.length > 0)}
+              onToggle={() => toggleField('subtasks', subtasks.length > 0)}
             >
-              <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
-              <Text style={styles.suggestBtnText}>Estimate</Text>
-            </TouchableOpacity>
-          )}
-        >
-          <View style={styles.pillRow}>
-            {([0, 1, 2, 3, 4, 5, 6] as Effort[]).map(e => {
-              const active = !customEffortActive && effort === e;
-              const presetMins = EFFORT_MINUTES[e];
-              return (
+              <MiniFabList
+                onDragStateChange={setDraggingRow}
+                data={subtasks}
+                onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+                accessibilityLabel="Add subtask"
+                fabHidden={addingSubtask}
+                onAdd={index => {
+                  setPendingSubtaskIndex(index);
+                  setAddingSubtask(true);
+                }}
+                renderItem={(sub, _i, drag) => (
+                  <View style={styles.subtaskRow}>
+                    <TouchableOpacity
+                      onPress={() => toggleSubtask(sub.id)}
+                      hitSlop={6}
+                      style={styles.subtaskCheck}
+                      accessibilityRole="checkbox"
+                      accessibilityLabel={sub.title}
+                      accessibilityState={{ checked: sub.completed }}
+                    >
+                      <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
+                        {sub.completed && (
+                          <Ionicons name="checkmark" size={11} color={colors.onAccent} />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                    <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                      {sub.title}
+                    </Text>
+                    <TouchableOpacity
+                      onLongPress={drag}
+                      delayLongPress={150}
+                      hitSlop={8}
+                      style={styles.dragHandle}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reorder subtask ${sub.title}`}
+                    >
+                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => deleteSubtask(sub.id)}
+                      hitSlop={8}
+                      style={styles.subtaskDelete}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Delete subtask ${sub.title}`}
+                    >
+                      <Ionicons name="close" size={14} color={colors.textTertiary} />
+                    </TouchableOpacity>
+                  </View>
+                )}
+                footer={addingSubtask ? (
+                  <View style={styles.subtaskInputRow}>
+                    {/* An empty copy of the row checkbox, so the field being typed
+                        into lines up with the subtasks above it. */}
+                    <View style={styles.subtaskCheck}>
+                      <View style={styles.subtaskBox} />
+                    </View>
+                    <TextInput
+                      autoFocus
+                      style={styles.subtaskInput}
+                      value={newSubtaskTitle}
+                      onChangeText={setNewSubtaskTitle}
+                      placeholder="Subtask title"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="next"
+                      // Adding subtasks is a burst, not one edit: submitting keeps
+                      // the field focused so the keyboard never drops between them.
+                      // This used to blur on submit and refocus on a 50ms timer,
+                      // which dismissed and reopened the keyboard on every entry.
+                      blurOnSubmit={false}
+                      onSubmitEditing={() => {
+                        commitSubtask(newSubtaskTitle);
+                        setNewSubtaskTitle('');
+                      }}
+                      onBlur={() => {
+                        commitSubtask(newSubtaskTitle);
+                        setNewSubtaskTitle('');
+                        setAddingSubtask(false);
+                        setPendingSubtaskIndex(null);
+                      }}
+                    />
+                  </View>
+                ) : null}
+              />
+            </CollapsibleField>
+              </>
+            ),
+          }] : []),
+          {
+            key: 'duration', label: 'Duration', set: estimatedMinutes !== null,
+            node: (
+              <>
+          <CollapsibleField
+            label="Duration"
+            summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
+            emptySummary="Untimed"
+            hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
+            expanded={fieldOpen('duration')}
+            onToggle={toggleDuration}
+          >
+            <View style={styles.pillRow}>
+              {DURATION_PRESETS.map(m => (
                 <TouchableOpacity
-                  key={e}
-                  style={[styles.pill, active && styles.pillActiveNeutral]}
-                  onPress={() => { haptics.tap(); applyEffortPreset(e); closeField('effort'); }}
+                  key={m}
+                  style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
+                  onPress={() => {
+                    haptics.tap();
+                    // Tapping the active preset clears it — the only way back
+                    // to untimed without emptying the input by hand.
+                    const next = timedMinutes === m ? null : m;
+                    setTimedMinutes(next);
+                    setDurationUnit('min');
+                    setDurationText(next != null ? String(next) : '');
+                  }}
                 >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                    {e === 0 ? '—' : EFFORT_LABELS[e]}
+                  <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
+                    {formatDuration(m)}
                   </Text>
-                  {presetMins != null ? (
-                    <Text style={styles.pillHint}>{formatDuration(presetMins)}</Text>
-                  ) : null}
                 </TouchableOpacity>
-              );
-            })}
-            <TouchableOpacity
-              style={[styles.pill, customEffortActive && styles.pillActiveNeutral]}
-              onPress={openCustomEffort}
-            >
-              <Text style={[styles.pillText, customEffortActive && styles.pillTextActive]}>
-                {customEffortActive && estimatedMinutes != null ? formatDuration(estimatedMinutes) : 'Custom'}
-              </Text>
-              <Text style={styles.pillHint}>exact</Text>
-            </TouchableOpacity>
-          </View>
-          {customEffortOpen && (
+              ))}
+            </View>
             <View style={styles.customEffortRow}>
               <TextInput
                 style={styles.customEffortInput}
-                value={customEffortText}
-                onChangeText={t => { setCustomEffortText(t); applyCustomEffort(t, customEffortUnit); }}
+                value={durationText}
+                onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
+              />
+              <View style={styles.unitToggle}>
+                {(['min', 'hr'] as const).map(u => (
+                  <TouchableOpacity
+                    key={u}
+                    style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
+                    onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
+                  >
+                    <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </CollapsibleField>
+              </>
+            ),
+          },
+          {
+            key: 'timeSpent', label: 'Time spent', set: timedMinutes !== null,
+            node: (
+              <>
+          <CollapsibleField
+            label="Time spent"
+            summary={actualMinutes != null ? formatDuration(actualMinutes) : undefined}
+            emptySummary="Not logged"
+            hint="How long it actually took. Time it with the stopwatch on the task's row, or log it here — either way it also sets the estimate."
+            expanded={fieldOpen('timeSpent')}
+            onToggle={toggleTimeSpent}
+          >
+            <View style={styles.customEffortRow}>
+              <TextInput
+                style={styles.customEffortInput}
+                value={logTimeText}
+                onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={colors.textTertiary}
@@ -2172,434 +2460,275 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 {(['min', 'hr'] as const).map(u => (
                   <TouchableOpacity
                     key={u}
-                    style={[styles.unitChip, customEffortUnit === u && styles.unitChipActive]}
-                    onPress={() => { setCustomEffortUnit(u); applyCustomEffort(customEffortText, u); }}
+                    style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
+                    onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
                   >
-                    <Text style={[styles.unitChipText, customEffortUnit === u && styles.unitChipTextActive]}>{u}</Text>
+                    <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-          )}
-          {effortNote ? (
-            <Text style={styles.effortNote}>{effortNote}</Text>
-          ) : null}
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Duration"
-          summary={timedMinutes != null ? formatDuration(timedMinutes) : undefined}
-          emptySummary="Untimed"
-          hint="Counts down on the task's row while you work. When it runs out the task is marked ready to complete."
-          expanded={fieldOpen('duration')}
-          onToggle={toggleDuration}
-        >
-          <View style={styles.pillRow}>
-            {DURATION_PRESETS.map(m => (
-              <TouchableOpacity
-                key={m}
-                style={[styles.pill, timedMinutes === m && styles.pillActiveNeutral]}
-                onPress={() => {
-                  haptics.tap();
-                  // Tapping the active preset clears it — the only way back
-                  // to untimed without emptying the input by hand.
-                  const next = timedMinutes === m ? null : m;
-                  setTimedMinutes(next);
-                  setDurationUnit('min');
-                  setDurationText(next != null ? String(next) : '');
-                }}
-              >
-                <Text style={[styles.pillText, timedMinutes === m && styles.pillTextActive]}>
-                  {formatDuration(m)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.customEffortRow}>
-            <TextInput
-              style={styles.customEffortInput}
-              value={durationText}
-              onChangeText={t => { setDurationText(t); applyDuration(t, durationUnit); }}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-            />
-            <View style={styles.unitToggle}>
-              {(['min', 'hr'] as const).map(u => (
-                <TouchableOpacity
-                  key={u}
-                  style={[styles.unitChip, durationUnit === u && styles.unitChipActive]}
-                  onPress={() => { setDurationUnit(u); applyDuration(durationText, u); }}
-                >
-                  <Text style={[styles.unitChipText, durationUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </CollapsibleField>
-
-        <View style={styles.cardSep} />
-
-        <CollapsibleField
-          label="Time spent"
-          summary={actualMinutes != null ? formatDuration(actualMinutes) : undefined}
-          emptySummary="Not logged"
-          hint="How long it actually took. Time it with the stopwatch on the task's row, or log it here — either way it also sets the estimate."
-          expanded={fieldOpen('timeSpent')}
-          onToggle={toggleTimeSpent}
-        >
-          <View style={styles.customEffortRow}>
-            <TextInput
-              style={styles.customEffortInput}
-              value={logTimeText}
-              onChangeText={t => { setLogTimeText(t); applyLoggedTime(t, logTimeUnit); }}
-              keyboardType="number-pad"
-              placeholder="0"
-              placeholderTextColor={colors.textTertiary}
-              autoFocus
-            />
-            <View style={styles.unitToggle}>
-              {(['min', 'hr'] as const).map(u => (
-                <TouchableOpacity
-                  key={u}
-                  style={[styles.unitChip, logTimeUnit === u && styles.unitChipActive]}
-                  onPress={() => { setLogTimeUnit(u); applyLoggedTime(logTimeText, u); }}
-                >
-                  <Text style={[styles.unitChipText, logTimeUnit === u && styles.unitChipTextActive]}>{u}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </CollapsibleField>
-      </View>
-
-      {/* Subtasks — only shown when editing an existing task */}
-      {task && (
-        <View style={styles.sectionCard}>
-          <CollapsibleField
-            label="Subtasks"
-            summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
-            emptySummary="None"
-            expanded={fieldOpen('subtasks', subtasks.length > 0)}
-            onToggle={() => toggleField('subtasks', subtasks.length > 0)}
-          >
-            <MiniFabList
-              onDragStateChange={setDraggingRow}
-              data={subtasks}
-              onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
-              accessibilityLabel="Add subtask"
-              fabHidden={addingSubtask}
-              onAdd={index => {
-                setPendingSubtaskIndex(index);
-                setAddingSubtask(true);
-              }}
-              renderItem={(sub, _i, drag) => (
-                <View style={styles.subtaskRow}>
-                  <TouchableOpacity
-                    onPress={() => toggleSubtask(sub.id)}
-                    hitSlop={6}
-                    style={styles.subtaskCheck}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={sub.title}
-                    accessibilityState={{ checked: sub.completed }}
-                  >
-                    <View style={[styles.subtaskBox, sub.completed && styles.subtaskBoxDone]}>
-                      {sub.completed && (
-                        <Ionicons name="checkmark" size={11} color={colors.onAccent} />
-                      )}
-                    </View>
-                  </TouchableOpacity>
-                  <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                    {sub.title}
-                  </Text>
-                  <TouchableOpacity
-                    onLongPress={drag}
-                    delayLongPress={150}
-                    hitSlop={8}
-                    style={styles.dragHandle}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Reorder subtask ${sub.title}`}
-                  >
-                    <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => deleteSubtask(sub.id)}
-                    hitSlop={8}
-                    style={styles.subtaskDelete}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Delete subtask ${sub.title}`}
-                  >
-                    <Ionicons name="close" size={14} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                </View>
-              )}
-              footer={addingSubtask ? (
-                <View style={styles.subtaskInputRow}>
-                  {/* An empty copy of the row checkbox, so the field being typed
-                      into lines up with the subtasks above it. */}
-                  <View style={styles.subtaskCheck}>
-                    <View style={styles.subtaskBox} />
-                  </View>
-                  <TextInput
-                    autoFocus
-                    style={styles.subtaskInput}
-                    value={newSubtaskTitle}
-                    onChangeText={setNewSubtaskTitle}
-                    placeholder="Subtask title"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="next"
-                    // Adding subtasks is a burst, not one edit: submitting keeps
-                    // the field focused so the keyboard never drops between them.
-                    // This used to blur on submit and refocus on a 50ms timer,
-                    // which dismissed and reopened the keyboard on every entry.
-                    blurOnSubmit={false}
-                    onSubmitEditing={() => {
-                      commitSubtask(newSubtaskTitle);
-                      setNewSubtaskTitle('');
-                    }}
-                    onBlur={() => {
-                      commitSubtask(newSubtaskTitle);
-                      setNewSubtaskTitle('');
-                      setAddingSubtask(false);
-                      setPendingSubtaskIndex(null);
-                    }}
-                  />
-                </View>
-              ) : null}
-            />
           </CollapsibleField>
-        </View>
-      )}
-
+              </>
+            ),
+          },
+        ]}
+      />
       {/* Everything else — rarely changed, so it sits last */}
-      <Text style={styles.groupLabel}>More</Text>
-      <View style={styles.optionsCard}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setPinned(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Pin to Today"
-          accessibilityState={{ checked: pinned }}
-        >
-          <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Pin to Today</Text>
-            <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
-          </View>
-          <View style={[styles.toggle, pinned && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-        <View style={styles.sep} />
-        <EditorRow
-          icon="link-outline"
-          label="Link"
-          hint="Open an app or link from the task"
-          value={
-            KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
-              ?? (linkUrl ?? undefined)
-          }
-          expanded={showLinkPicker}
-          onPress={() => {
-            if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
-              setCustomLinkText(linkUrl);
-            }
-            setShowLinkPicker(v => !v);
-          }}
-          onClear={linkUrl ? () => { setLinkUrl(null); setCustomLinkText(''); setShowLinkPicker(false); } : undefined}
-        />
-        {showLinkPicker && (
-          <>
-            <View style={styles.linkPickerRow}>
-              {KNOWN_LINK_APPS.map(app => (
-                <TouchableOpacity
-                  key={app.scheme}
-                  style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
-                  onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
-                >
-                  <Ionicons
-                    name={app.icon as never}
-                    size={13}
-                    color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
-                  />
-                  <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
-                    {app.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <View style={styles.linkCustomRow}>
-              <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
-              <TextInput
-                style={styles.linkCustomInput}
-                value={customLinkText}
-                onChangeText={setCustomLinkText}
-                onSubmitEditing={commitCustomLink}
-                onBlur={commitCustomLink}
-                placeholder="https://... or app://"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                returnKeyType="done"
-              />
-            </View>
-          </>
-        )}
-        <View style={styles.sep} />
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Vacation pause"
-          accessibilityState={{ checked: vacationPause }}
-        >
-          <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Vacation pause</Text>
-            <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
-          </View>
-          <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-        {task && !task.parentId && (
-          <>
-            <View style={styles.sep} />
+      <EditorGroup
+        label="More"
+        rows={[
+          {
+            key: 'pin', label: 'Pin to Today', set: pinned,
+            node: (
+              <>
             <TouchableOpacity
               style={styles.optionRow}
-              onPress={handleSendToGroceries}
+              onPress={() => { haptics.tap(); setPinned(v => !v); }}
               activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel="Send to groceries"
+              accessibilityRole="switch"
+              accessibilityLabel="Pin to Today"
+              accessibilityState={{ checked: pinned }}
             >
-              <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
+              <PinIcon filled={pinned} size={18} color={pinned ? colors.orange : colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Send to groceries</Text>
-                <Text style={styles.optionHint}>
-                  Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
-                </Text>
+                <Text style={styles.optionLabel}>Pin to Today</Text>
+                <Text style={styles.optionHint}>Hoist this to the top of Today, above everything else</Text>
               </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              <View style={[styles.toggle, pinned && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+              </View>
             </TouchableOpacity>
-          </>
-        )}
-        {task && task.recurrenceType !== 'none' && (
-          <>
-            <View style={styles.sep} />
-            <TouchableOpacity
-              style={styles.optionRow}
+              </>
+            ),
+          },
+          {
+            key: 'link', label: 'Link', set: !!linkUrl,
+            node: (
+              <>
+            <EditorRow
+              icon="link-outline"
+              label="Link"
+              hint="Open an app or link from the task"
+              value={
+                KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
+                  ?? (linkUrl ?? undefined)
+              }
+              expanded={showLinkPicker}
               onPress={() => {
-                if (task.archived) {
-                  unarchiveTask(task.id);
-                } else {
-                  haptics.success();
-                  archiveTask(task.id);
-                  onClose();
+                if (linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
+                  setCustomLinkText(linkUrl);
                 }
+                setShowLinkPicker(v => !v);
               }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityLabel="Archive"
-              accessibilityState={{ checked: task.archived }}
-            >
-              <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Archive</Text>
-                <Text style={styles.optionHint}>
-                  {task.archived
-                    ? 'Hidden from every list — resuming resets your streak'
-                    : 'Hide indefinitely, keeping history — find it later in Archived'}
-                </Text>
-              </View>
-              <View style={[styles.toggle, task.archived && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
-              </View>
-            </TouchableOpacity>
-            <View style={styles.sep} />
-            <TouchableOpacity
-              style={styles.optionRow}
-              onPress={() => {
-                setStreakDraft(task.streakCount);
-                setStreakEditorOpen(o => !o);
-              }}
-              activeOpacity={interaction.activeOpacity}
-            >
-              <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
-              <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Streak</Text>
-                <Text style={styles.optionHint}>
-                  {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
-                </Text>
-              </View>
-              <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
-            </TouchableOpacity>
-            {streakEditorOpen && (
-              <View style={styles.intervalRow}>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Decrease streak count"
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValue}>{streakDraft}</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setStreakDraft(d => d + 1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Increase streak count"
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
-                <TouchableOpacity
-                  style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
-                  onPress={() => applyStreakChange(streakDraft)}
-                  disabled={streakDraft === task.streakCount}
-                >
-                  <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
-                    {streakDraft === 0 ? 'Reset' : 'Apply'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              onClear={linkUrl ? () => { setLinkUrl(null); setCustomLinkText(''); setShowLinkPicker(false); } : undefined}
+            />
+            {showLinkPicker && (
+              <>
+                <View style={styles.linkPickerRow}>
+                  {KNOWN_LINK_APPS.map(app => (
+                    <TouchableOpacity
+                      key={app.scheme}
+                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                      onPress={() => { setLinkUrl(app.scheme); setShowLinkPicker(false); }}
+                    >
+                      <Ionicons
+                        name={app.icon as never}
+                        size={13}
+                        color={linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                      />
+                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                        {app.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.linkCustomRow}>
+                  <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.linkCustomInput}
+                    value={customLinkText}
+                    onChangeText={setCustomLinkText}
+                    onSubmitEditing={commitCustomLink}
+                    onBlur={commitCustomLink}
+                    placeholder="https://... or app://"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    returnKeyType="done"
+                  />
+                </View>
+              </>
             )}
-          </>
-        )}
-        {/* Keyed off the draft's recurrence, not the saved task's, so it shows
-            up the moment a repeat is picked on a brand new task too. */}
-        {recurrenceType !== 'none' && (
-          <>
-            <View style={styles.sep} />
+              </>
+            ),
+          },
+          {
+            key: 'vacation', label: 'Vacation pause', set: vacationPause,
+            node: (
+              <>
             <TouchableOpacity
               style={styles.optionRow}
-              onPress={() => {
-                haptics.tap();
-                setShowStreak(v => !v);
-              }}
+              onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
-              accessibilityLabel="Show streak on row"
-              accessibilityState={{ checked: showStreak }}
+              accessibilityLabel="Vacation pause"
+              accessibilityState={{ checked: vacationPause }}
             >
-              <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+              <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
-                <Text style={styles.optionLabel}>Show streak on row</Text>
-                <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+                <Text style={styles.optionLabel}>Vacation pause</Text>
+                <Text style={styles.optionHint}>Hide and protect streak during vacation mode</Text>
               </View>
-              <View style={[styles.toggle, showStreak && styles.toggleOn]}>
-                <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+              <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
-          </>
-        )}
-      </View>
+              </>
+            ),
+          },
+          // These carry their own guards, so they contribute no row at all
+          // unless the task is the kind that has them.
+          ...(task && !task.parentId ? [{
+            key: 'groceries', label: 'Send to groceries', set: false,
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={handleSendToGroceries}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Send to groceries"
+                >
+                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Send to groceries</Text>
+                    <Text style={styles.optionHint}>
+                      Move this to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+          // One row for two controls: the archive toggle and the streak-count
+          // editor shared a guard, and both exist only for a saved repeating task.
+          ...(task && task.recurrenceType !== 'none' ? [{
+            key: 'archive', label: 'Archive & streak', set: !!task.archived || task.streakCount > 0,
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    if (task.archived) {
+                      unarchiveTask(task.id);
+                    } else {
+                      haptics.success();
+                      archiveTask(task.id);
+                      onClose();
+                    }
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Archive"
+                  accessibilityState={{ checked: task.archived }}
+                >
+                  <Ionicons name="archive-outline" size={18} color={task.archived ? colors.accent : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Archive</Text>
+                    <Text style={styles.optionHint}>
+                      {task.archived
+                        ? 'Hidden from every list — resuming resets your streak'
+                        : 'Hide indefinitely, keeping history — find it later in Archived'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggle, task.archived && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, task.archived && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.sep} />
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    setStreakDraft(task.streakCount);
+                    setStreakEditorOpen(o => !o);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Streak</Text>
+                    <Text style={styles.optionHint}>
+                      {task.streakCount > 0 ? `${task.streakCount} day streak — tap to correct` : 'No streak yet'}
+                    </Text>
+                  </View>
+                  <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+                {streakEditorOpen && (
+                  <View style={styles.intervalRow}>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
+                      accessibilityRole="button"
+                      accessibilityLabel="Decrease streak count"
+                    >
+                      <Ionicons name="remove" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalValue}>{streakDraft}</Text>
+                    <TouchableOpacity
+                      style={styles.intervalBtn}
+                      onPress={() => setStreakDraft(d => d + 1)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Increase streak count"
+                    >
+                      <Ionicons name="add" size={16} color={colors.text} />
+                    </TouchableOpacity>
+                    <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
+                    <TouchableOpacity
+                      style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
+                      onPress={() => applyStreakChange(streakDraft)}
+                      disabled={streakDraft === task.streakCount}
+                    >
+                      <Text style={[styles.streakApplyText, streakDraft === task.streakCount && styles.streakApplyTextDisabled]}>
+                        {streakDraft === 0 ? 'Reset' : 'Apply'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </>
+            ),
+          }] : []),
+          ...(recurrenceType !== 'none' ? [{
+            key: 'showStreak', label: 'Show streak on row', set: showStreak,
+            node: (
+              <>
+                <TouchableOpacity
+                  style={styles.optionRow}
+                  onPress={() => {
+                    haptics.tap();
+                    setShowStreak(v => !v);
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityLabel="Show streak on row"
+                  accessibilityState={{ checked: showStreak }}
+                >
+                  <Ionicons name="flame" size={18} color={showStreak ? colors.orange : colors.textSecondary} />
+                  <View style={styles.optionContent}>
+                    <Text style={styles.optionLabel}>Show streak on row</Text>
+                    <Text style={styles.optionHint}>Keep the streak count visible on the task itself, not just in here</Text>
+                  </View>
+                  <View style={[styles.toggle, showStreak && styles.toggleOn]}>
+                    <View style={[styles.toggleKnob, showStreak && styles.toggleKnobOn]} />
+                  </View>
+                </TouchableOpacity>
+              </>
+            ),
+          }] : []),
+        ]}
+      />
 
       {task && (
         <View style={[styles.optionsCard, { marginTop: spacing.xl }]}>
@@ -2689,12 +2818,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingBottom: spacing.lg, minHeight: 50,
     lineHeight: 22,
   },
-  sectionCard: {
-    marginHorizontal: spacing.md, marginBottom: spacing.lg,
-    backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
-  },
   cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
   sectionLabel: {
     color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
@@ -2820,11 +2944,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pickerBtnPrimary: { backgroundColor: colors.accent },
   pickerBtnText: { fontSize: font.md, fontWeight: '600' },
-  groupLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 0.8,
-    marginHorizontal: spacing.md + spacing.xs, marginBottom: spacing.xs,
-  },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',

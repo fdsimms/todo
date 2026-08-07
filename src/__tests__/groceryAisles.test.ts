@@ -4,6 +4,8 @@ import {
   OTHER_AISLE,
   aisleForName,
   normalizeAisleOrder,
+  rememberAisles,
+  renameRememberedAisle,
 } from '../utils/groceryAisles';
 
 // ─── the lexicon's own invariant ─────────────────────────────────────────────
@@ -107,5 +109,61 @@ describe('normalizeAisleOrder', () => {
     const result = normalizeAisleOrder(['', '   ', 'Produce']);
     expect(result).not.toContain('');
     expect(result).toContain('Produce');
+  });
+});
+
+// ─── remembered aisles ───────────────────────────────────────────────────────
+
+describe('rememberAisles', () => {
+  it('records a filing under the item key', () => {
+    expect(rememberAisles({}, [{ nameKey: 'nduja', aisle: 'Deli' }])).toEqual({ nduja: 'Deli' });
+  });
+
+  it('overwrites an earlier filing — the latest is what the user means', () => {
+    const result = rememberAisles({ nduja: 'Deli' }, [{ nameKey: 'nduja', aisle: 'Meat & Seafood' }]);
+    expect(result).toEqual({ nduja: 'Meat & Seafood' });
+  });
+
+  it('returns null when nothing changed, so the caller skips the write', () => {
+    expect(rememberAisles({ nduja: 'Deli' }, [{ nameKey: 'nduja', aisle: 'Deli' }])).toBeNull();
+    expect(rememberAisles({}, [])).toBeNull();
+  });
+
+  it('never mutates what it was given', () => {
+    const current = { nduja: 'Deli' };
+    rememberAisles(current, [{ nameKey: 'milk', aisle: 'Frozen' }]);
+    expect(current).toEqual({ nduja: 'Deli' });
+  });
+
+  it('takes a whole batch in one pass', () => {
+    const result = rememberAisles({}, [
+      { nameKey: 'nduja', aisle: 'Deli' },
+      { nameKey: 'milk', aisle: 'Frozen' },
+    ]);
+    expect(result).toEqual({ nduja: 'Deli', milk: 'Frozen' });
+  });
+
+  it('drops entries that could never be looked up again', () => {
+    expect(rememberAisles({}, [
+      { nameKey: '', aisle: 'Deli' },
+      { nameKey: 'milk', aisle: '  ' },
+    ])).toBeNull();
+  });
+});
+
+describe('renameRememberedAisle', () => {
+  it('moves the filing onto the new key', () => {
+    const result = renameRememberedAisle({ 'protien powder': 'Household' }, 'protien powder', 'protein powder');
+    expect(result).toEqual({ 'protein powder': 'Household' });
+  });
+
+  it('is a no-op when there was nothing filed, or the key is unchanged', () => {
+    expect(renameRememberedAisle({}, 'milk', 'whole milk')).toBeNull();
+    expect(renameRememberedAisle({ milk: 'Frozen' }, 'milk', 'milk')).toBeNull();
+  });
+
+  it('leaves everything else alone', () => {
+    const result = renameRememberedAisle({ milk: 'Frozen', nduja: 'Deli' }, 'milk', 'whole milk');
+    expect(result).toEqual({ 'whole milk': 'Frozen', nduja: 'Deli' });
   });
 });

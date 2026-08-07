@@ -1,0 +1,4 @@
+{
+  "message": "Shaking to undo a completion after the row has already left the list brings the task back properly, instead of leaving an invisible gap where it was — a stack could end up looking like it expanded to nothing",
+  "date": "2026-08-07"
+}

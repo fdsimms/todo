@@ -47,6 +47,12 @@ interface SettingsStore {
   weekStartsOn: WeekStart;
   fabHand: FabHand;
   hapticsEnabled: boolean;
+  // The accelerometer-driven "shake to undo" gesture (src/utils/useShakeToUndo.ts).
+  // On by default, like hapticsEnabled, so an existing install keeps the
+  // behavior it already had. Off skips the Accelerometer subscription
+  // entirely rather than gating at the callback, so turning it off actually
+  // stops the sensor from running.
+  shakeToUndoEnabled: boolean;
   // Today's sort & filter, persisted so they survive a cold launch. They're
   // view state rather than a preference — nothing in Settings shows them — but
   // they live here because losing your sort on every launch is the one thing
@@ -141,6 +147,7 @@ interface SettingsStore {
   setWeekStartsOn: (day: WeekStart) => void;
   setFabHand: (hand: FabHand) => void;
   setHapticsEnabled: (on: boolean) => void;
+  setShakeToUndoEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
@@ -181,6 +188,7 @@ const DEFAULT_SETTINGS = {
   weekStartsOn: 0 as WeekStart,
   fabHand: 'right' as FabHand,
   hapticsEnabled: true,
+  shakeToUndoEnabled: true,
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   autoRemoveExpiredTasks: false,
@@ -251,6 +259,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   weekStartsOn: 0,
   fabHand: 'right',
   hapticsEnabled: true,
+  shakeToUndoEnabled: true,
   sortOption: 'default',
   filterPriorities: [],
   filterEfforts: [],
@@ -296,6 +305,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // Defaults on rather than off, so an install that predates the setting
     // keeps the haptics it already had.
     const hapticsEnabled = dbGetSetting('hapticsEnabled') !== 'false';
+    // Same reasoning as hapticsEnabled above: defaults on so an install that
+    // predates the setting keeps shake-to-undo working.
+    const shakeToUndoEnabled = dbGetSetting('shakeToUndoEnabled') !== 'false';
     const storedSort = dbGetSetting('sortOption') as SortOption | null;
     const sortOption: SortOption =
       storedSort && SORT_OPTIONS.includes(storedSort) ? storedSort : 'default';
@@ -339,7 +351,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   /**
@@ -431,6 +443,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setHapticsEnabled(on: boolean) {
     dbSetSetting('hapticsEnabled', on ? 'true' : 'false');
     set({ hapticsEnabled: on });
+  },
+
+  setShakeToUndoEnabled(on: boolean) {
+    dbSetSetting('shakeToUndoEnabled', on ? 'true' : 'false');
+    set({ shakeToUndoEnabled: on });
   },
 
   setSortOption(sort: SortOption) {

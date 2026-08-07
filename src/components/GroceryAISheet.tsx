@@ -71,6 +71,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const addByName = useGroceryStore(s => s.addByName);
   const setAisle = useGroceryStore(s => s.setAisle);
   const setQuantity = useGroceryStore(s => s.setQuantity);
+  const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,9 +164,12 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         if (!accepted.has(i)) return;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of
-        // whatever the lexicon guessed.
+        // whatever the lexicon guessed. An aisle the user has filed this item
+        // under themselves is not a guess, though — addByName has already
+        // honoured it, and applying the model's on top would overwrite the
+        // memory as well as the row.
         const item = addByName(row.name);
-        if (row.aisle) setAisle(item.id, row.aisle);
+        if (row.aisle && !rememberedAisleFor(row.name)) setAisle(item.id, row.aisle);
         if (row.quantity) setQuantity(item.id, row.quantity);
       });
     }

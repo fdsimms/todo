@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
@@ -214,6 +214,25 @@ export function initDatabase(): void {
       last_purchased_at TEXT,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS grocery_shops (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
+
+    -- Which stores an item has been bought at, as counters rather than a row
+    -- per trip. See ItemShopLink in types for why, and for the invariant that
+    -- these counts are partial while grocery_items.purchase_count is the total.
+    CREATE TABLE IF NOT EXISTS grocery_item_shops (
+      item_id TEXT NOT NULL,
+      shop_id TEXT NOT NULL,
+      purchase_count INTEGER NOT NULL DEFAULT 0,
+      last_purchased_at TEXT,
+      PRIMARY KEY (item_id, shop_id)
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
@@ -304,6 +323,13 @@ export function initDatabase(): void {
     // from an earlier build still picks the index up.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_items_name_key ON grocery_items(name_key)',
     'CREATE INDEX IF NOT EXISTS idx_grocery_items_on_list ON grocery_items(on_list)',
+    // Same reasoning as idx_grocery_items_name_key: the no-two-spellings-of-one
+    // -store guarantee belongs in SQLite, not in a store method a future call
+    // site could go around.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_grocery_shops_name_key ON grocery_shops(name_key)',
+    // The store → items read (the Buy again filter). item → shops needs no
+    // index: it's the leading column of the primary key.
+    'CREATE INDEX IF NOT EXISTS idx_grocery_item_shops_shop ON grocery_item_shops(shop_id)',
     // Nullable, and null is the value every existing row wants: a task nobody
     // imported from Reminders has no suggestion pending. JSON, like
     // series_defaults, because it holds a Partial<Task> rather than a scalar.
@@ -320,6 +346,12 @@ export function initDatabase(): void {
     // it on hides every member but the first, and no existing project's order
     // was ever entered as a sequence.
     'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
+    // Defaults to 1, and that's the only safe value for an existing install:
+    // every row already on a device predates the provisional idea, so all of
+    // them are catalog members and none may be deleted out from under a
+    // "Remove from list". New rows pass the flag explicitly (see
+    // dbInsertGroceryItem), so the default only ever applies to history.
+    'ALTER TABLE grocery_items ADD COLUMN in_catalog INTEGER NOT NULL DEFAULT 1',
     // Null for every existing target, which is exactly the old behaviour: no
     // unit means the meter keeps reading as the bare "5/12" it always has.
     'ALTER TABLE tasks ADD COLUMN target_unit TEXT',
@@ -452,7 +484,9 @@ export const BACKUP_TABLES = [
   'template_categories',
   'projects',
   'task_groups',
+  'grocery_shops',
   'grocery_items',
+  'grocery_item_shops',
   'templates',
   'tasks',
   'settings',
@@ -1074,6 +1108,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
     checked: Boolean(row.checked),
+    // Absent only on a row read before the migration landed, and a row that
+    // already exists is a catalog member — same reading as the column default.
+    inCatalog: row.in_catalog === undefined ? true : Boolean(row.in_catalog),
     sortOrder: (row.sort_order as number) ?? 0,
     favorite: Boolean(row.favorite),
     purchaseCount: (row.purchase_count as number) ?? 0,
@@ -1093,12 +1130,12 @@ export function dbGetAllGroceryItems(): GroceryItem[] {
 export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
-      (id, name, name_key, aisle, quantity, note, on_list, checked, sort_order,
+      (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        favorite, purchase_count, last_added_at, last_purchased_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
     ]
@@ -1108,12 +1145,12 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
 export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
-       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?,
+       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.id,
     ]
@@ -1121,6 +1158,11 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
 }
 
 export function dbDeleteGroceryItem(id: string): void {
+  // Written out rather than left to a foreign key: expo-sqlite has FK
+  // enforcement off, so ON DELETE CASCADE would silently do nothing and leave
+  // links pointing at an item that no longer exists. Same reason
+  // dbBulkDeleteTasks handles its parent_id children by hand.
+  db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ?', [id]);
   db.runSync('DELETE FROM grocery_items WHERE id = ?', [id]);
 }
 
@@ -1133,20 +1175,37 @@ export function dbDeleteGroceryItem(id: string): void {
  * catalog is the feature. purchase_count/last_purchased_at *are* the ranking
  * signal behind autocomplete and Buy again — delete the row and the eleventh
  * milk ranks like the typo you made once.
+ *
+ * `shopId` is optional and null is a real answer, not a missing one: a trip
+ * finished without naming a store bumps the item exactly as it always has and
+ * writes no link. That's what keeps this additive — picking a store never
+ * became a step you have to complete mid-supermarket.
  */
-export function dbFinishGroceryShopping(purchasedAt: string): string[] {
+export function dbFinishGroceryShopping(purchasedAt: string, shopId: string | null = null): string[] {
   const rows = db.getAllSync<{ id: string }>(
     'SELECT id FROM grocery_items WHERE checked = 1 AND on_list = 1'
   );
   if (rows.length === 0) return [];
   db.runSync(
     `UPDATE grocery_items
-        SET on_list = 0, checked = 0,
+        SET on_list = 0, checked = 0, in_catalog = 1,
             purchase_count = purchase_count + 1,
             last_purchased_at = ?
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
+  if (shopId) {
+    for (const row of rows) {
+      db.runSync(
+        `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at)
+         VALUES (?, ?, 1, ?)
+         ON CONFLICT(item_id, shop_id)
+         DO UPDATE SET purchase_count = purchase_count + 1,
+                       last_purchased_at = excluded.last_purchased_at`,
+        [row.id, shopId, purchasedAt]
+      );
+    }
+  }
   return rows.map(r => r.id);
 }
 
@@ -1158,7 +1217,12 @@ export function dbFinishGroceryShopping(purchasedAt: string): string[] {
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
+  // in_catalog = 1 for the same reason the alert says nothing is deleted: a
+  // cleared trip parks its rows rather than forgetting them, so a name typed
+  // this week survives as catalog even though it was never bought. It also
+  // keeps the !onList ⇒ inCatalog invariant, without which a provisional row
+  // could sit off the list and then be deleted by a later Remove from list.
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, in_catalog = 1 WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 
@@ -1180,6 +1244,123 @@ export function dbGetGroceryAisleOrder(): string[] | null {
 
 export function dbSetGroceryAisleOrder(order: string[]): void {
   dbSetSetting('grocery_aisle_order', JSON.stringify(order));
+}
+
+// name_key → the aisle the user filed that item under, which is why it lives
+// here and not on the row: a provisional grocery row is deleted when it comes
+// off the list, and the filing has to outlive it. Same tolerance for a corrupt
+// value as the walk order above — a bad blob costs the memory, not the launch.
+export function dbGetGroceryAisleOverrides(): Record<string, string> {
+  const val = dbGetSetting('grocery_aisle_overrides');
+  if (!val) return {};
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [key, aisle] of Object.entries(parsed as Record<string, unknown>)) {
+      if (key && typeof aisle === 'string' && aisle) out[key] = aisle;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function dbSetGroceryAisleOverrides(overrides: Record<string, string>): void {
+  dbSetSetting('grocery_aisle_overrides', JSON.stringify(overrides));
+}
+
+// ─── Grocery stores ─────────────────────────────────────────────────────────
+//
+// A table rather than a JSON list in `settings` — the opposite call to the
+// aisle order, and for the reason that decision gives. An aisle is a name and a
+// position, so a string list holds it. A store is referenced by every link row
+// it owns, so it needs an id that survives a rename; storing the name in the
+// links instead would break every record the moment someone fixed a typo.
+
+function rowToShop(row: Record<string, unknown>): Shop {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nameKey: row.name_key as string,
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllGroceryShops(): Shop[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM grocery_shops ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToShop);
+}
+
+export function dbInsertGroceryShop(shop: Shop): void {
+  db.runSync(
+    'INSERT INTO grocery_shops (id, name, name_key, sort_order, created_at) VALUES (?,?,?,?,?)',
+    [shop.id, shop.name, shop.nameKey, shop.sortOrder, shop.createdAt]
+  );
+}
+
+export function dbUpdateGroceryShop(shop: Shop): void {
+  db.runSync(
+    'UPDATE grocery_shops SET name=?, name_key=?, sort_order=? WHERE id=?',
+    [shop.name, shop.nameKey, shop.sortOrder, shop.id]
+  );
+}
+
+/**
+ * Deleting a store takes its purchase records with it — a link to a store that
+ * doesn't exist is unreadable, not merely orphaned. Same hand-written cascade
+ * as dbDeleteGroceryItem, and for the same reason (FKs are off).
+ */
+export function dbDeleteGroceryShop(id: string): void {
+  db.runSync('DELETE FROM grocery_item_shops WHERE shop_id = ?', [id]);
+  db.runSync('DELETE FROM grocery_shops WHERE id = ?', [id]);
+}
+
+function rowToItemShopLink(row: Record<string, unknown>): ItemShopLink {
+  return {
+    itemId: row.item_id as string,
+    shopId: row.shop_id as string,
+    purchaseCount: (row.purchase_count as number) ?? 0,
+    lastPurchasedAt: (row.last_purchased_at as string) ?? null,
+  };
+}
+
+export function dbGetAllItemShopLinks(): ItemShopLink[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM grocery_item_shops');
+  return rows.map(rowToItemShopLink);
+}
+
+/** Upsert, so the manual "I get this here" and a finished trip share one path. */
+export function dbSetItemShopLink(link: ItemShopLink): void {
+  db.runSync(
+    `INSERT INTO grocery_item_shops (item_id, shop_id, purchase_count, last_purchased_at)
+     VALUES (?,?,?,?)
+     ON CONFLICT(item_id, shop_id)
+     DO UPDATE SET purchase_count = excluded.purchase_count,
+                   last_purchased_at = excluded.last_purchased_at`,
+    [link.itemId, link.shopId, link.purchaseCount, link.lastPurchasedAt ?? null]
+  );
+}
+
+export function dbDeleteItemShopLink(itemId: string, shopId: string): void {
+  db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?', [itemId, shopId]);
+}
+
+// The store the last trip was finished at, used to preselect the next one. A
+// scalar, so it's a settings key like grocery_aisle_order rather than a column
+// on anything. Validated against live shops at read time by the store, because
+// the shop it names can have been deleted since.
+export function dbGetLastShopId(): string | null {
+  // `|| null`, not `?? null`: clearing it writes an empty string (dbSetSetting
+  // takes a string), and "" is not a shop id.
+  return dbGetSetting('grocery_last_shop_id') || null;
+}
+
+export function dbSetLastShopId(id: string | null): void {
+  dbSetSetting('grocery_last_shop_id', id ?? '');
 }
 
 // ─── Projects ───────────────────────────────────────────────────────────────

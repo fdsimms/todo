@@ -24,6 +24,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
+    inCatalog: true,
     sortOrder: seq,
     favorite: false,
     purchaseCount: 0,
