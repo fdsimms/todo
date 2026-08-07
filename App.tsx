@@ -45,6 +45,7 @@ export default function App() {
   const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
+  const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
 
   useEffect(() => {
     // initTasks calls initDatabase() which creates all tables first
@@ -67,9 +68,15 @@ export default function App() {
     // spawn members and so change what a project counts as scheduled; and
     // after initSettings, since "quiet" is measured in logical days.
     dripStalledProjects();
+    // Enforce the completed-task retention window, if the user set one. Last
+    // of the maintenance passes on purpose: it only ever deletes rows old
+    // enough to be out of every other pass's reach, and running it after
+    // rolloverQuotas means a completion that pass just wrote is judged on the
+    // same footing as any other.
+    purgeOldCompletedTasks();
     // Request notification permissions
     requestNotificationPermissions();
-  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects]);
+  }, [initTasks, initSettings, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

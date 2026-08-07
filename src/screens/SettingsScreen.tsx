@@ -57,6 +57,9 @@ import {
   buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
 } from '../utils/backup';
 import {
+  RETENTION_OPTIONS, retentionCutoff, retentionLabel, selectPurgeableTaskIds, type RetentionDays,
+} from '../utils/retention';
+import {
   writeBackupFile, shareBackupFile, discardBackupFile, pickBackupFile, canShare,
 } from '../utils/backupFile';
 
@@ -133,6 +136,7 @@ export function SettingsScreen() {
     vacationEnd, setVacationEnd,
     autoRemoveExpiredTasks, setAutoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete, setAutoArchiveProjectsOnComplete,
+    completedRetentionDays, setCompletedRetentionDays,
     remindersImportEnabled, setRemindersImportEnabled,
     remindersImportListId, setRemindersImportListId,
     setRemindersImportConfirmedListId,
@@ -280,6 +284,43 @@ export function SettingsScreen() {
 
   const [apiKeyDraft, setApiKeyDraft] = useState('');
   const scrollRef = useRef<ScrollView>(null);
+
+  const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
+
+  /**
+   * Picking a retention window applies it to the backlog immediately rather
+   * than leaving it to take effect at the next launch — a setting that deletes
+   * has to show what it costs at the moment it's chosen, not silently later.
+   * So the count comes from the same selection the purge itself runs, and the
+   * setting is only written once the user has said yes to that number.
+   *
+   * Shortening to a window nothing falls outside of, or lengthening one (up to
+   * and including Forever), takes nothing and so just saves.
+   */
+  const onPickRetention = (days: RetentionDays) => {
+    if (days === completedRetentionDays) return;
+    const cutoff = retentionCutoff(days, new Date(), dayResetTime);
+    const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff) : [];
+    if (doomed.length === 0) {
+      setCompletedRetentionDays(days);
+      return;
+    }
+    Alert.alert(
+      `Delete ${doomed.length} completed task${doomed.length === 1 ? '' : 's'}?`,
+      `${doomed.length === 1 ? 'One task was' : `${doomed.length} tasks were`} completed more than ${retentionLabel(days).toLowerCase()} ago. They'll be deleted now, along with their Logbook entries and their share of Stats, and every completion that ages past ${retentionLabel(days).toLowerCase()} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setCompletedRetentionDays(days);
+            purgeOldCompletedTasks();
+          },
+        },
+      ]
+    );
+  };
 
   // Guards both backup rows against a second tap while the first is still
   // going. Export walks every table and restore rewrites them, and neither is
@@ -1308,6 +1349,53 @@ export function SettingsScreen() {
             </View>
             <Text style={styles.sectionFooter}>
               Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings — but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it.
+            </Text>
+          </View>
+
+          {/* History — deliberately directly under Backup, since exporting is
+              the thing that makes choosing a window here safe. */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>History</Text>
+            <View style={styles.card}>
+              <View style={[styles.row, { paddingBottom: spacing.xs }]}>
+                <Ionicons
+                  name="hourglass-outline"
+                  size={18}
+                  color={completedRetentionDays === null ? colors.textSecondary : colors.accent}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>Keep completed tasks for</Text>
+                  <Text style={styles.rowHint}>
+                    {completedRetentionDays === null
+                      ? 'Forever — nothing is ever deleted on its own'
+                      : `Completions older than ${retentionLabel(completedRetentionDays).toLowerCase()} are deleted at launch`}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.themeRow, { paddingTop: 0 }]}>
+                {RETENTION_OPTIONS.map(opt => (
+                  <TouchableOpacity
+                    key={opt.label}
+                    style={[styles.themeBtn, completedRetentionDays === opt.value && styles.themeBtnActive]}
+                    onPress={() => onPickRetention(opt.value)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected: completedRetentionDays === opt.value }}
+                    accessibilityLabel={`Keep completed tasks for ${opt.label}`}
+                  >
+                    <Text
+                      style={[
+                        styles.themeBtnText,
+                        completedRetentionDays === opt.value && styles.themeBtnTextActive,
+                      ]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+            <Text style={styles.sectionFooter}>
+              A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them — permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched.
             </Text>
           </View>
 

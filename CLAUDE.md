@@ -52,6 +52,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
+| how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
 
@@ -151,6 +152,15 @@ All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to 
 ### Recurrence
 
 Completing a recurring task creates a new task row with a new `id` and the next computed `dueDate`. The original task is marked completed (not deleted). `getNextDueDate()` in `src/utils/dateUtils.ts` handles all recurrence types; it anchors to the previous `dueDate` for fixed schedules, or to today for `recurrenceFromCompletion`.
+
+### Completed-task retention
+
+Every completion leaves its row behind, so a daily recurring task accumulates one tombstone a day forever. Two read-time collapses exist because of that (`groupRoster`, and `projectProgress`'s separate one); `completedRetentionDays` is what finally bounds it at the source — `null`/forever by default, so an existing install changes nothing until the user picks a window in Settings. Rules live in `src/utils/retention.ts`, the delete in `purgeOldCompletedTasks` (startup, after every other maintenance pass, and again when the window changes).
+
+- **Archived rows are exempt.** Archiving is an explicit "keep this, out of my way"; the window is for tombstones piling up unasked.
+- **Only top-level rows are ever named.** A completed subtask under a *live* parent is a checked-off step, not history — `dbBulkDeleteTasks`' `parent_id` cascade takes the subtasks of a purged parent, so listing subtasks directly would be the bug, not the feature.
+- **Streaks are safe and that's structural**, not luck: `streakCount`/`streakDate` and their `previous*` snapshot live on the row still running the streak and are never summed back across the chain. The pointers that *do* cross rows (`previousOccurrenceId`, `blockedById`) are resolve-or-shrug at every reader — `canBlock(undefined)` is false, chain walks stop on a missed lookup — and already dangle this way after a manual Logbook delete, so a purge leaves them rather than rewriting rows it isn't deleting.
+- **It must not go through `bulkDeleteTasks`**, which arms shake-to-undo. A purge the user didn't just perform sitting under their first shake of the session is not an undo.
 
 ### Series (`seriesId`) — one task on several dates
 

@@ -3,6 +3,7 @@ import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort } from '../types';
+import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -51,6 +52,11 @@ interface SettingsStore {
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
   autoRemoveExpiredTasks: boolean;
   autoArchiveProjectsOnComplete: boolean;
+  // How long completed tasks are kept before a startup purge deletes them.
+  // null = forever, and forever is the default: nothing about an existing
+  // install changes until the user picks a window in Settings. See
+  // src/utils/retention.ts for what a purge may take.
+  completedRetentionDays: RetentionDays;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
@@ -91,6 +97,7 @@ interface SettingsStore {
   setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
+  setCompletedRetentionDays: (days: RetentionDays) => void;
   setHideCategories: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
@@ -125,11 +132,19 @@ const DEFAULT_SETTINGS = {
 // String(), so only scalars belong in it — an array would land as "" (or
 // "1,2") and read back as garbage. The persisted sort & filter are kept out
 // for that reason and because they aren't preferences anyone sets in Settings.
-// A nullable string can't go in either (String(null) is the literal "null",
-// which reads back as a truthy id) — resetToDefaults clears the two Reminders
-// list ids by hand instead, and it has to: turning the feature off without
-// clearing the confirmed-list id would let a later re-enable skip the
-// confirmation that is the whole safeguard.
+//
+// Nothing nullable can go in either, for the same mechanical reason: null lands
+// as the literal string "null", which reads back as a truthy value. But the two
+// that hit this want opposite things from a reset, so they're handled
+// separately rather than together:
+//
+// - completedRetentionDays stays out of resetToDefaults altogether. "Reset
+//   settings" must not quietly re-arm — or disarm — a setting that deletes
+//   history; like vacation mode, it only changes when the user changes it.
+// - the two Reminders list ids are cleared by hand *inside* resetToDefaults,
+//   because there the danger runs the other way: turning the import off while
+//   leaving the confirmed-list id in place would let a later re-enable skip the
+//   confirmation that is the whole safeguard.
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
@@ -177,6 +192,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   vacationEnd: null,
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
+  completedRetentionDays: null,
   hideCategories: false,
   remindersImportEnabled: false,
   remindersImportListId: null,
@@ -214,6 +230,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const vacationEnd = dbGetSetting('vacationEnd') || null;
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
+    const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     const remindersImportListId = dbGetSetting('remindersImportListId') || null;
@@ -228,7 +245,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   setDayResetTime(time: string) {
@@ -355,6 +372,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAutoArchiveProjectsOnComplete(on: boolean) {
     dbSetSetting('autoArchiveProjectsOnComplete', on ? 'true' : 'false');
     set({ autoArchiveProjectsOnComplete: on });
+  },
+
+  // Stored as '' for forever, matching vacationEnd/projectNudgeDismissedAt —
+  // the settings table is all TEXT, and parseRetentionDays reads anything it
+  // doesn't recognise back as forever.
+  setCompletedRetentionDays(days: RetentionDays) {
+    dbSetSetting('completedRetentionDays', days === null ? '' : String(days));
+    set({ completedRetentionDays: days });
   },
 
   setHideCategories(on: boolean) {
