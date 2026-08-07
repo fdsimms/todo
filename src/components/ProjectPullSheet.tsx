@@ -17,6 +17,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   buildProjectPullPlan,
+  describePullEmpty,
   projectPullUpdates,
   suggestPullDate,
   type ProjectPullProposal,
@@ -268,7 +269,7 @@ export function ProjectPullSheet({ visible, todaysTasks, onClose }: Props) {
 
           {plan.proposals.length === 0 ? (
             <Text style={styles.emptyHint}>
-              Nothing waiting — every project has something scheduled.
+              {plan.empty ? describePullEmpty(plan.empty) : 'Nothing waiting.'}
             </Text>
           ) : (
             <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>

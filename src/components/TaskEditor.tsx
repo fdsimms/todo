@@ -19,6 +19,7 @@ import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { PressableScale } from './PressableScale';
+import { ChainStepMinutes } from './ChainStepMinutes';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -1550,6 +1551,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
                         {item.title}
                       </Text>
+                      <ChainStepMinutes
+                        value={item.estimatedMinutes}
+                        label={item.title}
+                        onChange={mins => setChainItems(prev => prev.map(
+                          c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
+                        ))}
+                      />
                       <TouchableOpacity
                         onLongPress={drag}
                         delayLongPress={150}
@@ -1607,7 +1615,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onSubmitEditing={() => {
                       chainItemSavedRef.current = true;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
                       setNewChainItemTitle('');
                       setTimeout(() => {
                         chainItemSavedRef.current = false;
@@ -1617,7 +1625,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onBlur={() => {
                       if (chainItemSavedRef.current) return;
                       const t = newChainItemTitle.trim();
-                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t }]);
+                      if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
                       setNewChainItemTitle('');
                       setAddingChainItem(false);
                     }}
@@ -1630,6 +1638,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onPress={() => setAddingChainItem(true)}
                   style={styles.addBtnSpacing}
                 />
+              )}
+              {chainItems.length > 0 && (
+                <Text style={styles.chainCurrentHint}>
+                  Times are per step; a step left blank uses the task's own estimate.
+                </Text>
               )}
               {chainIndex < chainItems.length && chainItems.length > 1 && (
                 <Text style={styles.chainCurrentHint}>

@@ -1,0 +1,4 @@
+{
+  "message": "\"Pull from projects\" now suggests from any project that's gone quiet, not only ones you'd set a nudge cadence on. Setting \"Nudge me\" still controls whether a project brings itself up unasked",
+  "date": "2026-08-07"
+}

@@ -1182,9 +1182,9 @@ describe('quota tasks', () => {
 
   describe('activeChainStepTitle / displayTitleFor', () => {
     const chainItems = [
-      { id: 'c1', title: 'Stretch for five minutes', notes: '' },
-      { id: 'c2', title: 'Shower', notes: '' },
-      { id: 'c3', title: 'Brush teeth', notes: '' },
+      { id: 'c1', title: 'Stretch for five minutes', estimatedMinutes: null },
+      { id: 'c2', title: 'Shower', estimatedMinutes: null },
+      { id: 'c3', title: 'Brush teeth', estimatedMinutes: null },
     ];
 
     it('returns null when the task has no chain', () => {

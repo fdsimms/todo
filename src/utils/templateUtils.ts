@@ -7,6 +7,7 @@ import { addDays } from 'date-fns/addDays';
 import { startOfDay } from 'date-fns/startOfDay';
 import type { TaskDraft, TaskTemplate, TemplateAnchor, TemplateContainer, TemplateItem } from '../types';
 import { generateId } from './id';
+import { parseChainItems } from './chain';
 
 /** The two anchor dates a template can be applied with. */
 export interface TemplateAnchors {
@@ -46,7 +47,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     vacationPause: raw.vacationPause ?? false,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     chainEnabled: raw.chainEnabled ?? false,
-    chainItems: raw.chainItems ?? [],
+    chainItems: parseChainItems(raw.chainItems),
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     refTemplateId: raw.refTemplateId ?? null,
