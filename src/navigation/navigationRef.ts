@@ -22,3 +22,28 @@ export function resetToGroceries(): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate('Groceries');
 }
+
+// Where the "Search" and "Projects" Home Screen quick actions land — both
+// already top-level tabs, so this is just tab navigation triggered from
+// outside the component tree.
+export function resetToSearch(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Search');
+}
+
+export function resetToProjects(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Projects');
+}
+
+// The "Add Task" quick action: lands on Today (same as resetToToday) and
+// additionally asks it to pop the quick-add sheet open. Stamped fresh each
+// time for the same reason resetToToday's param is — comparing against the
+// last-handled value is what makes firing it twice in a row work.
+export function openQuickAddFromShortcut(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Today',
+    params: { resetToToday: Date.now(), openQuickAdd: Date.now() },
+  });
+}
