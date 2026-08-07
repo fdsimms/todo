@@ -25,6 +25,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { haptics } from '../utils/haptics';
+import { describeShops, shopsForItem } from '../utils/groceryShops';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
 
 interface Props {
@@ -52,6 +53,10 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  const linkItemShop = useGroceryStore(s => s.linkItemShop);
+  const unlinkItemShop = useGroceryStore(s => s.unlinkItemShop);
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
@@ -86,6 +91,44 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
     setNote(item.id, note);
     haptics.success();
     onClose();
+  };
+
+  const linkedCounts = new Map(
+    shopsForItem(item.id, itemShops, shops).map(s => [s.shop.id, s.purchaseCount])
+  );
+  const summary = describeShops(item, itemShops, shops);
+
+  const toggleShop = (shopId: string) => {
+    const count = linkedCounts.get(shopId);
+    if (count === undefined) {
+      haptics.tap();
+      linkItemShop(item.id, shopId);
+      return;
+    }
+    // Unlinking a store you've actually bought here destroys a record, and
+    // groceries have no undo anywhere — so an observed link asks first while an
+    // assertion (count 0, nothing to lose) just goes.
+    if (count === 0) {
+      haptics.tap();
+      unlinkItemShop(item.id, shopId);
+      return;
+    }
+    const shopName = shops.find(s => s.id === shopId)?.name ?? 'this store';
+    Alert.alert(
+      `Forget buying ${item.name} at ${shopName}?`,
+      `${count} ${count === 1 ? 'purchase' : 'purchases'} recorded here. This can’t be undone — the item and its overall count stay.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forget',
+          style: 'destructive',
+          onPress: () => {
+            unlinkItemShop(item.id, shopId);
+            haptics.warning();
+          },
+        },
+      ]
+    );
   };
 
   const confirmDelete = () => {
@@ -183,6 +226,46 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
             })}
           </View>
 
+          {shops.length > 0 && (
+            <>
+              <Text style={styles.label}>STORES</Text>
+              <Text style={styles.hint}>
+                Tap a store to say you can get this there. Finishing a shop marks it for you.
+              </Text>
+              <View style={styles.pills}>
+                {shops.map(shop => {
+                  const count = linkedCounts.get(shop.id);
+                  const active = count !== undefined;
+                  return (
+                    <TouchableOpacity
+                      key={shop.id}
+                      style={[styles.pill, active && styles.pillActive]}
+                      activeOpacity={interaction.activeOpacity}
+                      onPress={() => toggleShop(shop.id)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={
+                        active
+                          ? count === 0
+                            ? `${shop.name}, marked by you. Tap to remove.`
+                            : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
+                          : `${shop.name}. Tap to mark that you can get this here.`
+                      }
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {shop.name}
+                        {/* Only an observed link shows a number. A count of 0
+                            on a hand-marked store reads as "never bought here",
+                            which is the opposite of what the tap meant. */}
+                        {!!count && ` · ${count}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          )}
+
           <TouchableOpacity
             style={styles.actionRow}
             activeOpacity={interaction.activeOpacity}
@@ -248,11 +331,11 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
             </View>
           </TouchableOpacity>
 
-          {item.purchaseCount > 0 && (
-            <Text style={styles.footnote}>
-              Bought {item.purchaseCount} {item.purchaseCount === 1 ? 'time' : 'times'}.
-            </Text>
-          )}
+          {/* describeShops owns the wording because it also owns the rule that
+              the item's count is the total and the per-store ones are partial —
+              a trip finished without naming a store bumps one and not the
+              other, so nothing here may reconcile them. */}
+          {!!summary && <Text style={styles.footnote}>{summary}.</Text>}
         </ScrollView>
       </View>
     </Modal>
@@ -295,6 +378,7 @@ function makeStyles(colors: Colors) {
     },
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
+    hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
     pills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
     pill: {
       backgroundColor: colors.bgSecondary,
