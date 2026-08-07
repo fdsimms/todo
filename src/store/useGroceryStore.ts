@@ -22,6 +22,13 @@ import { aisleForName, normalizeAisleOrder, OTHER_AISLE } from '../utils/grocery
  * already known flips `onList` instead of inserting — that single behaviour
  * (addByName below) is what gives autocomplete, Buy again and dedupe.
  *
+ * `inCatalog` is the second axis, and it's what stops the catalog filling with
+ * things that were never really yours: a name typed for the first time is
+ * provisional, so taking it straight back off the list deletes it, while
+ * finishing or clearing a trip promotes what was on it. A row that was already
+ * catalog before this stint on the list is never touched by that — "remove"
+ * means remove from the list, exactly as it always did.
+ *
  * Same discipline as every other store here: write to SQLite first, then set().
  */
 
@@ -167,6 +174,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       note: '',
       onList: true,
       checked: false,
+      // Provisional: a name nobody has bought, starred or finished a trip with
+      // is on the list, not in the catalog. removeFromList deletes it.
+      inCatalog: false,
       sortOrder: nextSortOrder(get().items),
       favorite: false,
       purchaseCount: 0,
@@ -297,15 +307,35 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   toggleFavorite(id) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const updated = { ...item, favorite: !item.favorite };
+    // Starring is the explicit "keep this one", so it promotes a provisional
+    // row. Unstarring doesn't demote: the row is in the catalog by then, and a
+    // mis-tap on a star shouldn't arm a delete.
+    const updated = {
+      ...item,
+      favorite: !item.favorite,
+      inCatalog: item.inCatalog || !item.favorite,
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
-  /** Takes a row off the list but keeps the catalog entry — "not this week". */
+  /**
+   * Takes a row off the list. A catalog row stays behind — "not this week" —
+   * but a provisional one goes altogether, because it only ever existed as this
+   * line of the list.
+   *
+   * The delete is deliberately not behind the confirm every other delete has.
+   * That confirm protects history, and a provisional row has none by
+   * definition: never bought, never starred, no purchase count to lose. The
+   * sheet says which of the two will happen before you tap.
+   */
   removeFromList(id) {
     const item = get().items.find(i => i.id === id);
     if (!item || !item.onList) return;
+    if (!item.inCatalog) {
+      get().deleteItem(id);
+      return;
+    }
     const updated = { ...item, onList: false, checked: false };
     dbUpdateGroceryItem(updated);
     set(s => ({
@@ -314,7 +344,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  /** The one real delete. There is no undo, so every caller confirms first. */
+  /**
+   * The one real delete. There is no undo, so every caller confirms first —
+   * except removeFromList on a provisional row, which has nothing to lose and
+   * says so on the button.
+   */
   deleteItem(id) {
     dbDeleteGroceryItem(id);
     set(s => ({
@@ -341,7 +375,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       items: s.items.map(i =>
         done.has(i.id)
-          ? { ...i, onList: false, checked: false, purchaseCount: i.purchaseCount + 1, lastPurchasedAt: purchasedAt }
+          ? {
+              ...i,
+              onList: false,
+              checked: false,
+              // Bought it, so it's yours now — whatever it was before the trip.
+              inCatalog: true,
+              purchaseCount: i.purchaseCount + 1,
+              lastPurchasedAt: purchasedAt,
+            }
           : i
       ),
       cartHoldIds: [],
@@ -354,9 +396,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
-    // the ranking signal would teach autocomplete a lie.
+    // the ranking signal would teach autocomplete a lie. inCatalog *is* set —
+    // clearing parks the list rather than forgetting it, which is what the
+    // confirm promises, and it keeps !onList ⇒ inCatalog true.
     set(s => ({
-      items: s.items.map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      items: s.items.map(i =>
+        cleared.has(i.id) ? { ...i, onList: false, checked: false, inCatalog: true } : i
+      ),
       cartHoldIds: [],
     }));
     return ids.length;

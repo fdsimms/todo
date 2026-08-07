@@ -1385,6 +1385,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     note: '',
     onList: true,
     checked: false,
+    inCatalog: true,
     sortOrder: 1,
     favorite: false,
     purchaseCount: 0,
@@ -1423,17 +1424,32 @@ describe('grocery items', () => {
   });
 
   it('stores booleans as 0/1 and reads them back as booleans', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false, checked: false, favorite: true }));
-    const raw = mockRawDb.prepare('SELECT on_list, favorite FROM grocery_items WHERE id = ?').get('g1') as {
+    dbInsertGroceryItem(makeGroceryItem({
+      id: 'g1', name: 'Milk', onList: false, checked: false, favorite: true, inCatalog: false,
+    }));
+    const raw = mockRawDb.prepare('SELECT on_list, favorite, in_catalog FROM grocery_items WHERE id = ?').get('g1') as {
       on_list: number;
       favorite: number;
+      in_catalog: number;
     };
     expect(raw.on_list).toBe(0);
     expect(raw.favorite).toBe(1);
+    expect(raw.in_catalog).toBe(0);
 
     const item = dbGetAllGroceryItems()[0];
     expect(item.onList).toBe(false);
     expect(item.favorite).toBe(true);
+    expect(item.inCatalog).toBe(false);
+  });
+
+  // The migration's default, and the only safe one: a row that predates the
+  // provisional idea is a catalog member, not something a Remove from list may
+  // delete out from under the user.
+  it('reads a row written without in_catalog as a catalog member', () => {
+    mockRawDb
+      .prepare('INSERT INTO grocery_items (id, name, name_key, created_at) VALUES (?,?,?,?)')
+      .run('g1', 'Milk', 'milk', '2026-01-01T00:00:00.000Z');
+    expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
   });
 
   // The no-duplicates guarantee lives in the schema, not in a store method a
@@ -1484,6 +1500,12 @@ describe('grocery items', () => {
       expect(byId.get('g2')!.onList).toBe(true);
     });
 
+    it('promotes what was bought into the catalog', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, inCatalog: false }));
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
+      expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
+    });
+
     // Deleting would lose the ranking signal, not just the row.
     it('never deletes', () => {
       dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
@@ -1513,6 +1535,14 @@ describe('grocery items', () => {
       const items = dbGetAllGroceryItems();
       expect(items.every(i => !i.onList && !i.checked)).toBe(true);
       expect(items.find(i => i.id === 'g1')!.purchaseCount).toBe(3);
+    });
+
+    // Parking, not forgetting — which is what the confirm promises, and what
+    // keeps !onList ⇒ inCatalog true for the rows a provisional add left.
+    it('promotes what it parks into the catalog', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', inCatalog: false }));
+      dbClearGroceryList();
+      expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
     });
   });
 

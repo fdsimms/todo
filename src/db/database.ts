@@ -320,6 +320,12 @@ export function initDatabase(): void {
     // it on hides every member but the first, and no existing project's order
     // was ever entered as a sequence.
     'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
+    // Defaults to 1, and that's the only safe value for an existing install:
+    // every row already on a device predates the provisional idea, so all of
+    // them are catalog members and none may be deleted out from under a
+    // "Remove from list". New rows pass the flag explicitly (see
+    // dbInsertGroceryItem), so the default only ever applies to history.
+    'ALTER TABLE grocery_items ADD COLUMN in_catalog INTEGER NOT NULL DEFAULT 1',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1066,6 +1072,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
     checked: Boolean(row.checked),
+    // Absent only on a row read before the migration landed, and a row that
+    // already exists is a catalog member — same reading as the column default.
+    inCatalog: row.in_catalog === undefined ? true : Boolean(row.in_catalog),
     sortOrder: (row.sort_order as number) ?? 0,
     favorite: Boolean(row.favorite),
     purchaseCount: (row.purchase_count as number) ?? 0,
@@ -1085,12 +1094,12 @@ export function dbGetAllGroceryItems(): GroceryItem[] {
 export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
-      (id, name, name_key, aisle, quantity, note, on_list, checked, sort_order,
+      (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
        favorite, purchase_count, last_added_at, last_purchased_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
     ]
@@ -1100,12 +1109,12 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
 export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
-       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?,
+       name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.id,
     ]
@@ -1133,7 +1142,7 @@ export function dbFinishGroceryShopping(purchasedAt: string): string[] {
   if (rows.length === 0) return [];
   db.runSync(
     `UPDATE grocery_items
-        SET on_list = 0, checked = 0,
+        SET on_list = 0, checked = 0, in_catalog = 1,
             purchase_count = purchase_count + 1,
             last_purchased_at = ?
       WHERE checked = 1 AND on_list = 1`,
@@ -1150,7 +1159,12 @@ export function dbFinishGroceryShopping(purchasedAt: string): string[] {
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
+  // in_catalog = 1 for the same reason the alert says nothing is deleted: a
+  // cleared trip parks its rows rather than forgetting them, so a name typed
+  // this week survives as catalog even though it was never bought. It also
+  // keeps the !onList ⇒ inCatalog invariant, without which a provisional row
+  // could sit off the list and then be deleted by a later Remove from list.
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, in_catalog = 1 WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 
