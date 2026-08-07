@@ -19,7 +19,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck — ~10s
-npm test             # all 69 suites, 2,533 tests — ~4s, just run the whole thing
+npm test             # all 70 suites, 2,614 tests — ~4s, just run the whole thing
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
@@ -57,6 +57,10 @@ Start from this table instead of searching. Most work lands in one of these file
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` |
+| the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
+| which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
+| grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
+| which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -176,6 +180,54 @@ A task the user gave more than one date ("walk the neighbour's dog on the 10th a
 - **Editing** is scoped like a recurrence: `updateTask(..., {scope: 'series'})` fans `CONTENT_FIELDS` out to the set's *later* incomplete dates, re-anchoring `reminderTime` onto each date's own day (it's an absolute instant, and a set shares an hour, not a moment).
 - **Counting**: `groupRoster()` collapses a series to one entry, same as it does recurrence tombstones — otherwise a stack holding a 2-date series reads as 2 members. `getRepeatedInstances()` skips series rows so a deliberate schedule isn't reported as an ad-hoc repeat. **Cascades must expand it again**: the roster names one row per member, so `deleteGroup({cascade:true})` collapsing to it deleted one date of a set and orphaned the rest.
 - **`projectProgress` has its own collapse and can't reuse the roster** (`src/store/useProjectStore.ts`). Same disease — a recurring member's tombstones grew the denominator forever — but the cure differs: the roster drops old completions, which is right for a stack (they aren't members) and wrong for a project, where a one-off finished last week is exactly a member and exactly done. So it groups rows by identity (`seriesId`, else the root of the `previousOccurrenceId` chain) and counts each once, done only when nothing in it is outstanding.
+
+### Grocery stores (`Shop`) — which shop has which items
+
+The rest of the grocery feature isn't written up here yet; this section covers only stores, which
+is where the non-obvious decisions are.
+
+**"Store" is the user-facing word; the code says `Shop`** — `Shop`, `shopId`, `grocery_shops`,
+`FinishShoppingSheet`. Same split as Stack/`TaskGroup`, and for a blunter reason: `store` is
+already Zustand's word here, and `useGroceryShopStore` sitting next to `useGroceryStore` is a pair
+nobody would reliably pick between. Shops live *inside* `useGroceryStore`, like `aisleOrder`.
+
+**`grocery_item_shops` is an aggregate, not a log.** One row per (item, shop) carrying
+`purchase_count` / `last_purchased_at`, upserted by `finishShopping`. A row per item per *trip*
+was the alternative and grows without bound — the same disease the completed-task retention
+window exists to bound, and the reason `GroceryItem` is a forever-row with counters rather than a
+tombstone per shop. This table is bounded by (items × stores you actually shop at).
+
+- **`item.purchaseCount >= Σ link.purchaseCount`, and that gap is permanent.** Trips finished
+  before this shipped, and any trip finished without naming a store, bump the item and write no
+  link. So the item's count is the total and the per-store ones are partial: **never sum links to
+  get a total, and never render "6 of 7 trips"**. `describeShops()` owns the wording so no caller
+  re-derives it — "Bought 7 times · usually Costco" is true whether or not 6+1 happens to be 7.
+- **A link with `purchaseCount: 0` is an assertion**, not an observation — the user tapped a store
+  in the item sheet to say "I can get this here". That's the whole distinction and it needs no
+  second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing
+  a habit), while `exclusiveShopFor` counts it (availability is exactly what the tap claimed).
+  **`linkItemShop` promotes a provisional row** (`inCatalog`), for the same reason starring does:
+  saying where you get something is a statement about the item, not about this week's list. Without
+  it the next "Remove from list" deletes the row and silently takes the assertion with it.
+- **Naming a store is optional and `null` is a real answer**, not a skipped step. It's a
+  first-class pill in the finish sheet, it's the default until a trip has ever named one, and
+  picking it finishes the trip exactly as every trip did before stores existed. A required
+  question between a full trolley and a ticked-off list is how this feature would get turned off.
+- **Stores got a table where aisles got a settings key**, which is the opposite call to
+  `grocery_aisle_order` and follows the same rule categories did: an aisle is a name and a
+  position, so a string list holds it; a store is referenced by every link row it owns, so it
+  needs an id that survives a rename. Name strings in the links would break every record the
+  moment someone fixed a typo.
+- **Both cascades are hand-written** (`dbDeleteGroceryItem`, `dbDeleteGroceryShop`). expo-sqlite
+  has foreign keys off, so `ON DELETE CASCADE` would silently do nothing — same reason
+  `dbBulkDeleteTasks` walks `parent_id` itself. Readers are resolve-or-shrug anyway
+  (`shopsForItem` drops a link whose shop is gone), like every other cross-row pointer here.
+- **Manage stores in the setup sheet, browse them in Buy again.** The Stores tab of
+  `GroceryAislesSheet` is add/rename/reorder/delete only; the "what does Costco carry" read is the
+  filter chip row in `BuyAgainSheet`, because that's the catalog browser and it's open exactly
+  when you're deciding what to buy where. **There is deliberately no store chip on the shopping
+  list rows** — the row is already dense, and while you're shopping you're standing in one store,
+  so it's noise precisely when the list is in use.
 
 ### Chains
 

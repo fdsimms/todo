@@ -38,6 +38,7 @@ import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
+import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
@@ -139,6 +140,7 @@ function newTaskFromDraft(
     recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
     targetCount: draft.targetCount ?? null,
     progressCount: draft.progressCount ?? 0,
+    targetUnit: normalizeTargetUnit(draft.targetUnit),
     tags: draft.tags ?? [],
     category: draft.category ?? null,
     sortOrder,
@@ -1053,6 +1055,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...updates,
         seriesDefaults,
         ...(takenOver ? { autoScheduledAt: null } : {}),
+        // Normalized on the way in, like addTask does, so a unit typed as
+        // "  glasses " is stored the way every reader formats it.
+        ...('targetUnit' in updates ? { targetUnit: normalizeTargetUnit(updates.targetUnit) } : {}),
       };
       dbUpdateTask(updated);
       if (
@@ -2190,6 +2195,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       projectId: null,
       targetCount: null,
       progressCount: 0,
+      targetUnit: null,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,
@@ -2317,6 +2323,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       projectId: null,
       targetCount: null,
       progressCount: 0,
+      targetUnit: null,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,

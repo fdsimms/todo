@@ -1,5 +1,6 @@
 import type { ChainItem, Effort, RecurrenceType } from '../types';
 import { formatDuration, minutesToEffort } from './effort';
+import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
 
 /**
  * The shapes a task can be created in from quick add.
@@ -68,6 +69,7 @@ export function isChipVisible(type: QuickAddType, chip: QuickAddChip): boolean {
 export interface TypeValues {
   timedMinutes: number | null;
   targetCount: number | null;
+  targetUnit: string | null;
   chainItems: ChainItem[];
   recurrenceType: RecurrenceType;
   effort: Effort;
@@ -89,7 +91,7 @@ export function typeSummary(type: QuickAddType, v: TypeValues): string | null {
         : 'Counts down a set time once you start it.';
     case 'target':
       return v.targetCount != null
-        ? `Log it ${v.targetCount}× a day. Repeats daily, and only shows up when you fall behind.`
+        ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a day. Repeats daily, and only shows up when you fall behind.`
         : 'Log it several times a day. Repeats daily, and only shows up when you fall behind.';
     case 'chain':
       return v.chainItems.length > 0
@@ -117,6 +119,7 @@ export function blockedReason(type: QuickAddType, v: TypeValues): string | null 
 export interface BakedFields {
   timedMinutes: number | null;
   targetCount: number | null;
+  targetUnit: string | null;
   chainEnabled: boolean;
   chainItems: ChainItem[];
   chainIndex: number;
@@ -138,6 +141,10 @@ export function bakedFields(type: QuickAddType, v: TypeValues): BakedFields {
   const base: BakedFields = {
     timedMinutes: null,
     targetCount: null,
+    // Dropped with the count it labels: a unit typed in Target mode and then
+    // abandoned by switching type would otherwise ride along on a plain task
+    // that has no count for it to sit beside.
+    targetUnit: null,
     chainEnabled: false,
     chainItems: [],
     chainIndex: 0,
@@ -165,6 +172,7 @@ export function bakedFields(type: QuickAddType, v: TypeValues): BakedFields {
       return {
         ...base,
         targetCount: v.targetCount,
+        targetUnit: normalizeTargetUnit(v.targetUnit),
         recurrenceType: v.recurrenceType === 'none' ? 'daily' : v.recurrenceType,
       };
     case 'chain':

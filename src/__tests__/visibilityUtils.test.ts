@@ -115,6 +115,7 @@ const baseTask: Task = {
   showStreak: false,
   recurrenceFromCompletion: false,
   targetCount: null,
+  targetUnit: null,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',

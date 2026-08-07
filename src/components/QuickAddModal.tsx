@@ -42,6 +42,7 @@ import {
   type QuickAddType,
   type TypeValues,
 } from '../utils/quickAddTypes';
+import { MAX_TARGET_UNIT_LENGTH } from '../utils/quotaUnit';
 import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
@@ -193,6 +194,7 @@ export function QuickAddModal({
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customTimedText, setCustomTimedText] = useState('');
   const [targetCount, setTargetCount] = useState<number | null>(null);
+  const [targetUnit, setTargetUnit] = useState('');
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
@@ -436,6 +438,7 @@ export function QuickAddModal({
   const typeValues: TypeValues = {
     timedMinutes,
     targetCount,
+    targetUnit,
     chainItems: resolvedChainItems,
     recurrenceType,
     effort,
@@ -458,6 +461,7 @@ export function QuickAddModal({
     setTimedMinutes(next === 'timed' ? (timedMinutes ?? DEFAULT_TIMED_MINUTES) : null);
     if (next !== 'timed') setCustomTimedText('');
     setTargetCount(next === 'target' ? (targetCount ?? DEFAULT_TARGET_COUNT) : null);
+    if (next !== 'target') setTargetUnit('');
     if (next !== 'chain') {
       setChainItems([]);
       setNewStepTitle('');
@@ -929,7 +933,19 @@ export function QuickAddModal({
                   // No clearing here: in this mode the target is the task.
                   format={n => `${n}×`}
                   label="Daily target"
-                  describeValue={n => `${n} times a day`}
+                  describeValue={n => `${n} ${targetUnit.trim() || 'times'} a day`}
+                />
+                {/* Optional: what the count counts, so "5/12 8oz glasses" can
+                    be read off the row without the title spelling it out. */}
+                <TextInput
+                  style={styles.targetUnitInput}
+                  value={targetUnit}
+                  onChangeText={setTargetUnit}
+                  placeholder="units"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={MAX_TARGET_UNIT_LENGTH}
+                  autoCapitalize="none"
+                  accessibilityLabel="Unit for the daily target, optional"
                 />
                 <Text style={styles.targetStepperCaption}>a day</Text>
               </View>
@@ -2033,6 +2049,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+  },
+  targetUnitInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.full,
+    paddingHorizontal: 12,
+    // Matches inlineCustomInput / presetChip so it sits level with the stepper.
+    // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
+    height: 32,
   },
   targetStepperCaption: {
     color: colors.textTertiary,

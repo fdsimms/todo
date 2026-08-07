@@ -20,6 +20,11 @@ interface Props {
   /** Layout only — margins are the caller's, since a bar in a sheet has none. */
   style?: StyleProp<ViewStyle>;
   onSubmitEditing?: () => void;
+  /**
+   * For a field that *is* the reason its sheet opened — the "Add Existing
+   * Task" picker. A screen-level bar shouldn't take the keyboard on arrival.
+   */
+  autoFocus?: boolean;
   accessibilityLabel?: string;
 }
 
@@ -31,7 +36,7 @@ interface Props {
  * — and so the `height`/`padding` note below only has to be right once.
  */
 export const SearchField = forwardRef<TextInput, Props>(function SearchField(
-  { value, onChangeText, placeholder, surface = 'card', style, onSubmitEditing, accessibilityLabel },
+  { value, onChangeText, placeholder, surface = 'card', style, onSubmitEditing, autoFocus, accessibilityLabel },
   ref
 ) {
   const colors = useColors();
@@ -47,6 +52,7 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
         placeholderTextColor={colors.textTertiary}
         value={value}
         onChangeText={onChangeText}
+        autoFocus={autoFocus}
         autoCorrect={false}
         autoCapitalize="none"
         returnKeyType="search"

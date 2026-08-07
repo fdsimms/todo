@@ -6,6 +6,7 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  ScrollView,
   StyleSheet,
   Alert,
 } from 'react-native';
@@ -25,6 +26,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buyAgainItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
@@ -51,12 +53,15 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
   const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
   const deleteItems = useGroceryStore(s => s.deleteItems);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState('');
+  const [shopFilter, setShopFilter] = useState<string | null>(null);
 
   // Nothing carries over between openings — a stale selection from last week
   // is a way to add things you didn't mean to.
@@ -64,20 +69,40 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     if (visible) {
       setSelected(new Set());
       setQuery('');
+      setShopFilter(null);
     }
   }, [visible]);
 
   const now = useMemo(() => new Date(), [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const shopCounts = useMemo(() => itemCountsByShop(items, itemShops), [items, itemShops]);
+  // Only stores with something in them: a chip reading "Aldi (0)" is a filter
+  // whose only outcome is an empty list.
+  const filterShops = useMemo(
+    () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0),
+    [shops, shopCounts]
+  );
+
+  // Filter first, then rank. Ranking a filtered set is the same function on
+  // fewer rows; filtering a ranked set would silently shrink the 50-row cap.
+  const scoped = useMemo(() => {
+    if (!shopFilter) return items;
+    const ids = itemIdsForShop(shopFilter, itemShops);
+    return items.filter(i => ids.has(i.id));
+  }, [items, itemShops, shopFilter]);
+
   const rows = useMemo(() => {
     if (query.trim()) {
-      return rankGrocerySuggestions(query, items, now, 50)
+      return rankGrocerySuggestions(query, scoped, now, 50)
         .filter(s => !s.onList)
         .map(s => s.item);
     }
-    return buyAgainItems(items, now);
-  }, [query, items, now]);
+    return buyAgainItems(scoped, now);
+  }, [query, scoped, now]);
 
+  // Deliberately over `items` and not `scoped`: the prune offer is about the
+  // whole catalog, and scoping it to a store would offer to forget a subset
+  // while the button still said how many were unused overall.
   const pruneable = useMemo(() => catalogPruneCandidates(items, now), [items, now]);
 
   const toggle = useCallback((id: string) => {
@@ -145,6 +170,9 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
 
   const renderItem = ({ item }: { item: GroceryItem }) => {
     const isSelected = selected.has(item.id);
+    // Suppressed while a store filter is on: every row would name the store
+    // you just filtered to, which is a column of the same word.
+    const usual = shopFilter ? null : primaryShopFor(item.id, itemShops, shops);
     return (
       <TouchableOpacity
         style={styles.row}
@@ -162,6 +190,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           <Text style={styles.meta} numberOfLines={1}>
             {item.aisle}
             {item.purchaseCount > 0 && ` · bought ${item.purchaseCount}×`}
+            {!!usual && ` · ${usual.name}`}
           </Text>
         </View>
         <TouchableOpacity
@@ -212,6 +241,56 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           />
         </View>
 
+        {/* The everyday "what do I get at Costco" read, and the reason it lives
+            here rather than on the shopping list: this is the catalog browser,
+            and it's open exactly when you're deciding what to buy where. */}
+        {filterShops.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.filterRow}
+            keyboardShouldPersistTaps="handled"
+          >
+            <TouchableOpacity
+              style={[styles.chip, shopFilter === null && styles.chipActive]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => {
+                haptics.tap();
+                setShopFilter(null);
+              }}
+              accessibilityRole="button"
+              accessibilityState={{ selected: shopFilter === null }}
+              accessibilityLabel="All stores"
+            >
+              <Text style={[styles.chipText, shopFilter === null && styles.chipTextActive]}>
+                All
+              </Text>
+            </TouchableOpacity>
+            {filterShops.map(shop => {
+              const active = shop.id === shopFilter;
+              const count = shopCounts.get(shop.id) ?? 0;
+              return (
+                <TouchableOpacity
+                  key={shop.id}
+                  style={[styles.chip, active && styles.chipActive]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    setShopFilter(active ? null : shop.id);
+                  }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
+                >
+                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                    {shop.name} {count}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+
         {/* Directly under the search rather than in the footer: a catalog is
             forty rows deep, and a destructive action you have to scroll to the
             bottom to find isn't one anybody uses. */}
@@ -234,7 +313,9 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           renderItem={renderItem}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          contentContainerStyle={styles.list}
+          // Full height when empty so the empty state's `flex: 1` has something
+          // to centre in, and without the list's padding shifting that centre.
+          contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.list}
           ListFooterComponent={
             // An offer, never a sweep: there's no undo anywhere in groceries,
             // so an automatic delete would be unrecoverable in a way the task
@@ -260,9 +341,11 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
               icon="basket-outline"
               title={query.trim() ? 'Nothing matches' : 'Nothing to buy again yet'}
               subtitle={
-                query.trim()
-                  ? 'Everything matching is already on the list.'
-                  : 'Finish a shop and the things you bought turn up here, best-first.'
+                shopFilter
+                  ? 'Everything you buy at this store is already on the list.'
+                  : query.trim()
+                    ? 'Everything matching is already on the list.'
+                    : 'Finish a shop and the things you bought turn up here, best-first.'
               }
             />
           }
@@ -302,6 +385,21 @@ function makeStyles(colors: Colors) {
       height: 40,
       padding: 0,
     },
+    filterRow: {
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+      alignItems: 'center',
+    },
+    chip: {
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.full,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.xs,
+    },
+    chipActive: { backgroundColor: colors.accent },
+    chipText: { fontSize: font.sm, color: colors.textSecondary },
+    chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     selectionBar: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -315,6 +413,7 @@ function makeStyles(colors: Colors) {
       color: colors.textSecondary,
     },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
+    emptyContainer: { flexGrow: 1 },
     row: {
       flexDirection: 'row',
       alignItems: 'center',

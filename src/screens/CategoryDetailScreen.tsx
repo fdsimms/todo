@@ -198,7 +198,14 @@ export function CategoryDetailScreen() {
                 />
               );
             }}
-            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            // The footer is only a tap target for dismissing an expanded row,
+            // so it has no job on an empty list — and its minHeight would push
+            // the empty state off centre.
+            ListFooterComponent={
+              categoryTasks.length === 0
+                ? null
+                : <TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />
+            }
             ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={
               <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
