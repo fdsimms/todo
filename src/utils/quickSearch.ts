@@ -13,7 +13,7 @@ export interface QuickSearchOutcome {
   results: SearchResult[];
   /** Everything `fuzzySearch` matched, including what didn't fit. */
   total: number;
-  /** How many matches the card isn't showing — the count on the "Open in Search" row. */
+  /** How many matches the card isn't showing, i.e. what the cap cut. */
   overflow: number;
 }
 

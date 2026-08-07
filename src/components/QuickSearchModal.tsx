@@ -14,6 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { HighlightedText } from './HighlightedText';
 import { SearchField } from './SearchField';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
@@ -65,7 +66,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
     [projects]
   );
 
-  const { results, overflow } = useMemo(
+  const { results, total } = useMemo(
     () => quickSearch(tasks, query, projectNamesById),
     [tasks, query, projectNamesById]
   );
@@ -184,23 +185,14 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
             <Text style={styles.noMatches}>No todos match “{trimmed}”</Text>
           )}
 
-          <TouchableOpacity
-            style={styles.footer}
-            onPress={handleOpenFull}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={
-              overflow > 0
-                ? `Open in Search, ${overflow} more ${overflow === 1 ? 'match' : 'matches'}`
-                : 'Open in Search'
-            }
-          >
-            <Text style={styles.footerText}>Open in Search</Text>
-            <View style={styles.footerRight}>
-              {overflow > 0 && <Text style={styles.footerCount}>{overflow} more</Text>}
-              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+          {results.length > 0 && (
+            <View style={styles.footer}>
+              <InlineAction
+                label={total === 1 ? 'See 1 result' : `See all ${total} results`}
+                onPress={handleOpenFull}
+              />
             </View>
-          </TouchableOpacity>
+          )}
         </Animated.View>
       </View>
     </Modal>
@@ -266,26 +258,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   footer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
     marginTop: spacing.xs,
     paddingTop: 10,
     paddingHorizontal: spacing.xs,
     borderTopWidth: border.hairline,
     borderTopColor: colors.separator,
-  },
-  footerText: {
-    color: colors.accent,
-    fontSize: font.sm,
-    fontWeight: fontWeight.semibold,
-  },
-  footerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  footerCount: {
-    color: colors.textSecondary,
-    fontSize: font.xs,
   },
 });
