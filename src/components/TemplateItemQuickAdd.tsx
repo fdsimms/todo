@@ -1,21 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Animated,
+  Keyboard,
   Modal,
-  View,
+  Platform,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  StyleSheet,
-  Keyboard,
-  Platform,
-  KeyboardAvoidingView,
+  View,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
-import { PressableScale } from './PressableScale';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { useColors, useTheme } from '../theme/ThemeContext';
+import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -27,14 +25,15 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Priority, TemplateAnchor, TemplateItem } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 
-const PRIORITY_LABELS_SHORT = ['None', 'P1', 'P2', 'P3', 'P4'] as const;
+/** Same short labels the main quick add uses, so the two priority rows read alike. */
+const PRIORITY_LABELS_SHORT = ['None', 'Low', 'Med', 'High', 'Urgent'] as const;
 
 type ActivePanel = 'when' | 'priority' | 'category' | null;
 
 interface Props {
   visible: boolean;
   templateId: string;
-  /** Shown in the sheet's overline so it's obvious what's being added to. */
+  /** Named on the chip above the field so it's obvious what's being added to. */
   templateName: string;
   onClose: () => void;
   /** Hand off to the full TemplateItemEditor pre-filled with what's entered so far. */
@@ -45,20 +44,41 @@ interface Props {
 }
 
 /**
- * Trimmed sibling of QuickAddModal for adding a template item quickly, and
- * built on the same shape: title input, a row of labelled chips that each
- * open one inline panel, then explicitly labelled secondary actions. Every
- * control carries a word — an icon on its own never says what it does, and
- * the attribute lists (categories especially) stay behind their chip rather
- * than spilling across the sheet.
+ * Quick add for a template item — the same sheet as QuickAddModal /
+ * QuickAddNameSheet, with the template's own fields on the toolbar: a centered
+ * card that springs in over a blurred backdrop, a title field with the round
+ * accent submit button beside it, icon-only attribute chips that grow a label
+ * once set, and inline panels under them.
+ *
+ * Two mechanics come with that shell and are load-bearing, not decoration:
+ *
+ * - **The keyboard is answered by an Animated offset, not a
+ *   KeyboardAvoidingView.** This sheet used to be bottom-anchored inside a
+ *   `KeyboardAvoidingView`, which is the one layout in the app that can leave
+ *   its own confirm button under the keyboard.
+ * - **`animationType="none"`, with the fade driven here.** Handing off to the
+ *   full editor or the nested-template picker presents a `pageSheet` Modal the
+ *   moment this one closes; a UIKit-animated dismissal is still in flight at
+ *   that point and the presentation is silently dropped, so "More details" and
+ *   "Nest a template" did nothing at all. `dismiss(after)` runs the handoff
+ *   after this sheet has gone, exactly as QuickAddNameSheet does.
  */
 export function TemplateItemQuickAdd({ visible, templateId, templateName, onClose, onOpenFull, onAddNested, onCreated }: Props) {
   const colors = useColors();
+  const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const addItem = useTemplateStore(s => s.addItem);
   const inputRef = useRef<TextInput>(null);
+
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const translateYAnim = useRef(new Animated.Value(16)).current;
+  const sheetOpacity = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  // The sheet glides to its new centered resting spot on its own spring rather
+  // than tracking the keyboard 1:1 — same as the other quick adds.
+  const keyboardOffsetAnim = useRef(new Animated.Value(0)).current;
 
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState<Priority>(0);
@@ -69,23 +89,64 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
 
   useEffect(() => {
-    if (visible) {
-      setTitle('');
-      setPriority(0);
-      setCategory(null);
-      setAnchor('start');
-      setDueOffsetDays(null);
-      setOptional(false);
-      setActivePanel(null);
-      setTimeout(() => inputRef.current?.focus(), 100);
-    } else {
-      Keyboard.dismiss();
-    }
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      const height = e.endCoordinates?.height ?? 0;
+      Animated.spring(keyboardOffsetAnim, {
+        toValue: -height / 2, ...animation.spring.smooth, useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      Animated.spring(keyboardOffsetAnim, {
+        toValue: 0, ...animation.spring.smooth, useNativeDriver: true,
+      }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (!visible) return;
+    setTitle('');
+    setPriority(0);
+    setCategory(null);
+    setAnchor('start');
+    setDueOffsetDays(null);
+    setOptional(false);
+    setActivePanel(null);
+    scaleAnim.setValue(0.95);
+    translateYAnim.setValue(16);
+    sheetOpacity.setValue(0);
+    backdropOpacity.setValue(0);
+    keyboardOffsetAnim.setValue(0);
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
+      Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+    ]).start(() => {
+      // Focus is deferred until the sheet has settled so the keyboard's own
+      // slide-up doesn't fight the sheet's entrance.
+      inputRef.current?.focus();
+    });
   }, [visible]);
+
+  /** Fades the sheet out, closes it, then runs `after` — see the note above. */
+  const dismiss = (after?: () => void) => {
+    Animated.parallel([
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+    ]).start(() => {
+      scaleAnim.setValue(0.95);
+      sheetOpacity.setValue(0);
+      onClose();
+      after?.();
+    });
+  };
 
   const togglePanel = (panel: ActivePanel) => {
     haptics.tap();
-    animateLayout();
     setActivePanel(prev => (prev === panel ? null : panel));
   };
 
@@ -98,131 +159,208 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
     optional,
   });
 
+  const trimmedTitle = title.trim();
+
   const createItem = () => {
-    if (!title.trim()) return;
+    if (!trimmedTitle) return;
     haptics.success();
+    animateLayout();
     onCreated?.(addItem(templateId, draft()));
-    onClose();
+    dismiss();
   };
 
   const handleOpenFull = () => {
     haptics.tap();
-    onOpenFull(draft());
+    const captured = draft();
+    dismiss(() => onOpenFull(captured));
   };
 
-  return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
-        <SafeBlurView
-          intensity={30}
-          tint="dark"
-          style={StyleSheet.absoluteFill}
-        />
-      </TouchableOpacity>
-      <KeyboardAvoidingView
-        style={styles.centerWrap}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        pointerEvents="box-none"
-      >
-        <View style={styles.sheet}>
-          <View style={styles.grabber} />
-          <Text style={styles.overline} numberOfLines={1}>Add to {templateName}</Text>
+  // No haptic here: openNestedPicker fires its own on the way in.
+  const handleAddNested = () => dismiss(() => onAddNested());
 
-          <View style={styles.inputRow}>
+  return (
+    <Modal visible={visible} animationType="none" transparent onRequestClose={() => dismiss()}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+      </Animated.View>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <View style={styles.centeredContainer} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            styles.sheet,
+            shadows.sheet,
+            {
+              opacity: sheetOpacity,
+              transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }],
+            },
+          ]}
+        >
+          {/* Where this is going — the same chip the main quick add uses to
+              name a placement, since the sheet otherwise says nothing about
+              which template it belongs to. */}
+          <View style={styles.seedRow}>
+            <View style={styles.seedChip}>
+              <Ionicons name="copy" size={13} color={colors.accent} />
+              <Text style={styles.seedChipText} numberOfLines={1}>{templateName}</Text>
+            </View>
+          </View>
+
+          {/* Title input row */}
+          <View style={styles.row}>
             <TextInput
               ref={inputRef}
               style={styles.input}
               value={title}
               onChangeText={setTitle}
-              placeholder="What needs doing?"
+              placeholder="New item…"
               placeholderTextColor={colors.textTertiary}
               maxLength={TITLE_MAX_LENGTH}
               returnKeyType="done"
               onSubmitEditing={createItem}
+              blurOnSubmit={false}
             />
+            <TouchableOpacity
+              style={[styles.addBtn, !trimmedTitle && styles.addBtnDisabled]}
+              onPress={createItem}
+              disabled={!trimmedTitle}
+              accessibilityRole="button"
+              accessibilityLabel="Add item"
+            >
+              <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
+            </TouchableOpacity>
           </View>
 
-          {/* Attribute chips — each carries its own label, and opens one panel. */}
-          <View style={styles.chipRow}>
-            <Chip
-              icon="calendar-outline"
-              label="When"
-              value={dueOffsetDays !== null ? formatOffsetWithAnchor(dueOffsetDays, anchor) : null}
-              open={activePanel === 'when'}
+          {/* Attribute toolbar — icon only until a value is set, then the value
+              takes the chip's place. */}
+          <View style={styles.toolbar}>
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'when' && styles.toolChipActive, dueOffsetDays !== null && styles.toolChipSet]}
               onPress={() => togglePanel('when')}
-              colors={colors}
-              styles={styles}
-            />
-            <Chip
-              icon="arrow-up-circle-outline"
-              iconColor={priority > 0 ? PRIORITY_COLORS[priority] : undefined}
-              label="Priority"
-              value={priority > 0 ? PRIORITY_LABELS_SHORT[priority] : null}
-              open={activePanel === 'priority'}
-              onPress={() => togglePanel('priority')}
-              colors={colors}
-              styles={styles}
-            />
-            {allCategories.length > 0 && (
-              <Chip
-                icon="folder-outline"
-                label="Category"
-                value={category ? categoryLabel(category, categories) : null}
-                open={activePanel === 'category'}
-                onPress={() => togglePanel('category')}
-                colors={colors}
-                styles={styles}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={
+                dueOffsetDays !== null
+                  ? `Due: ${formatOffsetWithAnchor(dueOffsetDays, anchor)}`
+                  : 'Set when this item is due'
+              }
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={13}
+                color={dueOffsetDays !== null ? colors.accent : colors.textTertiary}
               />
+              {dueOffsetDays !== null && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                  {formatOffsetWithAnchor(dueOffsetDays, anchor)}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.toolChip, activePanel === 'priority' && styles.toolChipActive, priority > 0 && styles.toolChipSet]}
+              onPress={() => togglePanel('priority')}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={priority > 0 ? `Priority: ${PRIORITY_LABELS_SHORT[priority]}` : 'Set priority'}
+            >
+              <View style={[styles.priorityDot, { backgroundColor: priority > 0 ? PRIORITY_COLORS[priority] : colors.textTertiary }]} />
+              {priority > 0 && (
+                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
+                  {PRIORITY_LABELS_SHORT[priority]}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            {allCategories.length > 0 && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
+                onPress={() => togglePanel('category')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={category !== null ? `Category: ${categoryLabel(category, categories)}` : 'Set category'}
+              >
+                <Ionicons
+                  name="folder-outline"
+                  size={13}
+                  color={category !== null ? colors.accent : colors.textTertiary}
+                />
+                {category !== null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                    {categoryLabel(category, categories)}
+                  </Text>
+                )}
+              </TouchableOpacity>
             )}
-            <Chip
-              icon="help-circle-outline"
-              label="Optional"
-              value={optional ? 'Yes' : null}
-              open={false}
+
+            {/* A toggle rather than a panel, so it keeps its word at all times —
+                there's no glyph that says "skippable when the template runs". */}
+            <TouchableOpacity
+              style={[styles.toolChip, optional && styles.toolChipSet]}
               onPress={() => { haptics.tap(); setOptional(v => !v); }}
-              colors={colors}
-              styles={styles}
-            />
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: optional }}
+              accessibilityLabel="Optional"
+              accessibilityHint="Optional items start unticked when the template is applied"
+            >
+              <Ionicons
+                name="help-circle-outline"
+                size={13}
+                color={optional ? colors.accent : colors.textTertiary}
+              />
+              <Text style={[styles.toolChipText, optional && styles.toolChipTextSet]}>Optional</Text>
+            </TouchableOpacity>
           </View>
 
+          {/* Inline panels */}
           {activePanel === 'when' && (
             <View style={styles.panel}>
               <Text style={styles.panelHint}>
                 Template items have no fixed date — they're offset from a date you pick when applying the template.
               </Text>
-              <View style={styles.panelChipRow}>
-                <PanelChip
-                  label="No date"
-                  active={dueOffsetDays === null}
+              <View style={styles.presetRow}>
+                <TouchableOpacity
+                  style={[styles.presetChip, dueOffsetDays === null && styles.presetChipActive]}
                   onPress={() => { haptics.tap(); setDueOffsetDays(null); }}
-                  styles={styles}
-                />
-                <PanelChip
-                  label="On start date"
-                  active={dueOffsetDays !== null && anchor === 'start'}
-                  onPress={() => { haptics.tap(); setAnchor('start'); setDueOffsetDays(0); }}
-                  styles={styles}
-                />
-                <PanelChip
-                  label="On end date"
-                  active={dueOffsetDays !== null && anchor === 'end'}
-                  onPress={() => { haptics.tap(); setAnchor('end'); setDueOffsetDays(0); }}
-                  styles={styles}
-                />
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Text style={[styles.presetChipText, dueOffsetDays === null && styles.presetChipTextActive]}>
+                    No date
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.presetChip, dueOffsetDays !== null && anchor === 'start' && styles.presetChipActive]}
+                  onPress={() => { haptics.tap(); setAnchor('start'); setDueOffsetDays(d => d ?? 0); }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Text style={[styles.presetChipText, dueOffsetDays !== null && anchor === 'start' && styles.presetChipTextActive]}>
+                    From start date
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.presetChip, dueOffsetDays !== null && anchor === 'end' && styles.presetChipActive]}
+                  onPress={() => { haptics.tap(); setAnchor('end'); setDueOffsetDays(d => d ?? 0); }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Text style={[styles.presetChipText, dueOffsetDays !== null && anchor === 'end' && styles.presetChipTextActive]}>
+                    From end date
+                  </Text>
+                </TouchableOpacity>
               </View>
               {dueOffsetDays !== null && (
-                <View style={styles.stepperRow}>
+                <View style={styles.intervalRow}>
                   <TouchableOpacity
-                    style={styles.stepperBtn}
+                    style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) - 1); }}
                     accessibilityRole="button"
                     accessibilityLabel="One day earlier"
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
-                  <Text style={styles.stepperValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor)}</Text>
+                  <Text style={styles.offsetValue}>{formatOffsetWithAnchor(dueOffsetDays, anchor)}</Text>
                   <TouchableOpacity
-                    style={styles.stepperBtn}
+                    style={styles.intervalBtn}
                     onPress={() => { haptics.tap(); setDueOffsetDays(d => (d ?? 0) + 1); }}
                     accessibilityRole="button"
                     accessibilityLabel="One day later"
@@ -236,16 +374,27 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
           {activePanel === 'priority' && (
             <View style={styles.panel}>
-              <View style={styles.panelChipRow}>
+              <View style={styles.presetRow}>
                 {([0, 1, 2, 3, 4] as Priority[]).map(p => (
-                  <PanelChip
+                  <TouchableOpacity
                     key={p}
-                    label={PRIORITY_LABELS_SHORT[p]}
-                    active={priority === p}
-                    dotColor={p > 0 ? PRIORITY_COLORS[p] : undefined}
+                    style={[
+                      styles.priorityChip,
+                      priority === p && styles.priorityChipActive,
+                      priority === p && p > 0 && { borderColor: PRIORITY_COLORS[p], backgroundColor: PRIORITY_COLORS[p] + '22' },
+                    ]}
                     onPress={() => { haptics.tap(); setPriority(p); }}
-                    styles={styles}
-                  />
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    {p > 0 && <View style={[styles.priorityChipDot, { backgroundColor: PRIORITY_COLORS[p] }]} />}
+                    <Text style={[
+                      styles.presetChipText,
+                      priority === p && styles.presetChipTextActive,
+                      priority === p && p > 0 && { color: PRIORITY_COLORS[p] },
+                    ]}>
+                      {PRIORITY_LABELS_SHORT[p]}
+                    </Text>
+                  </TouchableOpacity>
                 ))}
               </View>
             </View>
@@ -253,202 +402,240 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
 
           {activePanel === 'category' && (
             <View style={styles.panel}>
-              <ScrollView style={styles.panelScroll} keyboardShouldPersistTaps="handled" nestedScrollEnabled>
-                <View style={styles.panelChipRow}>
-                  <PanelChip
-                    label="None"
-                    active={!category}
-                    onPress={() => { haptics.tap(); setCategory(null); }}
-                    styles={styles}
-                  />
-                  {allCategories.map(cat => (
-                    <PanelChip
-                      key={cat}
-                      label={categoryLabel(cat, categories)}
-                      active={category === cat}
-                      onPress={() => { haptics.tap(); setCategory(cat); }}
-                      styles={styles}
-                    />
-                  ))}
-                </View>
-              </ScrollView>
+              <View style={styles.presetRow}>
+                <TouchableOpacity
+                  style={[styles.presetChip, category === null && styles.presetChipActive]}
+                  onPress={() => { haptics.tap(); setCategory(null); }}
+                  activeOpacity={interaction.activeOpacity}
+                >
+                  <Text style={[styles.presetChipText, category === null && styles.presetChipTextActive]}>None</Text>
+                </TouchableOpacity>
+                {allCategories.map(cat => (
+                  <TouchableOpacity
+                    key={cat}
+                    style={[styles.presetChip, category === cat && styles.presetChipActive]}
+                    onPress={() => { haptics.tap(); setCategory(prev => (prev === cat ? null : cat)); }}
+                    activeOpacity={interaction.activeOpacity}
+                  >
+                    <Text style={[styles.presetChipText, category === cat && styles.presetChipTextActive]}>
+                      {categoryLabel(cat, categories)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
           )}
 
           {/* Secondary actions — spelled out, since neither is guessable from an icon. */}
-          <View style={styles.secondaryRow}>
-            <PressableScale
-              style={styles.secondaryBtn}
-              onPress={onAddNested}
+          <View style={styles.moreRow}>
+            <TouchableOpacity
+              style={styles.moreBtn}
+              onPress={handleAddNested}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
               accessibilityLabel="Add another template as an item"
             >
               <Ionicons name="git-branch-outline" size={15} color={colors.textSecondary} />
-              <Text style={styles.secondaryBtnText}>Nest a template</Text>
-            </PressableScale>
-            <PressableScale
-              style={styles.secondaryBtn}
+              <Text style={styles.moreBtnText}>Nest a template</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.moreBtn}
               onPress={handleOpenFull}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
               accessibilityLabel="Open the full editor with what's entered so far"
             >
               <Ionicons name="create-outline" size={15} color={colors.textSecondary} />
-              <Text style={styles.secondaryBtnText}>More details</Text>
-            </PressableScale>
-          </View>
-
-          <View style={styles.footer}>
-            <TouchableOpacity onPress={onClose} activeOpacity={interaction.activeOpacity} accessibilityRole="button">
-              <Text style={styles.cancelText}>Cancel</Text>
+              <Text style={styles.moreBtnText}>More details</Text>
             </TouchableOpacity>
-            <PressableScale
-              onPress={createItem}
-              disabled={!title.trim()}
-              style={[styles.addBtn, !title.trim() && styles.addBtnDisabled]}
-              accessibilityLabel="Add item"
-              accessibilityState={{ disabled: !title.trim() }}
-            >
-              <Text style={styles.addBtnText}>Add item</Text>
-            </PressableScale>
           </View>
-        </View>
-      </KeyboardAvoidingView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
-/** Toolbar chip: always shows its name, and its current value once set. */
-function Chip({
-  icon, iconColor, label, value, open, onPress, colors, styles,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  iconColor?: string;
-  label: string;
-  value: string | null;
-  open: boolean;
-  onPress: () => void;
-  colors: Colors;
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  const set = value !== null;
-  return (
-    <PressableScale
-      style={[styles.chip, open && styles.chipOpen, set && styles.chipSet]}
-      onPress={onPress}
-      accessibilityLabel={set ? `${label}: ${value}` : `Set ${label.toLowerCase()}`}
-    >
-      <Ionicons name={icon} size={13} color={iconColor ?? (set ? colors.accent : colors.textTertiary)} />
-      <Text style={[styles.chipText, set && styles.chipTextSet]} numberOfLines={1}>
-        {set ? value : label}
-      </Text>
-    </PressableScale>
-  );
-}
-
-/** Option chip inside an open panel. */
-function PanelChip({
-  label, active, dotColor, onPress, styles,
-}: {
-  label: string;
-  active: boolean;
-  dotColor?: string;
-  onPress: () => void;
-  styles: ReturnType<typeof makeStyles>;
-}) {
-  return (
-    <PressableScale
-      style={[styles.panelChip, active && styles.panelChipActive, active && dotColor ? { borderColor: dotColor } : null]}
-      onPress={onPress}
-      accessibilityState={{ selected: active }}
-      accessibilityLabel={label}
-    >
-      {dotColor && <View style={[styles.panelChipDot, { backgroundColor: dotColor }]} />}
-      <Text style={[styles.panelChipText, active && styles.panelChipTextActive]}>{label}</Text>
-    </PressableScale>
-  );
-}
-
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.backdrop },
-  centerWrap: { flex: 1, justifyContent: 'flex-end' },
+  backdropDim: { backgroundColor: colors.backdrop },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
   sheet: {
     backgroundColor: colors.bgSecondary,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-    gap: spacing.sm,
+    borderRadius: 20,
+    padding: spacing.md,
   },
-  grabber: {
-    alignSelf: 'center',
-    width: 36, height: 4, borderRadius: 2,
-    backgroundColor: colors.bgQuaternary,
-    marginBottom: spacing.xs,
+  seedRow: {
+    flexDirection: 'row',
+    marginBottom: spacing.sm,
   },
-  overline: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.semibold,
-    textTransform: 'uppercase', letterSpacing: 0.8,
-  },
-  inputRow: {
-    backgroundColor: colors.bgTertiary, borderRadius: radius.md,
-    paddingHorizontal: spacing.md, paddingVertical: 10,
-  },
-  input: { color: colors.text, fontSize: font.md, paddingVertical: 0 },
-  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  chip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 10, paddingVertical: 7,
-    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  seedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
     maxWidth: '100%',
   },
-  chipOpen: { backgroundColor: colors.bgQuaternary },
-  chipSet: { backgroundColor: colors.accentSubtle },
-  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium, flexShrink: 1 },
-  chipTextSet: { color: colors.accent },
-  panel: {
-    backgroundColor: colors.bgTertiary, borderRadius: radius.md,
-    padding: spacing.sm, gap: spacing.sm,
+  seedChipText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
-  panelHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 16 },
-  panelScroll: { maxHeight: 150 },
-  panelChipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  panelChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 5,
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: radius.full, borderWidth: 1, borderColor: 'transparent',
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  input: {
+    flex: 1,
+    fontSize: font.md,
+    color: colors.text,
+    paddingVertical: spacing.sm,
+  },
+  addBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: colors.accent,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  addBtnDisabled: {
+    backgroundColor: colors.bgTertiary,
+  },
+  toolbar: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  toolChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  toolChipActive: {
     backgroundColor: colors.bgQuaternary,
   },
-  panelChipActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
-  panelChipDot: { width: 7, height: 7, borderRadius: 4 },
-  panelChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  panelChipTextActive: { color: colors.accent, fontWeight: fontWeight.semibold },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  stepperBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.bgQuaternary, alignItems: 'center', justifyContent: 'center',
+  toolChipSet: {
+    backgroundColor: colors.accentSubtle,
   },
-  stepperValue: {
-    flex: 1, textAlign: 'center',
-    color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold,
+  toolChipText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
-  secondaryRow: {
-    flexDirection: 'row', gap: spacing.xs,
-    paddingTop: spacing.sm,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.separator,
+  toolChipTextSet: {
+    color: colors.accent,
   },
-  secondaryBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 9, borderRadius: radius.md, backgroundColor: colors.bgTertiary,
+  toolChipTextTruncate: {
+    maxWidth: 170,
   },
-  secondaryBtnText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  footer: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: spacing.xs,
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  cancelText: { color: colors.textSecondary, fontSize: font.md },
-  addBtn: {
-    backgroundColor: colors.accent, borderRadius: radius.full,
-    paddingHorizontal: spacing.lg, paddingVertical: 10,
+  panel: {
+    marginTop: spacing.sm,
   },
-  addBtnDisabled: { opacity: 0.4 },
-  addBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  panelHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: 16,
+    marginBottom: spacing.sm,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  presetChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+  },
+  presetChipActive: {
+    backgroundColor: colors.accent,
+  },
+  presetChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  presetChipTextActive: {
+    color: colors.onAccent,
+    fontWeight: fontWeight.semibold,
+  },
+  priorityChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  priorityChipActive: {
+    backgroundColor: colors.bgQuaternary,
+  },
+  priorityChipDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  intervalBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  offsetValue: {
+    flex: 1,
+    textAlign: 'center',
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  moreRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  moreBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+  },
+  moreBtnText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
 });
