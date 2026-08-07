@@ -151,6 +151,7 @@ export function SettingsScreen() {
     remindersImportEnabled, setRemindersImportEnabled,
     remindersImportListId, setRemindersImportListId,
     setRemindersImportConfirmedListId,
+    remindersImportReview, setRemindersImportReview,
     resetToDefaults,
   } = useSettingsStore();
 
@@ -244,8 +245,8 @@ export function SettingsScreen() {
         ? `Import from “${list.title}”?`
         : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
       count === 0
-        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. Only the title comes across.'
-        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. Only the title comes across — dates, notes and alarms are dropped. Completed reminders are left alone.`,
+        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. The title and notes come across; any date, repeat or alarm waits on the task for you to accept.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. The title and notes come across, and any date, repeat or alarm waits on the task in your Inbox until you accept it. Completed reminders are left alone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Import', style: 'destructive', onPress: enable },
@@ -1057,6 +1058,32 @@ export function SettingsScreen() {
                     <View style={styles.sep} />
                     <TouchableOpacity
                       style={styles.row}
+                      onPress={() => setRemindersImportReview(!remindersImportReview)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityState={{ checked: remindersImportReview }}
+                      accessibilityLabel="Review a reminder's date and repeat before applying them"
+                    >
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color={remindersImportReview ? colors.accent : colors.textSecondary}
+                      />
+                      <View style={styles.rowContent}>
+                        <Text style={styles.rowLabel}>Review before applying</Text>
+                        <Text style={styles.rowHint}>
+                          {remindersImportReview
+                            ? 'On — a reminder’s date, repeat and alarm wait on the task in your Inbox until you accept them'
+                            : 'Off — they’re applied on import, so a dated reminder goes straight to Today or Later'}
+                        </Text>
+                      </View>
+                      <View style={[styles.toggle, remindersImportReview && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, remindersImportReview && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                    <View style={styles.sep} />
+                    <TouchableOpacity
+                      style={styles.row}
                       onPress={onImportNow}
                       disabled={importBusy}
                       activeOpacity={interaction.activeOpacity}
@@ -1074,7 +1101,7 @@ export function SettingsScreen() {
                 )}
               </View>
               <Text style={styles.sectionFooter}>
-                Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. Only the title comes across — dates, notes and alarms are dropped, so everything waits in your Inbox until you file it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone.
+                Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone.
               </Text>
             </View>
           )}

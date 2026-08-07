@@ -137,6 +137,7 @@ const baseTask: Task = {
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
 };
 
 // June 10, 2025 at 10:00 AM

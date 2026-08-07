@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -500,5 +500,42 @@ describe('parseDurationInput', () => {
 
   it('is case insensitive', () => {
     expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
+  });
+});
+
+describe('parseFromCompletionSuffix', () => {
+  it('peels a bare "after completion" clause that parseTaskInput will not match', () => {
+    // parseTaskInput needs a recurrence phrase in front of the clause, because
+    // a task with no repeat has no completion to recur from. The Reminders
+    // import is the caller that already has the repeat from somewhere else.
+    expect(parseTaskInput('go running after completion')).toBeNull();
+    expect(parseFromCompletionSuffix('go running after completion')).toEqual({
+      cleanTitle: 'go running',
+    });
+  });
+
+  it('accepts the same phrasings the recurrence parser does', () => {
+    expect(parseFromCompletionSuffix('go running after completing')?.cleanTitle).toBe('go running');
+    expect(parseFromCompletionSuffix('go running after finishing')?.cleanTitle).toBe('go running');
+    expect(parseFromCompletionSuffix("go running after it's done")?.cleanTitle).toBe('go running');
+    expect(parseFromCompletionSuffix('go running after I finish it')?.cleanTitle).toBe('go running');
+    expect(parseFromCompletionSuffix('go running after done')?.cleanTitle).toBe('go running');
+  });
+
+  it('keeps the original casing and trims trailing punctuation', () => {
+    expect(parseFromCompletionSuffix('Water The Plants after completion')?.cleanTitle).toBe(
+      'Water The Plants'
+    );
+    expect(parseFromCompletionSuffix('Go Running, after completion')?.cleanTitle).toBe('Go Running');
+  });
+
+  it('is case insensitive in the clause itself', () => {
+    expect(parseFromCompletionSuffix('go running After Completion')?.cleanTitle).toBe('go running');
+  });
+
+  it('returns null without the clause, or with nothing left in front of it', () => {
+    expect(parseFromCompletionSuffix('go running')).toBeNull();
+    expect(parseFromCompletionSuffix('after completion')).toBeNull();
+    expect(parseFromCompletionSuffix('')).toBeNull();
   });
 });
