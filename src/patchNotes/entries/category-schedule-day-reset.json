@@ -1,0 +1,4 @@
+{
+  "message": "A category's visibility schedule now follows your day reset time instead of midnight, so its tasks stay on Today until your day actually ends — and a schedule that runs into the small hours (like 5pm–2am) works, where it used to hide the category entirely",
+  "date": "2026-08-07"
+}

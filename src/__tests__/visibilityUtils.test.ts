@@ -768,6 +768,86 @@ describe('category schedule — getVisibleAt', () => {
   });
 });
 
+// ─── Category schedule across midnight ────────────────────────────────────────
+// Both halves of the same anchoring bug: the window used to be compared against
+// raw wall-clock minutes and the wall-clock day-of-week, so it closed at
+// midnight no matter where dayResetTime sat, and a window running into the
+// small hours was unsatisfiable (end minutes below start minutes) and so never
+// opened at all.
+
+const eveningCategory: Category = {
+  id: 'cat-evening',
+  name: 'Evening Tasks',
+  scheduleDays: [0, 1, 2, 3, 4, 5, 6],
+  scheduleStart: '17:00',
+  scheduleEnd: '02:00',
+  hideOnVacation: false,
+  excludeFromPinSuggestions: false,
+  defaultTimeSegments: [],
+  sortOrder: 1,
+  emoji: null,
+};
+
+describe('category schedule — across midnight', () => {
+  // Tuesday June 10's logical day, under a 4 AM reset: still running at
+  // 00:30 on Wednesday the 11th.
+  const dueTuesday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockSettingsState.dayResetTime = '04:00';
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockCategorySchedule(null);
+    mockSettingsState.dayResetTime = '00:00';
+  });
+
+  it('keeps an evening category showing past midnight, until its own end time', () => {
+    mockCategorySchedule(eveningCategory);
+    jest.setSystemTime(new Date(2025, 5, 11, 0, 30, 0)); // 00:30, still Tuesday's day
+    expect(isTaskVisible({ ...baseTask, category: 'Evening Tasks', dueDate: dueTuesday })).toBe(true);
+  });
+
+  it('closes the window at its end time in the small hours, not at midnight', () => {
+    mockCategorySchedule(eveningCategory);
+    jest.setSystemTime(new Date(2025, 5, 11, 2, 30, 0)); // 02:30 — past the 02:00 end
+    expect(isTaskVisible({ ...baseTask, category: 'Evening Tasks', dueDate: dueTuesday })).toBe(false);
+  });
+
+  it('reads the day-of-week off the logical day, not the wall clock', () => {
+    // Mon–Thu evenings. At 00:30 on Friday the logical day is still Thursday,
+    // so the schedule is on — the wall clock's Friday must not end it early.
+    mockCategorySchedule({ ...eveningCategory, scheduleDays: [1, 2, 3, 4] });
+    jest.setSystemTime(new Date(2025, 5, 13, 0, 30, 0)); // Fri Jun 13, 00:30
+    const dueThursday = new Date(2025, 5, 12, 0, 0, 0).toISOString();
+    expect(isTaskVisible({ ...baseTask, category: 'Evening Tasks', dueDate: dueThursday })).toBe(true);
+  });
+
+  it('does not open the window before its start time on the logical day', () => {
+    mockCategorySchedule(eveningCategory);
+    jest.setSystemTime(new Date(2025, 5, 10, 16, 0, 0)); // 16:00 — before the 17:00 start
+    expect(isTaskVisible({ ...baseTask, category: 'Evening Tasks', dueDate: dueTuesday })).toBe(false);
+  });
+
+  it('treats a window straddling the reset itself as running to the end of the day', () => {
+    // 02:00–06:00 under a 4 AM reset: the end lands before the start on the
+    // logical day's timeline, so there is no closing time to honour.
+    mockCategorySchedule({ ...eveningCategory, scheduleStart: '02:00', scheduleEnd: '06:00' });
+    jest.setSystemTime(new Date(2025, 5, 11, 3, 0, 0));
+    expect(isTaskVisible({ ...baseTask, category: 'Evening Tasks', dueDate: dueTuesday })).toBe(true);
+  });
+
+  it('sends a closed window to a next start the task will actually show at', () => {
+    mockCategorySchedule(eveningCategory);
+    jest.setSystemTime(new Date(2025, 5, 11, 3, 0, 0)); // past 02:00, still Tuesday's day
+    const result = getVisibleAt({ ...baseTask, category: 'Evening Tasks', dueDate: dueTuesday });
+    expect(result.getDate()).toBe(11);
+    expect(result.getHours()).toBe(17);
+  });
+});
+
 // ─── Category hidden on vacation ──────────────────────────────────────────────
 
 const errandsCategory: Category = {
