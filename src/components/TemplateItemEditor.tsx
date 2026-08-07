@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   TextInput,
@@ -182,7 +183,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
   const handleSave = () => {
     if (!title.trim()) return;
-    haptics.success();
     const updates = {
       title: title.trim(),
       notes,
@@ -213,9 +213,17 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     };
     if (item) {
       updateItem(templateId, item.id, updates);
-    } else {
-      addItem(templateId, updates);
+    } else if (!addItem(templateId, updates)) {
+      // Nothing was stored — closing here would throw away a whole editor's
+      // worth of work on a row that will never appear. See addItem.
+      haptics.error();
+      Alert.alert(
+        'Couldn’t add that item',
+        'This template couldn’t be found, so nothing was saved. Go back to Templates and open it again, then retry.',
+      );
+      return;
     }
+    haptics.success();
     onClose();
   };
 

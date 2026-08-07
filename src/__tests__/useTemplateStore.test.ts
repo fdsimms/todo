@@ -143,7 +143,7 @@ describe('template CRUD', () => {
 describe('item CRUD', () => {
   it('addItem normalizes partial items and persists the template', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const item = useTemplateStore.getState().addItem(tpl.id, { title: 'Trash', dueOffsetDays: 0 });
+    const item = useTemplateStore.getState().addItem(tpl.id, { title: 'Trash', dueOffsetDays: 0 })!;
     expect(item.id).toBeTruthy();
     expect(item.optional).toBe(false);
     const stored = useTemplateStore.getState().templates[0].items;
@@ -152,9 +152,22 @@ describe('item CRUD', () => {
     expect(dbUpdateTemplate).toHaveBeenCalled();
   });
 
+  // The regression this guards: addItem used to return the item it *would*
+  // have stored even when the template was gone, so a caller couldn't tell an
+  // add apart from a no-op and dismissed its sheet either way. Every add
+  // surface reports failure now, so this must stay falsy.
+  it('addItem stores nothing and returns null for an unknown template', () => {
+    useTemplateStore.getState().addTemplate('A');
+    (dbUpdateTemplate as jest.Mock).mockClear();
+    const item = useTemplateStore.getState().addItem('no-such-template', { title: 'Trash' });
+    expect(item).toBeNull();
+    expect(useTemplateStore.getState().templates[0].items).toHaveLength(0);
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
+  });
+
   it('updateItem patches a single item', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const item = useTemplateStore.getState().addItem(tpl.id, { title: 'Trash' });
+    const item = useTemplateStore.getState().addItem(tpl.id, { title: 'Trash' })!;
     useTemplateStore.getState().updateItem(tpl.id, item.id, { optional: true, dueOffsetDays: -1 });
     const stored = useTemplateStore.getState().templates[0].items[0];
     expect(stored.optional).toBe(true);
@@ -163,7 +176,7 @@ describe('item CRUD', () => {
 
   it('deleteItem removes only that item', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' })!;
     useTemplateStore.getState().addItem(tpl.id, { title: 'B' });
     useTemplateStore.getState().deleteItem(tpl.id, a.id);
     expect(useTemplateStore.getState().templates[0].items.map(i => i.title)).toEqual(['B']);
@@ -171,8 +184,8 @@ describe('item CRUD', () => {
 
   it('reorderItems applies the given order and ignores incomplete id lists', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
-    const b = useTemplateStore.getState().addItem(tpl.id, { title: 'B' });
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' })!;
+    const b = useTemplateStore.getState().addItem(tpl.id, { title: 'B' })!;
     useTemplateStore.getState().reorderItems(tpl.id, [b.id, a.id]);
     expect(useTemplateStore.getState().templates[0].items.map(i => i.title)).toEqual(['B', 'A']);
     useTemplateStore.getState().reorderItems(tpl.id, [a.id]);
@@ -390,7 +403,7 @@ describe('item groups', () => {
 
   it('deleteItemGroup ungroups member items instead of deleting them', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' })!;
     const group = useTemplateStore.getState().addItemGroup(tpl.id, 'Supplements');
     useTemplateStore.getState().updateItem(tpl.id, a.id, { groupId: group.id });
     useTemplateStore.getState().deleteItemGroup(tpl.id, group.id);
@@ -401,8 +414,8 @@ describe('item groups', () => {
 
   it('groupItems creates a group and stamps groupId on the given items in one call', () => {
     const tpl = useTemplateStore.getState().addTemplate('A');
-    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' });
-    const b = useTemplateStore.getState().addItem(tpl.id, { title: 'B' });
+    const a = useTemplateStore.getState().addItem(tpl.id, { title: 'A' })!;
+    const b = useTemplateStore.getState().addItem(tpl.id, { title: 'B' })!;
     useTemplateStore.getState().addItem(tpl.id, { title: 'C' });
     const group = useTemplateStore.getState().groupItems(tpl.id, [a.id, b.id], 'Errands');
     const state = useTemplateStore.getState().templates[0];
