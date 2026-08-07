@@ -384,7 +384,7 @@ export async function suggestRecipeGroceries(
                 },
                 quantity: {
                   type: 'string',
-                  description: 'How much to buy, in shop terms ("2 lb", "1 bunch"). Empty string if the recipe does not say.',
+                  description: 'How much to buy, in shop terms ("2 lb", "1 bunch", "1 tbsp", "2 tsp"). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
                 },
                 aisle: {
                   type: 'string',

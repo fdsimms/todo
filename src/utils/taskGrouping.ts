@@ -518,6 +518,56 @@ export function applyCategoryCollapse(
 }
 
 /**
+ * The task ids under each section header, keyed by the header's label.
+ *
+ * Today's headers are rendered from the same list their rows are, but nothing
+ * else ties the two together: a header simply stops being emitted once its
+ * section has no content. That's a frame, not an animation, so a category whose
+ * last tasks were just ticked off sat on alone until the completion hold expired
+ * and then popped — the rows had faded and closed their gaps a beat earlier.
+ * Handing each header the ids beneath it lets it leave with them (see
+ * CompletionCollapse).
+ *
+ * A section holding a stack is deliberately absent rather than empty-listed: the
+ * stack's tray is a row with its own children and its own hold, so collapsing
+ * the header over it would leave the tray stranded under the section above.
+ * Same for the header-less loose group at the top, which has no header to take
+ * away.
+ */
+export function sectionTaskIds(items: TodayListItem[]): Map<string, string[]> {
+  const sections = new Map<string, string[]>();
+  let label: string | null = null;
+  for (const item of items) {
+    if (item.type === 'header') {
+      label = item.label;
+      sections.set(label, []);
+      continue;
+    }
+    // Neither divider heads a category section, and both close the one above.
+    if (item.type === 'pinned-header' || item.type === 'rest-header') {
+      label = null;
+      continue;
+    }
+    if (label === null) continue;
+    if (item.type === 'task') {
+      sections.get(label)!.push(item.task.id);
+      continue;
+    }
+    if (item.type === 'group') {
+      sections.delete(label);
+      label = null;
+    }
+  }
+  // An empty section can't be emitted by makeCategoryGroups, but a caller's own
+  // filtering (a collapsed category drops its rows) can leave one — and a header
+  // with nothing under it must not read as "everything under me is going".
+  for (const [key, ids] of sections) {
+    if (ids.length === 0) sections.delete(key);
+  }
+  return sections;
+}
+
+/**
  * Where a task's row sits in a Today list, for scrolling to it from something
  * outside the list (the new-todos banner).
  *

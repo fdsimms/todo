@@ -436,6 +436,50 @@ describe('grocery import settings', () => {
   });
 });
 
+describe('the delete-after-importing settings', () => {
+  it('both default on, which is what the feature has always done', () => {
+    const state = useSettingsStore.getState();
+    expect(state.remindersImportDelete).toBe(true);
+    expect(state.groceryImportDelete).toBe(true);
+  });
+
+  it('round-trips each independently of the other', () => {
+    useSettingsStore.getState().setRemindersImportDelete(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('remindersImportDelete', 'false');
+    expect(useSettingsStore.getState().remindersImportDelete).toBe(false);
+    expect(useSettingsStore.getState().groceryImportDelete).toBe(true);
+
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'remindersImportDelete' ? 'false' : null
+    );
+    useSettingsStore.getState().initialize();
+    const state = useSettingsStore.getState();
+    expect(state.remindersImportDelete).toBe(false);
+    // Absent row, and absent must read as on — see below.
+    expect(state.groceryImportDelete).toBe(true);
+  });
+
+  // The important one. An install that predates the setting has been deleting
+  // reminders all along; reading the missing row as "off" would silently switch
+  // it to leaving them behind, duplicating anything the name index missed.
+  it('reads a missing row as on rather than off', () => {
+    (dbGetSetting as jest.Mock).mockImplementation(() => null);
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().remindersImportDelete).toBe(true);
+    expect(useSettingsStore.getState().groceryImportDelete).toBe(true);
+  });
+
+  it('resetToDefaults puts both back on', () => {
+    useSettingsStore.getState().setRemindersImportDelete(false);
+    useSettingsStore.getState().setGroceryImportDelete(false);
+
+    useSettingsStore.getState().resetToDefaults();
+
+    expect(useSettingsStore.getState().remindersImportDelete).toBe(true);
+    expect(useSettingsStore.getState().groceryImportDelete).toBe(true);
+  });
+});
+
 describe('setProjectNudgeDismissedAt', () => {
   it('stores and persists the stamp', () => {
     useSettingsStore.getState().setProjectNudgeDismissedAt('2026-08-06T09:00:00.000Z');

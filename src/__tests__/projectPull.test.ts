@@ -37,6 +37,7 @@ const BASE: Task = {
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: new Date().toISOString(),
   seenAt: null,
   dueDate: null,
@@ -653,5 +654,102 @@ describe('dripCandidate', () => {
     ];
 
     expect(dripCandidate(project, tasks)).toBeNull();
+  });
+
+  // The bug this back-off exists for: clearing a date restores hasNoDateSignal,
+  // which is exactly what makes a project stalled, so before the stamp the very
+  // next drip re-dated the same task — every foreground, indefinitely, since
+  // lastTouchedAt only moves on a completion.
+  it('stands down for the rest of the day once its own suggestion is cleared', () => {
+    const project = makeProject({ autoSchedule: true });
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
+      makeTask({ id: 'b', sortOrder: 1 }),
+    ];
+
+    expect(dripCandidate(project, tasks)).toBeNull();
+  });
+
+  // Scoped to the project, not the task: offering the runner-up instead would
+  // be the same interruption under a different title.
+  it('offers no other candidate from a project declined today', () => {
+    const project = makeProject({ autoSchedule: true });
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
+      makeTask({ id: 'b', sortOrder: 1, priority: 3 }),
+      makeTask({ id: 'c', sortOrder: 2 }),
+    ];
+
+    expect(dripCandidate(project, tasks)).toBeNull();
+  });
+
+  // A day, not a cadence: the same task is still the right next thing, so it
+  // comes back tomorrow rather than being buried for the project's interval.
+  it('resumes the next day, on the same task', () => {
+    const project = makeProject({ autoSchedule: true });
+    const tasks = [
+      makeTask({
+        id: 'a',
+        sortOrder: 0,
+        dueDate: null,
+        autoScheduledAt: subDays(new Date(), 1).toISOString(),
+      }),
+      makeTask({ id: 'b', sortOrder: 1 }),
+    ];
+
+    expect(dripCandidate(project, tasks)?.id).toBe('a');
+  });
+
+  // The stamp only means "declined" while the date it explains is gone. A
+  // stamped task the user has since re-dated is an ordinary scheduled task.
+  it('is not a decline while the dated task still carries its date', () => {
+    const project = makeProject({ autoSchedule: true });
+    const tasks = [
+      makeTask({
+        id: 'a',
+        sortOrder: 0,
+        dueDate: new Date().toISOString(),
+        autoScheduledAt: new Date().toISOString(),
+      }),
+      makeTask({ id: 'b', sortOrder: 1 }),
+    ];
+
+    // Not because of the stamp — because the project has a scheduled member.
+    expect(dripCandidate(project, tasks)).toBeNull();
+  });
+});
+
+describe('a declined project and the sheet', () => {
+  // The cadence rationale, applied to the back-off: tapping "Pull from
+  // projects" is the user asking, and a change of mind an hour after clearing
+  // should be honoured rather than met with an empty sheet.
+  it('still offers the project when the user asks directly', () => {
+    const project = makeProject({ autoSchedule: false });
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
+    ];
+
+    const plan = buildProjectPullPlan([project], tasks, []);
+    expect(plan.proposals.map(p => p.candidates[0].id)).toEqual(['a']);
+  });
+
+  it('keeps it out of the unprompted nudge', () => {
+    const project = makeProject({ nudgeCadenceDays: 14 });
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
+    ];
+
+    expect(findProjectStalls([project], tasks, 'nudge')).toEqual([]);
+  });
+
+  it('names the reason when diagnosed in nudge mode', () => {
+    const project = makeProject({ nudgeCadenceDays: 14 });
+    const tasks = [
+      makeTask({ id: 'a', sortOrder: 0, dueDate: null, autoScheduledAt: new Date().toISOString() }),
+    ];
+
+    const empty = diagnosePullEmpty([project], tasks, 'nudge');
+    expect(empty?.reason).toBe('declined-today');
+    expect(describePullEmpty(empty!)).toContain('until tomorrow');
   });
 });

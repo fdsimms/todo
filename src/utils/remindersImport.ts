@@ -1,6 +1,7 @@
 import { format } from 'date-fns/format';
 import type { Calendar as ReminderList, RecurrenceRule, Reminder } from 'expo-calendar';
 import type { RecurrenceType, Task, TaskDraft } from '../types';
+import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import {
   describeSchedule,
   dueAt,
@@ -302,6 +303,11 @@ export function isImportableList(list: ReminderList | undefined): boolean {
   // delete — so its whole contents would come back on every foreground, for
   // ever. It's the one unbounded failure mode this feature has, and the
   // cheapest place to kill it is before the list can be picked.
+  //
+  // Still required with "Delete after importing" off, even though nothing is
+  // deleted then and the name index would hold the same line: that setting is
+  // one tap away from coming back on, and a list picked while it was off would
+  // strand the drain the moment it did.
   return !!list && list.allowsModifications === true;
 }
 
@@ -347,9 +353,10 @@ function creationTime(reminder: Reminder): number | null {
  * Everything in a fetched list we're willing to import *and then delete*,
  * oldest first. Nothing outside this array is ever touched.
  *
- * `skipIds` is the drain's in-session record of reminders whose task was
- * created but whose delete failed. Without it the retry loop re-imports them
- * immediately, and keeps doing it.
+ * `skipIds` is the drain's in-session record of reminders whose task already
+ * exists but which are still sitting in the list — a delete that failed, or one
+ * that was never attempted because the user asked for them to be left in place.
+ * Without it the retry loop re-imports them immediately, and keeps doing it.
  */
 export function importableReminders(
   reminders: Reminder[],
@@ -381,4 +388,91 @@ export function importableReminders(
       return a.at === b.at ? a.index - b.index : a.at - b.at;
     })
     .map(entry => entry.reminder);
+}
+
+/**
+ * Names already spoken for — the stand-in for the delete.
+ *
+ * Deleting the reminder is what normally stops an import happening twice: one
+ * that has become a task isn't there to be read again. With "Delete after
+ * importing" off it stays, and every foreground hands it straight back, so the
+ * name is the only handle left to tell "already imported" from "new".
+ *
+ * **The match is deliberately wide, and the asymmetry is the reason.** With
+ * nothing being deleted, a false match costs a skip the user can undo by hand —
+ * the reminder is still sitting in Reminders, untouched — while a false miss
+ * re-imports the same capture on every foreground, for ever. Unbounded beats
+ * recoverable, so the index counts *every* task row (completed, archived and
+ * subtasks alike) and every name the grocery catalog knows, not just what's on
+ * the list today. A completed "buy milk" still answers "yes, that one came
+ * across already", which is the question being asked.
+ *
+ * None of it runs while reminders are being deleted: there the delete is the
+ * record, and two genuinely separate captures that happen to share a title
+ * should both come in.
+ */
+export function taskTitleKey(title: string | null | undefined): string {
+  return (title ?? '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+export function taskTitleKeys(tasks: readonly { title: string }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const task of tasks) {
+    const key = taskTitleKey(task.title);
+    if (key) keys.add(key);
+  }
+  return keys;
+}
+
+/** True when this name is one the index already holds. Empty names never match. */
+export function isTitleTaken(
+  title: string | null | undefined,
+  keys: ReadonlySet<string>
+): boolean {
+  const key = taskTitleKey(title);
+  return key !== '' && keys.has(key);
+}
+
+/**
+ * The key `addByName` would file this reminder under, so a skip lines up
+ * exactly with the row that would otherwise have been created or re-listed.
+ * Mirrors that function's derivation, empty-name fallback included — quantities
+ * are split off first, so "2 lb chicken" and "chicken" are the same item.
+ */
+export function groceryItemKey(raw: string): string {
+  const { name } = parseGroceryInput(raw);
+  return groceryNameKey(name) || name.trim().toLowerCase();
+}
+
+export function groceryItemKeys(items: readonly { nameKey: string }[]): Set<string> {
+  const keys = new Set<string>();
+  for (const item of items) {
+    if (item.nameKey) keys.add(item.nameKey);
+  }
+  return keys;
+}
+
+/**
+ * Whether a drain consulting `keys` would leave this reminder alone.
+ *
+ * The task side tests two names, not one: an import with review off saves the
+ * *stripped* title ("pay rent tmrw" is filed as "pay rent"), so matching only
+ * the dictated one would re-import the capture the moment that setting changed
+ * under it. Shared with the count behind the confirmation alert, so the number
+ * it names is the set that actually comes across.
+ */
+export function isReminderAlreadyPresent(
+  reminder: Reminder,
+  sink: 'task' | 'grocery',
+  keys: ReadonlySet<string>,
+  now: Date = new Date()
+): boolean {
+  if (sink === 'grocery') {
+    const key = groceryItemKey(reminder.title ?? '');
+    return key !== '' && keys.has(key);
+  }
+  return (
+    isTitleTaken(reminder.title, keys) ||
+    isTitleTaken(pendingImportFor(reminder, now)?.title, keys)
+  );
 }

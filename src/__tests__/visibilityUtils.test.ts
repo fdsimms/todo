@@ -84,6 +84,7 @@ const baseTask: Task = {
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: new Date(2025, 0, 1).toISOString(),
   seenAt: null,
   dueDate: null,

@@ -1179,6 +1179,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           <BlockerPickerSheet
             visible={showBlockerPicker}
             taskId={task?.id ?? null}
+            context={{ groupId, projectId: project, category }}
             onClose={() => setShowBlockerPicker(false)}
             onSelect={setBlockedById}
           />

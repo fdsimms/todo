@@ -308,24 +308,24 @@ export const TaskItem = React.memo(function TaskItem({
   // Washes the fill from accent to green over the last of that rise, so the
   // meter lands on the colour every other completion ends on.
   const quotaDone = useRef(new Animated.Value(0)).current;
-  // Drives the whole row's height to 0 after the completion fade, so the space
-  // it took up closes instead of sitting there invisible for the rest of
-  // completeTask's completionHoldIds window (see useTaskStore) — that hold
-  // keeps the row mounted briefly, and with no visual collapse of its own it
-  // just reads as the app freezing. The store says *when*
-  // (completionCollapseIds), not this row: tap four tasks and all four gaps
-  // close in one frame, rather than each closing whenever that row's own
-  // animation happened to finish, which staggered the list into reflowing once
-  // per tap in tap order. Runs on the UI thread for the same reason the expand
-  // panel below does: a JS-driven height change stutters once other rows have
-  // to re-layout under it.
+  // Takes the whole row away — fade and height together — once the burst it
+  // belongs to has settled, instead of sitting there for the rest of
+  // completeTask's completionHoldIds window (see useTaskStore). The store says
+  // *when* (completionCollapseIds), not this row: tap four tasks and all four
+  // leave in one frame, rather than each leaving whenever that row's own
+  // animation happened to finish, which staggered the list into a cascade in
+  // tap order. Runs on the UI thread for the same reason the expand panel below
+  // does: a JS-driven height change stutters once other rows have to re-layout
+  // under it.
   const collapseProgress = useSharedValue(1);
   const collapseStartedRef = useRef(false);
   // This row played its own completion animation and is waiting for the batch,
   // as opposed to one completed elsewhere (a swipe, the bulk bar, the editor):
-  // those never faded, so shrinking them would yank a fully-visible row away.
-  // It also stops taking touches while it waits — it's invisible by then, and
-  // during a burst it keeps its full height for as long as the tapping goes on.
+  // those never played the tick, so taking them away like this would yank a row
+  // that never announced itself. It holds its slot — checked, still fully
+  // visible — for as long as the tapping goes on, and stops taking touches while
+  // it waits: the completion is committed by then, so the row's own tap handler
+  // (handleUndoComplete) would uncheck something it can no longer take back.
   const [awaitingCollapse, setAwaitingCollapse] = useState(false);
   const [rowHeight, setRowHeight] = useState<number | null>(null);
   // Tints the row briefly so the user can tell which one is being pointed at.
@@ -401,13 +401,24 @@ export const TaskItem = React.memo(function TaskItem({
     opacity: interpolate(expansionProgress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
-  // Left at `{}` (auto height) until a completion actually starts collapsing
-  // the row — locking in `rowHeight` any earlier would clip normal content
-  // changes (expanding notes, adding subtasks, etc).
+  // Left at `{}` (auto height, untouched opacity) until a completion actually
+  // starts collapsing the row — locking in `rowHeight` any earlier would clip
+  // normal content changes (expanding notes, adding subtasks, etc).
+  //
+  // The fade lives here, with the height, rather than at the end of each tap's
+  // own animation. Running it per tap is what kept the cascade visible after
+  // the gaps themselves were batched: the row the user tapped first blinked out
+  // on its own clock, the second a beat later, and by the time the batch closed
+  // the gaps there was nothing left to see leaving. Opacity leads the height a
+  // little so the row is gone before its last few points of height are, instead
+  // of shrinking to a visible sliver.
   const collapseStyle = useAnimatedStyle(() => {
-    if (rowHeight === null || collapseProgress.value >= 1) return {};
+    if (collapseProgress.value >= 1) return {};
+    const opacity = interpolate(collapseProgress.value, [0.3, 1], [0, 1], Extrapolation.CLAMP);
+    if (rowHeight === null) return { opacity };
     return {
       height: interpolate(collapseProgress.value, [0, 1], [0, rowHeight], Extrapolation.CLAMP),
+      opacity,
       overflow: 'hidden' as const,
     };
   });
@@ -429,6 +440,32 @@ export const TaskItem = React.memo(function TaskItem({
       easing: Easing.inOut(Easing.cubic),
     });
   }, [collapseSignal, awaitingCollapse]);
+
+  // The completion can be taken back while the row is still waiting on the
+  // batch — shake-to-undo reaches it for the whole hold. The row is staying, so
+  // it has to drop the completed look it was holding rather than sit there
+  // checked and inert until something remounts it.
+  //
+  // Keyed on leaving the hold rather than on task.completed, which reads false
+  // for a *held* completion too (withHeldCompletions masks it), and on the
+  // transition rather than the bare value, so the effect can't fire on the frame
+  // between setAwaitingCollapse and the hold this row is about to join.
+  const heldForCompletion = useTaskStore(s => s.completionHoldIds.includes(task.id));
+  const wasHeldRef = useRef(false);
+  useEffect(() => {
+    const leftHold = wasHeldRef.current && !heldForCompletion;
+    wasHeldRef.current = heldForCompletion;
+    if (!leftHold || !awaitingCollapse) return;
+    setAwaitingCollapse(false);
+    setCompleting(false);
+    setQuotaCompleting(false);
+    setQuotaToppedOut(false);
+    checkScale.setValue(0);
+    circleScale.setValue(1);
+    rowOpacity.setValue(1);
+    collapseStartedRef.current = false;
+    collapseProgress.value = 1;
+  }, [heldForCompletion, awaitingCollapse]);
 
   // A row unmounted mid-animation (screen change, filter change) never reaches
   // completeTask, so it has to let the batch go — otherwise the collapse it was
@@ -640,6 +677,12 @@ export const TaskItem = React.memo(function TaskItem({
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
     otherSeriesDates !== '';
 
+  // The stamp outlives the date it explains — that's what lets the drip read a
+  // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
+  // for both. A stamp with no date is a refusal, not a provenance note, and a
+  // completed row is history: neither has anything left to explain.
+  const autoScheduled = task.autoScheduledAt !== null && task.dueDate !== null && !task.completed;
+
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
@@ -724,18 +767,19 @@ export const TaskItem = React.memo(function TaskItem({
       Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.delay(120),
-      Animated.timing(rowOpacity, { toValue: 0, duration: 220, useNativeDriver: true }),
     ]);
     completeAnimRef.current = sequence;
     sequence.start(({ finished }) => {
       completeAnimRef.current = null;
       if (!finished) return;
-      setCompleting(false);
-      setQuotaCompleting(false);
-      setQuotaToppedOut(false);
       completingRef.current = false;
-      // Leaves the row invisible but full height; the store calls the collapse
-      // in once the burst settles (see the collapseSignal effect above).
+      // Leaves the row checked and fully visible, holding its slot: the send-off
+      // is the batched collapse (see the collapseSignal effect above), which
+      // fades and closes every row of the burst at once. The completed look has
+      // to be held for that whole wait — dropping it here would show a green
+      // tick flicking back to an empty circle on a row that is on its way out,
+      // since the store masks a held completion as incomplete (see
+      // withHeldCompletions) and the row would render as ordinary work again.
       setAwaitingCollapse(true);
       completeTask(task.id);
       endQuotaHold();
@@ -1141,7 +1185,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {/* What this task is holding back — the only place the queue is
                 visible from a list, since the waiters themselves are hidden. */}
@@ -1247,6 +1291,26 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
+              </View>
+            )}
+            {/* The app dated this one, not the user (see Task.autoScheduledAt).
+                Its own chip rather than a variant of the project chip beside
+                it: that one answers "which project", this one answers "who put
+                this on my day", and folding them together made a row that had
+                been filed under a project by hand look auto-scheduled too.
+                Same icon as the project's "Keep it moving" toggle, so the row
+                points at the setting that caused it. */}
+            {autoScheduled && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  projectTitle
+                    ? `Scheduled for you, because ${projectTitle} had gone quiet`
+                    : 'Scheduled for you, because this project had gone quiet'
+                }
+              >
+                <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled for you</Text>
               </View>
             )}
             {showProject && projectTitle && (
@@ -1743,9 +1807,11 @@ export const TaskItem = React.memo(function TaskItem({
       <Reanimated.View
         style={collapseStyle}
         onLayout={handleItemLayout}
-        // Faded out and holding its slot open for the rest of the burst — a tap
-        // that lands here is aimed at whatever was underneath it, not at a row
-        // that isn't on screen any more.
+        // Checked and holding its slot open for the rest of the burst. The
+        // completion is committed by now, so the row's own tap handler would
+        // uncheck something it can no longer take back (handleUndoComplete only
+        // stands down the animation) — it stops taking touches instead, and
+        // shake-to-undo remains the way back.
         pointerEvents={awaitingCollapse ? 'none' : 'auto'}
       >
         <Animated.View
@@ -2110,6 +2176,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   projectLabel: {
     color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  // The one meta chip that isn't textTertiary. The rest describe the task and
+  // sit back accordingly; this one says the row is on the day because the app
+  // put it there, which is the only thing in the meta line the user might want
+  // to act on — and at tertiary it read as one more attribute and got skipped.
+  autoScheduledLabel: {
+    color: colors.accent,
     fontSize: font.xs,
   },
   groupLabel: {

@@ -118,6 +118,7 @@ function newTaskFromDraft(
     completed: false,
     completedAt: null,
     missedAt: null,
+    autoScheduledAt: null,
     createdAt: now,
     seenAt: now,
     dueDate: draft.dueDate ?? null,
@@ -955,6 +956,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       missedAt: null,
+      // A copy is the user's own doing, whatever put the date on the original.
+      autoScheduledAt: null,
       createdAt: now,
       seenAt: now,
       pinned: false,
@@ -1029,7 +1032,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         seriesDefaults = changed ? (Object.keys(next).length > 0 ? next : null) : seriesDefaults;
       }
 
-      const updated = { ...t, ...updates, seriesDefaults };
+      // Taking a drip-scheduled task over: the user picked a date themselves,
+      // so the row stops narrating where it came from. Clearing a date is
+      // deliberately *not* this — the stamp is what records the refusal, and
+      // dripStalledProjects reads it (see Task.autoScheduledAt). The drip's own
+      // write passes autoScheduledAt explicitly and so exempts itself.
+      const takenOver =
+        'dueDate' in updates &&
+        updates.dueDate != null &&
+        !('autoScheduledAt' in updates) &&
+        t.autoScheduledAt !== null;
+
+      const updated = {
+        ...t,
+        ...updates,
+        seriesDefaults,
+        ...(takenOver ? { autoScheduledAt: null } : {}),
+      };
       dbUpdateTask(updated);
       if (
         'reminderTime' in updates ||
@@ -1380,6 +1399,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completed: false,
           completedAt: null,
           missedAt: null, // a miss belongs to the occurrence that was missed, never to its successor
+          // Same reasoning one field up: the drip dated the occurrence that was
+          // just completed, not this one, whose date came from the schedule.
+          autoScheduledAt: null,
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
           dueDate: effectiveDue ? effectiveDue.toISOString() : null,
@@ -1433,6 +1455,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           completed: false,
           completedAt: null,
           missedAt: null,
+          autoScheduledAt: null,
           createdAt: now.toISOString(),
           seenAt: now.toISOString(),
         }));
@@ -1745,6 +1768,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         completed: false,
         completedAt: null,
         missedAt: null,
+        autoScheduledAt: null,
         createdAt: now,
         seenAt: now,
         dueDate: nextDue.toISOString(),
@@ -1846,7 +1870,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // asked, and a date a week out would leave it invisible until then.
         const today = new Date();
         today.setHours(12, 0, 0, 0);
-        return { id: task.id, updates: projectPullUpdates(today) };
+        // The stamp goes on here rather than inside projectPullUpdates, which
+        // the pull sheet shares: a date the user picked off a proposal is a
+        // date the user picked, and has nothing to explain or to back off from.
+        // Real `now`, not the noon dueDate — it records when this ran, and the
+        // day it belongs to is resolved by the same getDayStart the back-off
+        // check uses, so the two always agree about which logical day it was.
+        const updates: Partial<Task> = {
+          ...projectPullUpdates(today),
+          autoScheduledAt: new Date().toISOString(),
+        };
+        return { id: task.id, updates };
       })
       .filter((p): p is { id: string; updates: Partial<Task> } => p !== null);
 
@@ -2115,6 +2149,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       missedAt: null,
+      autoScheduledAt: null,
       createdAt: now,
       seenAt: now,
       dueDate: null,
@@ -2241,6 +2276,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       completed: false,
       completedAt: null,
       missedAt: null,
+      autoScheduledAt: null,
       createdAt: now,
       seenAt: now,
       dueDate: null,

@@ -110,6 +110,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   completed: false,
   completedAt: null,
   missedAt: null,
+  autoScheduledAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -232,6 +233,28 @@ describe('initDatabase', () => {
 
     dbUpdateTask({ ...byId.get('missed-1')!, missedAt: null });
     expect(dbGetAllTasks().find(t => t.id === 'missed-1')!.missedAt).toBeNull();
+  });
+
+  it('round-trips auto_scheduled_at, both with and without a date beside it', () => {
+    dbInsertTask(makeTask({
+      id: 'dripped',
+      dueDate: '2025-01-05T12:00:00.000Z',
+      autoScheduledAt: '2025-01-05T09:00:00.000Z',
+    }));
+    // The shape a decline leaves behind: stamp, no date. It has to survive a
+    // restart or the back-off would forget itself the moment the app is killed.
+    dbInsertTask(makeTask({ id: 'declined', autoScheduledAt: '2025-01-05T09:00:00.000Z' }));
+    dbInsertTask(makeTask({ id: 'plain', dueDate: '2025-01-05T12:00:00.000Z' }));
+
+    const byId = new Map(dbGetAllTasks().map(t => [t.id, t]));
+    expect(byId.get('dripped')!.autoScheduledAt).toBe('2025-01-05T09:00:00.000Z');
+    expect(byId.get('declined')!.autoScheduledAt).toBe('2025-01-05T09:00:00.000Z');
+    // Null, not undefined — how every row written before this shipped reads,
+    // so no existing task starts out claiming the app scheduled it.
+    expect(byId.get('plain')!.autoScheduledAt).toBeNull();
+
+    dbUpdateTask({ ...byId.get('dripped')!, autoScheduledAt: null });
+    expect(dbGetAllTasks().find(t => t.id === 'dripped')!.autoScheduledAt).toBeNull();
   });
 
   it('is idempotent — safe to call multiple times', () => {

@@ -150,6 +150,27 @@ export interface Task {
   // ways a row gets there — read it (via isMissed) anywhere the question is
   // "did the user actually do this", never where it's "is this row history".
   missedAt: string | null;
+  /**
+   * When dripStalledProjects put a date on this task — the one write in the app
+   * the user never asked for, so it's the one that has to say so. Two readers,
+   * and they're why this is a timestamp rather than a boolean:
+   *
+   * - the row, which explains itself while the stamp and a dueDate coexist
+   *   ("Fall 2026 Family Trip has been quiet 60 days") instead of appearing as
+   *   an item the user doesn't remember adding;
+   * - the drip itself, which reads a stamp *without* a dueDate as "the user
+   *   cleared what I scheduled" and leaves that project alone for the rest of
+   *   that logical day. Clearing a date is the natural way to say "not today"
+   *   and was previously invisible to the drip, so the next foreground put the
+   *   same task straight back.
+   *
+   * Deliberately not cleared by the clear: the stamp *is* the record of the
+   * refusal, and comparing it to the current logical day is what makes the
+   * back-off expire on its own — no flag to reset, no cleanup pass. Setting a
+   * real date by hand does clear it: the user has taken the task over, so the
+   * row stops narrating where it came from.
+   */
+  autoScheduledAt: string | null;
   createdAt: string;
   seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 
