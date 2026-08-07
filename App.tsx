@@ -12,6 +12,7 @@ import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
+import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { View } from 'react-native';
 
@@ -81,6 +82,11 @@ export default function App() {
   // Runs after the init effect above, so the SQLite DB exists before any
   // incoming link tries to insert a task.
   useTaskDeepLinks();
+
+  // Pulls anything waiting in the chosen Apple Reminders list into the Inbox
+  // ("Hey Siri, remind me to…"). Same ordering requirement as the deep links
+  // above — the DB has to exist before an imported reminder is inserted.
+  useRemindersImportSync();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();

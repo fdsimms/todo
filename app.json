@@ -24,7 +24,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A84FF"
       },
-      "package": "com.fdsimms.dundundun"
+      "package": "com.fdsimms.dundundun",
+      "blockedPermissions": [
+        "android.permission.READ_CALENDAR",
+        "android.permission.WRITE_CALENDAR"
+      ]
     },
     "plugins": [
       [
@@ -34,6 +38,13 @@
         }
       ],
       "@react-native-community/datetimepicker",
+      [
+        "expo-calendar",
+        {
+          "remindersPermission": "Lets dundundun move tasks out of the Reminders app and into your Inbox, so anything you dictate to Siri ends up here.",
+          "calendarPermission": false
+        }
+      ],
       "expo-asset",
       "expo-font",
       [

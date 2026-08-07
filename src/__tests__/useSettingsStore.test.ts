@@ -225,6 +225,62 @@ describe('resetToDefaults', () => {
   });
 });
 
+// ─── Apple Reminders import ──────────────────────────────────────────────────
+
+describe('reminders import settings', () => {
+  it('is off with no list until someone turns it on', () => {
+    const state = useSettingsStore.getState();
+    expect(state.remindersImportEnabled).toBe(false);
+    expect(state.remindersImportListId).toBeNull();
+    expect(state.remindersImportConfirmedListId).toBeNull();
+  });
+
+  it('round-trips the list ids through the settings table', () => {
+    useSettingsStore.getState().setRemindersImportListId('list-1');
+    useSettingsStore.getState().setRemindersImportConfirmedListId('list-1');
+    expect(dbSetSetting).toHaveBeenCalledWith('remindersImportListId', 'list-1');
+    expect(dbSetSetting).toHaveBeenCalledWith('remindersImportConfirmedListId', 'list-1');
+
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'remindersImportListId' || key === 'remindersImportConfirmedListId' ? 'list-1'
+      : key === 'remindersImportEnabled' ? 'true'
+      : null
+    );
+    useSettingsStore.getState().initialize();
+    const state = useSettingsStore.getState();
+    expect(state.remindersImportEnabled).toBe(true);
+    expect(state.remindersImportListId).toBe('list-1');
+    expect(state.remindersImportConfirmedListId).toBe('list-1');
+  });
+
+  it('reads a cleared list id back as null rather than an empty string', () => {
+    useSettingsStore.getState().setRemindersImportListId(null);
+    expect(dbSetSetting).toHaveBeenCalledWith('remindersImportListId', '');
+
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'remindersImportListId' ? '' : null
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().remindersImportListId).toBeNull();
+  });
+
+  it('resetToDefaults disarms it completely, ids included', () => {
+    useSettingsStore.getState().setRemindersImportEnabled(true);
+    useSettingsStore.getState().setRemindersImportListId('list-1');
+    useSettingsStore.getState().setRemindersImportConfirmedListId('list-1');
+
+    useSettingsStore.getState().resetToDefaults();
+
+    const state = useSettingsStore.getState();
+    expect(state.remindersImportEnabled).toBe(false);
+    // Leaving the confirmed id matching the chosen one would let a later
+    // re-enable skip the confirmation, which is the whole safeguard.
+    expect(state.remindersImportListId).toBeNull();
+    expect(state.remindersImportConfirmedListId).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('remindersImportConfirmedListId', '');
+  });
+});
+
 describe('setProjectNudgeDismissedAt', () => {
   it('stores and persists the stamp', () => {
     useSettingsStore.getState().setProjectNudgeDismissedAt('2026-08-06T09:00:00.000Z');

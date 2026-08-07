@@ -23,7 +23,7 @@
       "^.+\\.[jt]sx?$": "babel-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!(expo-sqlite|expo-haptics|expo-notifications|expo-status-bar|expo|@expo|date-fns)/)"
+      "node_modules/(?!(expo-sqlite|expo-haptics|expo-notifications|expo-calendar|expo-status-bar|expo|@expo|date-fns)/)"
     ],
     "moduleNameMapper": {
       "^@/(.*)$": "<rootDir>/src/$1"
@@ -58,6 +58,7 @@
     "expo-asset": "~12.0.7",
     "expo-blur": "~15.0.8",
     "expo-build-properties": "~1.0.7",
+    "expo-calendar": "~15.0.8",
     "expo-document-picker": "~14.0.6",
     "expo-file-system": "~19.0.11",
     "expo-font": "~14.0.7",
