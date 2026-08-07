@@ -433,16 +433,23 @@ export function useRemindersImportSync(): void {
     if (useSettingsStore.getState().initialized) importReminders();
 
     // Covers three things at once: the settings load that mount may have
-    // missed, turning the feature on (which should feel immediate), and
-    // switching list. Same subscribe-to-the-store call useDailyAgendaSync
+    // missed, turning either destination on (which should feel immediate —
+    // the confirmation alert already told the user what's about to move),
+    // and switching list. Same subscribe-to-the-store call useDailyAgendaSync
     // makes, for the same reason — a handful of separate call sites would
-    // eventually miss one.
+    // eventually miss one. Both destinations are listed here, not just the
+    // tasks one: confirming the grocery list used to sit un-drained until the
+    // next foreground or a manual "Import now", which left its own
+    // confirmation alert describing something that hadn't happened yet.
     const unsubscribe = useSettingsStore.subscribe((state, prev) => {
       if (
         state.initialized !== prev.initialized ||
         state.remindersImportEnabled !== prev.remindersImportEnabled ||
         state.remindersImportListId !== prev.remindersImportListId ||
-        state.remindersImportConfirmedListId !== prev.remindersImportConfirmedListId
+        state.remindersImportConfirmedListId !== prev.remindersImportConfirmedListId ||
+        state.groceryImportEnabled !== prev.groceryImportEnabled ||
+        state.groceryImportListId !== prev.groceryImportListId ||
+        state.groceryImportConfirmedListId !== prev.groceryImportConfirmedListId
       ) {
         importReminders();
       }
