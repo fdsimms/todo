@@ -192,7 +192,9 @@ export function DataResetSettings() {
   const confirmResetToDefaults = () => {
     Alert.alert(
       'Reset Settings to Defaults',
-      'This resets appearance, day and time, haptics, the daily agenda, and the tasks and projects toggles back to their defaults. Your tasks, API key, app lock, and vacation mode are not affected.',
+      // It also clears remindersImportEnabled, which no version of this copy
+      // used to mention — so a reset quietly stopped Siri capture from working.
+      'This resets appearance, day and time, haptics, the daily agenda and the tasks and projects toggles back to their defaults, and turns off importing from Apple Reminders. Your tasks, API key, app lock, and vacation mode are not affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
