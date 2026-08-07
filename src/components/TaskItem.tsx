@@ -629,6 +629,12 @@ export const TaskItem = React.memo(function TaskItem({
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
     otherSeriesDates !== '';
 
+  // The stamp outlives the date it explains — that's what lets the drip read a
+  // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
+  // for both. A stamp with no date is a refusal, not a provenance note, and a
+  // completed row is history: neither has anything left to explain.
+  const autoScheduled = task.autoScheduledAt !== null && task.dueDate !== null && !task.completed;
+
   // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
   // clears the moment the suggestion is taken or dropped — so nothing else has
   // to decide whether this row is the kind that shows one.
@@ -1117,7 +1123,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
           <View style={styles.metaRow}>
             {/* What this task is holding back — the only place the queue is
                 visible from a list, since the waiters themselves are hidden. */}
@@ -1223,6 +1229,26 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
                 <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
+              </View>
+            )}
+            {/* The app dated this one, not the user (see Task.autoScheduledAt).
+                Its own chip rather than a variant of the project chip beside
+                it: that one answers "which project", this one answers "who put
+                this on my day", and folding them together made a row that had
+                been filed under a project by hand look auto-scheduled too.
+                Same icon as the project's "Keep it moving" toggle, so the row
+                points at the setting that caused it. */}
+            {autoScheduled && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={
+                  projectTitle
+                    ? `Scheduled for you, because ${projectTitle} had gone quiet`
+                    : 'Scheduled for you, because this project had gone quiet'
+                }
+              >
+                <Ionicons name="play-forward-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.autoScheduledLabel} numberOfLines={1}>Scheduled for you</Text>
               </View>
             )}
             {showProject && projectTitle && (
@@ -2071,6 +2097,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   projectLabel: {
     color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+  // The one meta chip that isn't textTertiary. The rest describe the task and
+  // sit back accordingly; this one says the row is on the day because the app
+  // put it there, which is the only thing in the meta line the user might want
+  // to act on — and at tertiary it read as one more attribute and got skipped.
+  autoScheduledLabel: {
+    color: colors.accent,
     fontSize: font.xs,
   },
   groupLabel: {

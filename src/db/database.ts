@@ -312,6 +312,10 @@ export function initDatabase(): void {
     // before this shipped was a miss. See Task.missedAt for why a missed row
     // is stored as a completed one.
     'ALTER TABLE tasks ADD COLUMN missed_at TEXT',
+    // Null for every existing row, and that reads correctly: a date already on
+    // a task when this shipped is one the user is presumed to have set, so no
+    // row starts out narrating itself. See Task.autoScheduledAt.
+    'ALTER TABLE tasks ADD COLUMN auto_scheduled_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -547,6 +551,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     completed: Boolean(row.completed),
     completedAt: (row.completed_at as string) ?? null,
     missedAt: (row.missed_at as string) ?? null,
+    autoScheduledAt: (row.auto_scheduled_at as string) ?? null,
     createdAt: row.created_at as string,
     seenAt: (row.seen_at as string) ?? null,
     dueDate: (row.due_date as string) ?? null,
@@ -626,8 +631,8 @@ export function dbInsertTask(task: Task): void {
       cycle_enabled, cycle_index, cycle_items, vacation_pause, timer_started_at, actual_minutes, previous_occurrence_id,
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
-      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -656,6 +661,7 @@ export function dbInsertTask(task: Task): void {
       task.chainStepOnSchedule ? 1 : 0,
       task.pendingImport ? JSON.stringify(task.pendingImport) : null,
       task.missedAt ?? null,
+      task.autoScheduledAt ?? null,
     ]
   );
 }
@@ -672,7 +678,7 @@ export function dbUpdateTask(task: Task): void {
       previous_occurrence_id=?, previous_streak_count=?, previous_streak_date=?, series_defaults=?, group_id=?,
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
-      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?
+      show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -702,6 +708,7 @@ export function dbUpdateTask(task: Task): void {
       task.chainStepOnSchedule ? 1 : 0,
       task.pendingImport ? JSON.stringify(task.pendingImport) : null,
       task.missedAt ?? null,
+      task.autoScheduledAt ?? null,
       task.id,
     ]
   );
