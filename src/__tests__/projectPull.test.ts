@@ -1,8 +1,11 @@
 import { subDays } from 'date-fns/subDays';
 import {
   buildProjectPullPlan,
+  describePullEmpty,
+  diagnosePullEmpty,
   dripCandidate,
   findProjectStalls,
+  type PullEmptyReason,
   lastTouchedAt,
   projectPullUpdates,
   rankPullCandidates,
@@ -363,6 +366,161 @@ describe('buildProjectPullPlan', () => {
     const tasks = [makeTask({ id: 'a', dueDate: new Date().toISOString() })];
 
     expect(buildProjectPullPlan([makeProject()], tasks, tasks).proposals).toEqual([]);
+  });
+
+  it('diagnoses an empty plan and leaves the diagnosis off a full one', () => {
+    const tasks = [makeTask({ id: 'a' })];
+
+    expect(buildProjectPullPlan([makeProject()], tasks, []).empty).toBeNull();
+    expect(buildProjectPullPlan([makeProject({ nudgeCadenceDays: 0 })], tasks, []).empty).toEqual({
+      reason: 'cadence-off',
+      count: 1,
+      total: 1,
+    });
+  });
+});
+
+describe('diagnosePullEmpty', () => {
+  // The bug this exists for: a project that predates the nudge column gets
+  // backfilled to cadence 0, and the sheet used to report that as "every
+  // project has something scheduled" — the opposite of the truth.
+  it('names the unset cadence rather than claiming everything is scheduled', () => {
+    const projects = [
+      makeProject({ id: 'p1', nudgeCadenceDays: 0 }),
+      makeProject({ id: 'p2', nudgeCadenceDays: 0 }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    const state = diagnosePullEmpty(projects, tasks);
+
+    expect(state).toEqual({ reason: 'cadence-off', count: 2, total: 2 });
+    expect(describePullEmpty(state!)).toContain('Nudge me');
+  });
+
+  it('reports vacation mode before looking at anything else', () => {
+    settingsState.vacationMode = true;
+
+    expect(diagnosePullEmpty([makeProject()], [makeTask({ id: 'a' })])).toEqual({
+      reason: 'vacation',
+      count: 0,
+      total: 0,
+    });
+  });
+
+  it('reports having no projects at all, archived ones not counting', () => {
+    expect(diagnosePullEmpty([], [])).toEqual({ reason: 'no-projects', count: 0, total: 0 });
+    expect(diagnosePullEmpty([makeProject({ archived: true })], [])).toEqual({
+      reason: 'no-projects',
+      count: 0,
+      total: 0,
+    });
+  });
+
+  const emptyCases: [PullEmptyReason, Partial<Task>][] = [
+    ['has-schedule', { dueDate: new Date().toISOString() }],
+    ['no-live-tasks', { completed: true, completedAt: new Date().toISOString() }],
+    [
+      'no-pullable',
+      {
+        chainEnabled: true,
+        chainItems: [
+          { id: 'c1', title: 'Step one' },
+          { id: 'c2', title: 'Step two' },
+        ],
+        chainIndex: 1,
+      },
+    ],
+  ];
+
+  it.each(emptyCases)('reports %s', (reason, taskOverrides) => {
+    const state = diagnosePullEmpty([makeProject()], [makeTask({ id: 'a', ...taskOverrides })]);
+
+    expect(state?.reason).toBe(reason);
+    expect(state?.count).toBe(1);
+  });
+
+  it('reports how long until the nearest project goes quiet', () => {
+    const projects = [
+      makeProject({ id: 'p1', createdAt: subDays(new Date(), 3).toISOString() }),
+      makeProject({ id: 'p2', createdAt: subDays(new Date(), 10).toISOString() }),
+    ];
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2' }),
+    ];
+
+    const state = diagnosePullEmpty(projects, tasks);
+
+    expect(state).toEqual({ reason: 'too-soon', count: 2, total: 2, daysUntilQuiet: 4 });
+    expect(describePullEmpty(state!)).toContain('4 days');
+  });
+
+  // A stalled project only reaches the diagnosis if buildProjectPullPlan
+  // dropped it, and auto-schedule is the only thing it drops.
+  it('reports a quiet project that auto-schedules itself', () => {
+    const project = makeProject({ autoSchedule: true });
+
+    const state = diagnosePullEmpty([project], [makeTask({ id: 'a' })]);
+
+    expect(state?.reason).toBe('auto-scheduled');
+    expect(describePullEmpty(state!)).toContain('auto-schedule');
+  });
+
+  it('returns null when a project actually stalled — the plan was not empty', () => {
+    expect(diagnosePullEmpty([makeProject()], [makeTask({ id: 'a' })])).toBeNull();
+  });
+
+  it('picks the reason covering the most projects', () => {
+    const projects = [
+      makeProject({ id: 'p1', nudgeCadenceDays: 0 }),
+      makeProject({ id: 'p2' }),
+      makeProject({ id: 'p3' }),
+    ];
+    const dated = { dueDate: new Date().toISOString() };
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1' }),
+      makeTask({ id: 'b', projectId: 'p2', ...dated }),
+      makeTask({ id: 'c', projectId: 'p3', ...dated }),
+    ];
+
+    expect(diagnosePullEmpty(projects, tasks)).toEqual({
+      reason: 'has-schedule',
+      count: 2,
+      total: 3,
+    });
+  });
+});
+
+describe('describePullEmpty', () => {
+  // The head sentence must never imply it covers every project when it
+  // doesn't — that's the same overclaim the old fixed copy made.
+  it('does not claim to cover every project when it covers some', () => {
+    const all = describePullEmpty({ reason: 'has-schedule', count: 3, total: 3 });
+    const some = describePullEmpty({ reason: 'has-schedule', count: 2, total: 3 });
+
+    expect(all).toBe('Every project has something scheduled.');
+    expect(some).toContain('2 projects of 3');
+    expect(some).toContain('The rest');
+  });
+
+  it('has a sentence for every reason', () => {
+    const reasons: PullEmptyReason[] = [
+      'vacation',
+      'no-projects',
+      'cadence-off',
+      'auto-scheduled',
+      'too-soon',
+      'has-schedule',
+      'no-pullable',
+      'no-live-tasks',
+    ];
+
+    for (const reason of reasons) {
+      expect(describePullEmpty({ reason, count: 1, total: 1 })).toMatch(/\w.*\.$/);
+    }
   });
 });
 
