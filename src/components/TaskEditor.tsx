@@ -262,8 +262,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
-  const subtaskInputRef = useRef<TextInput>(null);
-  const subtaskSavedRef = useRef(false);
   const initialStateRef = useRef<string>('');
 
   useEffect(() => {
@@ -2234,9 +2232,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             />
             {addingSubtask ? (
               <View style={styles.subtaskInputRow}>
-                <Ionicons name="ellipse-outline" size={20} color={colors.bgQuaternary} />
+                {/* An empty copy of the row checkbox, so the field being typed
+                    into lines up with the subtasks above it. */}
+                <View style={styles.subtaskCheck}>
+                  <View style={styles.subtaskBox} />
+                </View>
                 <TextInput
-                  ref={subtaskInputRef}
                   autoFocus
                   style={styles.subtaskInput}
                   value={newSubtaskTitle}
@@ -2244,19 +2245,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   placeholder="Subtask title"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={TITLE_MAX_LENGTH}
-                  returnKeyType="done"
+                  returnKeyType="next"
+                  // Adding subtasks is a burst, not one edit: submitting keeps
+                  // the field focused so the keyboard never drops between them.
+                  // This used to blur on submit and refocus on a 50ms timer,
+                  // which dismissed and reopened the keyboard on every entry.
+                  blurOnSubmit={false}
                   onSubmitEditing={() => {
-                    subtaskSavedRef.current = true;
                     const t = newSubtaskTitle.trim();
                     if (t) addSubtask(task.id, t);
                     setNewSubtaskTitle('');
-                    setTimeout(() => {
-                      subtaskSavedRef.current = false;
-                      subtaskInputRef.current?.focus();
-                    }, 50);
                   }}
                   onBlur={() => {
-                    if (subtaskSavedRef.current) return;
                     const t = newSubtaskTitle.trim();
                     if (t) addSubtask(task.id, t);
                     setNewSubtaskTitle('');
