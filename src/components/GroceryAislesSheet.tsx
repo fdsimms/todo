@@ -53,6 +53,16 @@ type Tab = 'aisles' | 'stores';
  * ancestor of the scroll view for it to stand down" trap that a nested list
  * inside the grocery screen would hit.
  *
+ * **The whole row is the drag target, not the grip.** Both lists here are
+ * screen-style card rows, so they follow the rule every other `ReorderableList`
+ * row does (Categories, Templates, `TaskItem`, `GroceryRow`): long-press
+ * anywhere on the row. Binding `drag` to the grip glyph alone — the pattern the
+ * nested `SortableList` editors use, where a row already spends its own press
+ * on something else — left ~36pt of the row live and the rest claiming no JS
+ * responder at all, so a long-press on the aisle's name went to the scroll view
+ * and the drag simply never started. The grip stays as the affordance that says
+ * the row moves; it just isn't a button any more.
+ *
  * 'Other' is pinned last and can't be dragged — it's the catch-all every
  * unrecognised item falls into, and a catch-all in the middle of a walk order
  * is never what anyone meant.
@@ -203,7 +213,8 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
         ) : (
         <>
         <Text style={styles.intro}>
-          Drag these into the order you walk your store. Your list follows the same order.
+          Hold a row and drag it into the order you walk your store. Your list follows the same
+          order.
         </Text>
 
         <ReorderableList
@@ -219,20 +230,19 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           renderItem={({ item: aisle, drag, isActive }) => {
             const count = countFor(aisle);
             return (
-              <View style={[styles.row, isActive && styles.rowActive]}>
-                <TouchableOpacity
-                  onLongPress={drag}
-                  delayLongPress={interaction.delayLongPress}
-                  activeOpacity={interaction.activeOpacity}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Reorder ${aisle}`}
-                >
-                  <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
-                </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.row, isActive && styles.rowActive]}
+                onLongPress={drag}
+                delayLongPress={interaction.delayLongPress}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={count > 0 ? `${aisle}, ${count} on the list` : aisle}
+                accessibilityHint="Long press to reorder."
+              >
+                <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
                 <Text style={styles.rowLabel} numberOfLines={1}>{aisle}</Text>
                 {count > 0 && <Text style={styles.rowCount}>{count}</Text>}
-              </View>
+              </TouchableOpacity>
             );
           }}
           ListFooterComponent={
@@ -336,17 +346,20 @@ function StoresTab({
           const count = shopCounts.get(shop.id) ?? 0;
           const editing = shop.id === editingShopId;
           return (
-            <View style={[styles.row, isActive && styles.rowActive]}>
-              <TouchableOpacity
-                onLongPress={drag}
-                delayLongPress={interaction.delayLongPress}
-                activeOpacity={interaction.activeOpacity}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Reorder ${shop.name}`}
-              >
-                <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
-              </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.row, isActive && styles.rowActive]}
+              // The row is the drag target and the rename tap both, the way a
+              // category row on its screen is; the delete button is a nested
+              // touchable and claims its own corner.
+              onPress={editing ? undefined : () => onStartRename(shop.id, shop.name)}
+              onLongPress={drag}
+              delayLongPress={interaction.delayLongPress}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={count > 0 ? `${shop.name}, ${count} items` : shop.name}
+              accessibilityHint="Double tap to rename. Long press to reorder."
+            >
+              <Ionicons name="reorder-three-outline" size={iconSize.md} color={colors.textTertiary} />
 
               {editing ? (
                 <TextInput
@@ -362,15 +375,7 @@ function StoresTab({
                   accessibilityLabel={`Rename ${shop.name}`}
                 />
               ) : (
-                <TouchableOpacity
-                  style={styles.rowLabelWrap}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => onStartRename(shop.id, shop.name)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Rename ${shop.name}`}
-                >
-                  <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
-                </TouchableOpacity>
+                <Text style={styles.rowLabel} numberOfLines={1}>{shop.name}</Text>
               )}
 
               {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
@@ -384,7 +389,7 @@ function StoresTab({
               >
                 <Ionicons name="close-circle" size={iconSize.md} color={colors.textTertiary} />
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           );
         }}
         ListEmptyComponent={
@@ -463,8 +468,7 @@ function makeStyles(colors: Colors) {
     },
     rowActive: { backgroundColor: colors.bgTertiary },
     rowPinned: { opacity: 0.6 },
-    rowLabelWrap: { flex: 1 },
-    rowLabel: { flex: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+    rowLabel:{ flex: 1, fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     renameInput: {
       flex: 1,
       fontSize: font.md,
