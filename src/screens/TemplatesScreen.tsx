@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import {
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -20,6 +21,8 @@ import { Fab, FAB_SIZE } from '../components/Fab';
 import { ReorderableList } from '../components/ReorderableList';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
+import { ListBulkBar } from '../components/ListBulkBar';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { groupTemplatesByCategory, resolveTemplateDrop } from '../utils/templateGrouping';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -43,11 +46,28 @@ export function TemplatesScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addTemplate = useTemplateStore(s => s.addTemplate);
   const reorderTemplatesWithCategoryUpdates = useTemplateStore(s => s.reorderTemplatesWithCategoryUpdates);
+  const bulkSetTemplateCategory = useTemplateStore(s => s.bulkSetTemplateCategory);
+  const bulkDeleteTemplates = useTaskStore(s => s.bulkDeleteTemplates);
   const templateCategories = useTemplateCategoryStore(useShallow(s => s.categories));
+  const addTemplateCategory = useTemplateCategoryStore(s => s.addCategory);
 
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+
+  // Selection is entered from the header rather than from a row: both of a
+  // row's gestures are already spoken for here — tap opens the template, long
+  // press starts a reorder drag.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
 
   const applyTemplateObj = templates.find(t => t.id === applyTemplateId) ?? null;
   const templatesById = useMemo(() => new Map(templates.map(t => [t.id, t])), [templates]);
@@ -60,6 +80,17 @@ export function TemplatesScreen() {
     () => groupTemplatesByCategory(templates, templateCategoryOrder),
     [templates, templateCategoryOrder]
   );
+  // What the bulk bar offers to file into: the registered categories, plus any
+  // name a template still carries that was never registered — the list shows a
+  // section for those (see groupTemplatesByCategory), so the picker has to name
+  // them too or moving a template back into one would mean retyping it.
+  const bulkCategoryOptions = useMemo(
+    () => Array.from(new Set([
+      ...templateCategoryOrder,
+      ...templates.map(t => t.category).filter((c): c is string => !!c).sort(),
+    ])),
+    [templates, templateCategoryOrder]
+  );
 
   const handleAddTemplate = (name: string) => {
     animateLayout();
@@ -68,9 +99,51 @@ export function TemplatesScreen() {
     (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
   };
 
+  // Extra bottom padding so the last rows aren't hidden behind the floating
+  // bulk bar, same as the other bulk-selecting screens.
+  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+
+  const handleBulkSetCategory = (category: string | null) => {
+    animateLayout();
+    bulkSetTemplateCategory(Array.from(selectedIds), category);
+    exitSelection();
+  };
+
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    const plural = ids.length === 1 ? 'template' : 'templates';
+    haptics.warning();
+    Alert.alert(
+      `Delete ${ids.length} ${plural}?`,
+      `You're about to delete ${ids.length} ${plural}. You can undo this by shaking your phone right after.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            bulkDeleteTemplates(ids);
+            exitSelection();
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <ScreenHeader title="Templates" />
+      <ScreenHeader
+        title="Templates"
+        actions={templates.length > 0 ? [
+          {
+            icon: 'checkmark-circle-outline',
+            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+            active: selectionMode,
+            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select templates',
+          },
+        ] : undefined}
+      />
 
       <ReorderableList
         data={templateListItems}
@@ -80,7 +153,9 @@ export function TemplatesScreen() {
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
         }}
         contentContainerStyle={styles.list}
-        ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+        ListFooterComponent={
+          <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
+        }
         ListEmptyComponent={
           <EmptyState
             icon="copy-outline"
@@ -107,8 +182,16 @@ export function TemplatesScreen() {
               missingRefs={templateHasMissingRefs(tpl, allCategories, allTags)}
               colors={colors}
               styles={styles}
-              drag={drag}
-              onPress={() => (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })}
+              // Reordering is off while selecting: the long press that would
+              // start a drag is how a mis-tapped row gets picked up instead.
+              drag={selectionMode ? undefined : drag}
+              selectionMode={selectionMode}
+              selected={selectedIds.has(tpl.id)}
+              onPress={() =>
+                selectionMode
+                  ? toggleSelection(tpl.id)
+                  : (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })
+              }
               onEdit={() => setEditingTemplate(tpl)}
               onApply={() => {
                 if (tpl.items.length === 0) {
@@ -123,11 +206,36 @@ export function TemplatesScreen() {
         }}
       />
 
-      <Fab
-        onPress={() => setQuickAddVisible(true)}
-        accessibilityLabel="Add template"
-        bottom={insets.bottom + tabBarHeight + spacing.md}
-      />
+      {/* The bulk bar sits where the button does, and adding a template isn't
+          something you're doing mid-selection anyway. */}
+      {!selectionMode && (
+        <Fab
+          onPress={() => setQuickAddVisible(true)}
+          accessibilityLabel="Add template"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
+      )}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={templates.length}
+          category={{
+            title: 'Move to Category',
+            options: bulkCategoryOptions,
+            onSet: handleBulkSetCategory,
+            onCreate: name => addTemplateCategory(name),
+          }}
+          actions={[
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+          ]}
+          onSelectAll={() => selectAll(templates.map(t => t.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
 
       <QuickAddNameSheet
         visible={quickAddVisible}
@@ -153,13 +261,14 @@ export function TemplatesScreen() {
 }
 
 /**
- * Template list row. No swipe: there's no bulk mode for templates to swipe
- * left into, and nothing to reschedule. Deleting used to be a swipe *right* —
- * the direction that reschedules everywhere else — and now lives in
- * TemplateEditor behind the ⋯ button.
+ * Template list row. No swipe: bulk mode is entered from the header here (both
+ * of the row's gestures are taken — tap opens, long press reorders), and
+ * there's nothing to reschedule. Deleting used to be a swipe *right* — the
+ * direction that reschedules everywhere else — and now lives in
+ * TemplateEditor behind the ⋯ button, or in the bulk bar.
  */
 function TemplateRow({
-  template, broken, missingRefs, colors, styles, drag, onPress, onEdit, onApply,
+  template, broken, missingRefs, colors, styles, drag, selectionMode, selected, onPress, onEdit, onApply,
 }: {
   template: TaskTemplate;
   /** True if a template this one nests (at any depth) was deleted or is itself broken. */
@@ -168,25 +277,41 @@ function TemplateRow({
   missingRefs: boolean;
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
-  drag: () => void;
+  /** Omitted while selecting, which is what turns reordering off. */
+  drag?: () => void;
+  selectionMode: boolean;
+  selected: boolean;
   onPress: () => void;
   onEdit: () => void;
   onApply: () => void;
 }) {
   return (
     <TouchableOpacity
-      style={styles.tplRow}
+      style={[styles.tplRow, selectionMode && selected && styles.tplRowSelected]}
       onPress={onPress}
       onLongPress={drag}
       delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
+      accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+      accessibilityState={selectionMode ? { checked: selected } : undefined}
       accessibilityLabel={`${template.name}, ${template.items.length === 0 ? 'no items' : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}${broken ? ', a nested template is missing' : missingRefs ? ', uses a category or tag that no longer exists' : ''}`}
-      accessibilityHint="Double tap to edit template"
+      accessibilityHint={selectionMode ? 'Double tap to select template' : 'Double tap to edit template'}
     >
-      <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
-        <Ionicons name="copy" size={18} color={colors.accent} />
-      </View>
+      {selectionMode ? (
+        // Takes the icon tile's place rather than sitting beside it: every row
+        // shifts by the same amount, so the names stay in one column.
+        <View style={styles.tplSelect}>
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={selected ? colors.accent : colors.textTertiary}
+          />
+        </View>
+      ) : (
+        <View style={[styles.tplIcon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="copy" size={18} color={colors.accent} />
+        </View>
+      )}
       <View style={styles.tplInfo}>
         <View style={styles.tplNameRow}>
           <Text style={styles.tplName}>{template.name}</Text>
@@ -214,27 +339,33 @@ function TemplateRow({
             : `${template.items.length} item${template.items.length === 1 ? '' : 's'}`}
         </Text>
       </View>
-      <TouchableOpacity
-        onPress={onEdit}
-        style={styles.rowButton}
-        activeOpacity={interaction.activeOpacity}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel={`Edit ${template.name}`}
-      >
-        <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={onApply}
-        style={styles.rowButton}
-        activeOpacity={interaction.activeOpacity}
-        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel={`Apply template ${template.name}`}
-      >
-        <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
-      </TouchableOpacity>
-      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+      {/* Nothing a row can do to itself while a selection is being built —
+          each of these acts on one template and would fight the bar. */}
+      {!selectionMode && (
+        <>
+          <TouchableOpacity
+            onPress={onEdit}
+            style={styles.rowButton}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Edit ${template.name}`}
+          >
+            <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={onApply}
+            style={styles.rowButton}
+            activeOpacity={interaction.activeOpacity}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={`Apply template ${template.name}`}
+          >
+            <Ionicons name="chevron-down-circle-outline" size={18} color={colors.accent} />
+          </TouchableOpacity>
+          <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+        </>
+      )}
     </TouchableOpacity>
   );
 }
@@ -274,10 +405,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 10,
     gap: spacing.md,
   },
+  tplRowSelected: {
+    backgroundColor: colors.accent + '1A',
+  },
   tplIcon: {
     width: 36,
     height: 36,
     borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Same footprint as the icon tile it replaces, so entering selection mode
+  // doesn't move the row's text.
+  tplSelect: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -40,6 +40,8 @@ interface TemplateStore {
   addTemplate: (name: string) => TaskTemplate;
   renameTemplate: (id: string, name: string) => void;
   setTemplateCategory: (id: string, category: string | null) => void;
+  /** Filing several templates at once from the Templates screen's bulk bar. */
+  bulkSetTemplateCategory: (ids: string[], category: string | null) => void;
   setTemplateContainer: (id: string, container: TemplateContainer) => void;
   // Deletion's undo lives in useTaskStore, mirroring restoreProject/restoreGroup —
   // these are the low-level row operations it calls, kept here so this store
@@ -113,6 +115,22 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
     const updated = { ...template, category };
     dbUpdateTemplate(updated);
     set(s => ({ templates: s.templates.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  // One pass over the list rather than a loop of setTemplateCategory, so a bulk
+  // move is a single store update instead of one re-render per template.
+  bulkSetTemplateCategory(ids, category) {
+    const idSet = new Set(ids);
+    const touched: TaskTemplate[] = [];
+    const next = get().templates.map(t => {
+      if (!idSet.has(t.id) || t.category === category) return t;
+      const updated = { ...t, category };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(t => dbUpdateTemplate(t));
+    set(() => ({ templates: next }));
   },
 
   setTemplateContainer(id, container) {

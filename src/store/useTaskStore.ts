@@ -603,8 +603,13 @@ interface TaskStore {
   // directly — these are the ones that register an undo entry.
   archiveProject: (projectId: string) => void;
   unarchiveProject: (projectId: string) => void;
+  // Bulk selection on the Projects screen. One undo entry covers the whole
+  // batch — see the note on bulkDeleteProjects.
+  bulkDeleteProjects: (projectIds: string[], opts: { cascade: boolean }) => void;
+  bulkSetProjectArchived: (projectIds: string[], archived: boolean) => void;
 
   deleteTemplate: (id: string) => void;
+  bulkDeleteTemplates: (ids: string[]) => void;
 
   forgivVacationStreaks: () => void;
   checkVacationExpiry: () => void;
@@ -2620,6 +2625,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  // Bulk deletes go one project at a time — deleteProject already knows how to
+  // unfile or cascade a project's tasks, and half of that logic copied here is
+  // how the two drift apart. What can't be reused is the undo: each call leaves
+  // its own entry, and the queue holds one, so the last project deleted would
+  // be the only one a shake brings back. So each undo is collected and the
+  // batch registers a single entry that runs all of them.
+  bulkDeleteProjects(projectIds, opts) {
+    const store = useProjectStore.getState();
+    // Filtered to rows that exist, so a stale id can't leave the previous
+    // action's undo in the batch below.
+    const ids = projectIds.filter(id => store.getProjectById(id) !== null);
+    if (ids.length === 0) return;
+    const undos: Array<() => void> = [];
+    ids.forEach(id => {
+      get().deleteProject(id, opts);
+      const action = get().lastAction;
+      if (action) undos.push(action.undo);
+    });
+    get().setLastAction({
+      label: `${ids.length} project${ids.length === 1 ? '' : 's'} deleted`,
+      undo: () => undos.forEach(fn => fn()),
+    });
+  },
+
+  bulkSetProjectArchived(projectIds, archived) {
+    const idSet = new Set(projectIds);
+    // Snapshotted before the write so undoing an unarchive can hand each
+    // project back the day it was originally archived, exactly as
+    // unarchiveProject does for one.
+    const changed = useProjectStore
+      .getState()
+      .projects.filter(p => idSet.has(p.id) && p.archived !== archived);
+    if (changed.length === 0) return;
+    changed.forEach(p => useProjectStore.getState().applyProjectArchived(p.id, archived));
+    get().setLastAction({
+      label: `${changed.length} project${changed.length === 1 ? '' : 's'} ${archived ? 'archived' : 'restored'}`,
+      undo: () =>
+        changed.forEach(p =>
+          useProjectStore.getState().applyProjectArchived(p.id, !archived, p.archivedAt),
+        ),
+    });
+  },
+
   deleteTemplate(id) {
     const template = useTemplateStore.getState().templates.find(t => t.id === id);
     if (!template) return;
@@ -2627,6 +2675,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Template deleted',
       undo: () => useTemplateStore.getState().restoreTemplate(template),
+    });
+  },
+
+  // Same one-entry-per-batch rule as bulkDeleteProjects; the rows themselves are
+  // snapshotted up front and re-inserted wholesale, which is all deleteTemplate's
+  // undo does for one of them.
+  bulkDeleteTemplates(ids) {
+    const idSet = new Set(ids);
+    const templates = useTemplateStore.getState().templates.filter(t => idSet.has(t.id));
+    if (templates.length === 0) return;
+    templates.forEach(t => useTemplateStore.getState().removeTemplateRow(t.id));
+    get().setLastAction({
+      label: `${templates.length} template${templates.length === 1 ? '' : 's'} deleted`,
+      undo: () => templates.forEach(t => useTemplateStore.getState().restoreTemplate(t)),
     });
   },
 

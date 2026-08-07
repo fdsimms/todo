@@ -568,6 +568,33 @@ describe('setTemplateContainer', () => {
   });
 });
 
+describe('bulkSetTemplateCategory', () => {
+  it('files every named template, leaving the rest alone', () => {
+    useTemplateStore.setState({
+      templates: [
+        makeTemplate({ id: 'tpl-1', category: null }),
+        makeTemplate({ id: 'tpl-2', category: 'Chores' }),
+        makeTemplate({ id: 'tpl-3', category: null }),
+      ],
+    });
+    useTemplateStore.getState().bulkSetTemplateCategory(['tpl-1', 'tpl-2'], 'Trips');
+    expect(useTemplateStore.getState().templates.map(t => t.category)).toEqual(['Trips', 'Trips', null]);
+    expect(dbUpdateTemplate).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the category when passed null', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1', category: 'Trips' })] });
+    useTemplateStore.getState().bulkSetTemplateCategory(['tpl-1'], null);
+    expect(useTemplateStore.getState().templates[0].category).toBeNull();
+  });
+
+  it('writes nothing when every named template already has that category', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1', category: 'Trips' })] });
+    useTemplateStore.getState().bulkSetTemplateCategory(['tpl-1', 'missing'], 'Trips');
+    expect(dbUpdateTemplate).not.toHaveBeenCalled();
+  });
+});
+
 describe('renameItemCategory', () => {
   const seed = (templates: TaskTemplate[]) => {
     useTemplateStore.setState({ templates, initialized: true });
