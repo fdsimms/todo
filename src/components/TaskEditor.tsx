@@ -11,6 +11,7 @@ import {
   Animated,
 } from 'react-native';
 import { SortableList } from './SortableList';
+import { MiniFabList } from './MiniFabList';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
@@ -247,6 +248,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pickerDate, setPickerDate] = useState(new Date());
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
+  // Where the add button was dropped, if it was dragged rather than tapped.
+  // Null means the end of the list, which is what a tap and `addSubtask` both
+  // mean anyway. Cleared whenever the field closes, or a later tap would
+  // silently insert at a slot chosen for a different session.
+  const [pendingSubtaskIndex, setPendingSubtaskIndex] = useState<number | null>(null);
 
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
@@ -332,7 +338,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
-    setNewSubtaskTitle(''); setAddingSubtask(false);
+    setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null);
     setNewChainItemTitle(''); setAddingChainItem(false);
     setAiLoading(false);
     setOpenFields({}); setShowTimeOfDay(false); setShowTimeWindow(false);
@@ -1000,6 +1006,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     ? formatDuration(estimatedMinutes)
     : effort > 0 ? EFFORT_LABELS[effort] : undefined;
   const subtasks = task ? subtasksOf(task.id) : [];
+
+  /**
+   * Adds a subtask at the seam the add button was dropped on, or at the end if
+   * it was only tapped.
+   *
+   * `addSubtask` always appends, so the placement is a renumber afterwards
+   * rather than a different insert: snapshot the sibling ids *before* the
+   * insert, splice the new one in, hand the whole order back. `subtasksOf`
+   * returns every row with this parent and nothing else, so that list is
+   * complete and reorderSubtasks' flat 1..n renumber is right.
+   *
+   * The index then advances, because this field stays focused for a burst of
+   * entries (blurOnSubmit={false}) — three typed after one drop should stay in
+   * the order they were typed, not have the second and third jump to the end.
+   */
+  const commitSubtask = (title: string) => {
+    const trimmed = title.trim();
+    if (!task || !trimmed) return;
+    const index = pendingSubtaskIndex;
+    const created = addSubtask(task.id, trimmed);
+    if (index === null || index >= subtasks.length) return;
+    const ids = subtasks.map(s => s.id);
+    ids.splice(Math.max(0, index), 0, created.id);
+    reorderSubtasks(task.id, ids);
+    setPendingSubtaskIndex(index + 1);
+  };
 
   return (
     <EditorSheet
@@ -2185,10 +2217,16 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             expanded={fieldOpen('subtasks', subtasks.length > 0)}
             onToggle={() => toggleField('subtasks', subtasks.length > 0)}
           >
-            <SortableList
+            <MiniFabList
               onDragStateChange={setDraggingRow}
               data={subtasks}
               onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
+              accessibilityLabel="Add subtask"
+              fabHidden={addingSubtask}
+              onAdd={index => {
+                setPendingSubtaskIndex(index);
+                setAddingSubtask(true);
+              }}
               renderItem={(sub, _i, drag) => (
                 <View style={styles.subtaskRow}>
                   <TouchableOpacity
@@ -2229,49 +2267,41 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </TouchableOpacity>
                 </View>
               )}
-            />
-            {addingSubtask ? (
-              <View style={styles.subtaskInputRow}>
-                {/* An empty copy of the row checkbox, so the field being typed
-                    into lines up with the subtasks above it. */}
-                <View style={styles.subtaskCheck}>
-                  <View style={styles.subtaskBox} />
+              footer={addingSubtask ? (
+                <View style={styles.subtaskInputRow}>
+                  {/* An empty copy of the row checkbox, so the field being typed
+                      into lines up with the subtasks above it. */}
+                  <View style={styles.subtaskCheck}>
+                    <View style={styles.subtaskBox} />
+                  </View>
+                  <TextInput
+                    autoFocus
+                    style={styles.subtaskInput}
+                    value={newSubtaskTitle}
+                    onChangeText={setNewSubtaskTitle}
+                    placeholder="Subtask title"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={TITLE_MAX_LENGTH}
+                    returnKeyType="next"
+                    // Adding subtasks is a burst, not one edit: submitting keeps
+                    // the field focused so the keyboard never drops between them.
+                    // This used to blur on submit and refocus on a 50ms timer,
+                    // which dismissed and reopened the keyboard on every entry.
+                    blurOnSubmit={false}
+                    onSubmitEditing={() => {
+                      commitSubtask(newSubtaskTitle);
+                      setNewSubtaskTitle('');
+                    }}
+                    onBlur={() => {
+                      commitSubtask(newSubtaskTitle);
+                      setNewSubtaskTitle('');
+                      setAddingSubtask(false);
+                      setPendingSubtaskIndex(null);
+                    }}
+                  />
                 </View>
-                <TextInput
-                  autoFocus
-                  style={styles.subtaskInput}
-                  value={newSubtaskTitle}
-                  onChangeText={setNewSubtaskTitle}
-                  placeholder="Subtask title"
-                  placeholderTextColor={colors.textTertiary}
-                  maxLength={TITLE_MAX_LENGTH}
-                  returnKeyType="next"
-                  // Adding subtasks is a burst, not one edit: submitting keeps
-                  // the field focused so the keyboard never drops between them.
-                  // This used to blur on submit and refocus on a 50ms timer,
-                  // which dismissed and reopened the keyboard on every entry.
-                  blurOnSubmit={false}
-                  onSubmitEditing={() => {
-                    const t = newSubtaskTitle.trim();
-                    if (t) addSubtask(task.id, t);
-                    setNewSubtaskTitle('');
-                  }}
-                  onBlur={() => {
-                    const t = newSubtaskTitle.trim();
-                    if (t) addSubtask(task.id, t);
-                    setNewSubtaskTitle('');
-                    setAddingSubtask(false);
-                  }}
-                />
-              </View>
-            ) : (
-              <InlineAction
-                icon="add"
-                label="Add subtask"
-                onPress={() => setAddingSubtask(true)}
-                style={styles.addBtnSpacing}
-              />
-            )}
+              ) : null}
+            />
           </CollapsibleField>
         </View>
       )}

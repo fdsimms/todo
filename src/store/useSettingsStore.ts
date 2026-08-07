@@ -17,10 +17,14 @@ export type WeekStart = 0 | 1;
 
 /**
  * Which bottom corner the add button rests in — a reach preference, not a
- * layout direction. Only the button moves: the app's other left-anchored
- * decisions (the drawer's edge swipe, a row's leading checkbox, swipe
- * directions) are deliberate and stay put, so this is not an RTL flag and
- * nothing outside Fab.tsx reads it.
+ * layout direction. Only the add affordances move: the app's other
+ * left-anchored decisions (the drawer's edge swipe, a row's leading checkbox,
+ * swipe directions) are deliberate and stay put, so this is not an RTL flag.
+ *
+ * Read by Fab.tsx (the screen button and its menu), MiniFabList.tsx — which
+ * puts the in-card add button in the matching corner of the subtasks and stack
+ * cards, so both buttons fall under the same thumb — and DemoBanner.tsx, which
+ * parks itself in whichever corner the button isn't using.
  */
 export type FabHand = 'right' | 'left';
 
