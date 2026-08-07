@@ -3,7 +3,6 @@ import { Animated, Dimensions, PanResponder, StyleSheet, View } from 'react-nati
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   FabMenuOverlay,
-  WELL_PADDING,
   fabCancelCircle,
   fabCircle,
   fabGlyphSize,
@@ -21,11 +20,34 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 export const MINI_FAB_SIZE = 36;
 
 /**
- * Room a card has to leave below its last row for the button — itself, its
- * well, and a little air. The button floats over this strip, so it never
- * covers a row's reorder handle or delete ✕.
+ * The well's ring, narrower than Fab's WELL_PADDING of 8 — that's 8 around 56,
+ * and this is the same proportion around 36. It also has to be: the button is
+ * pulled outward to sit on the row's icon column (see MINI_FAB_ROW_INSET), and
+ * a ring the screen button's width would end up a point from the card's edge.
  */
-export const MINI_FAB_GUTTER = MINI_FAB_SIZE + WELL_PADDING * 2 + spacing.xs;
+const MINI_WELL_PADDING = spacing.xs;
+
+/** The button plus its well — the footprint the caller has to place. */
+export const MINI_FAB_BOX = MINI_FAB_SIZE + MINI_WELL_PADDING * 2;
+
+/**
+ * Room a card has to leave below its last row for the button — its footprint
+ * and a little air. The button floats over this strip, so it never covers a
+ * row's reorder handle or delete ✕.
+ */
+export const MINI_FAB_GUTTER = MINI_FAB_BOX + spacing.xs;
+
+/**
+ * How far in from a row's edge that row's edge-most control is centred — what
+ * the button lines its own centre up with, so the ✕ column and the + read as
+ * one column rather than two things near the same corner.
+ *
+ * Both cards put their trailing ✕ at `padding: 4` around a 14pt glyph, so on
+ * the right (the default hand) this is exact. On the left the two cards differ
+ * slightly — the subtasks checkbox centres at 10, the stack's drag handle at
+ * 13 — and 11 sits between them, close enough that the residual isn't visible.
+ */
+export const MINI_FAB_ROW_INSET = 11;
 
 interface MiniFabProps {
   onPress: () => void;
@@ -316,7 +338,7 @@ export function MiniFabMenu({ items, onSelect, size = MINI_FAB_SIZE, ...rest }: 
 }
 
 const makeStyles = (colors: Colors, size: number) => {
-  const box = size + WELL_PADDING * 2;
+  const box = size + MINI_WELL_PADDING * 2;
   return StyleSheet.create({
     // The button plus the room its well needs. Sized rather than absolutely
     // placed: the caller decides which corner it sits in (MiniFabMenu has to

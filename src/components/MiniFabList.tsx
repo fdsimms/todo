@@ -1,7 +1,13 @@
 import React, { useMemo, useRef } from 'react';
 import { Animated, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 import { SortableList, type SortableMetrics, type SortableRenderItem } from './SortableList';
-import { MiniFab, MiniFabMenu, MINI_FAB_GUTTER } from './MiniFab';
+import {
+  MiniFab,
+  MiniFabMenu,
+  MINI_FAB_BOX,
+  MINI_FAB_GUTTER,
+  MINI_FAB_ROW_INSET,
+} from './MiniFab';
 import { useColors } from '../theme/ThemeContext';
 import { useSettingsStore, type FabHand } from '../store/useSettingsStore';
 import { radius, animation, type Colors } from '../theme';
@@ -215,6 +221,9 @@ export function MiniFabList<T extends { id: string }>({
   );
 }
 
+/** Negative: how far the button's footprint reaches past the rows' edge. */
+const OVERHANG = MINI_FAB_ROW_INSET - MINI_FAB_BOX / 2;
+
 const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
   container: { position: 'relative' },
   // 2pt, and pulled up by half of itself so it sits *on* the seam rather than
@@ -230,10 +239,19 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   // Same corner the screen button keeps, so both fall under the same thumb.
+  //
+  // Pulled outward past the rows by half its footprint less the row's own icon
+  // inset, which lands the button's centre on the column the rows' ✕ (or, on
+  // the left, their checkbox/handle) already sits in. Flush with the content
+  // edge instead, the button's centre is MINI_FAB_BOX/2 in while the ✕ is only
+  // MINI_FAB_ROW_INSET in, and the two read as separate columns. The overhang
+  // is smaller than the card's own spacing.md padding, so nothing is clipped.
   gutter: {
     height: MINI_FAB_GUTTER,
     justifyContent: 'flex-end',
     alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
+    marginLeft: hand === 'left' ? OVERHANG : 0,
+    marginRight: hand === 'left' ? 0 : OVERHANG,
   },
   gutterEmpty: { height: 0 },
 });
