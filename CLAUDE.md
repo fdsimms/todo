@@ -227,9 +227,25 @@ And one about config plugins generally, learned here: **leaving a package out of
 `plugins` does not stop its config plugin running.** Expo autolinks the plugin of any dependency
 shipping an `app.plugin.js`, so `expo-calendar`'s ran unasked and wrote two `NSCalendars*` usage
 strings this app has no business declaring, plus Android `READ_CALENDAR`/`WRITE_CALENDAR`. The
-way to *narrow* a plugin is to list it with options — `calendarPermission: false` deletes the
-key, since `createPermissionsPlugin` treats `false` as a removal — and the Android half needs
+way to *narrow* a plugin is to list it with options, and the Android half needs
 `android.blockedPermissions`, which the plugin adds unconditionally regardless of its options.
+
+**But `calendarPermission` must stay a real string, and this is the one that bricked the app.**
+`createPermissionsPlugin` treats `false` as a removal, so setting it deleted
+`NSCalendarsUsageDescription`/`NSCalendarsFullAccessUsageDescription` — which reads as exactly
+right, since nothing here ever touches a calendar. It isn't. `CalendarModule`'s `OnCreate`
+registers a `CalendarPermissionsRequester` and initialises a static `EKEventStore` **whether or
+not the app ever calls a calendar API**, and touching EventKit's calendar entity with no usage
+description raises an `NSException` inside module registration.
+
+What that costs is the whole app, not the feature. Expo registers modules in one pass in
+autolinking order, so the throw took out `expo-calendar` *and every module alphabetically after
+it* — font, constants, sqlite, notifications, all of them. Fifteen of twenty modules never
+registered. The app then died on the first `requireNativeModule` the bundle happened to reach,
+which was `ExpoFontLoader` (via `@expo/vector-icons`, which imports `expo-font` on line 1), and
+the black screen that produced is why `index.js` prints the registered-module list on failure —
+**that list is the diagnostic**: a short one means registration aborted, and the first missing
+package alphabetically is the culprit, not the module named in the error.
 
 The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
 user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
