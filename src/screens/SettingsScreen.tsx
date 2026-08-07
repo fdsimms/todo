@@ -884,7 +884,7 @@ export function SettingsScreen() {
               )}
             </View>
             <Text style={styles.sectionFooter}>
-              Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, overdue and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count.
+              Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count.
             </Text>
           </View>
 

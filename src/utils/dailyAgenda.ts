@@ -14,8 +14,12 @@ import { hhmmToDate } from './clockTime';
 export interface AgendaCounts {
   /** Dated for the target day. */
   due: number;
-  /** Dated before it and still not done. */
-  overdue: number;
+  /**
+   * Dated before it and still not done. Deliberately not called "overdue" —
+   * a dueDate is the day a task becomes available, not a promise it can break
+   * (see formatScheduledDate); `deadlines` is the count that means late.
+   */
+  carriedOver: number;
   /** Hard deadlines falling on it. */
   deadlines: number;
 }
@@ -40,7 +44,7 @@ export interface AgendaCounts {
 export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: string): AgendaCounts {
   const target = getDayStart(targetDay, dayResetTime);
   let due = 0;
-  let overdue = 0;
+  let carriedOver = 0;
   let deadlines = 0;
 
   for (const task of tasks) {
@@ -49,7 +53,7 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
     if (task.dueDate) {
       const day = getDayStart(new Date(task.dueDate), dayResetTime);
       if (isSameDay(day, target)) due++;
-      else if (day < target) overdue++;
+      else if (day < target) carriedOver++;
     }
 
     if (task.deadline) {
@@ -58,7 +62,7 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
     }
   }
 
-  return { due, overdue, deadlines };
+  return { due, carriedOver, deadlines };
 }
 
 /**
@@ -71,7 +75,7 @@ export function agendaCounts(tasks: Task[], targetDay: Date, dayResetTime: strin
 export function agendaBody(counts: AgendaCounts): string | null {
   const parts: string[] = [];
   if (counts.due > 0) parts.push(`${counts.due} due`);
-  if (counts.overdue > 0) parts.push(`${counts.overdue} overdue`);
+  if (counts.carriedOver > 0) parts.push(`${counts.carriedOver} carried over`);
   if (counts.deadlines > 0) {
     parts.push(`${counts.deadlines} deadline${counts.deadlines === 1 ? '' : 's'}`);
   }

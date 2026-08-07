@@ -40,7 +40,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDueDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
@@ -1166,7 +1166,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           icon="calendar"
           label="Date"
           hint="The day it shows up on Today"
-          value={dueDate ? formatDueDate(dueDate.toISOString()) : undefined}
+          value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
           onPress={() => setShowWhenPicker(true)}
           onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
         />
@@ -1217,10 +1217,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
           value={
             deadlineOffsetDays !== null
-              ? (deadline ? `${formatDueDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
+              ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
               : deadlineMonthDay !== null
-              ? (deadline ? `${formatDueDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
-              : (deadline ? formatDueDate(deadline.toISOString()) : undefined)
+              ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
+              : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
           }
           onPress={() => { if (deadlineOffsetDays === null && deadlineMonthDay === null) setShowDeadlinePicker(true); }}
           onClear={(deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null) ? () => { setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); } : undefined}
