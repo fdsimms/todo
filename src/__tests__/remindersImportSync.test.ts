@@ -69,6 +69,9 @@ beforeEach(() => {
     remindersImportEnabled: true,
     remindersImportListId: LIST.id,
     remindersImportConfirmedListId: LIST.id,
+    // The shipped default, so the common path through these tests is the one
+    // real users are on.
+    remindersImportReview: true,
     initialized: true,
   };
   mockCalendar.getRemindersPermissionsAsync.mockResolvedValue({
@@ -253,6 +256,76 @@ describe('importReminders — the create/delete contract', () => {
     await sync.importReminders();
 
     expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('importReminders — what it does with a reminder that carries a schedule', () => {
+  const DATED = () =>
+    reminder('a', {
+      title: 'go running',
+      recurrenceRule: { frequency: 'daily' },
+    } as Partial<Reminder>);
+
+  it('parks the schedule as a suggestion, leaving the row bare enough for the Inbox', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([DATED()]);
+
+    await freshSync().importReminders();
+
+    const draft = mockAddTask.mock.calls[0][0];
+    // The task itself carries nothing that isInboxTask would treat as filed —
+    // that is the whole reason the suggestion is a separate field.
+    expect(draft.recurrenceType).toBeUndefined();
+    expect(draft.dueDate).toBeUndefined();
+    expect(draft.reminderTime).toBeUndefined();
+    expect(draft.title).toBe('go running');
+    expect(draft.pendingImport).toMatchObject({ recurrenceType: 'daily' });
+  });
+
+  it('applies the schedule directly when the user has turned review off', async () => {
+    mockSettings.remindersImportReview = false;
+    mockCalendar.getRemindersAsync.mockResolvedValue([DATED()]);
+
+    await freshSync().importReminders();
+
+    const draft = mockAddTask.mock.calls[0][0];
+    expect(draft.recurrenceType).toBe('daily');
+    expect(draft.pendingImport).toBeUndefined();
+  });
+
+  it('adds no suggestion to a reminder that implies no schedule', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask).toHaveBeenCalledWith({ title: 'Task a' });
+  });
+
+  it('still creates before deleting when a suggestion is involved', async () => {
+    // The ordering rule is what stops a failed create from destroying a
+    // capture; parsing must not have quietly moved anything ahead of it.
+    const order: string[] = [];
+    mockAddTask.mockImplementation(() => order.push('addTask'));
+    mockCalendar.deleteReminderAsync.mockImplementation(async () => {
+      order.push('delete');
+    });
+    mockCalendar.getRemindersAsync.mockResolvedValue([DATED()]);
+
+    await freshSync().importReminders();
+
+    expect(order).toEqual(['addTask', 'delete']);
+  });
+
+  it('carries the notes across as part of the task, not as a suggestion', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'Pay rent', notes: 'the landlord emailed' }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(mockAddTask).toHaveBeenCalledWith({
+      title: 'Pay rent',
+      notes: 'the landlord emailed',
+    });
   });
 });
 

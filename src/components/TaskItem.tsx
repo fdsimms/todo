@@ -33,6 +33,8 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
+import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useTaskStore } from '../store/useTaskStore';
@@ -110,6 +112,10 @@ interface Props {
   onSubtaskDragStateChange?: (dragging: boolean) => void;
   /** True where the list drops a row the moment it stops being visible — i.e. Today's own list, and only for rows it holds on visibility (a pinned row stays whether or not it's due). Logging a unit that puts a daily target back on pace does exactly that, so the row plays itself out before it goes instead of blinking away mid-tap. */
   hidesWhenOnPace?: boolean;
+  /** Accept the schedule an Apple Reminders import parsed but hasn't applied (see Task.pendingImport). Omitted where the suggestion should only be readable — the chip renders either way, and is inert without these. */
+  onApplyImport?: (id: string) => void;
+  /** Drop that suggestion and leave the task as dictated. */
+  onDismissImport?: (id: string) => void;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -182,6 +188,8 @@ export const TaskItem = React.memo(function TaskItem({
   justCreated = false,
   autoComplete = false,
   hidesWhenOnPace = false,
+  onApplyImport,
+  onDismissImport,
   onSubtaskDragStateChange,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
@@ -611,6 +619,30 @@ export const TaskItem = React.memo(function TaskItem({
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
     otherSeriesDates !== '';
+
+  // Self-gating: only an Apple Reminders import ever sets pendingImport, and it
+  // clears the moment the suggestion is taken or dropped — so nothing else has
+  // to decide whether this row is the kind that shows one.
+  const importSuggestion = useMemo(
+    () => describePendingImport(task.pendingImport),
+    [task.pendingImport]
+  );
+
+  const handleApplyImport = () => {
+    haptics.success();
+    // The task is about to gain a date or a repeat, which is exactly what stops
+    // it satisfying isInboxTask — so this row is leaving the list it's in.
+    animateLayout();
+    onApplyImport?.(task.id);
+  };
+
+  const handleDismissImport = () => {
+    haptics.tap();
+    // The row stays put and only loses its chip, but that still changes its
+    // height, so the rows below it should slide rather than jump.
+    animateLayout();
+    onDismissImport?.(task.id);
+  };
 
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
@@ -1207,6 +1239,44 @@ export const TaskItem = React.memo(function TaskItem({
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
               </View>
             )}
+          </View>
+        )}
+        {/* What an Apple Reminders import read off the reminder but hasn't
+            applied. It's an offer, not a state: the row is still bare
+            underneath, which is the only reason the task is sitting in the
+            Inbox to be looked at rather than already filed onto Today.
+
+            Deliberately the same bargain quick add's parse tooltip strikes —
+            here is what I think you meant, tap to take it — because it is the
+            same act, and the phrase came from the same parser. Hidden while
+            selecting: a bulk selection is about the rows, and a stray tap on
+            an inline control mid-drag would schedule something. */}
+        {!selectionMode && importSuggestion && (
+          <View style={styles.importRow}>
+            <PressableScale
+              style={styles.importChip}
+              onPress={handleApplyImport}
+              accessibilityLabel={`Set ${importSuggestion} for ${displayTitle}`}
+              accessibilityHint="Applies what the reminder said and files this task"
+            >
+              <Ionicons name="sparkles-outline" size={iconSize.xs} color={colors.accent} />
+              {/* No "tap to set" hint beside this, deliberately. The two
+                  together overflow a 390pt row on any real recurrence label
+                  ("Every Mon, Wed & Fri · reminder"), and what gets truncated
+                  is the schedule — the one thing the user has to be able to
+                  read before agreeing to it. The tinted pill and the × next to
+                  it already read as an offer with two answers; the wording
+                  lives in accessibilityHint, where it costs no width. */}
+              <Text style={styles.importChipText} numberOfLines={1}>{importSuggestion}</Text>
+            </PressableScale>
+            <PressableScale
+              style={styles.importDismiss}
+              onPress={handleDismissImport}
+              hitSlop={8}
+              accessibilityLabel={`Dismiss the suggested ${importSuggestion} for ${displayTitle}`}
+            >
+              <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+            </PressableScale>
           </View>
         )}
       </TouchableOpacity>
@@ -1936,6 +2006,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flexShrink: 1,
+  },
+  importRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    // Sits a touch clear of the meta line above it: this is a control, not one
+    // more thing the row is reporting about itself.
+    marginTop: 2,
+  },
+  importChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexShrink: 1,
+    // Tinted rather than bare accent text, per the InlineAction note in
+    // CLAUDE.md: accent text on a card reads as a link, and this is a button.
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  importChipText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
+  },
+  importDismiss: {
+    width: 22,
+    height: 22,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   categoryLabel: {
     color: colors.textTertiary,

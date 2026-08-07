@@ -170,6 +170,7 @@ function newTaskFromDraft(
     archivedAt: null,
     linkUrl: draft.linkUrl ?? null,
     blockedById: draft.blockedById ?? null,
+    pendingImport: draft.pendingImport ?? null,
   };
 }
 
@@ -446,6 +447,13 @@ interface TaskStore {
   // still-incomplete dates — "this and future tasks" means the same thing for
   // a series as it does for a recurrence, it just has real rows to write to.
   updateTask: (id: string, updates: Partial<Task>, options?: { scope?: 'occurrence' | 'series' }) => void;
+  // The two ends of an Apple Reminders suggestion (see Task.pendingImport).
+  // Applying writes the parsed schedule onto the task, which is also the
+  // moment it stops satisfying isInboxTask and leaves the Inbox for Today or
+  // Later — the whole point of holding it until the user asks for it.
+  // Dismissing drops the suggestion and leaves the task exactly as dictated.
+  applyPendingImport: (id: string) => void;
+  dismissPendingImport: (id: string) => void;
   // Creates one row per date, all sharing a new seriesId. `monthDays`
   // non-empty makes the set repeat that many months later (see
   // Task.seriesMonthDays); pass [] for a set that happens once.
@@ -1039,6 +1047,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         }
       }
     }
+  },
+
+  applyPendingImport(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task?.pendingImport) return;
+    // One updateTask call rather than a write of its own, so the suggestion
+    // goes through the same path any other edit does — which is also what
+    // reschedules the notification, since updateTask cancels and re-schedules
+    // whenever reminderTime or title is among the updates, and a suggestion
+    // carrying an alarm has both.
+    get().updateTask(id, { ...task.pendingImport, pendingImport: null });
+  },
+
+  dismissPendingImport(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task?.pendingImport) return;
+    // Only the suggestion goes. The title stays exactly as it was dictated —
+    // the parse's stripped version was never written to the row, so there is
+    // nothing here to undo.
+    get().updateTask(id, { pendingImport: null });
   },
 
   markTaskSeen(id) {
@@ -2028,6 +2056,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archivedAt: null,
       linkUrl: null,
       blockedById: null,
+      pendingImport: null,
     };
     dbInsertTask(subtask);
     set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -2152,6 +2181,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archivedAt: null,
       linkUrl: null,
       blockedById: null,
+      pendingImport: null,
     };
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));

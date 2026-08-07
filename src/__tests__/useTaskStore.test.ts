@@ -179,6 +179,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archivedAt: null,
   linkUrl: null,
   blockedById: null,
+  pendingImport: null,
   ...overrides,
 });
 
@@ -5242,6 +5243,93 @@ describe('blocking', () => {
     });
 
     expect(useTaskStore.getState().waitingTasks().map(t => t.id)).toEqual(['w2', 'w1', 'w3']);
+  });
+});
+
+describe('pending Apple Reminders imports', () => {
+  const SUGGESTION = {
+    recurrenceType: 'daily' as const,
+    recurrenceInterval: 1,
+    recurrenceFromCompletion: true,
+    title: 'go running',
+  };
+
+  it('leaves a task with a pending suggestion in the Inbox', () => {
+    // The regression that matters most. Every field the suggestion holds is one
+    // isInboxTask treats as "filed" — if any of them leaked onto the row, or if
+    // isInboxTask ever started reading pendingImport, an unreviewed voice
+    // capture would file itself onto Today and the whole feature would be
+    // pointless.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({
+          id: 'imported',
+          title: 'go running every day after completion',
+          pendingImport: SUGGESTION,
+        }),
+      ],
+    });
+
+    expect(useTaskStore.getState().inboxTasks().map(t => t.id)).toEqual(['imported']);
+  });
+
+  it('applies the suggestion and clears it, which is what takes the task out of the Inbox', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'go running every day after completion',
+      pendingImport: SUGGESTION,
+    });
+
+    useTaskStore.getState().applyPendingImport(task.id);
+
+    const applied = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(applied.recurrenceType).toBe('daily');
+    expect(applied.recurrenceFromCompletion).toBe(true);
+    expect(applied.title).toBe('go running');
+    expect(applied.pendingImport).toBeNull();
+    expect(useTaskStore.getState().inboxTasks()).toEqual([]);
+  });
+
+  it('dismisses the suggestion, keeping the title exactly as it was dictated', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'go running every day after completion',
+      pendingImport: SUGGESTION,
+    });
+
+    useTaskStore.getState().dismissPendingImport(task.id);
+
+    const kept = useTaskStore.getState().tasks.find(t => t.id === task.id)!;
+    expect(kept.pendingImport).toBeNull();
+    // The stripped title was never written to the row, so there is nothing to
+    // put back — the task still says what the user said.
+    expect(kept.title).toBe('go running every day after completion');
+    expect(kept.recurrenceType).toBe('none');
+    expect(useTaskStore.getState().inboxTasks().map(t => t.id)).toEqual([task.id]);
+  });
+
+  it('schedules the notification when an applied suggestion carries a reminder', () => {
+    const at = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const task = useTaskStore.getState().addTask({
+      title: 'Pay rent',
+      pendingImport: { reminderTime: at },
+    });
+    (scheduleTaskReminder as jest.Mock).mockClear();
+
+    useTaskStore.getState().applyPendingImport(task.id);
+
+    // updateTask reschedules whenever reminderTime is among the updates; this
+    // is the path a suggestion's alarm actually arrives by.
+    expect(scheduleTaskReminder).toHaveBeenCalled();
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.reminderTime).toBe(at);
+  });
+
+  it('does nothing for a task with no suggestion, or one that is gone', () => {
+    const task = useTaskStore.getState().addTask({ title: 'Plain' });
+
+    useTaskStore.getState().applyPendingImport(task.id);
+    useTaskStore.getState().dismissPendingImport(task.id);
+    useTaskStore.getState().applyPendingImport('does-not-exist');
+
+    expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.title).toBe('Plain');
   });
 });
 

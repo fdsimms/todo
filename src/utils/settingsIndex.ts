@@ -112,6 +112,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow'] },
   { id: 'remindersList', groupId: 'capture', label: 'List', section: 'Apple Reminders',
     keywords: ['which list', 'default list'] },
+  { id: 'remindersImportReview', groupId: 'capture', label: 'Review before applying', section: 'Apple Reminders',
+    keywords: ['approve', 'confirm', 'schedule', 'date', 'repeat', 'alarm', 'inbox'] },
   { id: 'importNow', groupId: 'capture', label: 'Import now', section: 'Apple Reminders',
     keywords: ['sync', 'refresh'] },
 

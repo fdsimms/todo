@@ -8,6 +8,7 @@ import {
   findReminderList,
   importableReminders,
   isImportableList,
+  pendingImportFor,
   reminderListOptions,
 } from './remindersImport';
 
@@ -149,8 +150,12 @@ async function fetchImportable(listId: string): Promise<Reminder[]> {
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
 
-  const { remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId } =
-    useSettingsStore.getState();
+  const {
+    remindersImportEnabled,
+    remindersImportListId,
+    remindersImportConfirmedListId,
+    remindersImportReview,
+  } = useSettingsStore.getState();
 
   if (!remindersImportEnabled) return NOTHING('off');
   // The confirmation names a count and a list, and it's keyed on the list id —
@@ -183,9 +188,21 @@ async function drainOnce(): Promise<ImportOutcome> {
     // over the current array, so concurrency scrambles the order things were
     // dictated in, and one commit at a time bounds the damage if something goes
     // wrong at item 40 of 200.
+    const now = new Date();
     for (const reminder of reminders) {
       const draft = draftFromReminder(reminder);
       if (!draft) continue;
+
+      // Everything the reminder implies about scheduling. Pure and synchronous,
+      // and done before the create so a parse that somehow threw could never
+      // leave a deleted reminder behind — though it can't: the whole path is
+      // string and date arithmetic over data already in hand.
+      const pending = pendingImportFor(reminder, now);
+      // With review on, the schedule waits beside the task as a suggestion and
+      // the row stays bare enough for isInboxTask — a capture nobody has read
+      // must not file itself onto Today. With review off the user has said
+      // they trust the parse, so it applies on the way in.
+      const scheduled = pending ? (remindersImportReview ? { pendingImport: pending } : pending) : null;
 
       // Create first, delete second, and never the other way round. A failed
       // delete leaves a duplicate — visible, understandable, fixable by hand. A
@@ -194,7 +211,7 @@ async function drainOnce(): Promise<ImportOutcome> {
       // it has either thrown or committed by the time we get here; the delete
       // is async EventKit against an iCloud-backed store and can genuinely
       // fail. The reliable half goes first.
-      addTask(draft);
+      addTask({ ...draft, ...scheduled });
       // Recorded the moment the task exists, before the delete is even
       // attempted — that's what makes it cover both failure modes above.
       handledIds.add(reminder.id!);

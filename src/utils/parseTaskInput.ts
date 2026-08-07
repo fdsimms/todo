@@ -100,14 +100,21 @@ const DAY_PART_SEGMENT: Record<string, TimeOfDay> = {
 const SINGLE_WORD_SAFE =
   /^(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|(?:sun|mon|tues|wednes|thurs|fri|satur)days|today|tomorrow|tonight|tmrw|tmr|daily|weekly|monthly|yearly|annually|\d{1,2}(?::\d{2})?(?:am|pm|a\.m\.?|p\.m\.?))$/;
 
-function segmentForHour(h: number): TimeOfDay {
+/**
+ * Which part of the day an hour falls in. Fixed boundaries rather than the
+ * configurable morningStart/afternoonStart/eveningStart, because this module
+ * stays free of the settings store (see the header note) — and exported so the
+ * Reminders import maps a dictated due time the same way quick add maps a typed
+ * one, instead of keeping a second copy of these two numbers.
+ */
+export function segmentForHour(h: number): TimeOfDay {
   if (h < 12) return 'morning';
   if (h < 18) return 'afternoon';
   return 'evening';
 }
 
 /** Noon on the given day — see ParsedSchedule.dueDate. */
-function dueAt(day: Date): Date {
+export function dueAt(day: Date): Date {
   return setHours(startOfDay(day), 12);
 }
 
@@ -309,10 +316,39 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
   return dp ? { date: dp.date, rest: m[1] } : null;
 }
 
-/** Peels a trailing "after completion" clause, mapping to recurrenceFromCompletion. */
+/**
+ * Peels a trailing "after completion" clause, mapping to recurrenceFromCompletion.
+ *
+ * Case-insensitive so it can be run against original-cased input as well as the
+ * lowercased suffix the parser normally hands it — see
+ * parseFromCompletionSuffix, which slices the caller's own string by the length
+ * of `rest` and would mis-slice if this only matched lowercase.
+ */
 function extractFromCompletionClause(text: string): { rest: string } | null {
-  const m = text.match(/^(.*?)\s+after\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/);
+  const m = text.match(/^(.*?)\s+after\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
   return m ? { rest: m[1] } : null;
+}
+
+/**
+ * The "after completion" clause on its own, with no recurrence phrase in front
+ * of it — which parseTaskInput deliberately does not match, since a task with
+ * no repeat has no completion to recur from.
+ *
+ * It exists for the Apple Reminders import, where the two halves of "every day
+ * after completion" can arrive by different routes: Siri understands "every
+ * day" and turns it into a native recurrence rule, leaving only the part it
+ * didn't understand in the title. The repeat is then real but the modifier is
+ * still text, and without this it would be dropped.
+ *
+ * Returns the title minus the clause, original casing. Callers must supply the
+ * recurrence themselves — this says nothing about how often anything repeats.
+ */
+export function parseFromCompletionSuffix(input: string): { cleanTitle: string } | null {
+  const trimmed = input.trim();
+  const found = extractFromCompletionClause(trimmed);
+  if (!found) return null;
+  const cleanTitle = trimmed.slice(0, found.rest.length).replace(/[\s,;:\-–—]+$/, '');
+  return cleanTitle ? { cleanTitle } : null;
 }
 
 interface EndCondition {

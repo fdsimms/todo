@@ -443,10 +443,17 @@ export function isTaskDeferred(task: Task): boolean {
 // It's a pure computed view: as soon as a task gains a category, tag, date,
 // time window, recurrence, reminder or priority it leaves the Inbox on its own,
 // so there's no stored flag to keep in sync. Deliberately NOT disqualifying:
-// notes, effort, estimatedMinutes, pinned, vacationPause — those don't file a
-// task anywhere. Inbox tasks don't appear on Today (see isTaskVisible) — the
-// Inbox is where they wait until triaged (dated, filed under a project, or
-// otherwise organized).
+// notes, effort, estimatedMinutes, pinned, vacationPause, pendingImport —
+// those don't file a task anywhere. Inbox tasks don't appear on Today (see
+// isTaskVisible) — the Inbox is where they wait until triaged (dated, filed
+// under a project, or otherwise organized).
+//
+// pendingImport earns its place on that exempt list: it holds the dueDate,
+// recurrence and reminderTime an Apple Reminders import parsed out but hasn't
+// applied. Every one of those fields disqualifies a task the moment it's
+// written to the row — which is precisely why the import parks them beside it
+// instead of on it. A voice capture the user hasn't reviewed must not file
+// itself onto Today or Later; counting the suggestion here would undo that.
 export function isInboxTask(task: Task): boolean {
   return (
     !task.parentId &&

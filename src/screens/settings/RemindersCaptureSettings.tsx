@@ -37,6 +37,8 @@ export function RemindersCaptureSettings() {
   const remindersImportListId = useSettingsStore(s => s.remindersImportListId);
   const setRemindersImportListId = useSettingsStore(s => s.setRemindersImportListId);
   const setRemindersImportConfirmedListId = useSettingsStore(s => s.setRemindersImportConfirmedListId);
+  const remindersImportReview = useSettingsStore(s => s.remindersImportReview);
+  const setRemindersImportReview = useSettingsStore(s => s.setRemindersImportReview);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -105,8 +107,8 @@ export function RemindersCaptureSettings() {
         ? `Import from “${list.title}”?`
         : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
       count === 0
-        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. Only the title comes across.'
-        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. Only the title comes across — dates, notes and alarms are dropped. Completed reminders are left alone.`,
+        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. The title and notes come across; any date, repeat or alarm waits on the task for you to accept.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. The title and notes come across, and any date, repeat or alarm waits on the task in your Inbox until you accept it. Completed reminders are left alone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Import', style: 'destructive', onPress: enable },
@@ -167,7 +169,7 @@ export function RemindersCaptureSettings() {
   return (
     <SettingsSection
       label="Apple Reminders"
-      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. Only the title comes across — dates, notes and alarms are dropped, so everything waits in your Inbox until you file it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone."
+      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone."
     >
       <SettingsRow
         icon="arrow-down-circle-outline"
@@ -284,6 +286,23 @@ export function RemindersCaptureSettings() {
             iconColor={colors.warning}
             label={`${lastImport!.deleteFailed} reminder${lastImport!.deleteFailed === 1 ? '' : 's'} couldn’t be removed`}
             hint={`${lastImport!.deleteFailed === 1 ? 'Its task is' : 'Their tasks are'} in your Inbox and${lastImport!.deleteFailed === 1 ? ' it is' : ' they are'} skipped for now. Delete${lastImport!.deleteFailed === 1 ? ' it' : ' them'} in the Reminders app so nothing comes back next time.`}
+          />
+        </>
+      )}
+
+      {remindersImportEnabled && remindersPermission === 'granted' && selectedReminderList && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="checkmark-circle-outline"
+            iconColor={remindersImportReview ? colors.accent : undefined}
+            label="Review before applying"
+            hint={remindersImportReview
+              ? 'A reminder’s date, repeat and alarm wait on the task in your Inbox until you accept them'
+              : 'They’re applied on import, so a dated reminder goes straight to Today or Later'}
+            toggle={remindersImportReview}
+            onPress={() => setRemindersImportReview(!remindersImportReview)}
+            accessibilityLabel="Review a reminder's date and repeat before applying them"
           />
         </>
       )}

@@ -93,6 +93,12 @@ interface SettingsStore {
   remindersImportEnabled: boolean;
   remindersImportListId: string | null;
   remindersImportConfirmedListId: string | null;
+  // Whether the schedule an import parses out of a reminder — its due date,
+  // repeat, and alarm — waits on the Inbox row as a suggestion the user taps
+  // to accept, or is simply applied. On by default: applying is what takes a
+  // capture out of the Inbox and onto Today, and a voice note nobody has read
+  // yet is exactly the thing that should not schedule itself.
+  remindersImportReview: boolean;
   // When the user last dismissed the quiet-projects banner. Read only through
   // isProjectNudgeDismissedToday, which compares it against today rather than
   // testing it for existence — so it expires at the day rollover on its own and
@@ -133,6 +139,7 @@ interface SettingsStore {
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
   setRemindersImportConfirmedListId: (id: string | null) => void;
+  setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
@@ -158,6 +165,7 @@ const DEFAULT_SETTINGS = {
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
   remindersImportEnabled: false,
+  remindersImportReview: true,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -236,6 +244,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
+  remindersImportReview: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   initialized: false,
@@ -274,6 +283,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
+    // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
+    // install that predates the setting has no row, and the usual comparison
+    // would read that absence as "apply without asking", which is the opposite
+    // of the safe default. Same pattern as hapticsEnabled above.
+    const remindersImportReview = dbGetSetting('remindersImportReview') !== 'false';
     const remindersImportListId = dbGetSetting('remindersImportListId') || null;
     const remindersImportConfirmedListId = dbGetSetting('remindersImportConfirmedListId') || null;
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
@@ -286,7 +300,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportReview, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
   },
 
   /**
@@ -478,6 +492,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setRemindersImportConfirmedListId(id: string | null) {
     dbSetSetting('remindersImportConfirmedListId', id ?? '');
     set({ remindersImportConfirmedListId: id });
+  },
+
+  setRemindersImportReview(on: boolean) {
+    dbSetSetting('remindersImportReview', on ? 'true' : 'false');
+    set({ remindersImportReview: on });
   },
 
   setPatchNoteQaStatus(id: string, status: PatchNoteQaStatus | null) {

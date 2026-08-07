@@ -873,6 +873,17 @@ export function TodayScreen() {
     enterSelectionMode(id);
   }, [enterSelectionMode]);
 
+  // Read off the store rather than closed over, so these stay referentially
+  // stable and TaskItem's memo keeps holding — the same reason every other row
+  // handler here takes an id instead of being made per row.
+  const handleApplyImport = useCallback((id: string) => {
+    useTaskStore.getState().applyPendingImport(id);
+  }, []);
+
+  const handleDismissImport = useCallback((id: string) => {
+    useTaskStore.getState().dismissPendingImport(id);
+  }, []);
+
   const handleQuickAddOpenFull = (draft: TaskDraft) => {
     // The draft carries everything the sheet had, including the seeded
     // category; only the placement is let go of, and the editor has no notion
@@ -1772,6 +1783,8 @@ export function TodayScreen() {
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
         justCreated={task.id === justCreatedId}
+        onApplyImport={handleApplyImport}
+        onDismissImport={handleDismissImport}
       />
     );
   };
