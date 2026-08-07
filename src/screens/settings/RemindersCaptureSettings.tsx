@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Alert, AppState, Linking } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { View, Alert, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import {
@@ -15,9 +14,10 @@ import {
 import { findReminderList, reminderListOptions } from '../../utils/remindersImport';
 import type { Calendar as ReminderList } from 'expo-calendar';
 import { useColors } from '../../theme/ThemeContext';
-import { interaction } from '../../theme';
+import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsChoiceTray } from './SettingsChoiceTray';
 import { makeSettingsStyles } from './settingsStyles';
 
 /**
@@ -74,6 +74,13 @@ export function RemindersCaptureSettings() {
 
   const [listPickerOpen, setListPickerOpen] = useState(false);
   const [groceryPickerOpen, setGroceryPickerOpen] = useState(false);
+  // The choices unfold below the row rather than in a sheet, so the motion is
+  // what tells you where they went — without it the tray simply appears, three
+  // rows down, and reads as content that was always there.
+  const togglePicker = (set: (open: boolean) => void, open: boolean) => {
+    animateLayout();
+    set(!open);
+  };
   const [importBusy, setImportBusy] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
   const selectedReminderList = findReminderList(reminderLists ?? [], remindersImportListId);
@@ -104,6 +111,7 @@ export function RemindersCaptureSettings() {
    * swallowing whatever has piled up in the new one.
    */
   const confirmList = async (list: ReminderList) => {
+    animateLayout();
     setListPickerOpen(false);
     const count = await countImportableReminders(list.id);
     if (count === null) {
@@ -165,6 +173,7 @@ export function RemindersCaptureSettings() {
     // No API tells us which list Siri writes to, and probing for it would mean
     // creating a reminder in someone's Reminders app just to look — so picking
     // is the first step rather than a correction to a guess.
+    animateLayout();
     setListPickerOpen(true);
   };
 
@@ -175,6 +184,7 @@ export function RemindersCaptureSettings() {
    * list" is the whole difference.
    */
   const confirmGroceryList = async (list: ReminderList) => {
+    animateLayout();
     setGroceryPickerOpen(false);
     const count = await countImportableReminders(list.id);
     if (count === null) {
@@ -230,6 +240,7 @@ export function RemindersCaptureSettings() {
       );
       return;
     }
+    animateLayout();
     setGroceryPickerOpen(true);
   };
 
@@ -314,31 +325,24 @@ export function RemindersCaptureSettings() {
             icon="list-outline"
             iconColor={colors.accent}
             label="List"
-            value={selectedReminderList?.title ?? (remindersImportListId ? 'Unavailable' : 'Choose')}
-            onPress={() => setListPickerOpen(!listPickerOpen)}
+            hint={selectedReminderList || remindersImportListId ? undefined : 'Which Reminders list to take from'}
+            value={selectedReminderList?.title ?? (remindersImportListId ? 'Unavailable' : undefined)}
+            expanded={listPickerOpen}
+            onPress={() => togglePicker(setListPickerOpen, listPickerOpen)}
             accessibilityLabel="Choose the list to import from"
           />
-          {listPickerOpen && taskListChoices.map(list => {
-            const selected = list.id === remindersImportListId;
-            return (
-              <React.Fragment key={list.id}>
-                <View style={styles.sep} />
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => confirmList(list)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`Import from ${list.title}`}
-                >
-                  <View style={styles.rowContent}>
-                    <Text style={styles.rowLabel}>{list.title}</Text>
-                  </View>
-                  {selected && <Ionicons name="checkmark" size={18} color={colors.accent} />}
-                </TouchableOpacity>
-              </React.Fragment>
-            );
-          })}
+          {listPickerOpen && (
+            <SettingsChoiceTray
+              caption="Import from"
+              options={taskListChoices}
+              selectedId={remindersImportListId}
+              onSelect={confirmList}
+              emptyText={groceryImportListId
+                ? 'Every list you can change is already going to your grocery list. A list can only feed one of the two.'
+                : 'There are no Reminders lists on this device that can be changed from here.'}
+              accessibilityLabelFor={list => `Import from ${list.title}`}
+            />
+          )}
         </>
       )}
 
@@ -405,31 +409,24 @@ export function RemindersCaptureSettings() {
             icon="list-outline"
             iconColor={colors.accent}
             label="Grocery list"
-            value={selectedGroceryList?.title ?? (groceryImportListId ? 'Unavailable' : 'Choose')}
-            onPress={() => setGroceryPickerOpen(!groceryPickerOpen)}
+            hint={selectedGroceryList || groceryImportListId ? undefined : 'Which Reminders list becomes groceries'}
+            value={selectedGroceryList?.title ?? (groceryImportListId ? 'Unavailable' : undefined)}
+            expanded={groceryPickerOpen}
+            onPress={() => togglePicker(setGroceryPickerOpen, groceryPickerOpen)}
             accessibilityLabel="Choose the list to import into groceries"
           />
-          {groceryPickerOpen && groceryListChoices.map(list => {
-            const selected = list.id === groceryImportListId;
-            return (
-              <React.Fragment key={list.id}>
-                <View style={styles.sep} />
-                <TouchableOpacity
-                  style={styles.row}
-                  onPress={() => confirmGroceryList(list)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`Send ${list.title} to groceries`}
-                >
-                  <View style={styles.rowContent}>
-                    <Text style={styles.rowLabel}>{list.title}</Text>
-                  </View>
-                  {selected && <Ionicons name="checkmark" size={18} color={colors.accent} />}
-                </TouchableOpacity>
-              </React.Fragment>
-            );
-          })}
+          {groceryPickerOpen && (
+            <SettingsChoiceTray
+              caption="Send to groceries"
+              options={groceryListChoices}
+              selectedId={groceryImportListId}
+              onSelect={confirmGroceryList}
+              emptyText={remindersImportListId
+                ? 'The only list available is already being imported into your Inbox. A list can only feed one of the two.'
+                : 'There are no Reminders lists on this device that can be changed from here.'}
+              accessibilityLabelFor={list => `Send ${list.title} to groceries`}
+            />
+          )}
         </>
       )}
 

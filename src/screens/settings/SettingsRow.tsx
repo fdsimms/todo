@@ -22,6 +22,12 @@ interface Props {
   /** Renders the standard switch, and makes the row announce itself as one. */
   toggle?: boolean;
   chevron?: boolean;
+  /**
+   * Set for rows whose choices unfold in place rather than opening a screen:
+   * shows an up/down chevron instead of the disclosure one, so the row says it
+   * is a disclosure at all. Same semantic as `EditorRow`'s `expanded`.
+   */
+  expanded?: boolean;
   busy?: boolean;
   /** Anything else on the right — a clear button, a second control. */
   trailing?: React.ReactNode;
@@ -45,7 +51,7 @@ interface Props {
  * semantic would reach into all five editors.
  */
 export function SettingsRow({
-  icon, iconColor, label, labelColor, hint, value, toggle, chevron, busy,
+  icon, iconColor, label, labelColor, hint, value, toggle, chevron, expanded, busy,
   trailing, children, onPress, disabled, tight,
   accessibilityLabel, accessibilityHint,
 }: Props) {
@@ -77,6 +83,13 @@ export function SettingsRow({
         </View>
       )}
       {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />}
+      {expanded !== undefined && (
+        <Ionicons
+          name={expanded ? 'chevron-up' : 'chevron-down'}
+          size={16}
+          color={colors.textTertiary}
+        />
+      )}
     </>
   );
 
@@ -95,6 +108,7 @@ export function SettingsRow({
       accessibilityRole={role}
       accessibilityState={{
         checked: toggle,
+        expanded,
         disabled: disabled || undefined,
       }}
       accessibilityLabel={accessibilityLabel ?? label}
