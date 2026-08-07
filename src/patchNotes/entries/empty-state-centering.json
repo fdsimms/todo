@@ -1,4 +1,4 @@
 {
-  "message": "Fixed empty-state screens (Search, Tags, Templates, Categories, and more) sitting too low on screen, and a bug where Tags/Templates could render fully blank instead of showing their empty state",
-  "date": "2026-07-31"
+  "message": "Empty lists now show their \"nothing here yet\" message centered on screen, in the same spot everywhere — templates, tags and groceries were sitting high",
+  "date": "2026-08-07"
 }

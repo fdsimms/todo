@@ -79,8 +79,15 @@ export function TemplatesScreen() {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
         }}
-        contentContainerStyle={styles.list}
-        ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+        contentContainerStyle={templateListItems.length === 0 ? styles.emptyContainer : styles.list}
+        // No spacer when the list is empty — the empty state centres itself in
+        // whatever box the content container gives it, and a fixed-height
+        // footer takes that height off the bottom of the box.
+        ListFooterComponent={
+          templateListItems.length === 0
+            ? null
+            : <View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />
+        }
         ListEmptyComponent={
           <EmptyState
             icon="copy-outline"
@@ -249,6 +256,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: 120,
   },
+  // See the note on TemplateDetailScreen's: `flex: 1` needs a full-height box
+  // to centre in, and the list's padding would move that centre.
+  emptyContainer: { flexGrow: 1 },
   categorySectionHeader: {
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,

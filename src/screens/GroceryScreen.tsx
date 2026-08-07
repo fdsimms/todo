@@ -266,8 +266,12 @@ export function GroceryScreen() {
         dragRange={groceryDragRange}
         placeholderStyle={styles.dropSlot}
         onReorder={reordered => applyDrop(resolveGroceryDrop(reordered))}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={rows.length === 0 ? styles.emptyContainer : styles.list}
+        // Nothing in the footer applies to an empty list, and the tab-bar
+        // spacer would take its height off the box the empty state centres in
+        // (the empty state clears the tab bar itself, via bottomOffset).
         ListFooterComponent={
+          rows.length === 0 ? null : (
           <View>
             {!!anthropicApiKey && unsortedCount > 0 && (
               <View style={styles.clearWrap}>
@@ -291,6 +295,7 @@ export function GroceryScreen() {
             )}
             <View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />
           </View>
+          )
         }
         ListEmptyComponent={
           <EmptyState
@@ -348,6 +353,9 @@ function makeStyles(colors: Colors) {
       flexGrow: 1,
       paddingTop: spacing.xs,
     },
+    // Full height, and none of the list's padding, so the empty state's
+    // `flex: 1` centres on the same line it does everywhere else.
+    emptyContainer: { flexGrow: 1 },
     dropSlot: {
       // Matches GroceryRow's own card geometry, so the gap that opens is
       // exactly the shape of the row about to land in it.

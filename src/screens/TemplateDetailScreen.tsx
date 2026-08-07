@@ -289,7 +289,11 @@ export function TemplateDetailScreen() {
           if (!templateId) return;
           reorderItems(templateId, data.map(i => i.id));
         }}
-        contentContainerStyle={[styles.list, selectionMode && styles.listWithBulkBar]}
+        contentContainerStyle={
+          (template?.items.length ?? 0) === 0
+            ? styles.emptyContainer
+            : [styles.list, selectionMode && styles.listWithBulkBar]
+        }
         renderItem={({ item, drag, isActive }) => {
           const hint = itemHint(item);
           const group = item.groupId ? template?.itemGroups.find(g => g.id === item.groupId) : null;
@@ -661,6 +665,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: 120,
   },
+  // The empty state centres itself with `flex: 1`, which needs a content
+  // container tall enough to centre in — a scroll view's is content-sized by
+  // default, so without this it collapses to the text's own height and sits at
+  // the top. The list's own padding is dropped for the same reason: it would
+  // shift the centre off the one every other empty state in the app lands on.
+  emptyContainer: { flexGrow: 1 },
   listWithBulkBar: {
     paddingBottom: 200,
   },

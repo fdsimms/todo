@@ -275,7 +275,11 @@ export function ProjectDetailScreen() {
                 />
               ) : null
             }
+            // Only the completed section lives down here, so with nothing
+            // completed the footer is bare padding — and that padding comes off
+            // the box the empty state centres in.
             ListFooterComponent={
+              completedProjectTasks.length === 0 ? null : (
               <View style={styles.detailFooter}>
                 {completedProjectTasks.length > 0 && (
                   <View style={styles.completedSection}>
@@ -325,6 +329,7 @@ export function ProjectDetailScreen() {
                   </View>
                 )}
               </View>
+              )
             }
           />
         </PaintSelectionProvider>
@@ -390,6 +395,7 @@ export function ProjectDetailScreen() {
             <FlatList
               data={eligibleForAdd}
               keyExtractor={t => t.id}
+              contentContainerStyle={eligibleForAdd.length === 0 ? styles.emptyContainer : undefined}
               renderItem={({ item }) => (
                 <TouchableOpacity
                   style={styles.pickerRow}
@@ -476,6 +482,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
   },
+  // A full-height content container, so the empty state's `flex: 1` centres in
+  // the list's viewport rather than collapsing to its own height at the top.
+  emptyContainer: { flexGrow: 1 },
   detailFooter: {
     paddingTop: spacing.sm,
     // Clears the floating add button so the last row is never under it.

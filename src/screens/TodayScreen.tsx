@@ -2583,7 +2583,13 @@ export function TodayScreen() {
                 />
               )
             }
-            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponent={
+              <TouchableOpacity
+                style={[styles.listFooter, unscheduledTasks.length === 0 && styles.listFooterFixed]}
+                activeOpacity={1}
+                onPress={() => setExpandedTaskId(null)}
+              />
+            }
             ListFooterComponentStyle={unscheduledTasks.length === 0 ? undefined : styles.listFooterCell}
           />
         )}
@@ -2635,7 +2641,13 @@ export function TodayScreen() {
                 />
               )
             }
-            ListFooterComponent={<TouchableOpacity style={styles.listFooter} activeOpacity={1} onPress={() => setExpandedTaskId(null)} />}
+            ListFooterComponent={
+              <TouchableOpacity
+                style={[styles.listFooter, inboxTasks.length === 0 && styles.listFooterFixed]}
+                activeOpacity={1}
+                onPress={() => setExpandedTaskId(null)}
+              />
+            }
             ListFooterComponentStyle={inboxTasks.length === 0 ? undefined : styles.listFooterCell}
           />
         )}
@@ -2930,7 +2942,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // anywhere under the list dismisses the expanded-task spotlight.
   listFooterCell: { flexGrow: 1 },
   listFooter: { flexGrow: 1, minHeight: 120 },
-  listFooterFixed: { flexGrow: 0 },
+  // On an empty list there is no expanded row to dismiss and nothing below to
+  // reach for, so the tap catcher collapses entirely: any height it kept would
+  // come off the bottom of the box the empty state centres in, and land it
+  // half that height above where every other empty state in the app sits.
+  listFooterFixed: { flexGrow: 0, minHeight: 0 },
   listWrapper: { flex: 1 },
   listWrapperElevated: { zIndex: 10 },
   filterBar: {
