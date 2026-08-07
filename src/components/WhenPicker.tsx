@@ -32,6 +32,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 // with the in-progress edits below.
 const BLANK_SNOOZE_TASK: Task = {
   id: '', title: '', notes: '', completed: false, completedAt: null, missedAt: null,
+  autoScheduledAt: null,
   createdAt: '', seenAt: null, dueDate: null, deadline: null,
   deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null,
