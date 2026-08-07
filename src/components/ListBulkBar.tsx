@@ -16,7 +16,10 @@ export interface ListBulkAction {
 }
 
 export interface ListBulkCategoryPanel {
-  /** Sub-panel heading, e.g. "Move to Category". */
+  /**
+   * Sub-panel heading, e.g. "Move to Category" — also what the Move action
+   * announces to a screen reader, since the button itself is one word.
+   */
   title: string;
   /** Category names offered as chips, in the order they should appear. */
   options: string[];
@@ -134,6 +137,8 @@ export function ListBulkBar({
             </TouchableOpacity>
           </View>
           <View style={styles.actionRow}>
+            {/* "Move", purple, filled folder — the same word and treatment
+                BulkActionBar gives filing tasks into a category. */}
             {category && (
               <PressableScale
                 style={[styles.actionBtn, none && styles.actionBtnDisabled]}
@@ -141,8 +146,8 @@ export function ListBulkBar({
                 onPress={() => { haptics.tap(); setPanel('category'); }}
                 accessibilityLabel={category.title}
               >
-                <Ionicons name="folder-outline" size={24} color={colors.accent} />
-                <Text style={[styles.actionLabel, { color: colors.accent }]}>Category</Text>
+                <Ionicons name="folder" size={24} color={colors.purple} />
+                <Text style={[styles.actionLabel, { color: colors.purple }]}>Move</Text>
               </PressableScale>
             )}
             {actions.map(action => {
