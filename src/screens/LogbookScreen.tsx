@@ -36,7 +36,7 @@ import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { isQuotaPartial, displayTitleFor } from '../utils/visibilityUtils';
+import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
 
@@ -466,6 +466,9 @@ const LogbookRow = React.memo(function LogbookRow({
 }: RowProps) {
   const paintRef = usePaintSelectionRow(task.id);
   const partial = isQuotaPartial(task);
+  // A miss outranks a partial in the glyph: a quota task marked missed is both,
+  // and "you didn't do this" is the more important of the two things to say.
+  const missed = isMissed(task);
 
   return (
     // Swipe right to move when it was completed — the same "when" slot tasks
@@ -508,16 +511,18 @@ const LogbookRow = React.memo(function LogbookRow({
           accessibilityLabel={
             selectionMode
               ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
-              : `Mark ${task.title} as not done`
+              : missed
+                ? `Put ${task.title} back on the list`
+                : `Mark ${task.title} as not done`
           }
         >
           {selectionMode ? (
             selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
           ) : (
             <Ionicons
-              name={partial ? 'remove' : 'checkmark'}
+              name={missed ? 'close' : partial ? 'remove' : 'checkmark'}
               size={12}
-              color={partial ? colors.textTertiary : colors.green}
+              color={missed ? colors.red : partial ? colors.textTertiary : colors.green}
             />
           )}
         </TouchableOpacity>
@@ -532,9 +537,11 @@ const LogbookRow = React.memo(function LogbookRow({
           accessible
           accessibilityLabel={[
             displayTitleFor(task),
-            partial
-              ? `fell short at ${task.progressCount} of ${task.targetCount}, ${formatTime(task.completedAt!)}`
-              : `completed ${formatTime(task.completedAt!)}`,
+            missed
+              ? `missed, ${formatTime(task.completedAt!)}`
+              : partial
+                ? `fell short at ${task.progressCount} of ${task.targetCount}, ${formatTime(task.completedAt!)}`
+                : `completed ${formatTime(task.completedAt!)}`,
             task.category,
             task.actualMinutes != null ? `timed ${formatDuration(task.actualMinutes)}` : null,
           ].filter(Boolean).join(', ')}
@@ -542,6 +549,11 @@ const LogbookRow = React.memo(function LogbookRow({
           <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
           <View style={styles.metaRow}>
             <Text style={styles.taskTime}>{formatTime(task.completedAt!)}</Text>
+            {/* Named, not just glyphed. The red × on the left says something is
+                different about this row, but a Logbook is read as a list of
+                things that happened and "missed" is the one entry whose
+                meaning inverts — it has to survive being skimmed. */}
+            {missed && <Text style={styles.missedTag}>· Missed</Text>}
             {task.targetCount !== null && (
               <Text style={styles.taskTime}>· {task.progressCount}/{task.targetCount}</Text>
             )}
@@ -718,6 +730,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
+    flexShrink: 0,
+  },
+  // Same metrics as taskTime so it sits on the meta row's baseline; only the
+  // colour and weight lift it, matching the red × on the row's left.
+  missedTag: {
+    color: colors.red,
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
+    fontWeight: fontWeight.semibold,
     flexShrink: 0,
   },
   // No wrapping: the row is a fixed height, so a second meta line would be

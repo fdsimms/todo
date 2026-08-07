@@ -225,7 +225,7 @@ export const TaskItem = React.memo(function TaskItem({
     updateTask,
     setLastAction,
     markTaskSeen,
-    skipNextRecurrence,
+    markMissed,
     togglePin,
     startTimer,
     stopTimer,
@@ -1635,16 +1635,25 @@ export const TaskItem = React.memo(function TaskItem({
                       style={styles.iconActionBtn}
                       onPress={async () => {
                         await haptics.impactMedium();
-                        skipNextRecurrence(task.id);
+                        markMissed(task.id);
                         // The task disappears from the list immediately, but nothing
                         // else clears the parent's expanded-row state — collapse it
                         // ourselves so the spotlight overlay doesn't get stuck.
                         if (expanded) onPress(task.id);
                       }}
                       hitSlop={8}
-                      accessibilityLabel={`Skip next occurrence of ${task.title}`}
+                      // The same control does two things depending on where the
+                      // row is showing, and says which: on a row whose day has
+                      // come it records a miss, but on one sitting in Later
+                      // ahead of its day markMissed degrades to a silent roll
+                      // forward, because there is nothing to have missed yet.
+                      accessibilityLabel={
+                        recurrenceNotYetDue
+                          ? `Skip this occurrence of ${task.title}`
+                          : `Mark ${task.title} missed and move to the next occurrence`
+                      }
                     >
-                      <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                      <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
                 </View>

@@ -27,6 +27,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -122,6 +123,26 @@ describe('projectProgress', () => {
       makeTask({ id: 'c', projectId: 'p1', completed: false }),
     ];
     expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 3 });
+  });
+
+  it('does not count a member whose only row was marked missed', () => {
+    // A miss is stored as a completed row (see Task.missedAt), so the plain
+    // `completed` test would call this project finished. Normally the miss
+    // spawns a successor that keeps the member outstanding; this is the case
+    // where the recurrence ran out on the very occurrence that got missed.
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', completed: true }),
+      makeTask({ id: 'b', projectId: 'p1', completed: true, missedAt: '2025-01-05T00:00:00.000Z' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 2 });
+  });
+
+  it('still counts a member that was missed once and completed later', () => {
+    const tasks = [
+      makeTask({ id: 'a', projectId: 'p1', completed: true, missedAt: '2025-01-05T00:00:00.000Z' }),
+      makeTask({ id: 'b', projectId: 'p1', completed: true, previousOccurrenceId: 'a' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual({ done: 1, total: 1 });
   });
 
   it('is fully done when every member task is complete', () => {

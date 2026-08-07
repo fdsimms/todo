@@ -135,6 +135,15 @@ export interface Task {
   notes: string;
   completed: boolean;
   completedAt: string | null;
+  // A recurring occurrence the user explicitly marked missed. Such a row is
+  // *also* `completed` with a `completedAt` stamp, and that is deliberate: it
+  // is history, and every "is this live" gate in the app (isTaskVisible,
+  // groupRoster, retention) keys off `completed`. Storing a miss as an
+  // incomplete row would leave it live and overdue for ever. So `completed`
+  // means "resolved, off the board" and this field is what separates the two
+  // ways a row gets there — read it (via isMissed) anywhere the question is
+  // "did the user actually do this", never where it's "is this row history".
+  missedAt: string | null;
   createdAt: string;
   seenAt: string | null; // last time the user interacted with this task; drives the "new" dot
 

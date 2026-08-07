@@ -1,4 +1,5 @@
 import { useTaskStore } from '../store/useTaskStore';
+import { isMissed, isRealCompletion } from '../utils/missed';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -128,6 +129,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -1866,6 +1868,160 @@ describe('skipNextRecurrence', () => {
     expect(updated.chainIndex).toBe(0);
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
     expect(updated.recurrenceCount).toBe(4);
+  });
+});
+
+// ─── markMissed ─────────────────────────────────────────────────────────────
+
+describe('markMissed', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // June 10, 2025 10:00 AM
+  });
+  afterEach(() => {
+    jest.runOnlyPendingTimers();
+    jest.useRealTimers();
+  });
+
+  const recurring = (overrides: Partial<Task> = {}) => makeTask({
+    id: 't1',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    dueDate: new Date(2025, 5, 10, 9, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  it('closes the occurrence out as history and spawns the next one', () => {
+    useTaskStore.setState({ tasks: [recurring()] });
+    useTaskStore.getState().markMissed('t1');
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(2);
+    const missed = tasks.find(t => t.id === 't1')!;
+    const next = tasks.find(t => t.id !== 't1')!;
+
+    // Stored as a completed row on purpose — that's what keeps it off Today.
+    expect(missed.completed).toBe(true);
+    expect(missed.completedAt).not.toBeNull();
+    expect(missed.missedAt).not.toBeNull();
+
+    expect(next.completed).toBe(false);
+    expect(next.missedAt).toBeNull();
+    expect(next.previousOccurrenceId).toBe('t1');
+    expect(new Date(next.dueDate!).getTime()).toBeGreaterThan(new Date(missed.dueDate!).getTime());
+  });
+
+  it('is not counted as a completion', () => {
+    useTaskStore.setState({ tasks: [recurring()] });
+    useTaskStore.getState().markMissed('t1');
+    const missed = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(isRealCompletion(missed)).toBe(false);
+    expect(isMissed(missed)).toBe(true);
+  });
+
+  it('breaks the streak instead of advancing it, on the missed row and its successor', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      streakCount: 12,
+      streakDate: new Date(2025, 5, 9, 9, 0, 0).toISOString(),
+    })] });
+    useTaskStore.getState().markMissed('t1');
+
+    const tasks = useTaskStore.getState().tasks;
+    const missed = tasks.find(t => t.id === 't1')!;
+    const next = tasks.find(t => t.id !== 't1')!;
+    expect(missed.streakCount).toBe(0);
+    expect(missed.streakDate).toBeNull();
+    // The successor is the row that carries the streak from here on: leaving
+    // it at 12 would hand the broken streak straight back.
+    expect(next.streakCount).toBe(0);
+    expect(next.streakDate).toBeNull();
+    // Snapshotted so undoing the miss restores it.
+    expect(missed.previousStreakCount).toBe(12);
+  });
+
+  it('restores the streak and removes the successor when undone', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      streakCount: 12,
+      streakDate: new Date(2025, 5, 9, 9, 0, 0).toISOString(),
+    })] });
+    useTaskStore.getState().markMissed('t1');
+    useTaskStore.getState().uncompleteTask('t1');
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    const restored = tasks[0];
+    expect(restored.completed).toBe(false);
+    expect(restored.missedAt).toBeNull();
+    expect(restored.streakCount).toBe(12);
+  });
+
+  it('keeps a quota task at the count it actually reached rather than filling it in', () => {
+    useTaskStore.setState({ tasks: [recurring({ targetCount: 8, progressCount: 3 })] });
+    useTaskStore.getState().markMissed('t1');
+    const missed = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(missed.progressCount).toBe(3);
+  });
+
+  it('burns one of a bounded recurrence, since the occurrence did come round', () => {
+    useTaskStore.setState({ tasks: [recurring({ recurrenceCount: 3 })] });
+    useTaskStore.getState().markMissed('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    expect(next.recurrenceCount).toBe(2);
+  });
+
+  it('advances a mid-chain step without burning a cycle of the recurrence', () => {
+    useTaskStore.setState({ tasks: [recurring({
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    })] });
+    useTaskStore.getState().markMissed('t1');
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 't1')!;
+    expect(next.chainIndex).toBe(1);
+    expect(next.recurrenceCount).toBe(5);
+  });
+
+  it('does nothing on a non-recurring task — there is no next occurrence to move to', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', recurrenceType: 'none' })] });
+    useTaskStore.getState().markMissed('t1');
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].completed).toBe(false);
+    expect(tasks[0].missedAt).toBeNull();
+  });
+
+  it('does nothing on an already-closed row', () => {
+    useTaskStore.setState({ tasks: [recurring({ completed: true, completedAt: new Date().toISOString() })] });
+    useTaskStore.getState().markMissed('t1');
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+    expect(useTaskStore.getState().tasks[0].missedAt).toBeNull();
+  });
+
+  it('rolls a not-yet-due occurrence forward silently instead of no-opping', () => {
+    // It is showing in Later, ahead of its own day — there is nothing to have
+    // missed yet, and completeTask refuses it outright. Without the fallback
+    // this call would do nothing at all and the button would be dead.
+    const future = new Date(2025, 5, 20, 9, 0, 0).toISOString();
+    useTaskStore.setState({ tasks: [recurring({ dueDate: future })] });
+    useTaskStore.getState().markMissed('t1');
+
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks).toHaveLength(1); // rolled in place, no history row spawned
+    expect(tasks[0].completed).toBe(false);
+    expect(tasks[0].missedAt).toBeNull();
+    expect(new Date(tasks[0].dueDate!).getTime()).toBeGreaterThan(new Date(future).getTime());
+  });
+
+  it('leaves a real completion alone — completeTask still stamps no miss', () => {
+    useTaskStore.setState({ tasks: [recurring()] });
+    useTaskStore.getState().completeTask('t1');
+    const done = useTaskStore.getState().tasks.find(t => t.id === 't1')!;
+    expect(done.missedAt).toBeNull();
+    expect(isRealCompletion(done)).toBe(true);
   });
 });
 

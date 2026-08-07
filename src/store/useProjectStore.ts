@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
+import { isRealCompletion } from '../utils/missed';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -63,7 +64,14 @@ export function projectProgress(projectId: string, tasks: Task[]): { done: numbe
 
   let done = 0;
   for (const rows of groups.values()) {
-    if (rows.every(r => r.completed)) done += 1;
+    // Two conditions, because a miss is stored as a completed row (see
+    // Task.missedAt) and `completed` alone would count one as done. Normally
+    // the second is redundant — marking an occurrence missed spawns its
+    // successor, which is outstanding and fails the first. It carries the case
+    // where there is no successor: a recurrence that hit its end date or ran
+    // out its count on the very occurrence that got missed. That member was
+    // never done, and a project shouldn't reach 100% on it.
+    if (rows.every(r => r.completed) && rows.some(r => isRealCompletion(r))) done += 1;
   }
   return { done, total: groups.size };
 }

@@ -14,7 +14,7 @@ import { useTaskStore } from '../store/useTaskStore';
 // PaintSelectionProvider, fed by `paintProps` below).
 export function useTaskSelection(allTasks: Task[]) {
   const bulkDeleteTasks = useTaskStore(s => s.bulkDeleteTasks);
-  const skipNextRecurrence = useTaskStore(s => s.skipNextRecurrence);
+  const markMissed = useTaskStore(s => s.markMissed);
 
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -94,8 +94,9 @@ export function useTaskSelection(allTasks: Task[]) {
 
   // A live recurring task in the selection makes "delete" ambiguous — see
   // the matching prompt in TaskItem's single-task delete flow (now folded
-  // into this same bulk path). For a mixed selection, "This Task(s)" skips
-  // just the recurring ones to their next occurrence and deletes the rest;
+  // into this same bulk path). For a mixed selection, "This Task(s)" marks
+  // just the recurring ones missed — closing each out as not-done and moving
+  // it to its next occurrence — and deletes the rest;
   // "This and Future Tasks" deletes everything, ending any series in the
   // selection.
   const handleBulkDelete = () => {
@@ -127,13 +128,13 @@ export function useTaskSelection(allTasks: Task[]) {
     const restIds = ids.filter(id => !liveRecurringIds.includes(id));
     Alert.alert(
       `Delete ${count} ${plural}?`,
-      'Some selected tasks repeat. Skip just this occurrence for those, or delete everything and stop their series? You can undo this by shaking your phone right after.',
+      'Some selected tasks repeat. Mark just this occurrence missed for those, or delete everything and stop their series? You can undo this by shaking your phone right after.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'This Task(s)',
           onPress: () => {
-            liveRecurringIds.forEach(id => skipNextRecurrence(id));
+            liveRecurringIds.forEach(id => markMissed(id));
             bulkDeleteTasks(restIds);
             exitSelection();
           },

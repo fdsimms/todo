@@ -342,6 +342,11 @@ export function isQuotaPartial(task: Task): boolean {
   return task.completed && isQuotaTask(task) && task.progressCount < task.targetCount!;
 }
 
+// Re-exported so this file stays the one place to look for "what does this
+// row's state mean" — the definitions live in the leaf module missed.ts
+// because the pure, node-tested utils can't import this one. See missed.ts.
+export { isMissed, isRealCompletion } from './missed';
+
 export function isTaskVisible(task: Task): boolean {
   if (task.completed) return false;
   if (task.archived) return false;

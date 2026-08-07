@@ -109,6 +109,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
@@ -208,10 +209,29 @@ describe('initDatabase', () => {
       'recurrence_from_completion', 'parent_id', 'reminder_time',
       'cycle_enabled', 'cycle_index', 'cycle_items',
       'time_of_day', 'category', 'vacation_pause', 'estimated_minutes',
-      'window_start', 'window_end',
+      'window_start', 'window_end', 'missed_at',
     ]) {
       expect(cols).toContain(col);
     }
+  });
+
+  it('round-trips missed_at, so a miss survives a restart', () => {
+    dbInsertTask(makeTask({
+      id: 'missed-1',
+      completed: true,
+      completedAt: '2025-01-05T09:00:00.000Z',
+      missedAt: '2025-01-05T09:00:00.000Z',
+    }));
+    dbInsertTask(makeTask({ id: 'done-1', completed: true, completedAt: '2025-01-05T09:00:00.000Z' }));
+
+    const byId = new Map(dbGetAllTasks().map(t => [t.id, t]));
+    expect(byId.get('missed-1')!.missedAt).toBe('2025-01-05T09:00:00.000Z');
+    // Null, not undefined — every legacy row reads this way too, which is what
+    // keeps isRealCompletion true for the whole existing Logbook.
+    expect(byId.get('done-1')!.missedAt).toBeNull();
+
+    dbUpdateTask({ ...byId.get('missed-1')!, missedAt: null });
+    expect(dbGetAllTasks().find(t => t.id === 'missed-1')!.missedAt).toBeNull();
   });
 
   it('is idempotent — safe to call multiple times', () => {

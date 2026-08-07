@@ -31,6 +31,7 @@ const baseTask: Task = {
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: new Date(2025, 0, 1).toISOString(),
   seenAt: null,
   dueDate: null,

@@ -74,6 +74,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   notes: '',
   completed: false,
   completedAt: null,
+  missedAt: null,
   createdAt: '2025-01-01T00:00:00.000Z',
   seenAt: null,
   dueDate: null,
