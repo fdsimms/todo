@@ -1628,7 +1628,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <Text style={styles.targetStepperCaption}>
                   {targetCount === null
                     ? 'Not a daily target'
-                    : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)}, a day`}
+                    : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
                 </Text>
               </>
             )}
