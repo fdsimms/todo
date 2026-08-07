@@ -39,11 +39,15 @@ export function RemindersCaptureSettings() {
   const setRemindersImportConfirmedListId = useSettingsStore(s => s.setRemindersImportConfirmedListId);
   const remindersImportReview = useSettingsStore(s => s.remindersImportReview);
   const setRemindersImportReview = useSettingsStore(s => s.setRemindersImportReview);
+  const remindersImportDelete = useSettingsStore(s => s.remindersImportDelete);
+  const setRemindersImportDelete = useSettingsStore(s => s.setRemindersImportDelete);
   const groceryImportEnabled = useSettingsStore(s => s.groceryImportEnabled);
   const setGroceryImportEnabled = useSettingsStore(s => s.setGroceryImportEnabled);
   const groceryImportListId = useSettingsStore(s => s.groceryImportListId);
   const setGroceryImportListId = useSettingsStore(s => s.setGroceryImportListId);
   const setGroceryImportConfirmedListId = useSettingsStore(s => s.setGroceryImportConfirmedListId);
+  const groceryImportDelete = useSettingsStore(s => s.groceryImportDelete);
+  const setGroceryImportDelete = useSettingsStore(s => s.setGroceryImportDelete);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -105,7 +109,10 @@ export function RemindersCaptureSettings() {
    */
   const confirmList = async (list: ReminderList) => {
     setListPickerOpen(false);
-    const count = await countImportableReminders(list.id);
+    // 'task' so the count already excludes anything the drain would skip on a
+    // name it recognises — otherwise the one alert that has to be exact
+    // over-promises the moment deletion is off.
+    const count = await countImportableReminders(list.id, 'task');
     if (count === null) {
       Alert.alert('Couldn’t read that list', 'Try again in a moment, or pick a different list.');
       return;
@@ -116,16 +123,28 @@ export function RemindersCaptureSettings() {
       setRemindersImportEnabled(true);
       setImportResult(null);
     };
+    // Nothing is destroyed with deletion off, so the alert stops being a
+    // warning and the buttons stop being destructive — dressing a copy up as a
+    // deletion is how a real one stops being read.
+    const body = remindersImportDelete
+      ? count === 0
+        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. The title and notes come across; any date, repeat or alarm waits on the task for you to accept.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. The title and notes come across, and any date, repeat or alarm waits on the task in your Inbox until you accept it. Completed reminders are left alone.`
+      : count === 0
+        ? 'Anything you add to this list will be added to your Inbox and left where it is in the Reminders app. Anything whose name already matches a task is skipped, so nothing comes in twice.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox, along with anything you add later. Nothing is removed from the Reminders app, and anything whose name already matches a task is skipped so it can’t come in twice. Completed reminders are left alone.`;
     Alert.alert(
       count === 0
         ? `Import from “${list.title}”?`
         : `Import ${count} reminder${count === 1 ? '' : 's'} from “${list.title}”?`,
-      count === 0
-        ? 'Anything you add to this list will be added to your Inbox and then deleted from the Reminders app. The title and notes come across; any date, repeat or alarm waits on the task for you to accept.'
-        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your Inbox and deleted from the Reminders app, along with anything you add later. The title and notes come across, and any date, repeat or alarm waits on the task in your Inbox until you accept it. Completed reminders are left alone.`,
+      body,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Import', style: 'destructive', onPress: enable },
+        {
+          text: 'Import',
+          style: remindersImportDelete ? 'destructive' : 'default',
+          onPress: enable,
+        },
       ]
     );
   };
@@ -176,7 +195,7 @@ export function RemindersCaptureSettings() {
    */
   const confirmGroceryList = async (list: ReminderList) => {
     setGroceryPickerOpen(false);
-    const count = await countImportableReminders(list.id);
+    const count = await countImportableReminders(list.id, 'grocery');
     if (count === null) {
       Alert.alert('Couldn’t read that list', 'Try again in a moment, or pick a different list.');
       return;
@@ -187,16 +206,25 @@ export function RemindersCaptureSettings() {
       setGroceryImportEnabled(true);
       setImportResult(null);
     };
+    const body = groceryImportDelete
+      ? count === 0
+        ? 'Anything you add to this list will be added to your grocery list and then deleted from the Reminders app. Only the title comes across.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your grocery list and deleted from the Reminders app, along with anything you add later. Only the title comes across. Completed reminders are left alone.`
+      : count === 0
+        ? 'Anything you add to this list will be added to your grocery list and left where it is in the Reminders app. A name your grocery list already knows is skipped, so nothing comes in twice.'
+        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your grocery list, along with anything you add later. Nothing is removed from the Reminders app, and a name your grocery list already knows is skipped so it can’t come in twice. Completed reminders are left alone.`;
     Alert.alert(
       count === 0
         ? `Send “${list.title}” to groceries?`
         : `Send ${count} reminder${count === 1 ? '' : 's'} from “${list.title}” to groceries?`,
-      count === 0
-        ? 'Anything you add to this list will be added to your grocery list and then deleted from the Reminders app. Only the title comes across.'
-        : `The ${count} thing${count === 1 ? '' : 's'} already in this list will be added to your grocery list and deleted from the Reminders app, along with anything you add later. Only the title comes across. Completed reminders are left alone.`,
+      body,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Import', style: 'destructive', onPress: enable },
+        {
+          text: 'Import',
+          style: groceryImportDelete ? 'destructive' : 'default',
+          onPress: enable,
+        },
       ]
     );
   };
@@ -239,7 +267,17 @@ export function RemindersCaptureSettings() {
     setImportResult(null);
     try {
       const outcome = await importReminders();
-      setImportResult(outcome.imported > 0 ? `Imported ${outcome.imported}` : 'Nothing new');
+      // The skipped count is worth saying out loud: with deletion off it's the
+      // difference between "there was nothing new" and "there were things, and
+      // you already have all of them" — which look identical otherwise.
+      const skipped = outcome.skipped > 0 ? ` · ${outcome.skipped} already here` : '';
+      setImportResult(
+        outcome.imported > 0
+          ? `Imported ${outcome.imported}${skipped}`
+          : outcome.skipped > 0
+            ? `Nothing new — ${outcome.skipped} already here`
+            : 'Nothing new'
+      );
     } finally {
       setImportBusy(false);
     }
@@ -248,7 +286,7 @@ export function RemindersCaptureSettings() {
   return (
     <SettingsSection
       label="Apple Reminders"
-      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists, and completed reminders are left alone."
+      footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists — turn that off and they stay put, and anything whose name you already have is skipped instead. Completed reminders are left alone either way."
     >
       <SettingsRow
         icon="arrow-down-circle-outline"
@@ -256,7 +294,9 @@ export function RemindersCaptureSettings() {
         label="Import from Reminders"
         hint={remindersImportEnabled
           ? selectedReminderList
-            ? `Anything in “${selectedReminderList.title}” is added to your Inbox and removed from the Reminders app`
+            ? remindersImportDelete
+              ? `Anything in “${selectedReminderList.title}” is added to your Inbox and removed from the Reminders app`
+              : `Anything in “${selectedReminderList.title}” is added to your Inbox and left in the Reminders app`
             : 'The list it was importing from is no longer available'
           : 'Nothing is read from the Reminders app'}
         toggle={remindersImportEnabled}
@@ -383,6 +423,18 @@ export function RemindersCaptureSettings() {
             onPress={() => setRemindersImportReview(!remindersImportReview)}
             accessibilityLabel="Review a reminder's date and repeat before applying them"
           />
+          <View style={styles.sep} />
+          <SettingsRow
+            icon={remindersImportDelete ? 'trash-outline' : 'archive-outline'}
+            iconColor={remindersImportDelete ? colors.accent : undefined}
+            label="Delete after importing"
+            hint={remindersImportDelete
+              ? `Each reminder is removed from “${selectedReminderList.title}” once its task exists`
+              : 'Reminders stay in the list. One whose name already matches a task — a finished one counts — is skipped instead, so nothing is imported twice.'}
+            toggle={remindersImportDelete}
+            onPress={() => setRemindersImportDelete(!remindersImportDelete)}
+            accessibilityLabel="Delete each reminder from the Reminders app after importing it"
+          />
         </>
       )}
 
@@ -392,7 +444,9 @@ export function RemindersCaptureSettings() {
         iconColor={groceryImportEnabled ? colors.accent : undefined}
         label="Send a list to Groceries"
         hint={groceryImportEnabled
-          ? 'Reminders in this list become grocery items instead of tasks.'
+          ? groceryImportDelete
+            ? 'Reminders in this list become grocery items instead of tasks.'
+            : 'Reminders in this list become grocery items instead of tasks, and stay where they are.'
           : 'Point a second list at your grocery list, so “add milk to my Groceries list” lands there.'}
         toggle={groceryImportEnabled}
         onPress={onToggleGroceryImport}
@@ -430,6 +484,23 @@ export function RemindersCaptureSettings() {
               </React.Fragment>
             );
           })}
+        </>
+      )}
+
+      {groceryImportEnabled && remindersPermission === 'granted' && selectedGroceryList && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon={groceryImportDelete ? 'trash-outline' : 'archive-outline'}
+            iconColor={groceryImportDelete ? colors.accent : undefined}
+            label="Delete after adding to Groceries"
+            hint={groceryImportDelete
+              ? `Each reminder is removed from “${selectedGroceryList.title}” once it’s on your grocery list`
+              : 'Reminders stay in the list. A name your grocery list already knows is skipped instead, so nothing is added twice.'}
+            toggle={groceryImportDelete}
+            onPress={() => setGroceryImportDelete(!groceryImportDelete)}
+            accessibilityLabel="Delete each reminder from the Reminders app after adding it to groceries"
+          />
         </>
       )}
 

@@ -3,12 +3,18 @@ import {
   describePendingImport,
   draftFromReminder,
   findReminderList,
+  groceryItemKey,
+  groceryItemKeys,
   importableReminders,
   isImportableList,
+  isReminderAlreadyPresent,
+  isTitleTaken,
   pendingImportFor,
   recurrenceFromRule,
   reminderListOptions,
   reminderTimeFromAlarms,
+  taskTitleKey,
+  taskTitleKeys,
 } from '../utils/remindersImport';
 
 function reminder(overrides: Partial<Reminder> = {}): Reminder {
@@ -630,5 +636,115 @@ describe('findReminderList', () => {
 
   it('returns undefined when no list has been chosen', () => {
     expect(findReminderList([list({ id: 'a' })], null)).toBeUndefined();
+  });
+});
+
+/**
+ * The name index — what stands in for the delete once "Delete after importing"
+ * is off. It only ever *prevents* an import, so the tests worth having are the
+ * ones pinning how wide it reaches: too narrow and the same capture arrives on
+ * every foreground, for ever.
+ */
+describe('taskTitleKey', () => {
+  it('ignores case and surrounding space, which dictation varies freely', () => {
+    expect(taskTitleKey('  Call the Dentist ')).toBe('call the dentist');
+  });
+
+  it('collapses runs of whitespace, so a stray double space is not a new task', () => {
+    expect(taskTitleKey('call  the\tdentist')).toBe('call the dentist');
+  });
+
+  it('has no key for a name that is only whitespace', () => {
+    expect(taskTitleKey('   ')).toBe('');
+    expect(taskTitleKey(null)).toBe('');
+    expect(taskTitleKey(undefined)).toBe('');
+  });
+});
+
+describe('taskTitleKeys', () => {
+  it('indexes every row it is handed', () => {
+    const keys = taskTitleKeys([{ title: 'Pay rent' }, { title: 'call the DENTIST' }]);
+    expect(keys.has('pay rent')).toBe(true);
+    expect(keys.has('call the dentist')).toBe(true);
+  });
+
+  it('drops empty titles rather than letting them match everything', () => {
+    expect(taskTitleKeys([{ title: '  ' }]).size).toBe(0);
+  });
+});
+
+describe('isTitleTaken', () => {
+  const keys = new Set(['pay rent']);
+
+  it('matches a name the index already holds', () => {
+    expect(isTitleTaken('Pay Rent', keys)).toBe(true);
+  });
+
+  it('lets an unknown name through', () => {
+    expect(isTitleTaken('pay the rent', keys)).toBe(false);
+  });
+
+  // Otherwise a reminder with no usable title would match an index that had
+  // somehow kept an empty key, and be skipped for ever.
+  it('never matches on an empty name', () => {
+    expect(isTitleTaken('', new Set(['']))).toBe(false);
+  });
+});
+
+describe('groceryItemKey', () => {
+  it('files a reminder under the key addByName would give it', () => {
+    expect(groceryItemKey('Milk')).toBe('milk');
+  });
+
+  it('splits the quantity off first, so "2 lb chicken" is just chicken', () => {
+    expect(groceryItemKey('2 lb chicken')).toBe('chicken');
+  });
+
+  it('falls back to the raw text for a name with nothing to key on', () => {
+    expect(groceryItemKey('???')).toBe('???');
+  });
+});
+
+describe('groceryItemKeys', () => {
+  it('indexes the catalog by the key it already stores', () => {
+    const keys = groceryItemKeys([{ nameKey: 'milk' }, { nameKey: 'eggs' }]);
+    expect([...keys].sort()).toEqual(['eggs', 'milk']);
+  });
+
+  it('skips a row with no key', () => {
+    expect(groceryItemKeys([{ nameKey: '' }]).size).toBe(0);
+  });
+});
+
+describe('isReminderAlreadyPresent', () => {
+  const now = new Date('2026-08-07T09:00:00');
+
+  it('recognises a task by its dictated title', () => {
+    const keys = new Set(['call the dentist']);
+    expect(isReminderAlreadyPresent(reminder({ title: 'Call the dentist' }), 'task', keys, now))
+      .toBe(true);
+  });
+
+  // The one that isn't obvious: with review off the import saves the *stripped*
+  // title, so that's the name sitting in the store. Matching only what was
+  // dictated would re-import the capture on the very next foreground.
+  it('also recognises the stripped title an import would have saved', () => {
+    const keys = new Set(['pay rent']);
+    expect(isReminderAlreadyPresent(reminder({ title: 'pay rent tomorrow' }), 'task', keys, now))
+      .toBe(true);
+  });
+
+  it('lets a genuinely new capture through', () => {
+    const keys = new Set(['pay rent']);
+    expect(isReminderAlreadyPresent(reminder({ title: 'book a haircut' }), 'task', keys, now))
+      .toBe(false);
+  });
+
+  it('matches a grocery reminder on the catalog key, quantity and all', () => {
+    const keys = new Set(['chicken']);
+    expect(isReminderAlreadyPresent(reminder({ title: '2 lb chicken' }), 'grocery', keys, now))
+      .toBe(true);
+    expect(isReminderAlreadyPresent(reminder({ title: 'chicken stock' }), 'grocery', keys, now))
+      .toBe(false);
   });
 });
