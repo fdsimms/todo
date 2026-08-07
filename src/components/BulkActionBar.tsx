@@ -50,6 +50,9 @@ interface Props {
 
 type Panel = 'actions' | 'more' | 'priority' | 'tags' | 'category' | 'group';
 
+/** Four rows of chips (34pt each, spacing.sm between) before the grid starts scrolling. */
+const CATEGORY_LIST_MAX_HEIGHT = 172;
+
 export function BulkActionBar({
   selectedCount,
   totalCount,
@@ -122,6 +125,7 @@ export function BulkActionBar({
   const handleSetCategory = (category: string | null) => {
     haptics.tap();
     onSetCategory(category);
+    setNewCategoryText('');
     setPanel('actions');
   };
 
@@ -132,6 +136,34 @@ export function BulkActionBar({
     onSetCategory(trimmed);
     setNewCategoryText('');
     setPanel('actions');
+  };
+
+  // The category field doubles as a filter and as the create-new input: with ten
+  // categories the grid is the fast path, and typing narrows it to a couple of
+  // chips rather than making the list something to hunt through.
+  const categoryQuery = newCategoryText.trim().toLowerCase();
+
+  const filteredCategories = useMemo(() => {
+    if (!categoryQuery) return existingCategories;
+    return existingCategories.filter(
+      c =>
+        c.toLowerCase().includes(categoryQuery) ||
+        categoryLabel(c, categories).toLowerCase().includes(categoryQuery),
+    );
+  }, [existingCategories, categories, categoryQuery]);
+
+  const exactCategory = useMemo(
+    () => (categoryQuery ? existingCategories.find(c => c.toLowerCase() === categoryQuery) ?? null : null),
+    [existingCategories, categoryQuery],
+  );
+
+  // Return picks the obvious match when there is one, so typing a few letters and
+  // hitting done never silently creates a duplicate of a category that exists.
+  const handleCategorySubmit = () => {
+    if (!categoryQuery) return;
+    if (exactCategory) return handleSetCategory(exactCategory);
+    if (filteredCategories.length === 1) return handleSetCategory(filteredCategories[0]);
+    handleAddNewCategory();
   };
 
   const goBack = () => {
@@ -348,19 +380,34 @@ export function BulkActionBar({
               <Text style={styles.subTitle}>Move to Category</Text>
               <View style={{ width: 28 }} />
             </View>
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={styles.tagInput}
+                placeholder="Find or add a category…"
+                placeholderTextColor={colors.textTertiary}
+                value={newCategoryText}
+                onChangeText={setNewCategoryText}
+                returnKeyType="done"
+                onSubmitEditing={handleCategorySubmit}
+                autoCapitalize="words"
+                autoCorrect={false}
+              />
+            </View>
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.tagScroll}
-              contentContainerStyle={styles.tagScrollContent}
+              style={styles.categoryList}
+              contentContainerStyle={styles.categoryListContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
             >
-              <TouchableOpacity
-                style={styles.categoryChip}
-                onPress={() => handleSetCategory(null)}
-              >
-                <Text style={styles.categoryChipText}>None</Text>
-              </TouchableOpacity>
-              {existingCategories.map(cat => (
+              {!categoryQuery && (
+                <TouchableOpacity
+                  style={styles.categoryChip}
+                  onPress={() => handleSetCategory(null)}
+                >
+                  <Text style={styles.categoryChipText}>None</Text>
+                </TouchableOpacity>
+              )}
+              {filteredCategories.map(cat => (
                 <TouchableOpacity
                   key={cat}
                   style={styles.categoryChip}
@@ -370,19 +417,18 @@ export function BulkActionBar({
                   <Text style={styles.categoryChipText}>{categoryLabel(cat, categories)}</Text>
                 </TouchableOpacity>
               ))}
+              {categoryQuery !== '' && !exactCategory && (
+                <TouchableOpacity
+                  style={[styles.categoryChip, styles.categoryCreateChip]}
+                  onPress={handleAddNewCategory}
+                >
+                  <Ionicons name="add" size={13} color={colors.accent} />
+                  <Text style={[styles.categoryChipText, styles.categoryCreateChipText]} numberOfLines={1}>
+                    Create “{newCategoryText.trim()}”
+                  </Text>
+                </TouchableOpacity>
+              )}
             </ScrollView>
-            <View style={styles.tagInputRow}>
-              <TextInput
-                style={styles.tagInput}
-                placeholder="New category…"
-                placeholderTextColor={colors.textTertiary}
-                value={newCategoryText}
-                onChangeText={setNewCategoryText}
-                returnKeyType="done"
-                onSubmitEditing={handleAddNewCategory}
-                autoCapitalize="words"
-              />
-            </View>
           </View>
         )}
 
@@ -577,6 +623,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: '500',
   },
+  // Four rows of chips, then it scrolls — enough that a normal set of categories
+  // is on screen at once, without the bar growing tall enough to swallow the list
+  // it's floating over.
+  categoryList: {
+    maxHeight: CATEGORY_LIST_MAX_HEIGHT,
+    flexGrow: 0,
+  },
+  categoryListContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingVertical: 2,
+  },
   categoryChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -592,6 +651,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: '500',
+  },
+  categoryCreateChip: {
+    borderColor: colors.accent,
+    backgroundColor: colors.accent + '33',
+    maxWidth: '100%',
+  },
+  categoryCreateChipText: {
+    color: colors.accent,
+    flexShrink: 1,
   },
   tagInputRow: {
     paddingBottom: spacing.xs,
