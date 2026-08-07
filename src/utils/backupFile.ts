@@ -1,7 +1,3 @@
-import { File, Paths } from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
-
 /**
  * The device half of export/restore: putting the backup somewhere the user can
  * get at it, and reading one back in.
@@ -11,7 +7,24 @@ import * as DocumentPicker from 'expo-document-picker';
  * is unit tested. All the decisions worth testing (what a backup contains,
  * whether a file is a valid one, what the dialog says) live in backup.ts
  * instead, and this module is deliberately thin enough to read in one go.
+ *
+ * All three modules are `require`d where they're used rather than imported at
+ * the top. Each resolves its native half at *its* module scope, which throws
+ * when that half isn't in the binary — and this file is reachable from
+ * SettingsScreen, so a static import puts three more ways to kill the app's
+ * entire bundle evaluation on the startup path. Backup is a screen the user has
+ * to go and open; it must not be able to stop the app from launching. See the
+ * same note in secureApiKey.ts.
  */
+function fileSystem(): typeof import('expo-file-system') {
+  return require('expo-file-system');
+}
+function sharing(): typeof import('expo-sharing') {
+  return require('expo-sharing');
+}
+function documentPicker(): typeof import('expo-document-picker') {
+  return require('expo-document-picker');
+}
 
 /**
  * Writes the backup to the cache directory and returns its file:// URI.
@@ -22,7 +35,7 @@ import * as DocumentPicker from 'expo-document-picker';
  * their data that nothing ever cleans up. iOS reclaims this on its own.
  */
 export function writeBackupFile(json: string, fileName: string): string {
-  const file = new File(Paths.cache, fileName);
+  const file = new (fileSystem().File)(fileSystem().Paths.cache, fileName);
   // A backup taken twice in the same minute lands on the same name, and the
   // second one is the one the user just asked for.
   if (file.exists) file.delete();
@@ -33,11 +46,11 @@ export function writeBackupFile(json: string, fileName: string): string {
 
 /** True when the OS can actually present a share sheet. */
 export async function canShare(): Promise<boolean> {
-  return Sharing.isAvailableAsync();
+  return sharing().isAvailableAsync();
 }
 
 export async function shareBackupFile(uri: string): Promise<void> {
-  await Sharing.shareAsync(uri, {
+  await sharing().shareAsync(uri, {
     mimeType: 'application/json',
     UTI: 'public.json',
     dialogTitle: 'Save your backup',
@@ -47,7 +60,7 @@ export async function shareBackupFile(uri: string): Promise<void> {
 /** Deletes a backup left in the cache once it's been handed off. */
 export function discardBackupFile(uri: string): void {
   try {
-    const file = new File(uri);
+    const file = new (fileSystem().File)(uri);
     if (file.exists) file.delete();
   } catch {
     // Best effort — the cache directory is the system's to reclaim anyway,
@@ -66,10 +79,10 @@ export function discardBackupFile(uri: string): void {
  * a greyed-out file would.
  */
 export async function pickBackupFile(): Promise<string | null> {
-  const result = await DocumentPicker.getDocumentAsync({
+  const result = await documentPicker().getDocumentAsync({
     type: ['application/json', 'public.json', 'text/plain', '*/*'],
     copyToCacheDirectory: true,
   });
   if (result.canceled || !result.assets?.length) return null;
-  return new File(result.assets[0].uri).text();
+  return new (fileSystem().File)(result.assets[0].uri).text();
 }

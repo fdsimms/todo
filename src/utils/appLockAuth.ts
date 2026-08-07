@@ -6,8 +6,25 @@
  */
 
 import { Platform } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { biometryLabel } from './appLock';
+
+/**
+ * Required where it's used rather than imported at the top, for the reason
+ * spelled out in secureApiKey.ts — and for a second one that only shows up on a
+ * device: `expo-local-authentication` resolves its native half with
+ * `requireNativeModule`, at *its* module scope, and that throws when the native
+ * half isn't in the binary. A static import here would hoist that throw into
+ * the app's bundle evaluation, where it is not a broken app lock but a broken
+ * app: the bundle never finishes, React never mounts, and the launch ends on a
+ * black screen with nothing to say for itself.
+ *
+ * Behind a function call, the same failure lands inside the try/catch of
+ * whichever export asked for it, and a device that can't authenticate reports
+ * itself 'unsupported' — which is already a state this file knows how to be in.
+ */
+function localAuth(): typeof import('expo-local-authentication') {
+  return require('expo-local-authentication');
+}
 
 /**
  * What the device can actually authenticate with:
@@ -31,9 +48,9 @@ export async function getAppLockSupport(): Promise<AppLockSupport> {
   const isIOS = Platform.OS === 'ios';
   try {
     const [hasHardware, types, level] = await Promise.all([
-      LocalAuthentication.hasHardwareAsync(),
-      LocalAuthentication.supportedAuthenticationTypesAsync(),
-      LocalAuthentication.getEnrolledLevelAsync(),
+      localAuth().hasHardwareAsync(),
+      localAuth().supportedAuthenticationTypesAsync(),
+      localAuth().getEnrolledLevelAsync(),
     ]);
     const label = biometryLabel(types, isIOS);
 
@@ -41,10 +58,10 @@ export async function getAppLockSupport(): Promise<AppLockSupport> {
     // enrolled *level* is what matters rather than hasHardware alone — a phone
     // with a Face ID sensor nobody has enrolled a face on can still be
     // unlocked, just by passcode.
-    if (level >= LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK) {
+    if (level >= localAuth().SecurityLevel.BIOMETRIC_WEAK) {
       return { capability: 'biometric', label };
     }
-    if (level === LocalAuthentication.SecurityLevel.SECRET) {
+    if (level === localAuth().SecurityLevel.SECRET) {
       return { capability: 'passcode', label };
     }
     return { capability: hasHardware ? 'none' : 'unsupported', label };
@@ -71,7 +88,7 @@ export async function authenticateForAppLock(promptMessage: string): Promise<Unl
   if (support.capability === 'none' || support.capability === 'unsupported') return 'unavailable';
 
   try {
-    const result = await LocalAuthentication.authenticateAsync({
+    const result = await localAuth().authenticateAsync({
       promptMessage,
       // Deliberately left at the default (false) so iOS offers the device
       // passcode after failed biometrics. That fallback is the only thing

@@ -1,6 +1,7 @@
 {
   "name": "dundundun",
   "version": "1.0.0",
+  "main": "index.js",
   "scripts": {
     "build:patchnotes": "node scripts/build-patch-notes.js",
     "postinstall": "patch-package && npm run build:patchnotes",

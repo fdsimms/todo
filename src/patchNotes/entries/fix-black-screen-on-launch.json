@@ -1,4 +1,4 @@
 {
-  "message": "Fixed the app opening to a black screen after the splash. A single failing startup step could take the whole app down with it — now it's logged and skipped, and anything else that goes wrong shows a message instead of nothing.",
+  "message": "Fixed the app opening to a black screen after the splash. An optional feature's missing system component could stop the whole app from loading — now it only disables that feature, and anything else that goes wrong at launch says so on screen instead of showing nothing.",
   "date": "2026-08-07"
 }
