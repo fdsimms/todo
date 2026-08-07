@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Alert, AppState, AppStateStatus } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { useTaskStore } from '../store/useTaskStore';
+import { isAppLocked } from '../store/useAppLockStore';
 import { haptics } from './haptics';
 import {
   createShakeState,
@@ -55,6 +56,10 @@ export function useShakeToUndo(): void {
         const now = Date.now();
         if (!feedShakeSample(shake, sample, now)) return;
         if (confirmOpenRef.current) return;
+
+        // The confirm names the action ("Undo \"Complete Pay rent\"?"), which is
+        // a task title on top of a lock screen. A locked app stays locked.
+        if (isAppLocked()) return;
 
         const { lastAction, undoLastAction } = useTaskStore.getState();
         if (!lastAction) return;

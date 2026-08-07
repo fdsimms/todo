@@ -42,6 +42,9 @@ import {
   type RemindersPermission,
 } from '../utils/remindersImportSync';
 import { findReminderList } from '../utils/remindersImport';
+import { APP_LOCK_GRACE_OPTIONS, graceLabel } from '../utils/appLock';
+import { authenticateForAppLock, getAppLockSupport, type AppLockSupport } from '../utils/appLockAuth';
+import { useAppLockStore } from '../store/useAppLockStore';
 import type { Calendar as ReminderList } from 'expo-calendar';
 import { useDemoStore } from '../store/useDemoStore';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -131,6 +134,8 @@ export function SettingsScreen() {
     dailyAgendaEnabled, setDailyAgendaEnabled,
     dailyAgendaTime, setDailyAgendaTime,
     anthropicApiKey, setAnthropicApiKey,
+    appLockEnabled, setAppLockEnabled,
+    appLockGraceSeconds, setAppLockGraceSeconds,
     vacationMode, setVacationMode,
     vacationStart,
     vacationEnd, setVacationEnd,
@@ -172,18 +177,28 @@ export function SettingsScreen() {
       .catch(() => setRemindersPermission(null));
   }, []);
 
+  // Third of the same shape: what the device can authenticate with changes in
+  // the system Settings app, which is exactly where the row below sends anyone
+  // who hasn't set Face ID up yet.
+  const [lockSupport, setLockSupport] = useState<AppLockSupport | null>(null);
+  const refreshLockSupport = React.useCallback(() => {
+    getAppLockSupport().then(setLockSupport).catch(() => setLockSupport(null));
+  }, []);
+
   useFocusEffect(
     React.useCallback(() => {
       refreshNotifPermission();
       refreshRemindersState();
+      refreshLockSupport();
       const sub = AppState.addEventListener('change', state => {
         if (state === 'active') {
           refreshNotifPermission();
           refreshRemindersState();
+          refreshLockSupport();
         }
       });
       return () => sub.remove();
-    }, [refreshNotifPermission, refreshRemindersState])
+    }, [refreshNotifPermission, refreshRemindersState, refreshLockSupport])
   );
 
   const askForNotifications = async () => {
@@ -474,6 +489,45 @@ export function SettingsScreen() {
     scheduleDailyAgenda(useTaskStore.getState().tasks);
   };
 
+  /**
+   * Turning the lock on authenticates first. Two reasons, and the second is the
+   * one that matters: it proves the prompt this device will show is one the
+   * person holding it can actually pass, *before* anything starts depending on
+   * that. Getting it wrong the other way round means a task list nobody can
+   * open, and there is no recovery path — no password, no account, no server.
+   *
+   * Turning it off doesn't re-authenticate: whoever is looking at this screen
+   * has already passed the lock to get here.
+   */
+  const onToggleAppLock = async (next: boolean) => {
+    if (!next) {
+      setAppLockEnabled(false);
+      return;
+    }
+
+    const support = await getAppLockSupport();
+    setLockSupport(support);
+    if (support.capability === 'none' || support.capability === 'unsupported') {
+      Alert.alert(
+        'Nothing to unlock with',
+        `Set up ${support.label} or a passcode for this device in the Settings app first — without one there'd be no way back into the app.`
+      );
+      return;
+    }
+
+    if ((await authenticateForAppLock('Turn on the app lock')) !== 'success') {
+      Alert.alert('Not turned on', 'The app lock is still off.');
+      return;
+    }
+
+    // Unlocked *first*: the lock screen is shown whenever the setting is on and
+    // this session hasn't authenticated, and the prompt just passed counts.
+    // Flipping the setting first would put the lock screen up on the way back
+    // from the prompt that turned it on.
+    useAppLockStore.getState().unlock();
+    setAppLockEnabled(true);
+  };
+
   const confirmResetStreaks = () => {
     Alert.alert(
       'Reset All Streaks',
@@ -488,7 +542,7 @@ export function SettingsScreen() {
   const confirmResetToDefaults = () => {
     Alert.alert(
       'Reset Settings to Defaults',
-      'This resets appearance, formatting, haptics, the daily agenda, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, and vacation mode are not affected.',
+      'This resets appearance, formatting, haptics, the daily agenda, day segments, active hours, and the time-limited tasks and auto-archive toggles back to their defaults. Your tasks, API key, app lock, and vacation mode are not affected.',
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: () => resetToDefaults() },
@@ -1255,6 +1309,84 @@ export function SettingsScreen() {
             </View>
           </View>
 
+          {/* Privacy */}
+          <View style={styles.section}>
+            <Text style={styles.sectionLabel}>Privacy</Text>
+            <View style={styles.card}>
+              <TouchableOpacity
+                style={[styles.row, appLockEnabled && { paddingBottom: spacing.xs }]}
+                onPress={() => onToggleAppLock(!appLockEnabled)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: appLockEnabled }}
+                accessibilityLabel={`Require ${lockSupport?.label ?? 'Face ID'} to open`}
+              >
+                <Ionicons
+                  name={appLockEnabled ? 'lock-closed-outline' : 'lock-open-outline'}
+                  size={18}
+                  color={appLockEnabled ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.rowContent}>
+                  <Text style={styles.rowLabel}>
+                    Require {lockSupport?.label ?? 'Face ID'} to open
+                  </Text>
+                  <Text style={styles.rowHint}>
+                    {lockSupport && lockSupport.capability !== 'biometric' && !appLockEnabled
+                      ? lockSupport.capability === 'passcode'
+                        ? `No ${lockSupport.label} enrolled — the lock would ask for this device's passcode`
+                        : `Set up ${lockSupport.label} or a passcode in the Settings app first`
+                      : appLockEnabled
+                        ? 'On — asks when you open the app, and when you come back to it'
+                        : 'Off — anyone holding an unlocked phone can read your tasks'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, appLockEnabled && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, appLockEnabled && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
+              {appLockEnabled && (
+                <>
+                  <View style={styles.sep} />
+                  <View style={[styles.row, { paddingBottom: spacing.xs }]}>
+                    <Ionicons name="time-outline" size={18} color={colors.textSecondary} />
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowLabel}>Lock again after</Text>
+                      <Text style={styles.rowHint}>
+                        {appLockGraceSeconds === 0
+                          ? 'Every time you leave the app, however briefly'
+                          : `Leaving for less than ${graceLabel(appLockGraceSeconds).toLowerCase()} comes straight back in`}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={[styles.themeRow, { paddingTop: 0 }]}>
+                    {APP_LOCK_GRACE_OPTIONS.map(opt => (
+                      <TouchableOpacity
+                        key={opt.label}
+                        style={[styles.themeBtn, appLockGraceSeconds === opt.value && styles.themeBtnActive]}
+                        onPress={() => setAppLockGraceSeconds(opt.value)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: appLockGraceSeconds === opt.value }}
+                        accessibilityLabel={`Lock again after ${opt.label}`}
+                      >
+                        <Text
+                          style={[
+                            styles.themeBtnText,
+                            appLockGraceSeconds === opt.value && styles.themeBtnTextActive,
+                          ]}
+                        >
+                          {opt.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
+            <Text style={styles.sectionFooter}>
+              Everything the app knows sits on this device, so an unlocked phone is the only thing between someone and your whole task list. This puts {lockSupport?.label ?? 'Face ID'} in front of it — with your device passcode as the fallback, the same as anywhere else. The grace period is there so switching to Messages and back doesn't ask again.
+            </Text>
+          </View>
+
           {/* AI Suggestions */}
           <View style={styles.section}>
             <Text style={styles.sectionLabel}>AI Suggestions</Text>
@@ -1283,7 +1415,7 @@ export function SettingsScreen() {
               </View>
             </View>
             <Text style={styles.sectionFooter}>
-              Get a key at console.anthropic.com. The key stays on this device; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic.
+              Get a key at console.anthropic.com. The key is kept in this device's keychain and never leaves it; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic.
             </Text>
           </View>
 
@@ -1486,7 +1618,7 @@ export function SettingsScreen() {
               </TouchableOpacity>
             </View>
             <Text style={styles.sectionFooter}>
-              Asks for confirmation first. Your tasks, API key, and vacation mode are not affected.
+              Asks for confirmation first. Your tasks, API key, app lock, and vacation mode are not affected.
             </Text>
           </View>
         </ScrollView>
