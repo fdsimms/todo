@@ -1407,7 +1407,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         )}
         <View style={styles.sep} />
         <EditorRow
-          icon="hourglass-outline"
+          icon="timer-outline"
           label="Time window"
           hint="Only active for part of the day, then expires"
           value={timeWindowSummary}
@@ -1558,7 +1558,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         <View style={styles.sep} />
         <View style={styles.cardSection}>
           <View style={styles.chainHeader}>
-            <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+            <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
             <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
             <TouchableOpacity
               style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
@@ -2023,7 +2023,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               disabled={!title.trim()}
               hitSlop={8}
             >
-              <Ionicons name="stopwatch-outline" size={12} color={colors.purple} />
+              <Ionicons name="sparkles-outline" size={12} color={colors.purple} />
               <Text style={styles.suggestBtnText}>Estimate</Text>
             </TouchableOpacity>
           )}

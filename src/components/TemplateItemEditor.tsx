@@ -372,7 +372,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         )}
         <View style={styles.sep} />
         <EditorRow
-          icon="hourglass-outline"
+          icon="timer-outline"
           label="Time window"
           hint="Only active for part of the day, then expires"
           value={timeWindowSummary}
@@ -558,7 +558,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       <View style={styles.sectionCard}>
         <View style={styles.cardSection}>
           <View style={styles.chainHeader}>
-            <Ionicons name="link" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
+            <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
             <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
             <TouchableOpacity
               style={[styles.toggle, chainEnabled && styles.toggleOn]}

@@ -406,7 +406,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
               accessibilityState={{ checked: excludeFromPins }}
               accessibilityLabel="Skip in suggested pins"
             >
-              <Ionicons name="sparkles-outline" size={18} color={excludeFromPins ? colors.accent : colors.textSecondary} />
+              <Ionicons name="color-wand-outline" size={18} color={excludeFromPins ? colors.accent : colors.textSecondary} />
               <View style={styles.optionContent}>
                 <Text style={styles.optionLabel}>Skip in suggested pins</Text>
                 <Text style={styles.optionHint}>Keeps these out of suggested pins — you can still pin them by hand</Text>

@@ -242,7 +242,7 @@ export function DataResetSettings() {
         footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them — permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
       >
         <SettingsRow
-          icon="hourglass-outline"
+          icon="book-outline"
           iconColor={completedRetentionDays === null ? undefined : colors.accent}
           label="Keep completed tasks for"
           hint={completedRetentionDays === null
@@ -264,7 +264,7 @@ export function DataResetSettings() {
         footer="Every screen — Today, Search, Projects, Stats — switches to a sample list you can edit freely. Nothing you do while it's on touches your real tasks, and turning it off discards the sample list and brings yours back."
       >
         <SettingsRow
-          icon={demoActive ? 'sparkles' : 'sparkles-outline'}
+          icon={demoActive ? 'flask' : 'flask-outline'}
           iconColor={demoActive ? colors.accent : undefined}
           label="Demo mode"
           hint={demoActive

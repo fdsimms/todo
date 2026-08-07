@@ -1055,7 +1055,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {chainStep && (
               <View style={styles.chainBadge}>
-                <Ionicons name="link" size={9} color={colors.accent} />
+                <Ionicons name="git-commit" size={9} color={colors.accent} />
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
@@ -1427,7 +1427,7 @@ export const TaskItem = React.memo(function TaskItem({
                   styles.recurrenceRow,
                   (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
                 ]}>
-                  <Ionicons name="link" size={12} color={colors.textTertiary} />
+                  <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
                   <Text style={styles.expandMeta} numberOfLines={1}>
                     Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
                     {visibleItems.map((item, i) => {
@@ -1473,7 +1473,7 @@ export const TaskItem = React.memo(function TaskItem({
                 styles.recurrenceRow,
                 (hasExpandContent || timed) && styles.sectionDivider,
               ]}>
-                <Ionicons name="stopwatch-outline" size={12} color={colors.textTertiary} />
+                <Ionicons name="timer-outline" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>Timed · {formatDuration(task.actualMinutes)}</Text>
               </View>
             )}
@@ -1551,7 +1551,7 @@ export const TaskItem = React.memo(function TaskItem({
                       hitSlop={8}
                       accessibilityLabel={`Start timer for ${task.title}`}
                     >
-                      <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textSecondary} />
+                      <Ionicons name="timer-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                     )
                   )}
@@ -1598,7 +1598,7 @@ export const TaskItem = React.memo(function TaskItem({
                     hitSlop={8}
                     accessibilityLabel="Duplicate task"
                   >
-                    <Ionicons name="copy-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
