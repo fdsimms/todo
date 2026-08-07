@@ -92,6 +92,8 @@ interface ProjectStore {
   initialize: () => void;
   createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
   updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential'>>) => void;
+  /** Filing several projects at once from the Projects screen's bulk bar. */
+  bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
   reorderProjectsWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
@@ -144,6 +146,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const updated = { ...project, ...patch };
     dbUpdateProject(updated);
     set(s => ({ projects: s.projects.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  // One pass over the list rather than a loop of updateProject, so a bulk move
+  // is a single store update instead of one re-render per project.
+  bulkSetProjectCategory(ids, category) {
+    const idSet = new Set(ids);
+    const touched: Project[] = [];
+    const next = get().projects.map(p => {
+      if (!idSet.has(p.id) || p.category === category) return p;
+      const updated = { ...p, category };
+      touched.push(updated);
+      return updated;
+    });
+    if (touched.length === 0) return;
+    touched.forEach(p => dbUpdateProject(p));
+    set(() => ({ projects: next }));
   },
 
   getProjectById(id) {

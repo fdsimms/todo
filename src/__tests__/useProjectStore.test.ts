@@ -321,6 +321,33 @@ describe('createProject / updateProject / getProjectById', () => {
   });
 });
 
+describe('bulkSetProjectCategory', () => {
+  it('files every named project, leaving the rest alone', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: null }),
+        makeProject({ id: 'p2', category: 'Home' }),
+        makeProject({ id: 'p3', category: null }),
+      ],
+    });
+    useProjectStore.getState().bulkSetProjectCategory(['p1', 'p2'], 'Work');
+    expect(useProjectStore.getState().projects.map(p => p.category)).toEqual(['Work', 'Work', null]);
+    expect(dbUpdateProject).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears the category when passed null', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Work' })] });
+    useProjectStore.getState().bulkSetProjectCategory(['p1'], null);
+    expect(useProjectStore.getState().getProjectById('p1')!.category).toBeNull();
+  });
+
+  it('writes nothing when every named project already has that category', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Work' })] });
+    useProjectStore.getState().bulkSetProjectCategory(['p1', 'missing'], 'Work');
+    expect(dbUpdateProject).not.toHaveBeenCalled();
+  });
+});
+
 describe('applyProjectArchived', () => {
   it('archives a project, stamping archivedAt', () => {
     useProjectStore.setState({ projects: [makeProject({ id: 'p1', archived: false })] });

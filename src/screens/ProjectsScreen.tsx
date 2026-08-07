@@ -1,5 +1,6 @@
 import React, { useRef, useState, useMemo } from 'react';
 import {
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -35,6 +36,8 @@ import {
 } from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
+import { ListBulkBar } from '../components/ListBulkBar';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -78,12 +81,29 @@ export function ProjectsScreen() {
   const updateProject = useProjectStore(s => s.updateProject);
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
+  const bulkSetProjectCategory = useProjectStore(s => s.bulkSetProjectCategory);
+  const bulkDeleteProjects = useTaskStore(s => s.bulkDeleteProjects);
+  const bulkSetProjectArchived = useTaskStore(s => s.bulkSetProjectArchived);
   const allTasks = useTaskStore(s => s.tasks);
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
+  const addProjectCategory = useProjectCategoryStore(s => s.addCategory);
 
   const [showArchived, setShowArchived] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+
+  // Entered from the header, like Templates: a row's tap opens the project and
+  // its long press starts a reorder drag, so neither is free to select with.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
   // Set while editingProject is one freshly created from quick add's "More
   // details" — discarded on close if it was never given a name.
   const newProjectIdRef = useRef<string | null>(null);
@@ -100,6 +120,17 @@ export function ProjectsScreen() {
   const projectListItems = useMemo(
     () => groupProjectsByCategory(visibleProjects, projectCategoryOrder),
     [visibleProjects, projectCategoryOrder]
+  );
+  // What the bulk bar offers to file into: the registered categories, plus any
+  // name a project still carries that was never registered — the list shows a
+  // section for those, so the picker has to name them too or moving a project
+  // back into one would mean retyping it.
+  const bulkCategoryOptions = useMemo(
+    () => Array.from(new Set([
+      ...projectCategoryOrder,
+      ...projects.map(p => p.category).filter((c): c is string => !!c).sort(),
+    ])),
+    [projects, projectCategoryOrder]
   );
 
   // ——— Dragging the add button into the list ———————————————————————————
@@ -248,6 +279,50 @@ export function ProjectsScreen() {
     setEditingProject(null);
   };
 
+  // Extra bottom padding so the last rows aren't hidden behind the floating
+  // bulk bar, same as the other bulk-selecting screens.
+  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+
+  const handleBulkSetCategory = (category: string | null) => {
+    animateLayout();
+    bulkSetProjectCategory(Array.from(selectedIds), category);
+    exitSelection();
+  };
+
+  // The list is showing exactly one of archived/active, so the action can only
+  // mean the other one.
+  const handleBulkArchive = () => {
+    animateLayout();
+    bulkSetProjectArchived(Array.from(selectedIds), !showArchived);
+    exitSelection();
+  };
+
+  // Same two-way choice the single-project delete offers, since it's the same
+  // question: the tasks in a project outlive it by default.
+  const handleBulkDelete = () => {
+    const ids = Array.from(selectedIds);
+    const plural = ids.length === 1 ? 'project' : 'projects';
+    const deleteAndExit = (cascade: boolean) => {
+      animateLayout();
+      bulkDeleteProjects(ids, { cascade });
+      exitSelection();
+    };
+    haptics.warning();
+    Alert.alert(
+      `Delete ${ids.length} ${plural}?`,
+      `Their tasks can stay, unfiled, or go with them. You can undo this by shaking your phone right after.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: `Delete ${ids.length === 1 ? 'Project' : 'Projects'} Only`, onPress: () => deleteAndExit(false) },
+        {
+          text: `Delete ${ids.length === 1 ? 'Project' : 'Projects'} and All Their Tasks`,
+          style: 'destructive',
+          onPress: () => deleteAndExit(true),
+        },
+      ],
+    );
+  };
+
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
       return (
@@ -260,29 +335,57 @@ export function ProjectsScreen() {
     const progress = projectProgress(project.id, allTasks);
     const pastWindow = isProjectPastWindow(project, progress);
     const rangeLabel = dateRangeLabel(project);
+    const selected = selectedIds.has(project.id);
     return (
       <TouchableOpacity
-        style={[styles.projectRow, isActive && styles.projectRowActive]}
-        onPress={() => (navigation as any).navigate('ProjectDetail', { projectId: project.id })}
-        onLongPress={drag}
+        style={[
+          styles.projectRow,
+          isActive && styles.projectRowActive,
+          selectionMode && selected && styles.projectRowSelected,
+        ]}
+        onPress={() =>
+          selectionMode
+            ? toggleSelection(project.id)
+            : (navigation as any).navigate('ProjectDetail', { projectId: project.id })
+        }
+        // Reordering is off while selecting — the long press that would start a
+        // drag is how a mis-tapped row gets picked up instead.
+        onLongPress={selectionMode ? undefined : drag}
         delayLongPress={interaction.delayLongPress}
         activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
+        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+        accessibilityState={selectionMode ? { checked: selected } : undefined}
         accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
-        accessibilityHint="Double tap to view tasks in this project. Long press to reorder."
+        accessibilityHint={
+          selectionMode
+            ? 'Double tap to select project'
+            : 'Double tap to view tasks in this project. Long press to reorder.'
+        }
       >
-        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+        {/* The checkbox takes the drag handle's place: it's the same 18pt slot,
+            and reordering is off for as long as it's showing anyway. */}
+        {selectionMode ? (
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={18}
+            color={selected ? colors.accent : colors.textTertiary}
+          />
+        ) : (
+          <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+        )}
         <View style={styles.projectInfo}>
           <View style={styles.projectTitleRow}>
             <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
-            <TouchableOpacity
-              onPress={() => setEditingProject(project)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Edit ${project.title}`}
-            >
-              <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-            </TouchableOpacity>
+            {!selectionMode && (
+              <TouchableOpacity
+                onPress={() => setEditingProject(project)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Edit ${project.title}`}
+              >
+                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            )}
           </View>
           {progress.total > 0 && (
             <View style={styles.progressRow}>
@@ -307,10 +410,19 @@ export function ProjectsScreen() {
       <ScreenHeader
         title="Projects"
         actions={[
+          ...(visibleProjects.length > 0 ? [{
+            icon: 'checkmark-circle-outline' as const,
+            onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+            active: selectionMode,
+            accessibilityLabel: selectionMode ? 'Done selecting' : 'Select projects',
+          }] : []),
           {
+            // Off while selecting: the two lists are separate pools, and a
+            // selection made in one has nothing to act on in the other.
             icon: 'archive-outline',
             onPress: () => setShowArchived(v => !v),
             active: showArchived,
+            disabled: selectionMode,
             accessibilityLabel: showArchived ? 'Show active projects' : 'Show archived projects',
           },
         ]}
@@ -340,7 +452,9 @@ export function ProjectsScreen() {
           scrollEnabled={!fabDragging}
           scrollControlRef={scrollControl}
           contentContainerStyle={styles.list}
-          ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+          ListFooterComponent={
+            <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
+          }
           placeholderStyle={styles.dropSlot}
           onHoverChange={haptics.dragTick}
           onReorder={reordered => {
@@ -361,7 +475,9 @@ export function ProjectsScreen() {
       )}
       </FabDropZoneProvider>
 
-      {!showArchived && (
+      {/* The bulk bar sits where the button does, and starting a project isn't
+          something you're doing mid-selection anyway. */}
+      {!showArchived && !selectionMode && (
         <AddProjectFabWithDropLabel
           channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
@@ -369,6 +485,35 @@ export function ProjectsScreen() {
           bottom={insets.bottom + tabBarHeight + spacing.md}
           drag={fabDrag}
           dragHint="Drag onto the list to add a project there, or back to the button to cancel"
+        />
+      )}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          // Counted against the list on screen: with the archived view showing,
+          // "Select All" can only mean the archived projects it left.
+          totalCount={visibleProjects.length}
+          category={{
+            title: 'Move to Category',
+            options: bulkCategoryOptions,
+            onSet: handleBulkSetCategory,
+            onCreate: name => addProjectCategory(name),
+          }}
+          actions={[
+            {
+              key: 'archive',
+              icon: showArchived ? 'arrow-undo' : 'archive',
+              label: showArchived ? 'Restore' : 'Archive',
+              onPress: handleBulkArchive,
+            },
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+          ]}
+          onSelectAll={() => selectAll(visibleProjects.map(p => p.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
         />
       )}
 
@@ -425,6 +570,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   projectRowActive: {
     backgroundColor: colors.bgTertiary,
+  },
+  projectRowSelected: {
+    backgroundColor: colors.accent + '1A',
   },
   dropSlot: {
     marginHorizontal: spacing.md,

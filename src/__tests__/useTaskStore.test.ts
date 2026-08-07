@@ -4383,6 +4383,96 @@ describe('deleteProject', () => {
   });
 });
 
+// ─── bulkDeleteProjects ─────────────────────────────────────────────────────
+
+describe('bulkDeleteProjects', () => {
+  it('deletes every selected project, unfiling their tasks (cascade: false)', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' }), makeProject({ id: 'p3' })],
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p2' })],
+    });
+    useTaskStore.getState().bulkDeleteProjects(['p1', 'p2'], { cascade: false });
+    expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['p3']);
+    expect(useTaskStore.getState().tasks.every(t => t.projectId === null)).toBe(true);
+  });
+
+  it('deletes member tasks too (cascade: true)', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: 'p2' }),
+        makeTask({ id: 'keep', projectId: null }),
+      ],
+    });
+    useTaskStore.getState().bulkDeleteProjects(['p1', 'p2'], { cascade: true });
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['keep']);
+  });
+
+  // The point of the action: one undo entry for the batch, not one per project
+  // with only the last one reachable.
+  it('queues a single undo that brings every project back', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })], lastAction: null });
+    useTaskStore.getState().bulkDeleteProjects(['p1', 'p2'], { cascade: false });
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 projects deleted');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().projects.map(p => p.id).sort()).toEqual(['p1', 'p2']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
+  });
+
+  it('ignores unknown ids rather than banking the previous action as an undo', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskStore.setState({ tasks: [], lastAction: null });
+    useTaskStore.getState().bulkDeleteProjects(['missing'], { cascade: false });
+    expect(useProjectStore.getState().projects).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── bulkSetProjectArchived ─────────────────────────────────────────────────
+
+describe('bulkSetProjectArchived', () => {
+  it('archives every selected project under one undo entry', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' }), makeProject({ id: 'p2' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true);
+    expect(useProjectStore.getState().projects.every(p => p.archived)).toBe(true);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 projects archived');
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().projects.every(p => !p.archived)).toBe(true);
+  });
+
+  it('undoing an unarchive gives each project its original archivedAt back', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' }),
+        makeProject({ id: 'p2', archived: true, archivedAt: '2025-02-02T00:00:00.000Z' }),
+      ],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], false);
+    useTaskStore.getState().undoLastAction();
+    expect(useProjectStore.getState().getProjectById('p1')!.archivedAt).toBe('2025-01-01T00:00:00.000Z');
+    expect(useProjectStore.getState().getProjectById('p2')!.archivedAt).toBe('2025-02-02T00:00:00.000Z');
+  });
+
+  it('counts only the projects that actually changed, and no-ops when none do', () => {
+    useProjectStore.setState({
+      projects: [makeProject({ id: 'p1', archived: true }), makeProject({ id: 'p2' })],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true);
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 project archived');
+
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkSetProjectArchived(['p1', 'p2'], true);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
 // ─── deleteTemplate ─────────────────────────────────────────────────────────
 
 describe('deleteTemplate', () => {
@@ -4403,6 +4493,37 @@ describe('deleteTemplate', () => {
   it('is a no-op for an unknown id', () => {
     useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1' })] });
     useTaskStore.getState().deleteTemplate('missing');
+    expect(useTemplateStore.getState().templates).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── bulkDeleteTemplates ────────────────────────────────────────────────────
+
+describe('bulkDeleteTemplates', () => {
+  it('removes every selected template and leaves the rest', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ id: 'tpl-1' }), makeTemplate({ id: 'tpl-2' }), makeTemplate({ id: 'tpl-3' })],
+    });
+    useTaskStore.getState().bulkDeleteTemplates(['tpl-1', 'tpl-3']);
+    expect(useTemplateStore.getState().templates.map(t => t.id)).toEqual(['tpl-2']);
+  });
+
+  it('queues a single undo that restores all of them', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ id: 'tpl-1', name: 'Packing List' }), makeTemplate({ id: 'tpl-2', name: 'Race Day' })],
+    });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkDeleteTemplates(['tpl-1', 'tpl-2']);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 templates deleted');
+    useTaskStore.getState().undoLastAction();
+    expect(useTemplateStore.getState().templates.map(t => t.name).sort()).toEqual(['Packing List', 'Race Day']);
+  });
+
+  it('leaves no undo entry when nothing matched', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({ id: 'tpl-1' })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkDeleteTemplates(['missing']);
     expect(useTemplateStore.getState().templates).toHaveLength(1);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
