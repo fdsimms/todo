@@ -97,6 +97,34 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     onClose();
   };
 
+  /**
+   * The catalog's only per-item delete. The pruner beside it is a heuristic
+   * sweep — never bought, months stale — and it can't reach the thing you
+   * bought twice in March and never want to see suggested again. Same
+   * selection the Add button uses, so a clean-up is the gesture you already
+   * know with a different verb.
+   */
+  const confirmForget = () => {
+    const names = items.filter(i => selected.has(i.id)).map(i => i.name);
+    if (names.length === 0) return;
+    Alert.alert(
+      `Forget ${names.length} ${names.length === 1 ? 'item' : 'items'}?`,
+      `${names.slice(0, 6).join(', ')}${names.length > 6 ? '…' : ''}\n\nThis removes them from your catalog along with their purchase history, and can’t be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Forget',
+          style: 'destructive',
+          onPress: () => {
+            deleteItems([...selected]);
+            setSelected(new Set());
+            haptics.warning();
+          },
+        },
+      ]
+    );
+  };
+
   const confirmPrune = () => {
     Alert.alert(
       `Forget ${pruneable.length} unused ${pruneable.length === 1 ? 'item' : 'items'}?`,
@@ -184,6 +212,22 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
           />
         </View>
 
+        {/* Directly under the search rather than in the footer: a catalog is
+            forty rows deep, and a destructive action you have to scroll to the
+            bottom to find isn't one anybody uses. */}
+        {selected.size > 0 && (
+          <View style={styles.selectionBar}>
+            <Text style={styles.selectionCount}>{selected.size} selected</Text>
+            <InlineAction
+              label="Forget"
+              icon="trash-outline"
+              tint={colors.red}
+              onPress={confirmForget}
+              accessibilityLabel={`Forget ${selected.size} selected ${selected.size === 1 ? 'item' : 'items'}`}
+            />
+          </View>
+        )}
+
         <FlatList
           data={rows}
           keyExtractor={i => i.id}
@@ -195,7 +239,9 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             // An offer, never a sweep: there's no undo anywhere in groceries,
             // so an automatic delete would be unrecoverable in a way the task
             // side's retention purge isn't.
-            !query.trim() && pruneable.length > 0 ? (
+            // Hidden while selecting: one destructive action on screen at a
+            // time, and the selection bar's is the one being aimed.
+            !query.trim() && selected.size === 0 && pruneable.length > 0 ? (
               <View style={styles.pruneWrap}>
                 <InlineAction
                   label={`Forget ${pruneable.length} unused`}
@@ -255,6 +301,18 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       height: 40,
       padding: 0,
+    },
+    selectionBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.md,
+    },
+    selectionCount: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.textSecondary,
     },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
     row: {

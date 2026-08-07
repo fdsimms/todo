@@ -35,6 +35,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
+    inCatalog: true,
     sortOrder: seq,
     favorite: false,
     purchaseCount: 0,
@@ -110,6 +111,16 @@ describe('addByName', () => {
     expect(item.onList).toBe(true);
     expect(item.checked).toBe(false);
     expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  // A name typed once is on the list, not in the catalog — see removeFromList.
+  it('starts a brand-new name provisional', () => {
+    expect(useGroceryStore.getState().addByName('nduja').inCatalog).toBe(false);
+  });
+
+  it('leaves a catalog row in the catalog when it comes back on the list', () => {
+    seed([makeItem({ name: 'Milk', onList: false, inCatalog: true })]);
+    expect(useGroceryStore.getState().addByName('milk').inCatalog).toBe(true);
   });
 
   it('files an unrecognised item under Other rather than leaving it aisle-less', () => {
@@ -284,6 +295,16 @@ describe('finishShopping', () => {
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
   });
 
+  it('promotes a provisional row that was actually bought', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, checked: true, inCatalog: false });
+    seed([nduja]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([nduja.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+  });
+
   it('is a no-op with an empty trolley', () => {
     seed([makeItem({ name: 'Milk', onList: true })]);
     expect(useGroceryStore.getState().finishShopping()).toBe(0);
@@ -304,6 +325,19 @@ describe('clearList', () => {
     expect(after.onList).toBe(false);
     expect(after.purchaseCount).toBe(3);
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+  });
+
+  // The confirm says nothing is deleted, so clearing parks a provisional row
+  // rather than forgetting it — and that keeps !onList ⇒ inCatalog true.
+  it('parks a provisional row in the catalog rather than deleting it', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([nduja.id]);
+
+    useGroceryStore.getState().clearList();
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
   });
 });
 
@@ -354,6 +388,43 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().items).toHaveLength(1);
     expect(useGroceryStore.getState().items[0].onList).toBe(false);
     expect(useGroceryStore.getState().items[0].checked).toBe(false);
+  });
+
+  it('removeFromList deletes a provisional row instead of parking it', () => {
+    // Typed once, never bought, never starred: it only existed as this line of
+    // the list, so leaving it behind is what fills the catalog with typos.
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+
+    useGroceryStore.getState().removeFromList(nduja.id);
+
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(nduja.id);
+    expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('removeFromList keeps a row that was in the catalog before this trip', () => {
+    // The whole point of the distinction: "not this week" must not forget
+    // something you buy most weeks.
+    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true, purchaseCount: 9 });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromList(milk.id);
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items[0].purchaseCount).toBe(9);
+  });
+
+  it('starring promotes a provisional row, unstarring does not demote it', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([nduja]);
+
+    useGroceryStore.getState().toggleFavorite(nduja.id);
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+
+    // A mis-tap on a star must not arm a delete.
+    useGroceryStore.getState().toggleFavorite(nduja.id);
+    expect(useGroceryStore.getState().items[0].favorite).toBe(false);
+    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
   });
 
   it('addExistingMany only touches rows that are off the list', () => {
