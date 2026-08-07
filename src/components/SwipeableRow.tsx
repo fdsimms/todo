@@ -86,13 +86,24 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const ref = useRef<Swipeable>(null);
+  // Whether this gesture has already run its action — see the note on
+  // onSwipeableWillOpen below. Cleared at the start of every new drag rather
+  // than on close, so an interrupted close animation can't leave the row's
+  // swipe permanently dead.
+  const committed = useRef(false);
+
+  const commit = (action: () => void) => {
+    if (committed.current) return;
+    committed.current = true;
+    action();
+  };
 
   // No haptic here: both routes to an action (a full swipe, or swiping the
   // panel open and tapping it) pass through onSwipeableWillOpen, which already
   // ticked. Firing again on commit stacks two impacts a few frames apart.
   const fire = (action: () => void) => {
     ref.current?.close();
-    action();
+    commit(action);
   };
 
   // Right-hand panel, revealed by swiping left.
@@ -132,14 +143,28 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
         overshootRight={false}
         overshootLeft={false}
         enabled={enabled}
-        onSwipeableWillOpen={() => haptics.impactMedium()}
+        onSwipeableOpenStartDrag={() => { committed.current = false; }}
         // A full swipe commits, rather than parking the panel open and waiting
-        // for a tap on it. `direction` names the side that opened, so 'right'
-        // is the right-hand panel — i.e. the user swiped left.
-        onSwipeableOpen={direction => {
-          if (direction === 'right') { if (selectAction) fire(selectAction.onSelect); }
-          else if (whenAction) fire(whenAction.onAction);
+        // for a tap on it — and it commits **here**, on the frame the row
+        // starts animating open, not in onSwipeableOpen when that animation
+        // settles. `Swipeable` springs the row the rest of the way to the
+        // panel's 80pt and only calls onSwipeableOpen from the spring's
+        // completion callback, which — critically damped, driven natively, so
+        // the callback also costs a hop back to JS — lands roughly half a
+        // second after the finger lifts. Committing there meant the haptic
+        // fired on release and the reschedule sheet appeared a beat later,
+        // with nothing in between to explain the gap. The animation itself is
+        // unchanged: the row still slides fully open and is still closed by
+        // onSwipeableOpen below. Only the action moved earlier.
+        //
+        // `direction` names the side that opened, so 'right' is the right-hand
+        // panel — i.e. the user swiped left.
+        onSwipeableWillOpen={direction => {
+          haptics.impactMedium();
+          if (direction === 'right') { if (selectAction) commit(selectAction.onSelect); }
+          else if (whenAction) commit(whenAction.onAction);
         }}
+        onSwipeableOpen={() => ref.current?.close()}
       >
         {children}
       </Swipeable>

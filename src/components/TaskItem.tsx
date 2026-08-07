@@ -1802,9 +1802,14 @@ export const TaskItem = React.memo(function TaskItem({
         </Animated.View>
       </Reanimated.View>
 
-      {!selectionMode && (
+      {/* Mounted only while open. `Modal` renders nothing when it isn't
+          visible, so this costs no extra work on the way in — but an unopened
+          WhenPicker still ran its hooks, and one of them subscribes to the
+          whole task list for the Suggest button. A screenful of rows meant a
+          screenful of those re-rendering on every store write. */}
+      {!selectionMode && showWhenPicker && (
         <WhenPicker
-          visible={showWhenPicker}
+          visible
           value={task.dueDate ? new Date(task.dueDate) : null}
           timeSegments={task.timeSegments}
           taskTitle={task.title}
