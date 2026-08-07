@@ -1659,7 +1659,10 @@ export const TaskItem = React.memo(function TaskItem({
               the notch ate half the bar's height. The same clip pinched the
               bar to nothing where an expanded row meets its panel, breaking
               the strip the two halves are meant to form. cardClip above
-              rounds the card at the one place its corners are real. */}
+              rounds the card at the one place its corners are real.
+              SwipeableRow's own clip defaulted to the same radius and kept
+              that break alive after this wrapper gave its up; it's
+              overflow-only now, and its radius comes from `style`. */}
           {selectionMode ? (
             <View>
               {rowBody}
@@ -1811,13 +1814,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     bottom: 0,
     width: 3,
   },
+  // Same treatment as priorityBar above, and deliberately identical: the two
+  // halves only read as one strip if they end the same way. It used to inset
+  // itself (bottom: 4 + a 2pt corner) to stay clear of the card's rounded
+  // bottom, which left the strip stopping short of the corner the row's half
+  // runs straight into. cardClip rounds this end off exactly like it rounds a
+  // collapsed row's, so the inset was solving a problem the shared clip
+  // already solves.
   priorityBarPanel: {
     position: 'absolute',
     left: 0,
     top: 0,
-    bottom: 4,
+    bottom: 0,
     width: 3,
-    borderBottomRightRadius: 2,
   },
   circleWrapper: {
     marginLeft: spacing.md,

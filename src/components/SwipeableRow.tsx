@@ -3,7 +3,7 @@ import { StyleSheet, TouchableOpacity, View, type StyleProp, type ViewStyle } fr
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useColors } from '../theme/ThemeContext';
-import { radius, iconSize, type Colors } from '../theme';
+import { iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 /** Every revealed panel is this wide, on every screen. */
@@ -72,6 +72,15 @@ interface Props {
  *   3pt wide, so a 12pt radius tapered it into a spike that looked torn out of
  *   the orange. `style` is the only place the card's radius belongs; it rounds
  *   the row and its panels together as one silhouette.
+ * - **…and neither does this component**, for the same reason one step further
+ *   out. `clip` is `overflow: hidden` only. It used to default to `radius.md`,
+ *   which re-imposed the very clip the rule above exists to prevent: an
+ *   expanded TaskItem's row is only the *top* of its card, so rounding the
+ *   bottom of the row cut the priority bar off ~4-12pt early and left a
+ *   tapered break where the row meets its expanded panel. Every caller either
+ *   passes a radius through `style` or sits inside its own rounded clip, so
+ *   the default was never doing work — it was only ever able to round a seam
+ *   that isn't a corner.
  */
 export function SwipeableRow({ selectAction, whenAction, enabled = true, style, children }: Props) {
   const colors = useColors();
@@ -140,7 +149,6 @@ export function SwipeableRow({ selectAction, whenAction, enabled = true, style, 
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   clip: {
-    borderRadius: radius.md,
     overflow: 'hidden',
   },
   selectAction: {
