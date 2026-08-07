@@ -23,6 +23,7 @@ import { tagColor } from '../utils/tagColor';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
 import { format } from 'date-fns/format';
@@ -212,26 +213,13 @@ export function SearchScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Search" />
 
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={16} color={colors.textTertiary} style={styles.searchIcon} />
-        <TextInput
-          ref={inputRef}
-          style={styles.searchInput}
-          placeholder="Search todos…"
-          placeholderTextColor={colors.textTertiary}
-          value={query}
-          onChangeText={setQuery}
-          autoCorrect={false}
-          autoCapitalize="none"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-        />
-        {query.length > 0 && Platform.OS !== 'ios' && (
-          <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
-            <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-          </TouchableOpacity>
-        )}
-      </View>
+      <SearchField
+        ref={inputRef}
+        style={styles.searchBar}
+        placeholder="Search todos…"
+        value={query}
+        onChangeText={setQuery}
+      />
 
       {showEmpty ? (
         <EmptyState key="no-results" icon="search-outline" title="No results" subtitle={`No todos match "${query}"`} bottomOffset={tabBarHeight} />
@@ -262,26 +250,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-    gap: spacing.xs,
-  },
-  searchIcon: { marginRight: 2 },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    // No lineHeight — see the note on TaskItem.titleInput. It was equal to
-    // `height` here, which pinned the glyphs to the very bottom of the box.
-    height: 20,
-    padding: 0,
-    textAlignVertical: 'center',
   },
 
   sectionHeader: {

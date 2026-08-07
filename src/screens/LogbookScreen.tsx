@@ -20,6 +20,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { LogbookBulkBar } from '../components/LogbookBulkBar';
@@ -252,25 +253,12 @@ export function LogbookScreen() {
 
       {completedTasks.length > 0 && (
         <>
-          <View style={styles.searchBar}>
-            <Ionicons name="search" size={16} color={colors.textTertiary} style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Search logbook…"
-              placeholderTextColor={colors.textTertiary}
-              value={query}
-              onChangeText={setQuery}
-              autoCorrect={false}
-              autoCapitalize="none"
-              returnKeyType="search"
-              clearButtonMode="while-editing"
-            />
-            {query.length > 0 && Platform.OS !== 'ios' && (
-              <TouchableOpacity onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Clear search">
-                <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          <SearchField
+            style={styles.searchBar}
+            placeholder="Search logbook…"
+            value={query}
+            onChangeText={setQuery}
+          />
           {(categoryChipItems.length > 0 || tagChipItems.length > 0) && (
             <ScrollView
               horizontal
@@ -620,17 +608,9 @@ function ActiveFilterPill({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: Platform.OS === 'ios' ? 10 : 4,
-    gap: spacing.xs,
   },
-  searchIcon: { marginRight: 2 },
   filterBarScroll: { flexGrow: 0, flexShrink: 0 },
   filterBar: {
     flexDirection: 'row',
@@ -667,14 +647,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
     flexShrink: 1,
-  },
-  searchInput: {
-    flex: 1,
-    color: colors.text,
-    fontSize: font.md,
-    height: 20,
-    padding: 0,
-    textAlignVertical: 'center',
   },
   sectionHeader: {
     flexDirection: 'row',

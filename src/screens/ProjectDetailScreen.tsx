@@ -32,6 +32,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
+import { DetailHeader } from '../components/DetailHeader';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -61,6 +62,9 @@ export function ProjectDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // True while a subtask inside the expanded row is mid-drag; the list has to
+  // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -129,7 +133,7 @@ export function ProjectDetailScreen() {
   // Bottom-up: "New task" ends up closest to the button.
   const addMenuItems: FabMenuItem[] = [
     { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-    { key: 'new', label: 'New task', icon: 'checkmark-circle' },
+    { key: 'new', label: 'New task', icon: 'checkbox' },
   ];
 
   const handleAddMenuSelect = (key: string) => {
@@ -178,19 +182,19 @@ export function ProjectDetailScreen() {
   return (
     <SpotlightProvider progress={spotlightProgress}>
       <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-        <View style={styles.detailHeader}>
-          <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
-            <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <Text style={styles.detailTitleText} numberOfLines={1}>{project?.title}</Text>
-          <TouchableOpacity
-            onPress={() => project && setEditingProject(project)}
-            accessibilityRole="button"
-            accessibilityLabel="Edit project"
-          >
-            <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
+        <DetailHeader
+          title={project?.title ?? ''}
+          onBack={onClose}
+          actions={
+            <TouchableOpacity
+              onPress={() => project && setEditingProject(project)}
+              accessibilityRole="button"
+              accessibilityLabel="Edit project"
+            >
+              <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          }
+        />
 
         <View
           style={{ flex: 1 }}
@@ -200,7 +204,7 @@ export function ProjectDetailScreen() {
         <PaintSelectionProvider {...paintProps}>
           <FlatList
             ref={keyboardScroll.ref}
-            scrollEnabled={!painting}
+            scrollEnabled={!painting && !draggingSubtask}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
             {...keyboardScroll.props}
@@ -222,6 +226,7 @@ export function ProjectDetailScreen() {
                   subtaskCount={subs.length}
                   subtaskDoneCount={subs.filter(t => t.completed).length}
                   subtasks={subs}
+                  onSubtaskDragStateChange={setDraggingSubtask}
                   spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
                   selectionMode={selectionMode}
                   selected={selectedIds.has(item.id)}
@@ -280,6 +285,7 @@ export function ProjectDetailScreen() {
                           subtaskCount={subs.length}
                           subtaskDoneCount={subs.filter(t => t.completed).length}
                           subtasks={subs}
+                          onSubtaskDragStateChange={setDraggingSubtask}
                           spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
                           selectionMode={selectionMode}
                           selected={selectedIds.has(task.id)}

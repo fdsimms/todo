@@ -66,7 +66,7 @@ export function DemoBanner() {
         haptic
         accessibilityLabel="Demo mode is on. Tap to exit and restore your tasks."
       >
-        <Ionicons name="sparkles" size={14} color={colors.onAccent} />
+        <Ionicons name="flask" size={14} color={colors.onAccent} />
         <Text style={styles.label}>Demo mode</Text>
         <View style={styles.divider} />
         <Text style={styles.exit}>Exit</Text>

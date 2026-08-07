@@ -22,6 +22,7 @@ import { TemplateSuggestionsSheet } from '../components/TemplateSuggestionsSheet
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { NestedTemplatePicker } from '../components/NestedTemplatePicker';
 import { SwipeableRow } from '../components/SwipeableRow';
+import { DetailHeader } from '../components/DetailHeader';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -229,16 +230,15 @@ export function TemplateDetailScreen() {
 
   return (
     <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-      <View style={styles.detailHeader}>
-        <TouchableOpacity onPress={onClose} accessibilityRole="button" accessibilityLabel="Back">
-          <Ionicons name="chevron-back" size={24} color={colors.textSecondary} />
-        </TouchableOpacity>
-        <View style={styles.detailTitle}>
+      <DetailHeader
+        title={template?.name ?? ''}
+        onBack={onClose}
+        leading={
           <View style={[styles.tplIconSm, { backgroundColor: colors.accentSubtle }]}>
             <Ionicons name="copy" size={14} color={colors.accent} />
           </View>
-          <Text style={styles.detailTitleText} numberOfLines={1}>{template?.name}</Text>
-        </View>
+        }
+        actions={
         <View style={styles.detailHeaderActions}>
           <TouchableOpacity
             onPress={() => { if (!template) return; haptics.tap(); setSettingsTemplate(template); }}
@@ -279,7 +279,8 @@ export function TemplateDetailScreen() {
             />
           </TouchableOpacity>
         </View>
-      </View>
+        }
+      />
 
       <ReorderableList
         data={template?.items ?? []}
@@ -641,34 +642,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bg,
   },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
   // Shrinks rather than flexes: the row is space-between, so growing it would
   // pull the title off centre. Shrinking only bites once a long name would
   // otherwise push the header actions off the edge.
-  detailTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flexShrink: 1,
-  },
   detailHeaderActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
-  },
-  detailTitleText: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: '600',
-    flexShrink: 1,
   },
   tplIconSm: {
     width: 28,

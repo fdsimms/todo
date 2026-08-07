@@ -66,7 +66,7 @@ export function ArchivedScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Unarchive ${item.title}`}
             >
-              <Ionicons name="play-outline" size={iconSize.sm} color={colors.accent} />
+              <Ionicons name="arrow-undo-outline" size={iconSize.sm} color={colors.accent} />
             </TouchableOpacity>
           </TouchableOpacity>
         )}

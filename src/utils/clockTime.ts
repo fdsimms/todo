@@ -16,6 +16,26 @@ export function hhmmToDate(hhmm: string, base: Date = new Date()): Date {
 }
 
 /**
+ * The start of the logical day a moment falls in: the most recent dayResetTime
+ * at or before it. Before the reset hour, that's yesterday's — 1:30 AM on a
+ * 2 AM reset still belongs to the day before.
+ *
+ * The store-free core of dateUtils' getDayStart, which is the one the app
+ * imports (it defaults the reset time from settings). Lives here so modules
+ * that must not touch the store — rhythms, and anything else testable in the
+ * `node` environment — can do logical-day math without forking this.
+ */
+export function logicalDayStart(date: Date, dayResetTime: string): Date {
+  const [h, m] = dayResetTime.split(':').map(Number);
+  const resetOnDate = new Date(date);
+  resetOnDate.setHours(h || 0, m || 0, 0, 0);
+  if (date < resetOnDate) {
+    resetOnDate.setDate(resetOnDate.getDate() - 1);
+  }
+  return resetOnDate;
+}
+
+/**
  * Formats an "HH:MM" clock time for display, e.g. "8:00 AM" — or "08:00" with
  * `use24Hour`.
  *

@@ -25,6 +25,7 @@ import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
+import { DetailHeader } from '../components/DetailHeader';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -60,6 +61,9 @@ export function TagsScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  // True while a subtask inside the expanded row is mid-drag; the list has to
+  // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
+  const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const allTasks = useTaskStore(s => s.tasks);
   const {
@@ -223,20 +227,16 @@ export function TagsScreen() {
           onRequestClose={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
         >
           <View style={[styles.detailRoot, { paddingTop: insets.top + spacing.md }]}>
-            <View style={styles.detailHeader}>
-              <TouchableOpacity onPress={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }} accessibilityRole="button" accessibilityLabel="Close">
-                <Ionicons name="chevron-down" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <View style={styles.detailTitle}>
-                {selectedTag && (
-                  <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
-                    <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
-                  </View>
-                )}
-                <Text style={styles.detailTitleText}>{selectedTag}</Text>
-              </View>
-              <View style={{ width: 24 }} />
-            </View>
+            <DetailHeader
+              title={selectedTag ?? ''}
+              backIcon="close"
+              onBack={() => { setSelectedTag(null); if (selectionMode) exitSelection(); }}
+              leading={selectedTag ? (
+                <View style={[styles.tagIconSm, { backgroundColor: tagColor(selectedTag) + '22' }]}>
+                  <Ionicons name="pricetag" size={14} color={tagColor(selectedTag)} />
+                </View>
+              ) : undefined}
+            />
 
             <SpotlightOverlay
               visible={spotlightActive}
@@ -253,7 +253,7 @@ export function TagsScreen() {
             <PaintSelectionProvider {...paintProps}>
               <FlatList
                 ref={keyboardScroll.ref}
-                scrollEnabled={!painting}
+                scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
                 {...keyboardScroll.props}
@@ -276,6 +276,7 @@ export function TagsScreen() {
                       subtaskCount={subs.length}
                       subtaskDoneCount={subs.filter(t => t.completed).length}
                       subtasks={subs}
+                      onSubtaskDragStateChange={setDraggingSubtask}
                       selectionMode={selectionMode}
                       selected={selectedIds.has(item.id)}
                       onSelect={() => toggleSelection(item.id)}
@@ -378,25 +379,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,
-  },
-  detailHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.separator,
-  },
-  detailTitle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  detailTitleText: {
-    color: colors.text,
-    fontSize: font.lg,
-    fontWeight: '600',
   },
   tagIconSm: {
     width: 28,

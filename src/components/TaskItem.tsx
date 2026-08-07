@@ -100,6 +100,16 @@ interface Props {
   justCreated?: boolean;
   /** Plays the same checkbox-tap complete animation as a real tap, then completes the task — used for a completion that happened in the Today widget so the user can watch it happen here too. */
   autoComplete?: boolean;
+  /**
+   * Fires true/false around a drag of the row's inline subtask list. The
+   * enclosing list has to switch its own `scrollEnabled` off for the duration:
+   * a native scroll view only stands down for a JS responder that is one of
+   * its *ancestors*, and `SortableList`'s lives below it, so without this the
+   * scroll claims the touch on the first finger move and the row is put
+   * straight back down. Must be stable across renders (a `useState` setter is
+   * ideal) or the memo below stops holding.
+   */
+  onSubtaskDragStateChange?: (dragging: boolean) => void;
   /** True where the list drops a row the moment it stops being visible — i.e. Today's own list, and only for rows it holds on visibility (a pinned row stays whether or not it's due). Logging a unit that puts a daily target back on pace does exactly that, so the row plays itself out before it goes instead of blinking away mid-tap. */
   hidesWhenOnPace?: boolean;
   /** Accept the schedule an Apple Reminders import parsed but hasn't applied (see Task.pendingImport). Omitted where the suggestion should only be readable — the chip renders either way, and is inert without these. */
@@ -180,6 +190,7 @@ export const TaskItem = React.memo(function TaskItem({
   hidesWhenOnPace = false,
   onApplyImport,
   onDismissImport,
+  onSubtaskDragStateChange,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -1076,7 +1087,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {chainStep && (
               <View style={styles.chainBadge}>
-                <Ionicons name="link" size={9} color={colors.accent} />
+                <Ionicons name="git-commit" size={9} color={colors.accent} />
                 <Text style={styles.chainBadgeText}>{chainPosition}</Text>
               </View>
             )}
@@ -1360,6 +1371,7 @@ export const TaskItem = React.memo(function TaskItem({
                 task.notes.length > 0 && styles.sectionDivider,
               ]}>
                 <SortableList
+                  onDragStateChange={onSubtaskDragStateChange}
                   data={subtasks}
                   onReorder={(newData) => reorderSubtasks(task.id, newData.map(s => s.id))}
                   renderItem={(sub, i, drag) => (
@@ -1485,7 +1497,7 @@ export const TaskItem = React.memo(function TaskItem({
                   styles.recurrenceRow,
                   (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
                 ]}>
-                  <Ionicons name="link" size={12} color={colors.textTertiary} />
+                  <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
                   <Text style={styles.expandMeta} numberOfLines={1}>
                     Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
                     {visibleItems.map((item, i) => {
@@ -1531,7 +1543,7 @@ export const TaskItem = React.memo(function TaskItem({
                 styles.recurrenceRow,
                 (hasExpandContent || timed) && styles.sectionDivider,
               ]}>
-                <Ionicons name="stopwatch-outline" size={12} color={colors.textTertiary} />
+                <Ionicons name="timer-outline" size={12} color={colors.textTertiary} />
                 <Text style={styles.expandMeta}>Timed · {formatDuration(task.actualMinutes)}</Text>
               </View>
             )}
@@ -1609,7 +1621,7 @@ export const TaskItem = React.memo(function TaskItem({
                       hitSlop={8}
                       accessibilityLabel={`Start timer for ${task.title}`}
                     >
-                      <Ionicons name="stopwatch-outline" size={iconSize.sm} color={colors.textSecondary} />
+                      <Ionicons name="timer-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                     )
                   )}
@@ -1656,7 +1668,7 @@ export const TaskItem = React.memo(function TaskItem({
                     hitSlop={8}
                     accessibilityLabel="Duplicate task"
                   >
-                    <Ionicons name="copy-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
                   <PressableScale
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}

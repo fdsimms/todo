@@ -29,7 +29,7 @@ interface Props {
 
 const SORT_OPTIONS: { value: SortOption; label: string; icon: string }[] = [
   { value: 'default', label: 'My order', icon: 'list' },
-  { value: 'priority', label: 'Urgency first', icon: 'alert-circle' },
+  { value: 'priority', label: 'Urgency first', icon: 'arrow-up-circle' },
   { value: 'effort-asc', label: 'Quick wins first', icon: 'barbell' },
   { value: 'effort-desc', label: 'Big tasks first', icon: 'barbell' },
   { value: 'due-date', label: 'Due soonest', icon: 'calendar' },

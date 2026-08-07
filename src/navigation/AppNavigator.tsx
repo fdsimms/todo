@@ -22,6 +22,7 @@ import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
+import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
 import { DemoBanner } from '../components/DemoBanner';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -36,6 +37,14 @@ const EDGE_WIDTH = 20;
 const HIDDEN = { tabBarButton: () => null };
 
 const DRAWER_TABS = new Set(['Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Waiting', 'Archived']);
+
+// RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
+// whichever tab you pushed it *from*, so these never become the active tab.
+// A new pushed route missing from here highlights nothing and blanks the
+// drawer's current selection.
+const PUSHED_ROUTES = new Set([
+  'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
+]);
 
 function MorePlaceholder() {
   return null;
@@ -167,8 +176,7 @@ export default function AppNavigator() {
   const handleStateChange = useCallback(() => {
     const currentName = navRef.current?.getCurrentRoute()?.name;
     if (currentName && !DRAWER_TABS.has(currentName) && currentName !== 'More'
-      && currentName !== 'Settings'
-      && currentName !== 'TemplateDetail' && currentName !== 'ProjectDetail' && currentName !== 'CategoryDetail') {
+      && !PUSHED_ROUTES.has(currentName)) {
       setActiveTab(currentName);
     }
   }, []);
@@ -215,6 +223,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="Settings"
             component={SettingsScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="SettingsGroup"
+            component={SettingsGroupScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
