@@ -35,11 +35,18 @@ import {
  * 3. Detection requires sustained oscillation, not one hard sample, so a
  *    pickup or a knock can't clear the bar however sharp it is (see
  *    shakeDetect.ts).
+ *
+ * `enabled` is a fourth gate, and the one that turns the sensor off rather
+ * than just ignoring its output — the effect below never subscribes to the
+ * Accelerometer at all while it's false, instead of subscribing and
+ * discarding samples in the callback.
  */
-export function useShakeToUndo(): void {
+export function useShakeToUndo(enabled: boolean): void {
   const confirmOpenRef = useRef(false);
 
   useEffect(() => {
+    if (!enabled) return;
+
     const shake = createShakeState();
     let subscription: { remove: () => void } | null = null;
 
@@ -99,5 +106,5 @@ export function useShakeToUndo(): void {
       appStateSub.remove();
       stop();
     };
-  }, []);
+  }, [enabled]);
 }

@@ -598,6 +598,29 @@ describe('hapticsEnabled', () => {
   });
 });
 
+describe('shakeToUndoEnabled', () => {
+  // Same reasoning as hapticsEnabled: defaults on so an install predating the
+  // setting keeps the gesture it already had.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().shakeToUndoEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'shakeToUndoEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().shakeToUndoEnabled).toBe(false);
+  });
+
+  it('round-trips through setShakeToUndoEnabled', () => {
+    useSettingsStore.getState().setShakeToUndoEnabled(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('shakeToUndoEnabled', 'false');
+    expect(useSettingsStore.getState().shakeToUndoEnabled).toBe(false);
+  });
+});
+
 describe('persisted sort', () => {
   it('defaults to the user-defined order', () => {
     useSettingsStore.getState().initialize();
