@@ -16,7 +16,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
-import { buildDeloadPlan, deloadUpdates, type DeloadProposal } from '../utils/deloadPlan';
+import { buildDeloadPlan, deloadUpdates, type DeloadPlan, type DeloadProposal } from '../utils/deloadPlan';
 import { useTaskStore } from '../store/useTaskStore';
 import { WhenPicker } from './WhenPicker';
 import type { Task } from '../types';
@@ -38,7 +38,19 @@ interface Props {
  * only a blanket undo afterward. Every row here shows where the task is going
  * and why, blocked rows show what's holding them, and tapping a row opens the
  * normal date picker to override the destination by hand.
+ *
+ * The Best day / Tomorrow switch is there because the engine's spread is the
+ * right answer only some of the time: a day that got away from you is usually
+ * pushed wholesale to tomorrow, and making that a per-row override was five
+ * long-presses to say one thing. Switching re-derives the default checkmarks
+ * rather than carrying them over — it's a different proposal, not a filter.
  */
+type DayMode = 'suggested' | 'tomorrow';
+
+const MODES: ReadonlyArray<{ key: DayMode; label: string }> = [
+  { key: 'suggested', label: 'Best day' },
+  { key: 'tomorrow', label: 'Tomorrow' },
+];
 export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -50,10 +62,11 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
   // would reshuffle destinations mid-review.
-  const [plan, setPlan] = useState<ReturnType<typeof buildDeloadPlan> | null>(null);
+  const [plan, setPlan] = useState<DeloadPlan | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [overrides, setOverrides] = useState<Record<string, Date>>({});
   const [pickerTarget, setPickerTarget] = useState<DeloadProposal | null>(null);
+  const [dayMode, setDayMode] = useState<DayMode>('suggested');
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -65,6 +78,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
     setSelectedIds(new Set(next.proposals.filter(p => p.selected).map(p => p.task.id)));
     setOverrides({});
     setPickerTarget(null);
+    setDayMode('suggested');
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     Animated.parallel([
@@ -118,7 +132,27 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
   if (!plan) return null;
 
   /** The destination actually in play for a row — a hand-picked override wins. */
-  const destinationFor = (p: DeloadProposal): Date | null => overrides[p.task.id] ?? p.date;
+  const destinationIn = (p: DeloadProposal, m: DayMode): Date | null =>
+    overrides[p.task.id] ?? (m === 'tomorrow' ? p.tomorrow?.date ?? null : p.suggested?.date ?? null);
+  const destinationFor = (p: DeloadProposal): Date | null => destinationIn(p, dayMode);
+
+  const switchMode = (m: DayMode) => {
+    if (m === dayMode) return;
+    haptics.tap();
+    animateLayout();
+    setDayMode(m);
+    // Same rule the plan uses for its own defaults: everything that can move
+    // and isn't held back by a streak or a priority, plus anything the user
+    // already placed by hand.
+    setSelectedIds(
+      new Set(
+        plan.proposals
+          .filter(p => destinationIn(p, m) !== null
+            && (overrides[p.task.id] !== undefined || p.blocker === null))
+          .map(p => p.task.id)
+      )
+    );
+  };
 
   const toggle = (p: DeloadProposal) => {
     if (!destinationFor(p)) return;
@@ -140,7 +174,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
     haptics.success();
     const moves = selected
       .map(p => {
-        const updates = deloadUpdates({ ...p, date: destinationFor(p) });
+        const updates = deloadUpdates(p, destinationFor(p));
         return updates ? { id: p.task.id, updates } : null;
       })
       .filter((m): m is { id: string; updates: Partial<Task> } => m !== null);
@@ -163,20 +197,23 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
           <Ionicons name="lock-closed-outline" size={20} color={colors.textTertiary} />
           <View style={styles.rowContent}>
             <Text style={[styles.rowTitle, styles.rowTitleBlocked]} numberOfLines={1}>{p.task.title}</Text>
-            <Text style={styles.rowSub} numberOfLines={1}>{p.blockerLabel}</Text>
+            {/* A row with no blocker of its own is here because its deadline
+                ruled this mode's destination out — the only other way to lose one. */}
+            <Text style={styles.rowSub} numberOfLines={1}>{p.blockerLabel ?? 'Deadline too close'}</Text>
           </View>
           <Text style={styles.rowMinutes}>{formatDuration(p.minutes)}</Text>
         </View>
       );
     }
 
+    const option = dayMode === 'tomorrow' ? p.tomorrow : p.suggested;
     const dayLabel = isOverridden
       ? dest.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-      : p.dayLabel;
+      : option?.dayLabel ?? '';
     // A soft blocker (a streak, a high priority) is why the row starts
     // unchecked, so it stays visible in place of the engine's reason — the
     // user needs to see what they'd be overriding, not why the day is nice.
-    const detail = isOverridden ? 'moved by hand' : p.blockerLabel ?? p.reason;
+    const detail = isOverridden ? 'moved by hand' : p.blockerLabel ?? option?.reason ?? null;
 
     return (
       <TouchableOpacity
@@ -235,12 +272,32 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
 
           {plan.proposals.length === 0 ? (
             <Text style={styles.emptyHint}>Nothing on today to move.</Text>
-          ) : movable.length === 0 ? (
+          ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
             <Text style={styles.emptyHint}>
               Nothing on today can move — everything here is pinned, urgent, or already underway.
             </Text>
           ) : (
-            <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>
+            <>
+              <View style={styles.modeRow}>
+                {MODES.map(({ key, label }) => {
+                  const active = dayMode === key;
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[styles.modePill, active && styles.modePillActive]}
+                      onPress={() => switchMode(key)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Move to ${label}`}
+                    >
+                      <Text style={[styles.modeLabel, active && styles.modeLabelActive]}>{label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.hint}>Tap to include or skip. Long press to pick a different day.</Text>
+            </>
           )}
 
           <ScrollView style={styles.list} bounces={false}>
@@ -350,6 +407,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  modePill: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  modePillActive: { backgroundColor: colors.accent },
+  modeLabel: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  modeLabelActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   emptyHint: {
     color: colors.textTertiary,
     fontSize: font.sm,

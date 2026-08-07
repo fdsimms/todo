@@ -1,3 +1,4 @@
+import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { estimatedMinutesFor } from './effort';
@@ -16,7 +17,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
  * rather than spreading it and gave the user nothing to inspect beforehand.
  * Destinations here come from computeSnoozeSuggestion — the same engine behind
  * the date picker's Suggest button — so each task lands on its own best day and
- * the vocabulary matches what Suggest already says.
+ * the vocabulary matches what Suggest already says. Every row also carries plain
+ * tomorrow, because "not today, deal with it tomorrow" is the move people
+ * actually want half the time and spreading the day out is the other half.
  */
 
 /** Why a task is blocked outright, or merely unchecked by default. */
@@ -34,16 +37,28 @@ export type DeloadBlocker =
 /** Blockers that leave the task movable but unchecked — the user can opt in. */
 const SOFT_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set(['streak', 'started', 'high-priority']);
 
+/** Where a task could go, in one of the sheet's two destination modes. */
+export interface DeloadDestination {
+  date: Date;
+  /** "Thursday", "Tomorrow". */
+  dayLabel: string;
+  /** "light day", "good for \"email\"" — from the snooze engine; null for plain tomorrow. */
+  reason: string | null;
+}
+
 export interface DeloadProposal {
   task: Task;
   /** Minutes this task is holding on today's total. */
   minutes: number;
-  /** Destination day, or null when the task can't move at all. */
-  date: Date | null;
-  /** "Thursday", "Tomorrow" — from the snooze engine. */
-  dayLabel: string | null;
-  /** "light day", "good for \"email\"" — from the snooze engine. */
-  reason: string | null;
+  /** The engine's pick, or null when the task can't move there (or at all). */
+  suggested: DeloadDestination | null;
+  /**
+   * Tomorrow, offered alongside the pick so the whole day can be pushed one
+   * day out in a tap — the thing people actually reach for on a day that got
+   * away from them. Null on the same terms as `suggested`: a hard blocker, or
+   * a deadline that even tomorrow would miss.
+   */
+  tomorrow: DeloadDestination | null;
   /**
    * How the move should be applied. Recurring tasks and series members defer
    * (dueDate untouched) — a recurrence has a grid that getNextDueDate anchors
@@ -52,7 +67,7 @@ export interface DeloadProposal {
    * to protect and a stale dueDate would read as overdue on arrival.
    */
   mode: 'defer' | 'reschedule';
-  /** Checked by default in the sheet. */
+  /** Checked by default in the sheet, in its default (suggested) mode. */
   selected: boolean;
   blocker: DeloadBlocker | null;
   /** One-line explanation shown in place of the destination, e.g. "12-day streak". */
@@ -157,34 +172,35 @@ export function buildDeloadPlan(
   // they all pick the same "lightest" day, landing the whole sweep on one date.
   let working: Task[] = [...allTasks];
 
+  const tomorrowDate = addDays(new Date(), 1);
+  tomorrowDate.setHours(12, 0, 0, 0);
+
   const proposals: DeloadProposal[] = ordered.map(({ task, minutes }) => {
     const found = findBlocker(task);
     const hardBlocked = found !== null && !SOFT_BLOCKERS.has(found.blocker);
+    const mode: 'defer' | 'reschedule' = isAnchored(task) ? 'defer' : 'reschedule';
 
     if (hardBlocked) {
       return {
         task,
         minutes,
-        date: null,
-        dayLabel: null,
-        reason: null,
-        mode: isAnchored(task) ? 'defer' : 'reschedule',
+        suggested: null,
+        tomorrow: null,
+        mode,
         selected: false,
         blocker: found!.blocker,
         blockerLabel: found!.label,
       };
     }
 
-    const suggestion = computeSnoozeSuggestion(task, working);
-    const mode: 'defer' | 'reschedule' = isAnchored(task) ? 'defer' : 'reschedule';
-
-    if (missesDeadline(task, suggestion.date, resetTime)) {
+    // Tomorrow is the nearest any destination gets, so a deadline it misses is
+    // one nothing can satisfy — that's the whole task blocked, not one option.
+    if (missesDeadline(task, tomorrowDate, resetTime)) {
       return {
         task,
         minutes,
-        date: null,
-        dayLabel: null,
-        reason: null,
+        suggested: null,
+        tomorrow: null,
         mode,
         selected: false,
         blocker: 'deadline',
@@ -192,11 +208,19 @@ export function buildDeloadPlan(
       };
     }
 
+    const tomorrow: DeloadDestination = { date: tomorrowDate, dayLabel: 'Tomorrow', reason: null };
+    const pick = computeSnoozeSuggestion(task, working);
+    // A pick past the deadline drops only that option — tomorrow still stands,
+    // and the sheet lists the row under whichever mode can take it.
+    const suggested: DeloadDestination | null = missesDeadline(task, pick.date, resetTime)
+      ? null
+      : { date: pick.date, dayLabel: pick.dayLabel, reason: pick.reason };
+
     // Only a proposal the user is likely to accept should occupy its
     // destination day for the tasks scored after it.
-    const selected = found === null;
+    const selected = found === null && suggested !== null;
     if (selected) {
-      const iso = suggestion.date.toISOString();
+      const iso = suggested!.date.toISOString();
       const moved: Task =
         mode === 'defer' ? { ...task, deferUntil: iso } : { ...task, dueDate: iso, deferUntil: null };
       working = working.map(t => (t.id === task.id ? moved : t));
@@ -205,9 +229,8 @@ export function buildDeloadPlan(
     return {
       task,
       minutes,
-      date: suggestion.date,
-      dayLabel: suggestion.dayLabel,
-      reason: suggestion.reason,
+      suggested,
+      tomorrow,
       mode,
       selected,
       blocker: found?.blocker ?? null,
@@ -223,9 +246,13 @@ export function buildDeloadPlan(
   return { proposals, currentMinutes, projectedMinutes: currentMinutes - movedMinutes };
 }
 
-/** The field updates that apply one proposal, matching its `mode`. */
-export function deloadUpdates(proposal: DeloadProposal): Partial<Task> | null {
-  if (!proposal.date) return null;
-  const iso = proposal.date.toISOString();
+/**
+ * The field updates that move one proposal to `date`, matching its `mode`.
+ * The destination is passed in rather than read off the proposal because the
+ * sheet offers three of them — the pick, tomorrow, and a hand-picked override.
+ */
+export function deloadUpdates(proposal: DeloadProposal, date: Date | null): Partial<Task> | null {
+  if (!date) return null;
+  const iso = date.toISOString();
   return proposal.mode === 'defer' ? { deferUntil: iso } : { dueDate: iso, deferUntil: null };
 }

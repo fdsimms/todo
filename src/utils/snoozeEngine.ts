@@ -56,6 +56,28 @@ function projectRecurringOccurrences(t: Task, windowEnd: Date): Set<string> {
   return hits;
 }
 
+/** How many days out the search looks when nothing constrains it. */
+const DEFAULT_HORIZON_DAYS = 7;
+
+/**
+ * How far a task may be pushed before it runs into its own schedule.
+ *
+ * A daily task moved a week out hasn't been rescheduled, it's been skipped six
+ * times over — so a recurring task's candidate window stops at its own next
+ * occurrence. Weekly and rarer recurrences reach the default horizon anyway, so
+ * this only ever tightens the near-cadence cases. Returns null when nothing
+ * constrains the window (one-off tasks, and a recurrence that has run out).
+ */
+function recurrenceHorizonDays(task: Task, dayResetTime: string): number | null {
+  if (task.recurrenceType === 'none') return null;
+  const next = getNextDueDate(task, dayResetTime);
+  if (!next) return null;
+  const days = differenceInCalendarDays(next, new Date());
+  // An overdue recurring task can compute a next occurrence that's already
+  // past; every candidate is at least tomorrow, so floor it there.
+  return Math.min(Math.max(days, 1), DEFAULT_HORIZON_DAYS);
+}
+
 export function computeSnoozeSuggestion(
   task: Task,
   allTasks: Task[],
@@ -66,7 +88,8 @@ export function computeSnoozeSuggestion(
   const completed = allTasks.filter(t => !t.parentId && t.completed && t.completedAt != null);
   const pending = allTasks.filter(t => !t.parentId && !t.completed && t.id !== task.id);
 
-  const candidates = Array.from({ length: 7 }, (_, i) => {
+  const horizon = recurrenceHorizonDays(task, dayResetTime);
+  const candidates = Array.from({ length: horizon ?? DEFAULT_HORIZON_DAYS }, (_, i) => {
     const d = addDays(today, i + 1);
     d.setHours(12, 0, 0, 0);
     return d;
@@ -191,7 +214,14 @@ export function computeSnoozeSuggestion(
     parts.push('your productive day');
   }
 
-  const reason = parts.length > 0 ? parts.slice(0, 2).join(' · ') : 'balanced schedule';
+  // When the recurrence is what stopped the search and the winner sits on the
+  // last day left, that constraint is the real answer — "light day" would be
+  // claiming a choice the task never had.
+  const cappedByRecurrence = horizon !== null && horizon < DEFAULT_HORIZON_DAYS;
+  const reason =
+    cappedByRecurrence && isSameDay(winner.date, windowEnd)
+      ? 'when it next repeats'
+      : parts.length > 0 ? parts.slice(0, 2).join(' · ') : 'balanced schedule';
 
   return {
     date: winner.date,
