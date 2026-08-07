@@ -1246,6 +1246,26 @@ export function dbSetGroceryAisleOrder(order: string[]): void {
   dbSetSetting('grocery_aisle_order', JSON.stringify(order));
 }
 
+// The built-in aisles the user has deleted or renamed away. A tombstone list is
+// needed because the walk order is repaired against DEFAULT_AISLES at read
+// time (see normalizeAisleOrder) — without this, a deleted 'Snacks' is back on
+// the next launch and the delete reads as a bug. Same shape and same tolerance
+// for a corrupt value as the order itself.
+export function dbGetGroceryHiddenAisles(): string[] {
+  const val = dbGetSetting('grocery_aisle_hidden');
+  if (!val) return [];
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+export function dbSetGroceryHiddenAisles(hidden: string[]): void {
+  dbSetSetting('grocery_aisle_hidden', JSON.stringify(hidden));
+}
+
 // name_key → the aisle the user filed that item under, which is why it lives
 // here and not on the row: a provisional grocery row is deleted when it comes
 // off the list, and the filing has to outlive it. Same tolerance for a corrupt

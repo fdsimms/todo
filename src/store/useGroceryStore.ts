@@ -20,13 +20,19 @@ import {
   dbSetLastShopId,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
+  dbGetGroceryHiddenAisles,
+  dbSetGroceryHiddenAisles,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import {
   aisleForName,
   normalizeAisleOrder,
+  hiddenDefaultAisles,
+  placeAisle,
   rememberAisles,
+  remapRememberedAisle,
+  forgetRememberedAisle,
   renameRememberedAisle,
   OTHER_AISLE,
 } from '../utils/groceryAisles';
@@ -76,6 +82,13 @@ function armCartHold(): void {
 interface GroceryStore {
   items: GroceryItem[];
   aisleOrder: string[];
+  /**
+   * Built-in aisles the user has deleted or renamed away. Kept because the walk
+   * order is repaired against DEFAULT_AISLES at read time, which would
+   * otherwise undo the delete — see normalizeAisleOrder. Derived from the saved
+   * order rather than edited directly, so the two can't disagree.
+   */
+  hiddenAisles: string[];
   /**
    * The places you shop, and which items have been bought at each. They live
    * here rather than in a store of their own for the reason aisleOrder does:
@@ -138,6 +151,18 @@ interface GroceryStore {
   applyDrop: (placements: Array<{ id: string; sortOrder: number; aisle: string }>) => void;
 
   setAisleOrder: (order: string[]) => void;
+  /**
+   * Renames an aisle everywhere it's recorded: the walk order, every row filed
+   * there, and every remembered filing that pointed at it. False when the name
+   * is blank, taken, or the aisle can't be renamed ('Other').
+   */
+  renameAisle: (from: string, to: string) => boolean;
+  /**
+   * Deletes an aisle and files everything that was in it under 'Other'. A
+   * no-op for 'Other' itself, which is the floor every unrecognised item lands
+   * on and so has to exist.
+   */
+  deleteAisle: (aisle: string) => void;
 
   /** Null when the name collides with an existing store. */
   addShop: (name: string) => Shop | null;
@@ -159,9 +184,25 @@ function nextSortOrder(items: GroceryItem[]): number {
   return items.reduce((m, i) => Math.max(m, i.sortOrder), 0) + 1;
 }
 
+/**
+ * Saves a walk order and the tombstones that go with it.
+ *
+ * The hidden set is *derived from the order being saved* — whatever the caller
+ * left out is a deletion — so there's no second thing to keep in step, and
+ * re-adding a deleted built-in by name simply un-hides it.
+ */
+function commitAisleOrder(order: string[], used: readonly string[]) {
+  const hidden = hiddenDefaultAisles(order);
+  const normalized = normalizeAisleOrder(order, used, hidden);
+  dbSetGroceryAisleOrder(normalized);
+  dbSetGroceryHiddenAisles(hidden);
+  return { aisleOrder: normalized, hiddenAisles: hidden };
+}
+
 export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
+  hiddenAisles: [],
   shops: [],
   itemShops: [],
   lastShopId: null,
@@ -174,7 +215,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Repaired at read time and deliberately NOT written back: shipping a
     // bigger DEFAULT_AISLES later then needs no migration, and can't clobber
     // an order someone arranged to match their store.
-    const aisleOrder = normalizeAisleOrder(dbGetGroceryAisleOrder(), items.map(i => i.aisle));
+    const hiddenAisles = dbGetGroceryHiddenAisles();
+    const aisleOrder = normalizeAisleOrder(
+      dbGetGroceryAisleOrder(),
+      items.map(i => i.aisle),
+      hiddenAisles
+    );
     const shops = dbGetAllGroceryShops();
     const itemShops = dbGetAllItemShopLinks();
     // Resolved against live shops rather than trusted: the setting outlives
@@ -189,6 +235,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set({
       items,
       aisleOrder,
+      hiddenAisles,
       aisleOverrides: dbGetGroceryAisleOverrides(),
       shops,
       itemShops,
@@ -243,7 +290,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // goes — the lexicon is a guess about groceries, this is a fact about
       // their shop. (An item still in the catalog never reaches here: it
       // carries its own aisle, and the branch above keeps it.)
-      aisle: get().aisleOverrides[key] ?? aisleForName(name) ?? OTHER_AISLE,
+      //
+      // placeAisle has the last word because neither source knows which aisles
+      // still exist: naming a deleted one here would bring its section back.
+      aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
       quantity,
       note: '',
       onList: true,
@@ -351,7 +401,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => byId.get(i.id) ?? i),
       // A brand-new aisle (a custom one, or an AI suggestion) has to enter the
       // walk order or its section would render at the bottom, unordered.
-      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle), s.hiddenAisles),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
   },
@@ -551,15 +601,74 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // Every aisle here came off a header that was already on screen, so this
       // is belt and braces — but normalizing is what setAisleMany does, and an
       // aisle missing from the order renders its section unplaced.
-      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle)),
+      aisleOrder: normalizeAisleOrder(s.aisleOrder, updates.map(u => u.aisle), s.hiddenAisles),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
   },
 
   setAisleOrder(order) {
-    const normalized = normalizeAisleOrder(order, get().items.map(i => i.aisle));
-    dbSetGroceryAisleOrder(normalized);
-    set({ aisleOrder: normalized });
+    set(commitAisleOrder(order, get().items.map(i => i.aisle)));
+  },
+
+  renameAisle(from, to) {
+    const trimmed = to.trim();
+    if (!trimmed || from === OTHER_AISLE || trimmed === OTHER_AISLE) return false;
+
+    const { aisleOrder, items, aisleOverrides } = get();
+    if (!aisleOrder.includes(from)) return false;
+    if (trimmed === from) return true;
+    // Case-insensitive, like adding one: two aisles differing only in case are
+    // two sections nobody can tell apart. Re-casing the aisle itself is fine.
+    if (aisleOrder.some(a => a !== from && a.toLowerCase() === trimmed.toLowerCase())) return false;
+
+    const updates = items.filter(i => i.aisle === from).map(i => ({ ...i, aisle: trimmed }));
+    for (const u of updates) dbUpdateGroceryItem(u);
+
+    // The filings are stored by aisle *name*, so they have to move too or the
+    // next time that name is typed it goes back to a section that's gone.
+    const remembered = remapRememberedAisle(aisleOverrides, from, trimmed);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
+    const byId = new Map(updates.map(u => [u.id, u]));
+    const nextItems = items.map(i => byId.get(i.id) ?? i);
+    // In place, not appended: renaming an aisle doesn't move it in the walk.
+    const order = aisleOrder.filter(a => a !== OTHER_AISLE).map(a => (a === from ? trimmed : a));
+
+    set({
+      items: nextItems,
+      aisleOverrides: remembered ?? aisleOverrides,
+      ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
+    });
+    return true;
+  },
+
+  deleteAisle(aisle) {
+    // Other is the floor every unrecognised item lands on — there'd be nowhere
+    // for the rows to go, and aisleForName returning null would have no answer.
+    if (aisle === OTHER_AISLE) return;
+    const { aisleOrder, items, aisleOverrides } = get();
+    if (!aisleOrder.includes(aisle)) return;
+
+    // Every row, not just the ones on this week's list: the aisle is on the
+    // catalog row, and a row left pointing at a deleted section would drag it
+    // back through normalizeAisleOrder's `used` pass the moment it resurfaced.
+    const updates = items.filter(i => i.aisle === aisle).map(i => ({ ...i, aisle: OTHER_AISLE }));
+    for (const u of updates) dbUpdateGroceryItem(u);
+
+    const remembered = forgetRememberedAisle(aisleOverrides, aisle);
+    if (remembered) dbSetGroceryAisleOverrides(remembered);
+
+    const byId = new Map(updates.map(u => [u.id, u]));
+    const nextItems = items.map(i => byId.get(i.id) ?? i);
+
+    set({
+      items: nextItems,
+      aisleOverrides: remembered ?? aisleOverrides,
+      ...commitAisleOrder(
+        aisleOrder.filter(a => a !== aisle && a !== OTHER_AISLE),
+        nextItems.map(i => i.aisle)
+      ),
+    });
   },
 
   /**

@@ -3,6 +3,8 @@ import {
   dbGetAllGroceryItems,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
+  dbGetGroceryHiddenAisles,
+  dbSetGroceryHiddenAisles,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
   dbInsertGroceryItem,
@@ -28,6 +30,8 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbSetGroceryAisleOrder: jest.fn(),
+  dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
+  dbSetGroceryHiddenAisles: jest.fn(),
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbSetGroceryAisleOverrides: jest.fn(),
   dbInsertGroceryItem: jest.fn(),
@@ -93,6 +97,7 @@ function seed(
   useGroceryStore.setState({
     items,
     aisleOrder: [...DEFAULT_AISLES],
+    hiddenAisles: [],
     aisleOverrides: extra.aisleOverrides ?? {},
     shops: extra.shops ?? [],
     itemShops: extra.itemShops ?? [],
@@ -106,6 +111,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllGroceryItems as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(null);
+  (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
@@ -560,6 +566,130 @@ describe('aisles', () => {
     const written = (dbSetGroceryAisleOrder as jest.Mock).mock.calls[0][0] as string[];
     expect(written[0]).toBe('Frozen');
     expect(written[written.length - 1]).toBe(OTHER_AISLE);
+  });
+});
+
+// ─── renaming and deleting an aisle ──────────────────────────────────────────
+
+describe('renameAisle', () => {
+  it('renames it in place in the walk order', () => {
+    const before = useGroceryStore.getState().aisleOrder.indexOf('Deli');
+
+    expect(useGroceryStore.getState().renameAisle('Deli', 'Charcuterie')).toBe(true);
+
+    const order = useGroceryStore.getState().aisleOrder;
+    expect(order.indexOf('Charcuterie')).toBe(before);
+    expect(order).not.toContain('Deli');
+  });
+
+  it('carries every row filed there onto the new name', () => {
+    const nduja = makeItem({ name: 'Nduja', aisle: 'Deli', onList: true });
+    const milk = makeItem({ name: 'Milk', aisle: 'Dairy & Eggs' });
+    seed([nduja, milk]);
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(dbUpdateGroceryItem).toHaveBeenCalledTimes(1);
+    const items = useGroceryStore.getState().items;
+    expect(items.find(i => i.id === nduja.id)!.aisle).toBe('Charcuterie');
+    expect(items.find(i => i.id === milk.id)!.aisle).toBe('Dairy & Eggs');
+  });
+
+  it('carries the remembered filings too', () => {
+    seed([], { aisleOverrides: { nduja: 'Deli', milk: 'Frozen' } });
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ nduja: 'Charcuterie', milk: 'Frozen' });
+    // ...so typing the name again still lands in the renamed section.
+    expect(useGroceryStore.getState().addByName('Nduja').aisle).toBe('Charcuterie');
+  });
+
+  it("tombstones the old name so the defaults pass can't bring it back", () => {
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(dbSetGroceryHiddenAisles).toHaveBeenCalledWith(expect.arrayContaining(['Deli']));
+    expect(useGroceryStore.getState().hiddenAisles).toContain('Deli');
+  });
+
+  it('refuses a blank, a collision, or Other', () => {
+    const s = () => useGroceryStore.getState();
+    expect(s().renameAisle('Deli', '   ')).toBe(false);
+    expect(s().renameAisle('Deli', 'frozen')).toBe(false);
+    expect(s().renameAisle(OTHER_AISLE, 'Misc')).toBe(false);
+    expect(s().renameAisle('Deli', OTHER_AISLE)).toBe(false);
+    expect(s().renameAisle('Butcher', 'Charcuterie')).toBe(false);
+    expect(dbSetGroceryAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('allows a re-casing of the aisle itself', () => {
+    expect(useGroceryStore.getState().renameAisle('Deli', 'DELI')).toBe(true);
+    expect(useGroceryStore.getState().aisleOrder).toContain('DELI');
+  });
+});
+
+describe('deleteAisle', () => {
+  it('drops it from the walk order and tombstones it', () => {
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().aisleOrder).not.toContain('Snacks');
+    expect(useGroceryStore.getState().hiddenAisles).toContain('Snacks');
+    expect(dbSetGroceryHiddenAisles).toHaveBeenCalledWith(expect.arrayContaining(['Snacks']));
+  });
+
+  it('files everything that was in it under Other — off-list rows included', () => {
+    const chips = makeItem({ name: 'Chips', aisle: 'Snacks', onList: true });
+    const nuts = makeItem({ name: 'Nuts', aisle: 'Snacks', onList: false, inCatalog: true });
+    seed([chips, nuts]);
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().items.every(i => i.aisle === OTHER_AISLE)).toBe(true);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledTimes(2);
+  });
+
+  it('forgets the filings that pointed there, rather than asserting Other', () => {
+    seed([], { aisleOverrides: { chips: 'Snacks', milk: 'Frozen' } });
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().aisleOverrides).toEqual({ milk: 'Frozen' });
+  });
+
+  it('does not let the lexicon put a deleted aisle back', () => {
+    // The whole reason addByName clamps: the lexicon still says Snacks.
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(useGroceryStore.getState().addByName('Chips').aisle).toBe(OTHER_AISLE);
+    expect(useGroceryStore.getState().aisleOrder).not.toContain('Snacks');
+  });
+
+  it('survives a reload — the tombstone is what makes it stick', () => {
+    useGroceryStore.getState().deleteAisle('Snacks');
+    const written = (dbSetGroceryHiddenAisles as jest.Mock).mock.calls[0][0] as string[];
+    (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue(written);
+    (dbGetGroceryAisleOrder as jest.Mock).mockReturnValue(useGroceryStore.getState().aisleOrder);
+
+    useGroceryStore.getState().initialize();
+
+    expect(useGroceryStore.getState().aisleOrder).not.toContain('Snacks');
+  });
+
+  it('comes back when it is added again by name', () => {
+    useGroceryStore.getState().deleteAisle('Snacks');
+    const order = useGroceryStore.getState().aisleOrder.filter(a => a !== OTHER_AISLE);
+
+    useGroceryStore.getState().setAisleOrder([...order, 'Snacks']);
+
+    expect(useGroceryStore.getState().aisleOrder).toContain('Snacks');
+    expect(useGroceryStore.getState().hiddenAisles).not.toContain('Snacks');
+  });
+
+  it('refuses to delete Other, which is the floor every unknown item lands on', () => {
+    useGroceryStore.getState().deleteAisle(OTHER_AISLE);
+
+    expect(useGroceryStore.getState().aisleOrder).toContain(OTHER_AISLE);
+    expect(dbSetGroceryAisleOrder).not.toHaveBeenCalled();
   });
 });
 
