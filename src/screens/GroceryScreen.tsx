@@ -149,15 +149,16 @@ export function GroceryScreen() {
   }, [clearList]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => {
-    // Nothing that *adds* is here — the three ways onto the list all hang off
-    // the FAB, same as every other list screen. What's left is the two things
-    // you do to a list that already exists.
-    //
-    // Clear list is deliberately NOT here either. It's destructive-looking,
-    // rarely used, and the header is where you're tapping one-handed while
-    // walking — it lives at the foot of the list instead, which is where you
-    // look when you're done rather than mid-shop.
+    // Clear list is deliberately NOT here. It's destructive-looking, rarely
+    // used, and the header is where you're tapping one-handed while walking —
+    // it lives at the foot of the list instead, which is where you look when
+    // you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
+    list.push({
+      icon: 'basket-outline',
+      onPress: () => setBuyAgainOpen(true),
+      accessibilityLabel: 'Buy again',
+    });
     list.push({
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),

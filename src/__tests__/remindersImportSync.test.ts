@@ -42,7 +42,7 @@ jest.mock('../store/useTaskStore', () => ({
 // reason as the task store: the real one reaches expo-sqlite, which doesn't
 // load under the node test env.
 const mockAddByName = jest.fn();
-let mockGroceryItems: { nameKey: string }[] = [];
+let mockGroceryItems: { nameKey: string; onList: boolean }[] = [];
 jest.mock('../store/useGroceryStore', () => ({
   useGroceryStore: { getState: () => ({ addByName: mockAddByName, items: mockGroceryItems }) },
 }));
@@ -649,19 +649,29 @@ describe('importReminders — groceries left in place', () => {
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 
-  // The catalog, not the list: a row that came off the list when it was bought
-  // still knows the name, which is what keeps a permanent reminder from
-  // yanking milk back onto the list after every shop.
-  it('skips a name the catalog already knows, quantity and all', async () => {
-    mockGroceryItems = [{ nameKey: 'chicken' }];
+  // The list, not the catalog: a name only matters here while it's actually
+  // sitting on the list, quantity and all.
+  it('skips a name already on the list, quantity and all', async () => {
+    mockGroceryItems = [{ nameKey: 'chicken', onList: true }];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: '2 lb chicken' })]);
 
     expect((await freshSync().importReminders()).skipped).toBe(1);
     expect(mockAddByName).not.toHaveBeenCalled();
   });
 
+  // A row that came off the list when it was bought still knows the name in
+  // the catalog, but that's history, not the list — a dictated reminder can
+  // put it right back, same as typing it would.
+  it('lets a name that is only in the catalog, not on the list, through', async () => {
+    mockGroceryItems = [{ nameKey: 'chicken', onList: false }];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: '2 lb chicken' })]);
+
+    expect((await freshSync().importReminders()).imported).toBe(1);
+    expect(mockAddByName).toHaveBeenCalledWith('2 lb chicken');
+  });
+
   it('lets a name the catalog has never seen through', async () => {
-    mockGroceryItems = [{ nameKey: 'milk' }];
+    mockGroceryItems = [{ nameKey: 'milk', onList: true }];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'eggs' })]);
 
     expect((await freshSync().importReminders()).imported).toBe(1);
