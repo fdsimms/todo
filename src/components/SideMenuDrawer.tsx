@@ -246,9 +246,6 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                       <Text style={[styles.badgeText, { color: colors.accent }]}>{groceryCount}</Text>
                     </View>
                   )}
-                  {isActive && (
-                    <View style={[styles.activeDot, { backgroundColor: colors.accent }]} />
-                  )}
                 </TouchableOpacity>
                 </DrawerItemAppear>
               );
@@ -364,11 +361,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
-  },
-  activeDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
   },
   badge: {
     minWidth: 22,
