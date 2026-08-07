@@ -69,6 +69,54 @@ export function resolveGroceryDrop(rows: readonly GroceryDropRow[]): GroceryPlac
 }
 
 /**
+ * A row as the screen actually holds it — the same shapes above, plus the list
+ * key each one renders under. Only the add-button drop needs the keys, because
+ * that's the one placement that names its seam by key rather than by having the
+ * reordered array handed to it.
+ */
+export type KeyedGroceryDropRow = GroceryDropRow & { key: string };
+
+/**
+ * Placements for items created by dropping the *add button* at a seam, rather
+ * than by dragging a row that was already there.
+ *
+ * Deliberately the same pass a finished row drag runs: splice the new rows in
+ * at the drop point and hand the result to resolveGroceryDrop, so the
+ * aisle-from-nearest-header rule and the one running rank are the ones already
+ * in use and not a second copy of them (placeCreatedProject does this for
+ * projects, for the same reason).
+ *
+ * `created` is spliced in the order it was typed, so a pasted block arrives on
+ * the list reading the way it was written. Any of those items that is *already*
+ * on the list is dropped from its old position first — a name that comes back
+ * moves to where it was just asked for rather than appearing twice.
+ *
+ * Null when the anchor row is no longer in `rows` (the list changed under the
+ * sheet). The caller has nothing to apply: the item is on the list already,
+ * appended, which is exactly where an unplaced add goes.
+ */
+export function placeNewGroceryItems(
+  rows: readonly KeyedGroceryDropRow[],
+  anchorKey: string,
+  before: boolean,
+  created: readonly GroceryItem[],
+): GroceryPlacement[] | null {
+  if (created.length === 0) return null;
+  const fresh = new Set(created.map(i => i.id));
+  const base = rows.filter(r => r.type !== 'item' || !fresh.has(r.item.id));
+  const anchor = base.findIndex(r => r.key === anchorKey);
+  if (anchor < 0) return null;
+
+  const spliced: KeyedGroceryDropRow[] = [...base];
+  spliced.splice(
+    before ? anchor : anchor + 1,
+    0,
+    ...created.map(item => ({ type: 'item' as const, key: item.id, item })),
+  );
+  return resolveGroceryDrop(spliced);
+}
+
+/**
  * Inclusive [min, max] index range an item may be dragged across.
  *
  * Bounded at the top by the first aisle header — an item dropped above every

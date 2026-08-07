@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,21 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
-import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import {
+  categoriesByIndex,
+  type DragScroller,
+  type DropZone,
+  type FabDropIntent,
+} from '../utils/fabDrop';
 import { GroceryRow } from '../components/GroceryRow';
 import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
@@ -26,7 +40,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
-import { resolveGroceryDrop, groceryDragRange } from '../utils/groceryReorder';
+import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -45,6 +59,21 @@ type ListRow =
   | { type: 'aisle'; key: string; aisle: string }
   | { type: 'cartHeader'; key: string; count: number }
   | { type: 'item'; key: string; item: GroceryItem; inCart: boolean };
+
+// The add button, naming what a release right now would do.
+function AddGroceryFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof FabMenu>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind !== 'insert') return null;
+    return intent.category ? `New item in ${intent.category}` : 'New item here';
+  });
+  return <FabMenu {...props} dragLabel={label} />;
+}
 
 export function GroceryScreen() {
   const insets = useSafeAreaInsets();
@@ -100,6 +129,118 @@ export function GroceryScreen() {
     }
     return out;
   }, [sections, inCart, cartOpen]);
+
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // The same gesture Today and Projects have, over the shape this list has: a
+  // drop names an aisle and a spot in it, and the item typed into the sheet
+  // that opens lands exactly there. The button reports raw pointer positions,
+  // FabDropZoneProvider turns those into an intent, and everything below is
+  // what each intent means here.
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  // Lets the drag scroll the list once it reaches either end of the screen.
+  const scrollControl = useRef<DragScroller | null>(null);
+  // What the drag is aimed at goes through a channel rather than state: it
+  // changes as the finger crosses each row, and re-rendering this screen
+  // re-runs every row's renderItem. Only the button's label reads it.
+  const fabIntentChannel = useFabIntentChannel();
+  const [addSeedAisle, setAddSeedAisle] = useState<string | null>(null);
+  // The drop the add sheet was opened by, re-anchored after each item so a
+  // burst of ten arrives in the order it was typed rather than inside out.
+  const pendingDropRef = useRef<Extract<FabDropIntent, { kind: 'insert' }> | null>(null);
+
+  /**
+   * Close the add sheet and forget the placement it was opened with. Missing
+   * this leaves the placement armed and the next plain tap on the button
+   * inherits it — items filed into an aisle because of a drag ten minutes ago.
+   */
+  const closeAdd = useCallback(() => {
+    setAddOpen(false);
+    setAddSeedAisle(null);
+    pendingDropRef.current = null;
+  }, []);
+
+  const zoneByKey = useMemo(() => {
+    const aislesFor = categoriesByIndex(rows.map(r => (r.type === 'aisle' ? r.aisle : null)));
+    const map = new Map<string, DropZone>();
+    rows.forEach((row, i) => {
+      if (row.type === 'aisle') {
+        map.set(row.key, { kind: 'header', key: row.key, category: row.aisle });
+      } else if (row.type === 'cartHeader' || row.inCart) {
+        // Registered, but with nothing to say about placement: the cart is a
+        // record of the trolley rather than a place to file something, which is
+        // the same bound groceryDragRange puts on a row drag. Leaving these out
+        // entirely would let a drop over them reach back up to the last aisle
+        // row instead of resolving to "nowhere in particular".
+        map.set(row.key, { kind: 'rest', key: row.key });
+      } else {
+        map.set(row.key, { kind: 'task', key: row.key, category: aislesFor[i] ?? null });
+      }
+    });
+    return map;
+  }, [rows]);
+
+  /**
+   * Give the freshly added items the position the button was dropped at, then
+   * re-anchor onto the last of them so the next add in the same burst lands
+   * after it rather than back on the original seam.
+   */
+  const handleItemsAdded = useCallback(
+    (created: GroceryItem[]) => {
+      const drop = pendingDropRef.current;
+      if (!drop || created.length === 0) return;
+      // `rows` is this render's list, from before the add — which is exactly
+      // what placeNewGroceryItems wants, since it splices the new rows in
+      // itself (and drops them from their old spot if they were already there).
+      const placements = placeNewGroceryItems(rows, drop.anchorKey, drop.before, created);
+      if (placements) applyDrop(placements);
+      const last = created[created.length - 1];
+      pendingDropRef.current = { ...drop, anchorKey: last.id, before: false };
+    },
+    [rows, applyDrop]
+  );
+
+  const openAddForDrop = useCallback((intent: FabDropIntent) => {
+    // Dropped back on the button: the drag is the whole of what happened, so no
+    // sheet, and nothing left armed for the next tap (see closeAdd).
+    if (intent.kind === 'cancel') {
+      pendingDropRef.current = null;
+      haptics.tap();
+      return;
+    }
+    // 'insert' and 'plain' are the only two this screen can produce — there are
+    // no stacks to join and nothing is pinnable here.
+    if (intent.kind === 'insert') {
+      pendingDropRef.current = intent;
+      setAddSeedAisle(intent.category);
+    } else {
+      pendingDropRef.current = null;
+      setAddSeedAisle(null);
+    }
+    setAddOpen(true);
+  }, []);
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref, and its responder is built once regardless.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      // end()/cancel() publish a null intent themselves, which is what clears
+      // the label.
+      openAddForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
 
   const handleToggle = useCallback(
     (id: string) => {
@@ -198,15 +339,23 @@ export function GroceryScreen() {
 
   const renderRow = useCallback(
     ({ item: row, drag, isActive }: { item: ListRow; drag?: () => void; isActive?: boolean }) => {
+      // Every row doubles as a target for the add button being dragged in. The
+      // wrapper only measures — no styling, no touches claimed — so a row
+      // behaves exactly as it did without one, and the dragged row's floating
+      // copy registers nothing (a null zone) rather than claiming the real
+      // row's slot under the same key.
+      const withZone = (content: React.ReactNode) => (
+        <FabDropZone zone={isActive ? null : zoneByKey.get(row.key) ?? null}>{content}</FabDropZone>
+      );
       if (row.type === 'aisle') {
-        return (
+        return withZone(
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{row.aisle}</Text>
           </View>
         );
       }
       if (row.type === 'cartHeader') {
-        return (
+        return withZone(
           <TouchableOpacity
             style={styles.cartHeader}
             activeOpacity={interaction.activeOpacity}
@@ -228,7 +377,7 @@ export function GroceryScreen() {
           </TouchableOpacity>
         );
       }
-      return (
+      return withZone(
         <GroceryRow
           item={row.item}
           onToggle={handleToggle}
@@ -240,7 +389,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey]
   );
 
   return (
@@ -255,10 +404,20 @@ export function GroceryScreen() {
         actions={actions}
       />
 
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
       <ReorderableList
         data={rows}
         keyExtractor={row => row.key}
         renderItem={renderRow}
+        // The user can't scroll during an add-button drag (the button's
+        // responder has the touch); the drag scrolls it instead, through the
+        // control below.
+        scrollEnabled={!fabDragging}
+        scrollControlRef={scrollControl}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.
@@ -312,15 +471,24 @@ export function GroceryScreen() {
           />
         }
       />
+      </FabDropZoneProvider>
 
-      <FabMenu
+      <AddGroceryFabWithDropLabel
+        channel={fabIntentChannel}
         items={addMenuItems}
         onSelect={handleAddMenuSelect}
         bottom={insets.bottom + tabBarHeight + spacing.md}
         accessibilityLabel="Add groceries"
+        drag={fabDrag}
+        dragHint="Drag onto the list to add an item there, or back to the button to cancel"
       />
 
-      <GroceryAddSheet visible={addOpen} onClose={() => setAddOpen(false)} />
+      <GroceryAddSheet
+        visible={addOpen}
+        onClose={closeAdd}
+        seedAisle={addSeedAisle}
+        onAdded={handleItemsAdded}
+      />
       <BuyAgainSheet visible={buyAgainOpen} onClose={() => setBuyAgainOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
       <FinishShoppingSheet
