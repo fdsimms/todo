@@ -20,12 +20,13 @@ import {
   isOnPaceQuota,
   isDismissedToday,
   isTaskBlocked,
+  isSequenceBlocked,
   isWaitingTask,
   activeChainStepTitle,
   displayTitleFor,
   sameTimeSegments,
 } from '../utils/visibilityUtils';
-import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerTaskSource, registerProjectSource } from '../utils/blockerRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
@@ -1440,6 +1441,80 @@ describe('blocking', () => {
   it('blocks nothing when no task source is registered', () => {
     registerTaskSource(null);
     expect(isTaskBlocked(waiter)).toBe(false);
+  });
+});
+
+// ─── a sequential project's order ────────────────────────────────────────────
+
+describe('isSequenceBlocked', () => {
+  const NOW = new Date(2025, 5, 10, 10, 0, 0);
+  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+  const step = (id: string, sortOrder: number): Task => ({
+    ...baseTask, id, sortOrder, projectId: 'p1', dueDate: dueToday,
+  });
+  const first = step('first', 1);
+  const second = step('second', 2);
+
+  const withProject = (sequential: boolean, tasks: Task[]) => {
+    registerProjectSource(() => [{
+      id: 'p1',
+      title: 'Repaint the hallway',
+      notes: '',
+      targetStartDate: null,
+      targetEndDate: null,
+      category: null,
+      sortOrder: 1,
+      archived: false,
+      archivedAt: null,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      nudgeCadenceDays: 0,
+      autoSchedule: false,
+      sequential,
+    }]);
+    registerTaskSource(() => tasks);
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    registerTaskSource(null);
+    registerProjectSource(null);
+    jest.useRealTimers();
+  });
+
+  it('changes nothing for a project that isn’t sequential', () => {
+    withProject(false, [first, second]);
+    expect(isSequenceBlocked(second)).toBe(false);
+    expect(isTaskVisible(second)).toBe(true);
+  });
+
+  it('keeps a later step off Today even though it is due today', () => {
+    withProject(true, [first, second]);
+    expect(isTaskVisible(first)).toBe(true);
+    expect(isSequenceBlocked(second)).toBe(true);
+    expect(isTaskVisible(second)).toBe(false);
+  });
+
+  it('keeps it out of Later too — a held step has no moment to sort by', () => {
+    withProject(true, [first, { ...second, dueDate: new Date(2025, 5, 20).toISOString() }]);
+    expect(isTaskDeferred({ ...second, dueDate: new Date(2025, 5, 20).toISOString() })).toBe(false);
+  });
+
+  // Waiting groups its rows under the task each is waiting on, and a sequence
+  // has none to name — see the note on isSequenceBlocked.
+  it('does not put the held steps on the Waiting screen', () => {
+    withProject(true, [first, second]);
+    expect(isWaitingTask(second)).toBe(false);
+    expect(isTaskBlocked(second)).toBe(false);
+  });
+
+  it('releases the next step when the one above it is completed', () => {
+    withProject(true, [{ ...first, completed: true }, second]);
+    expect(isSequenceBlocked(second)).toBe(false);
+    expect(isTaskVisible(second)).toBe(true);
   });
 });
 

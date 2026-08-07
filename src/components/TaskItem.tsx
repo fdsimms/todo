@@ -117,6 +117,10 @@ interface Props {
   onApplyImport?: (id: string) => void;
   /** Drop that suggestion and leave the task as dictated. */
   onDismissImport?: (id: string) => void;
+  /** This row's place in its project's order, shown as a leading step number. Only passed by a sequential project's own screen, where the order is the instruction rather than a preference. */
+  stepNumber?: number | null;
+  /** Held back by an earlier step of a sequential project: the checkbox becomes a lock and completing is refused, the same way a recurrence that isn't due yet refuses. */
+  locked?: boolean;
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -192,6 +196,8 @@ export const TaskItem = React.memo(function TaskItem({
   onApplyImport,
   onDismissImport,
   onSubtaskDragStateChange,
+  stepNumber = null,
+  locked = false,
 }: Props) {
   const categoryEmoji = useCategoryStore(s => task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null);
   const projectTitle = useProjectStore(s => task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null);
@@ -568,6 +574,11 @@ export const TaskItem = React.memo(function TaskItem({
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
+  // The two reasons this row's checkbox refuses a tap. They read the same to
+  // the finger — an error haptic and nothing happening — and differ only in
+  // what the circle shows and what it says out loud, so everything that just
+  // needs "can this be ticked" asks this one.
+  const completionLocked = recurrenceNotYetDue || locked;
 
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
@@ -655,7 +666,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
-    if (recurrenceNotYetDue) {
+    if (completionLocked) {
       await haptics.error();
       return;
     }
@@ -753,7 +764,7 @@ export const TaskItem = React.memo(function TaskItem({
   // completeTask for the recurrence/streak bookkeeping).
   const handleQuotaTap = async () => {
     if (completingRef.current || pacingOutRef.current) return;
-    if (recurrenceNotYetDue) {
+    if (completionLocked) {
       await haptics.error();
       return;
     }
@@ -973,15 +984,17 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityRole={meterInteractive ? 'button' : 'checkbox'}
         accessibilityState={
           meterInteractive
-            ? { disabled: recurrenceNotYetDue }
+            ? { disabled: completionLocked }
             : {
                 checked: selectionMode ? selected : completing,
-                disabled: !selectionMode && recurrenceNotYetDue,
+                disabled: !selectionMode && completionLocked,
               }
         }
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
+            : locked
+              ? `${task.title}, waiting for the step before it`
             : recurrenceNotYetDue
               ? `${task.title}, not due yet`
               : completing
@@ -997,9 +1010,9 @@ export const TaskItem = React.memo(function TaskItem({
         <Animated.View style={[
           styles.circle,
           !selectionMode && completing && !quotaCompleting && styles.circleCompleting,
-          !selectionMode && recurrenceNotYetDue && styles.circleLocked,
+          !selectionMode && completionLocked && styles.circleLocked,
           // Ready is a nudge, not a lock — the checkbox stays tappable either way.
-          !selectionMode && !completing && !recurrenceNotYetDue && timerReady && styles.circleReady,
+          !selectionMode && !completing && !completionLocked && timerReady && styles.circleReady,
           selectionMode && selected && styles.circleSelected,
           showQuotaMeter && styles.circleQuota,
           // The ring can only follow the fill once the fill has reached it —
@@ -1037,6 +1050,9 @@ export const TaskItem = React.memo(function TaskItem({
           )}
           {!selectionMode && !completing && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+          )}
+          {!selectionMode && !completing && !recurrenceNotYetDue && locked && (
+            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
           )}
         </Animated.View>
       </TouchableOpacity>
@@ -1081,6 +1097,14 @@ export const TaskItem = React.memo(function TaskItem({
         ) : (
           <View style={styles.titleRow}>
             {isNew && <View style={styles.newDot} />}
+            {stepNumber !== null && (
+              // The order *is* the instruction in a sequential project, so it's
+              // written down rather than left implied by row position — and the
+              // step that's actually open is the one tinted.
+              <Text style={[styles.stepNumber, !locked && styles.stepNumberOpen]}>
+                {stepNumber}
+              </Text>
+            )}
             {expanded ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps.
               // Editing always edits the task's own title, not the chain step's
@@ -1090,7 +1114,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Text style={styles.title} numberOfLines={2}>{displayTitle}</Text>
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.title, styles.titleFlex]} numberOfLines={1} ellipsizeMode="tail">
+              <Text style={[styles.title, styles.titleFlex, locked && styles.titleLocked]} numberOfLines={1} ellipsizeMode="tail">
                 {displayTitle}
               </Text>
             )}
@@ -2003,10 +2027,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     margin: 0,
     includeFontPadding: false,
   },
+  titleLocked: {
+    color: colors.textSecondary,
+  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+  },
+  // Tabular-ish by hand: a fixed minimum so the titles of steps 9 and 10 still
+  // start at the same x.
+  stepNumber: {
+    minWidth: 14,
+    color: colors.textTertiary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.md,
+    fontWeight: fontWeight.semibold,
+  },
+  stepNumberOpen: {
+    color: colors.accent,
   },
   titleFlex: {
     flexShrink: 1,

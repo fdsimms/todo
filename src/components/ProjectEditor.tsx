@@ -68,6 +68,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(DEFAULT_NUDGE_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
+  const [sequential, setSequential] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -79,6 +80,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
     setNudgeCadenceDays(project.nudgeCadenceDays);
     setAutoSchedule(project.autoSchedule);
+    setSequential(project.sequential);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -102,6 +104,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         // A cadence of "never" leaves nothing for auto-scheduling to trigger
         // on, so the two can't disagree about whether this project is managed.
         autoSchedule: nudgeCadenceDays > 0 && autoSchedule,
+        sequential,
       });
     }
     onClose();
@@ -328,6 +331,34 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <Text style={styles.sectionFooter}>
         A project's tasks only show up on Today once they have a date, so a project with nothing
         scheduled goes quiet. This is how it gets your attention again.
+      </Text>
+
+      <View style={[styles.card, { marginTop: spacing.xl }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setSequential(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Do these in order"
+          accessibilityState={{ checked: sequential }}
+        >
+          <Ionicons name="list-outline" size={18} color={sequential ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Do these in order</Text>
+            <Text style={styles.optionHint}>
+              {sequential
+                ? 'Only the top task is open — the rest unlock as you finish'
+                : 'Any task in this project can be done whenever'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, sequential && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, sequential && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.sectionFooter}>
+        Drag the tasks on the project's own screen to set the order. A step that isn't open yet
+        stays off Today and Later until the one above it is done.
       </Text>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>

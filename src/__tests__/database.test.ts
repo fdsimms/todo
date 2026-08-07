@@ -1055,6 +1055,7 @@ describe('Projects', () => {
     createdAt: '2025-01-01T00:00:00.000Z',
     nudgeCadenceDays: 14,
     autoSchedule: false,
+    sequential: false,
     ...overrides,
   });
 
@@ -1219,7 +1220,7 @@ describe('backup and restore', () => {
     dbInsertProject({
       id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null,
-      createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false,
+      createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

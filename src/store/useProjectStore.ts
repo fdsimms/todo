@@ -10,6 +10,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerProjectSource } from '../utils/blockerRegistry';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -90,7 +91,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential'>>) => void;
   getProjectById: (id: string) => Project | null;
   reorderProjects: (orderedIds: string[]) => void;
   reorderProjectsWithCategoryUpdates: (orderedIds: string[], categoryUpdates: Array<{ id: string; category: string | null }>) => void;
@@ -130,6 +131,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       nudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS,
       autoSchedule: false,
+      sequential: false,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -188,3 +190,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set(s => ({ projects: [...s.projects, project] }));
   },
 }));
+
+// Lets visibilityUtils see which projects are sequential without importing this
+// store — same pull-based registry, and the same reason, as the task source
+// registered at the bottom of useTaskStore. See utils/blockerRegistry.
+registerProjectSource(() => useProjectStore.getState().projects);
