@@ -138,6 +138,12 @@ interface GroceryStore {
   applyDrop: (placements: Array<{ id: string; sortOrder: number; aisle: string }>) => void;
 
   setAisleOrder: (order: string[]) => void;
+  /**
+   * Creates an aisle at the end of the walk order. Returns the canonical name —
+   * the existing one when it's already there, so callers can select it either
+   * way — or null when the name is empty.
+   */
+  addAisle: (name: string) => string | null;
 
   /** Null when the name collides with an existing store. */
   addShop: (name: string) => Shop | null;
@@ -560,6 +566,32 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const normalized = normalizeAisleOrder(order, get().items.map(i => i.aisle));
     dbSetGroceryAisleOrder(normalized);
     set({ aisleOrder: normalized });
+  },
+
+  /**
+   * Unlike addShop this hands back the existing aisle on a collision instead of
+   * refusing. A shop is a row with an id, so returning a different one silently
+   * files a trip against the wrong place; an aisle *is* its name, so the one
+   * already in the order is the same aisle the caller just asked for.
+   *
+   * Matching is case-insensitive because normalizeAisleOrder dedupes exactly —
+   * "produce" beside "Produce" would render as two sections of one aisle.
+   *
+   * This is also the only path that *persists* a new aisle: setAisleMany adds
+   * one to the in-memory order as a side effect of filing an item there, and
+   * normalizeAisleOrder recovers it at startup only for as long as some row
+   * still carries it. An aisle the user typed out is a decision about their
+   * store and outlives the item it was created for.
+   */
+  addAisle(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    const existing = get().aisleOrder.find(a => a.toLowerCase() === trimmed.toLowerCase());
+    if (existing) return existing;
+    // setAisleOrder normalizes, so passing the order with 'Other' still in it
+    // is fine — it comes back forced last.
+    get().setAisleOrder([...get().aisleOrder, trimmed]);
+    return trimmed;
   },
 
   /**

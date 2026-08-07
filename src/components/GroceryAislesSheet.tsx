@@ -63,6 +63,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleOrder = useGroceryStore(s => s.setAisleOrder);
+  const addAisle = useGroceryStore(s => s.addAisle);
   const items = useGroceryStore(useShallow(s => s.items));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -136,14 +137,12 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const countFor = (aisle: string) => items.filter(i => i.aisle === aisle && i.onList).length;
 
   const handleAdd = () => {
-    const trimmed = newAisle.trim();
-    if (!trimmed) return;
-    if (aisleOrder.some(a => a.toLowerCase() === trimmed.toLowerCase())) {
-      setNewAisle('');
-      return;
-    }
-    setAisleOrder([...draggable, trimmed]);
-    haptics.success();
+    // addAisle owns the dedupe (and the write), so a name that's already in the
+    // order just clears the field — the aisle the user asked for is there, and
+    // there's nothing to celebrate. `aisleOrder` is the pre-call snapshot.
+    const created = addAisle(newAisle);
+    if (!created) return;
+    if (!aisleOrder.includes(created)) haptics.success();
     setNewAisle('');
   };
 
