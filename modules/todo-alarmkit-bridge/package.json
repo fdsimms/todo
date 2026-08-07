@@ -1,0 +1,7 @@
+{
+  "name": "todo-alarmkit-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that schedules native iOS alarms via AlarmKit (iOS 26+) for task reminders, falling back to unavailable on older iOS.",
+  "main": "index.ts",
+  "private": true
+}

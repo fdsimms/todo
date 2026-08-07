@@ -114,6 +114,7 @@ const baseTask: Task = {
   targetCount: null,
   progressCount: 0,
   reminderTime: null,
+  reminderKind: 'notification',
   parentId: null,
   groupId: null,
   projectId: null,

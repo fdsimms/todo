@@ -16,7 +16,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode."
       }
     },
     "android": {
@@ -68,7 +69,8 @@
         }
       ],
       "./plugins/withAppGroup",
-      "./plugins/withWidgetExtension"
+      "./plugins/withWidgetExtension",
+      "./plugins/withAlarmKit"
     ],
     "extra": {
       "eas": {

@@ -63,7 +63,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'linkUrl',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
@@ -151,6 +151,7 @@ function newTaskFromDraft(
     groupId: draft.groupId ?? null,
     projectId: draft.projectId ?? null,
     reminderTime: draft.reminderTime ?? null,
+    reminderKind: draft.reminderKind ?? 'notification',
     chainEnabled: draft.chainEnabled ?? false,
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
@@ -971,6 +972,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbUpdateTask(updated);
       if (
         'reminderTime' in updates ||
+        'reminderKind' in updates ||
         'completed' in updates ||
         'archived' in updates ||
         'title' in updates ||
@@ -1953,6 +1955,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       reminderTime: null,
+      reminderKind: 'notification',
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
@@ -2075,6 +2078,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       reminderTime: null,
+      reminderKind: 'notification',
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],

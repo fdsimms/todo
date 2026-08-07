@@ -52,6 +52,7 @@ const BASE: Task = {
   previousStreakDate: null,
   showStreak: false,
   reminderTime: null,
+  reminderKind: 'notification',
   parentId: null,
   groupId: null,
   projectId: null,

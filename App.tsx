@@ -8,8 +8,9 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
-import { requestNotificationPermissions } from './src/utils/notifications';
+import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
+import { useNotificationTapSync } from './src/utils/notificationTapSync';
 import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useWidgetSync } from './src/utils/widgetSync';
@@ -87,6 +88,9 @@ export default function App() {
     purgeOldCompletedTasks();
     // Request notification permissions
     requestNotificationPermissions();
+    // AlarmKit has its own authorization, separate from UNUserNotificationCenter
+    // above — only meaningful where the platform actually supports it.
+    if (isAlarmKitAvailable()) requestAlarmAuthorization();
   }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
@@ -104,6 +108,9 @@ export default function App() {
 
   // Keeps the pending daily agenda's count matching the tasks it describes.
   useDailyAgendaSync();
+
+  // Navigates to Today when a reminder/alarm notification is tapped.
+  useNotificationTapSync();
 
   return (
     <ErrorBoundary>
