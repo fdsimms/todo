@@ -54,6 +54,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
 | what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
+| importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -191,6 +192,50 @@ Two counts exist and they mean different things, so keep them labelled: the rost
 **A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
 
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
+
+### Apple Reminders import — voice capture, and the only thing that deletes data elsewhere
+
+"Hey Siri, remind me to buy milk" lands in the Reminders app; `src/utils/remindersImportSync.ts`
+pulls it into the Inbox and deletes the reminder. Going through Reminders rather than owning a
+Siri phrase is deliberate — a phrase has to be anchored on `\(.applicationName)`, and Siri
+cannot reliably hear "dundundun". A custom App Intent was built and reverted for exactly that
+(plus an iOS 16 floor it forced); don't reach for one again without solving the name.
+
+Three things about `expo-calendar` that nothing in this repo will tell you, each of which cost a
+read of the published tarball:
+
+- **`getRemindersAsync` must be called with a null status.** Passing `ReminderStatus.INCOMPLETE`
+  makes the JS wrapper throw unless you also give it a date window, and natively that window is
+  matched against the **due date** — which a dictated reminder hasn't got. A status query drops
+  exactly the reminders this feature exists for. So the fetch is unfiltered, completed reminders
+  come back with everything else, and every "may we touch this" rule lives in
+  `importableReminders()` instead. That's why the pure module is mostly filters.
+- **`getDefaultCalendarAsync()` is not the default *reminders* list.** It asks for **calendar**
+  permission (which this app never wants) and returns `defaultCalendarForNewEvents`. There is no
+  API for the reminders default, which is why picking a list is the first step of enabling
+  rather than a correction to a guess.
+- **Never pass an unvalidated list id.** A stale one reaches `predicateForReminders(in: [])` —
+  undocumented, and if an empty array ever behaved like `nil` it would mean every reminder on the
+  device. The drain re-checks the id against a live `getCalendarsAsync(EntityTypes.REMINDER)`
+  every time.
+
+And one about config plugins generally, learned here: **leaving a package out of `app.json`'s
+`plugins` does not stop its config plugin running.** Expo autolinks the plugin of any dependency
+shipping an `app.plugin.js`, so `expo-calendar`'s ran unasked and wrote two `NSCalendars*` usage
+strings this app has no business declaring, plus Android `READ_CALENDAR`/`WRITE_CALENDAR`. The
+way to *narrow* a plugin is to list it with options — `calendarPermission: false` deletes the
+key, since `createPermissionsPlugin` treats `false` as a removal — and the Android half needs
+`android.blockedPermissions`, which the plugin adds unconditionally regardless of its options.
+
+The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
+user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
+failed delete leaves a visible duplicate, a failed create after a delete loses the capture
+silently. `handledIds` records a reminder the moment its task exists, before the delete is
+attempted, because both a *failed* delete and a *slow* one hand the same reminder back to the
+next fetch. A list is only offered if `allowsModifications` — a read-only shared list imports
+fine and fails every delete, re-importing itself for ever. And nothing runs until the user has
+confirmed an alert naming the list and the exact count, keyed on the list id so switching lists
+asks again.
 
 ### Navigation
 
