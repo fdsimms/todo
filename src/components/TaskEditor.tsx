@@ -248,6 +248,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [chainIndex, setChainIndex] = useState(0);
+  const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
 
@@ -302,6 +303,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimedMinutes(task.timedMinutes ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
+      setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
       setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
@@ -380,6 +382,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
       chainIndex: task?.chainIndex ?? 0,
+      chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
@@ -486,6 +489,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainEnabled: chainEnabled && chainItems.length > 0,
       chainItems,
       chainIndex,
+      // Cleared whenever the control isn't on screen to set, same reasoning as
+      // showStreak below: the mode only renders for a chain that has a repeat,
+      // so a stale `true` left on a task whose chain or repeat was turned off
+      // would quietly turn it into a rotation if either came back.
+      chainStepOnSchedule:
+        chainEnabled && chainItems.length > 0 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
@@ -751,7 +760,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
       showStreak,
       linkUrl,
       blockedById,
@@ -1653,11 +1662,69 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   Times are per step; a step left blank uses the task's own estimate.
                 </Text>
               )}
+              {chainItems.length > 1 && (
+                <View style={styles.chainModeBlock}>
+                  <Text style={styles.chainModeLabel}>Next step</Text>
+                  <View style={styles.chainModeRow}>
+                    {([false, true] as const).map(onSchedule => {
+                      const active = chainStepOnSchedule === onSchedule;
+                      // "On the next repeat" needs a repeat to wait for. Shown
+                      // disabled rather than hidden so the choice — and the
+                      // fact that Repeat is what unlocks it — stays visible.
+                      const disabled = onSchedule && recurrenceType === 'none';
+                      return (
+                        <TouchableOpacity
+                          key={String(onSchedule)}
+                          style={[
+                            styles.chainModePill,
+                            active && styles.chainModePillActive,
+                            disabled && styles.chainModePillDisabled,
+                          ]}
+                          disabled={disabled}
+                          onPress={() => { haptics.tap(); setChainStepOnSchedule(onSchedule); }}
+                          activeOpacity={interaction.activeOpacity}
+                          accessibilityRole="radio"
+                          accessibilityState={{ selected: active, disabled }}
+                          accessibilityLabel={onSchedule ? 'Next step on the next repeat' : 'Next step right away'}
+                        >
+                          <Text
+                            style={[
+                              styles.chainModePillText,
+                              active && styles.chainModePillTextActive,
+                              disabled && styles.chainModePillTextDisabled,
+                            ]}
+                          >
+                            {onSchedule ? 'On the next repeat' : 'Right away'}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={styles.chainCurrentHint}>
+                    {recurrenceType === 'none'
+                      ? 'Steps follow each other as you finish them. Add a repeat to spread them over days instead.'
+                      : chainStepOnSchedule
+                        ? 'One step per repeat — the chain rotates through its steps rather than running straight through.'
+                        : 'Finishing a step brings up the next one immediately; the repeat starts the whole chain over.'}
+                  </Text>
+                </View>
+              )}
               {chainIndex < chainItems.length && chainItems.length > 1 && (
                 <Text style={styles.chainCurrentHint}>
-                  {chainIndex === chainItems.length - 1 && recurrenceType === 'none'
-                    ? 'Tap a number to set the current position. This is the last step — the chain ends here.'
-                    : `Tap a number to set the current position. Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`}
+                  {(() => {
+                    // Timing lives in the Next step block above, so this stays
+                    // about position — with one exception. In "Right away" mode
+                    // the wrap is the single step that *does* wait for the
+                    // repeat, which is exactly what that block doesn't say and
+                    // what makes step 1 look like it should have been today's.
+                    const prefix = 'Tap a number to set the current position.';
+                    if (chainIndex === chainItems.length - 1) {
+                      return recurrenceType === 'none'
+                        ? `${prefix} This is the last step — the chain ends here.`
+                        : `${prefix} Last step — the chain starts over on the next repeat.`;
+                    }
+                    return `${prefix} Next up: ${chainItems[(chainIndex + 1) % chainItems.length]?.title}`;
+                  })()}
                 </Text>
               )}
             </>
@@ -2731,4 +2798,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     marginTop: spacing.xs,
   },
+  chainModeBlock: { marginTop: spacing.md },
+  chainModeLabel: {
+    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
+    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.xs,
+  },
+  chainModeRow: { flexDirection: 'row', gap: spacing.xs },
+  chainModePill: {
+    flex: 1, paddingVertical: 7, borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary, alignItems: 'center',
+  },
+  chainModePillActive: { backgroundColor: colors.accent },
+  chainModePillDisabled: { opacity: 0.4 },
+  chainModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  chainModePillTextActive: { color: colors.onAccent, fontWeight: '600' },
+  chainModePillTextDisabled: { color: colors.textTertiary },
 });

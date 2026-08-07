@@ -49,6 +49,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
+  chainStepOnSchedule: false,
   vacationPause: false,
   timerStartedAt: null,
   timedMinutes: null,

@@ -48,6 +48,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
+  chainStepOnSchedule: false,
   vacationPause: false,
   archived: false,
   archivedAt: null,

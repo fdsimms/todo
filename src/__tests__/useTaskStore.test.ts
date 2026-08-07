@@ -164,6 +164,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
+  chainStepOnSchedule: false,
   vacationPause: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -913,6 +914,125 @@ describe('completeTask', () => {
     expect(next.recurrenceCount).toBe(5);
     expect(next.streakCount).toBe(task.streakCount);
     expect(completed.streakCount).toBe(task.streakCount);
+  });
+
+  // ---- per-step scheduling ("Next step: on the next repeat") ----
+
+  const rotationSteps = () => [
+    { id: 'a', title: 'Step A', estimatedMinutes: null },
+    { id: 'b', title: 'Step B', estimatedMinutes: null },
+    { id: 'c', title: 'Step C', estimatedMinutes: null },
+  ];
+
+  it('lands a mid-chain step on the next occurrence when steps are scheduled', () => {
+    const task = makeTask({
+      id: 'rotation',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: rotationSteps(),
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('rotation');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'rotation')!;
+    expect(next.chainIndex).toBe(1);
+    // The daily schedule's next date, not today — this is the whole difference
+    // from the default mode, which spawns onto the completion day.
+    expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+  });
+
+  it('advances the streak on every scheduled step but the recurrence count only per cycle', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const task = makeTask({
+      id: 'rotation-count',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: 5,
+      dueDate: new Date().toISOString(),
+      streakCount: 3,
+      streakDate: yesterday.toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: rotationSteps(),
+      chainIndex: 0, // mid-chain
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('rotation-count');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'rotation-count')!;
+    // Per step, and not a preference: getStreakOutcome measures the gap against
+    // the daily cadence, so advancing once per cycle would show a 3-day gap
+    // against an expected 1 and reset the streak every time round.
+    expect(next.streakCount).toBe(4);
+    // "Repeat 5 times" still means five times through the chain, not five steps.
+    expect(next.recurrenceCount).toBe(5);
+  });
+
+  it('decrements the recurrence count when a scheduled chain wraps', () => {
+    const task = makeTask({
+      id: 'rotation-wrap',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      recurrenceCount: 5,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: rotationSteps(),
+      chainIndex: 2, // last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('rotation-wrap');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'rotation-wrap')!;
+    expect(next.chainIndex).toBe(0);
+    expect(next.recurrenceCount).toBe(4);
+  });
+
+  it('finishes a scheduled chain already in progress when the repeat has expired', () => {
+    const task = makeTask({
+      id: 'rotation-expired',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceEndDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: rotationSteps(),
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('rotation-expired');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'rotation-expired');
+    // Ending the repeat isn't a request to abandon the run in progress, so the
+    // remaining steps still spawn — and fall back to today rather than losing
+    // their date and dropping out of every list.
+    expect(next).toBeDefined();
+    expect(next!.chainIndex).toBe(1);
+    expect(new Date(next!.dueDate!).toDateString()).toBe(new Date().toDateString());
+  });
+
+  it('ignores per-step scheduling on a chain with no repeat to wait for', () => {
+    const task = makeTask({
+      id: 'rotation-no-repeat',
+      recurrenceType: 'none',
+      dueDate: null,
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: rotationSteps(),
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('rotation-no-repeat');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'rotation-no-repeat')!;
+    expect(next.chainIndex).toBe(1);
+    expect(next.dueDate).toBeNull();
   });
 
   it('carries subtasks onto the spawned chain step, reset to unchecked', () => {
@@ -1690,6 +1810,33 @@ describe('skipNextRecurrence', () => {
     // A mid-chain step never consults the recurrence schedule — skipping it
     // shouldn't burn a cycle of the recurrence the way completing it wouldn't either.
     expect(updated.dueDate).toBe(task.dueDate);
+    expect(updated.recurrenceCount).toBe(5);
+  });
+
+  it('moves the date too when skipping a mid-chain step that has one of its own', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 5,
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
+      ],
+      chainIndex: 0, // not the last step
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.chainIndex).toBe(1);
+    // The skipped step occupied a day of its own, so the position moving
+    // without the date would park the next step on the day just skipped.
+    expect(new Date(updated.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    // Still not a skipped *cycle*, same split as completeTask.
     expect(updated.recurrenceCount).toBe(5);
   });
 
