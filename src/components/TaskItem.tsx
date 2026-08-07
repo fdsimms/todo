@@ -1200,6 +1200,35 @@ export const TaskItem = React.memo(function TaskItem({
         )}
       </TouchableOpacity>
 
+      {/* Starting the countdown is the whole point of a timed task, so the
+          control sits on the row rather than only inside the expanded panel —
+          the chip in the meta line reports the time, this starts and pauses it.
+          It's gone once the countdown has run out: there is nothing left to run
+          and the next tap is the checkbox. Reset/discard stay in the panel;
+          they're the rarer, more destructive half. */}
+      {!selectionMode && showActions && timed && !completing && !task.completed && !(timerReady && !timerRunning) && (
+        <TouchableOpacity
+          onPress={handleTimerToggle}
+          hitSlop={8}
+          style={[styles.rowTimerBtn, timerRunning && styles.rowTimerBtnRunning]}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={
+            timerRunning ? `Pause timer for ${task.title}` : `Start timer for ${task.title}`
+          }
+          accessibilityValue={{ text: formatStopwatch(remainingSeconds) }}
+        >
+          <Ionicons
+            name={timerRunning ? 'pause' : 'play'}
+            size={iconSize.sm}
+            // The play triangle's bounding box is wider than its ink, so it
+            // reads left-of-centre in a circle without this.
+            style={!timerRunning && styles.rowTimerGlyphPlay}
+            color={timerRunning ? colors.onAccent : colors.accent}
+          />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && task.linkUrl && (
         <TouchableOpacity
           onPress={handleOpenLink}
@@ -1931,6 +1960,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pinBtn: {
     padding: 4,
+  },
+  // Tinted while idle, filled while running — the same accent-fill/onAccent
+  // pairing the expanded panel's timer pill uses for "this is going".
+  rowTimerBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowTimerBtnRunning: {
+    backgroundColor: colors.accent,
+  },
+  rowTimerGlyphPlay: {
+    marginLeft: 2,
   },
   timerRunningGroup: {
     flexDirection: 'row',
