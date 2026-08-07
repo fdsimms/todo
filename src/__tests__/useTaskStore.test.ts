@@ -214,6 +214,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,
+  sequential: false,
   ...overrides,
 });
 
@@ -2562,6 +2563,61 @@ describe('reorderTasks', () => {
       { id: 'b', sortOrder: 1 },
       { id: 'a', sortOrder: 2 },
     ]);
+  });
+});
+
+// ─── reorderProjectTasks ─────────────────────────────────────────────────────
+
+describe('reorderProjectTasks', () => {
+  // The whole point of the separate action: renumbering the project 1..N would
+  // drag every dated member of it to the top of Today.
+  it('swaps the members between the slots they already held', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 40 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 90 }),
+        makeTask({ id: 'loose', sortOrder: 60 }),
+      ],
+    });
+    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(40);
+    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(90);
+    expect(tasks.find(t => t.id === 'loose')?.sortOrder).toBe(60);
+    expect(dbBatchUpdateSortOrders).toHaveBeenCalledWith([
+      { id: 'b', sortOrder: 40 },
+      { id: 'a', sortOrder: 90 },
+    ]);
+  });
+
+  it('leaves other projects, completed and archived members alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 20 }),
+        makeTask({ id: 'done', projectId: 'p1', sortOrder: 15, completed: true }),
+        makeTask({ id: 'filed', projectId: 'p1', sortOrder: 17, archived: true }),
+        makeTask({ id: 'other', projectId: 'p2', sortOrder: 12 }),
+      ],
+    });
+    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a', 'done', 'filed', 'other']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'done')?.sortOrder).toBe(15);
+    expect(tasks.find(t => t.id === 'filed')?.sortOrder).toBe(17);
+    expect(tasks.find(t => t.id === 'other')?.sortOrder).toBe(12);
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(10);
+  });
+
+  it('writes nothing when the drop changed nothing', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 20 }),
+      ],
+    });
+    (dbBatchUpdateSortOrders as jest.Mock).mockClear();
+    useTaskStore.getState().reorderProjectTasks('p1', ['a', 'b']);
+    expect(dbBatchUpdateSortOrders).not.toHaveBeenCalled();
   });
 });
 

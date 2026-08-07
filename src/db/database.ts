@@ -316,6 +316,10 @@ export function initDatabase(): void {
     // a task when this shipped is one the user is presumed to have set, so no
     // row starts out narrating itself. See Task.autoScheduledAt.
     'ALTER TABLE tasks ADD COLUMN auto_scheduled_at TEXT',
+    // 0 for every existing project, and that's the only safe backfill: turning
+    // it on hides every member but the first, and no existing project's order
+    // was ever entered as a sequence.
+    'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1186,6 +1190,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     createdAt: row.created_at as string,
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
+    sequential: Boolean(row.sequential),
   };
 }
 
@@ -1196,22 +1201,22 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, created_at, nudge_cadence_days, auto_schedule, sequential) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt, project.createdAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.id,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.id,
     ]
   );
 }

@@ -36,6 +36,7 @@ import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
+import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { getNextDueDate, getCurrentDayStart, getTaskDayStart, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
 import { isTaskVisible, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isTaskExpired, isRecurrenceNotYetDue, isLiveRecurring, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isMissed, sameTimeSegments } from '../utils/visibilityUtils';
@@ -567,6 +568,13 @@ interface TaskStore {
     categoryUpdates: Array<{ id: string; category: string | null }>,
     options?: { scope?: 'occurrence' | 'series' },
   ) => void;
+  /**
+   * Reorder a project's live members. Unlike reorderTasks this renumbers
+   * nothing — the members swap the sortOrder slots they already hold, so a
+   * dated project task keeps its place among the loose tasks on Today. See
+   * utils/projectOrder.slotUpdates.
+   */
+  reorderProjectTasks: (projectId: string, orderedIds: string[]) => void;
 
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
@@ -2119,6 +2127,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
     }
+  },
+
+  reorderProjectTasks(projectId, orderedIds) {
+    const members = liveProjectSteps(projectId, get().tasks);
+    const updates = slotUpdates(members, orderedIds);
+    if (updates.length === 0) return;
+    dbBatchUpdateSortOrders(updates);
+    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
   },
 
   addSubtask(parentId, title) {
