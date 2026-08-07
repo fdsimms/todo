@@ -77,6 +77,7 @@ jest.mock('../db/database', () => ({
   // untouched by this file's subject.
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
+  dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
