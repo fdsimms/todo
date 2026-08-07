@@ -19,7 +19,7 @@ npm install          # dependencies; node_modules isn't checked in, so a fresh c
                      # this before tsc or jest will run at all
 npx expo start       # start dev server (scan QR with Expo Go)
 npx tsc --noEmit     # typecheck — ~10s
-npm test             # all 28 suites, 992 tests — ~4s, just run the whole thing
+npm test             # all 69 suites, 2,533 tests — ~4s, just run the whole thing
 npm run test:watch   # watch mode
 npx jest src/__tests__/dateUtils.test.ts  # single file, if you want the shorter output
 ```
