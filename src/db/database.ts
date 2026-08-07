@@ -470,6 +470,16 @@ export function dbSetSetting(key: string, value: string): void {
   db.runSync('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [key, value]);
 }
 
+/**
+ * Removes a setting outright, rather than blanking it the way the nullable
+ * settings do. Only one caller wants this: moving the API key to the keychain
+ * has to leave *no* row behind, and an empty string is still a row holding the
+ * name of a credential this app used to keep in plaintext.
+ */
+export function dbDeleteSetting(key: string): void {
+  db.runSync('DELETE FROM settings WHERE key = ?', [key]);
+}
+
 // ─── Tasks ────────────────────────────────────────────────────────────────────
 
 function rowToTask(row: Record<string, unknown>): Task {

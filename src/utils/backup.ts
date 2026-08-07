@@ -30,6 +30,12 @@ export const BACKUP_FORMAT = 1;
  * the user is about to hand to AirDrop, email or iCloud Drive — a place a
  * credential should never end up as a side effect of saving your tasks. It
  * has to be typed back in after a restore, which is the right trade.
+ *
+ * The key now lives in the keychain (src/utils/secureApiKey.ts), which the
+ * export never reads, so on most installs there is no row here to leave out.
+ * This stays as the belt to that braces: it still covers the launch window
+ * before the migration has run, and an install whose keychain write failed and
+ * whose plaintext row is therefore still sitting in the table.
  */
 export const REDACTED_SETTING_KEYS = ['anthropicApiKey'];
 

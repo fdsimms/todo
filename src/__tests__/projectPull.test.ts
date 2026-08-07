@@ -494,8 +494,8 @@ describe('diagnosePullEmpty', () => {
       {
         chainEnabled: true,
         chainItems: [
-          { id: 'c1', title: 'Step one' },
-          { id: 'c2', title: 'Step two' },
+          { id: 'c1', title: 'Step one', estimatedMinutes: null },
+          { id: 'c2', title: 'Step two', estimatedMinutes: null },
         ],
         chainIndex: 1,
       },

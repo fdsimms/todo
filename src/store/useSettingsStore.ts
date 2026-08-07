@@ -4,6 +4,8 @@ import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
 import type { SortOption, Priority, Effort } from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
+import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
+import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -56,7 +58,17 @@ interface SettingsStore {
   // turn notifications off wholesale.
   dailyAgendaEnabled: boolean;
   dailyAgendaTime: string; // "HH:MM"
+  // Lives in the device keychain, not the settings table — see
+  // src/utils/secureApiKey.ts. It's held here in memory like any other setting,
+  // but it arrives a tick late: initialize() is synchronous and the keychain
+  // isn't, so initializeSecrets() fills it in (and migrates the old plaintext
+  // row) right after. Everything that reads it already treats '' as "AI is off".
   anthropicApiKey: string;
+  // Face ID (or the device passcode) in front of the whole app. Both of these
+  // stay out of DEFAULT_SETTINGS: "reset settings" must not be a way to turn
+  // someone's lock off.
+  appLockEnabled: boolean;
+  appLockGraceSeconds: number; // how long backgrounded before it re-locks
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
@@ -85,6 +97,8 @@ interface SettingsStore {
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   initialized: boolean;
   initialize: () => void;
+  /** Loads the keychain-backed settings. Call after initialize(). */
+  initializeSecrets: () => Promise<void>;
   setDayResetTime: (time: string) => void;
   setMorningStart: (time: string) => void;
   setAfternoonStart: (time: string) => void;
@@ -104,6 +118,8 @@ interface SettingsStore {
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
   setAnthropicApiKey: (key: string) => void;
+  setAppLockEnabled: (on: boolean) => void;
+  setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (on: boolean) => void;
@@ -153,6 +169,10 @@ const DEFAULT_SETTINGS = {
 // - completedRetentionDays stays out of resetToDefaults altogether. "Reset
 //   settings" must not quietly re-arm — or disarm — a setting that deletes
 //   history; like vacation mode, it only changes when the user changes it.
+// - the app lock stays out for the same reason, though it would round-trip
+//   fine: "reset appearance and formatting" is not a request to take the lock
+//   off the app, and a security control that a nearby menu item silently
+//   disables isn't one. Like vacation mode, it changes when the user changes it.
 // - the two Reminders list ids are cleared by hand *inside* resetToDefaults,
 //   because there the danger runs the other way: turning the import off while
 //   leaving the confirmed-list id in place would let a later re-enable skip the
@@ -200,6 +220,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   anthropicApiKey: '',
+  appLockEnabled: false,
+  appLockGraceSeconds: DEFAULT_APP_LOCK_GRACE_SECONDS,
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
@@ -238,7 +260,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const filterEfforts = parseFilterArray<Effort>(dbGetSetting('filterEfforts'), 6);
     const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
-    const anthropicApiKey = dbGetSetting('anthropicApiKey') ?? '';
+    const appLockEnabled = dbGetSetting('appLockEnabled') === 'true';
+    const appLockGraceSeconds = parseGraceSeconds(dbGetSetting('appLockGraceSeconds'));
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
@@ -259,7 +282,22 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, anthropicApiKey, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+  },
+
+  /**
+   * The keychain half of initialize(). Separate because SecureStore is async
+   * and initialize() is called from an effect that also has to leave the DB
+   * ready for everything downstream of it — awaiting a keychain round trip in
+   * the middle of that would delay it for a value nothing needs at launch.
+   *
+   * A key the user typed while this was in flight wins: the write has already
+   * gone to the keychain, and clobbering it with the value we set out to read
+   * would silently undo it.
+   */
+  async initializeSecrets() {
+    const anthropicApiKey = await loadAnthropicApiKey();
+    set(state => (state.anthropicApiKey ? {} : { anthropicApiKey }));
   },
 
   setDayResetTime(time: string) {
@@ -353,9 +391,26 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     set({ filterEfforts: efforts });
   },
 
+  // State first, keychain second and unawaited: every reader of the key is
+  // synchronous (aiSuggestions pulls it straight off getState()), and the
+  // Settings field that calls this fires on blur, where an await would leave
+  // the app briefly disagreeing with what's on screen. A write that fails
+  // leaves the key working for this launch and gone at the next one, which is
+  // the honest outcome when the keychain won't take it — see secureApiKey.ts
+  // on why there is no plaintext fallback.
   setAnthropicApiKey(key: string) {
-    dbSetSetting('anthropicApiKey', key);
     set({ anthropicApiKey: key });
+    saveAnthropicApiKey(key);
+  },
+
+  setAppLockEnabled(on: boolean) {
+    dbSetSetting('appLockEnabled', on ? 'true' : 'false');
+    set({ appLockEnabled: on });
+  },
+
+  setAppLockGraceSeconds(seconds: number) {
+    dbSetSetting('appLockGraceSeconds', String(seconds));
+    set({ appLockGraceSeconds: seconds });
   },
 
   setVacationMode(on: boolean, endDate?: string | null) {
