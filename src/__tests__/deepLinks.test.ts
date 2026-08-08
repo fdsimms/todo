@@ -5,6 +5,8 @@ const mockAddTask = jest.fn();
 const mockSuccess = jest.fn();
 const mockResetToToday = jest.fn();
 const mockResetToGroceries = jest.fn();
+const mockResetToRecipes = jest.fn();
+const mockResetToMealPlan = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -23,9 +25,17 @@ jest.mock('../utils/haptics', () => ({
 jest.mock('../navigation/navigationRef', () => ({
   resetToToday: (...args: unknown[]) => mockResetToToday(...args),
   resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
+  resetToRecipes: (...args: unknown[]) => mockResetToRecipes(...args),
+  resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
 }));
 
-import { parseAddTaskUrl, handleIncomingUrl, isGroceriesUrl, openInAppUrl } from '../utils/deepLinks';
+import {
+  parseAddTaskUrl,
+  handleIncomingUrl,
+  isGroceriesUrl,
+  isMealPlanUrl,
+  openInAppUrl,
+} from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
   it('parses a plain title', () => {
@@ -128,10 +138,43 @@ describe('isGroceriesUrl', () => {
   });
 });
 
+describe('isMealPlanUrl', () => {
+  it('accepts every spelling of the meal plan link', () => {
+    expect(isMealPlanUrl('dundundun://mealplan')).toBe(true);
+    expect(isMealPlanUrl('dundundun:///mealplan')).toBe(true);
+    expect(isMealPlanUrl('dundundun://mealplan/')).toBe(true);
+    expect(isMealPlanUrl('DUNDUNDUN://MealPlan')).toBe(true);
+    expect(isMealPlanUrl('  dundundun://mealplan  ')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isMealPlanUrl('dundundun://')).toBe(false);
+    expect(isMealPlanUrl('dundundun://groceries')).toBe(false);
+    expect(isMealPlanUrl('dundundun://recipes')).toBe(false);
+    expect(isMealPlanUrl('dundundun://mealplan/2026-08-05')).toBe(false);
+    expect(isMealPlanUrl('')).toBe(false);
+  });
+});
+
 describe('openInAppUrl', () => {
   beforeEach(() => {
     mockResetToToday.mockClear();
     mockResetToGroceries.mockClear();
+    mockResetToRecipes.mockClear();
+    mockResetToMealPlan.mockClear();
+  });
+
+  it('navigates to the week plan and claims the URL', () => {
+    expect(openInAppUrl('dundundun://mealplan')).toBe(true);
+    expect(mockResetToMealPlan).toHaveBeenCalledTimes(1);
+    expect(mockResetToToday).not.toHaveBeenCalled();
+  });
+
+  it('keeps the three kitchen links apart', () => {
+    openInAppUrl('dundundun://recipes');
+    expect(mockResetToRecipes).toHaveBeenCalledTimes(1);
+    expect(mockResetToMealPlan).not.toHaveBeenCalled();
+    expect(mockResetToGroceries).not.toHaveBeenCalled();
   });
 
   it('navigates to the grocery list and claims the URL', () => {
@@ -150,6 +193,7 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('https://example.com')).toBe(false);
     expect(mockResetToToday).not.toHaveBeenCalled();
     expect(mockResetToGroceries).not.toHaveBeenCalled();
+    expect(mockResetToMealPlan).not.toHaveBeenCalled();
   });
 
   it('shrugs off null and empty', () => {

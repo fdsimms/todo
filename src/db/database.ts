@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, MealPlanEntry, MealSlot, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients } from '../utils/recipeUtils';
@@ -251,6 +251,21 @@ export function initDatabase(): void {
       sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
+
+    -- One thing planned for one meal of one day. The date column holds a
+    -- YYYY-MM-DD local day key, not an ISO instant like every other date in this
+    -- schema — see MealPlanEntry in types for why, and for why recipe_id has no
+    -- cascade when a recipe is deleted.
+    -- No UNIQUE(date, slot): two things on one dinner is real.
+    CREATE TABLE IF NOT EXISTS meal_plan_entries (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL,
+      slot TEXT NOT NULL,
+      recipe_id TEXT,
+      title TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
@@ -379,6 +394,10 @@ export function initDatabase(): void {
     // Nullable like link_url, and null is what every existing row wants: no
     // task written before this shipped has a number to call.
     'ALTER TABLE tasks ADD COLUMN phone_number TEXT',
+    // Every read of this table is "give me the entries between two day keys" —
+    // the week on screen, and the purge horizon. Nothing ever asks for an entry
+    // by recipe, so there's no second index here.
+    'CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_date ON meal_plan_entries(date)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -512,6 +531,7 @@ export const BACKUP_TABLES = [
   'grocery_items',
   'grocery_item_shops',
   'recipes',
+  'meal_plan_entries',
   'templates',
   'tasks',
   'settings',
@@ -1449,6 +1469,78 @@ export function dbUpdateRecipe(recipe: Recipe): void {
 
 export function dbDeleteRecipe(id: string): void {
   db.runSync('DELETE FROM recipes WHERE id = ?', [id]);
+}
+
+// ─── Meal plan ──────────────────────────────────────────────────────────────
+
+function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
+  return {
+    id: row.id as string,
+    date: row.date as string,
+    // Anything unrecognised reads as dinner rather than being dropped: the
+    // column is a bare string, a restored backup can carry anything, and an
+    // entry that renders in the wrong slot is recoverable while one that
+    // vanishes from the week is not.
+    slot: (MEAL_SLOTS as readonly string[]).includes(row.slot as string)
+      ? (row.slot as MealSlot)
+      : 'dinner',
+    recipeId: (row.recipe_id as string) ?? null,
+    title: (row.title as string) ?? '',
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+/**
+ * The entries between two `YYYY-MM-DD` day keys, both ends inclusive.
+ *
+ * Range-scoped rather than a wholesale read on purpose — the screen only ever
+ * shows a week, and `enableScreens(false)` means a blurred MealPlanScreen stays
+ * mounted and re-renders on every store change (see the note in CLAUDE.md), so
+ * the smaller the thing it holds the better. The keys sort lexically, which is
+ * the whole reason the day key is stored zero-padded.
+ */
+export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlanEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    `SELECT * FROM meal_plan_entries WHERE date >= ? AND date <= ?
+     ORDER BY date ASC, sort_order ASC, created_at ASC`,
+    [startKey, endKey]
+  );
+  return rows.map(rowToMealPlanEntry);
+}
+
+export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
+  db.runSync(
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at)
+     VALUES (?,?,?,?,?,?,?)`,
+    [
+      entry.id, entry.date, entry.slot, entry.recipeId ?? null,
+      entry.title, entry.sortOrder, entry.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
+  db.runSync(
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=? WHERE id=?`,
+    [entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder, entry.id]
+  );
+}
+
+export function dbDeleteMealPlanEntry(id: string): void {
+  db.runSync('DELETE FROM meal_plan_entries WHERE id = ?', [id]);
+}
+
+/**
+ * Drops every entry before `beforeKey`, returning how many went.
+ *
+ * The horizon is not optional and not the user's to turn off (see
+ * MEAL_PLAN_RETENTION_DAYS): planned meals are per-event rows, the one growth
+ * pattern the whole grocery model was designed around, and nothing else in this
+ * feature ever deletes one.
+ */
+export function dbPurgeOldMealPlanEntries(beforeKey: string): number {
+  return db.runSync('DELETE FROM meal_plan_entries WHERE date < ?', [beforeKey]).changes ?? 0;
 }
 
 // The store the last trip was finished at, used to preselect the next one. A

@@ -244,6 +244,8 @@ describe('summarizeBackup', () => {
 
   it('names grocery items', () => {
     expect(summarizeBackup(build({ grocery_items: [{ id: '1' }] }))).toBe('1 grocery item');
+    expect(summarizeBackup(build({ meal_plan_entries: [{ id: '1' }] }))).toBe('1 planned meal');
+    expect(summarizeBackup(build({ meal_plan_entries: [{ id: '1' }, { id: '2' }] }))).toBe('2 planned meals');
     expect(summarizeBackup(build({ grocery_items: [{ id: '1' }, { id: '2' }] }))).toBe('2 grocery items');
   });
 

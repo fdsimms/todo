@@ -11,6 +11,7 @@ import {
   getLogicalToday,
   getLogicalTomorrow,
   getLogicalNow,
+  dayKeyOf,
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
@@ -1034,5 +1035,29 @@ describe('getNextSeriesDates', () => {
 
   it('returns nothing when the set does not repeat', () => {
     expect(getNextSeriesDates(set(10, 15), [], 1)).toEqual([]);
+  });
+});
+
+describe('dayKeyOf', () => {
+  it('is the local calendar day, zero-padded', () => {
+    expect(dayKeyOf(new Date(2026, 7, 5))).toBe('2026-08-05');
+    expect(dayKeyOf(new Date(2026, 11, 31))).toBe('2026-12-31');
+  });
+
+  // Zero-padding is what lets a range read be a plain `date >= ? AND date <= ?`
+  // and a sort be a string compare.
+  it('sorts lexically in date order', () => {
+    const keys = [
+      dayKeyOf(new Date(2026, 7, 10)),
+      dayKeyOf(new Date(2026, 7, 9)),
+      dayKeyOf(new Date(2026, 6, 31)),
+    ].sort();
+    expect(keys).toEqual(['2026-07-31', '2026-08-09', '2026-08-10']);
+  });
+
+  it('ignores the time of day, including either side of a dayResetTime', () => {
+    expect(dayKeyOf(new Date(2026, 7, 5, 0, 0, 0))).toBe('2026-08-05');
+    expect(dayKeyOf(new Date(2026, 7, 5, 1, 30, 0))).toBe('2026-08-05');
+    expect(dayKeyOf(new Date(2026, 7, 5, 23, 59, 59))).toBe('2026-08-05');
   });
 });
