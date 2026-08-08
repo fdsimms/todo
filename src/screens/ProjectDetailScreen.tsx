@@ -223,7 +223,7 @@ export function ProjectDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={incompleteProjectTasks}
             keyExtractor={t => t.id}
-            contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            contentContainerStyle={[{ flexGrow: 1, paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
             renderItem={({ item, drag, isActive }) => {
