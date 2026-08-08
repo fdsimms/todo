@@ -94,6 +94,7 @@ export interface TaskDraft {
   /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
   groupId?: string | null;
   linkUrl?: string | null;
+  phoneNumber?: string | null;
   targetCount?: number | null;
   targetUnit?: string | null;
 }
@@ -233,6 +234,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
   const [showLinkPicker, setShowLinkPicker] = useState(false);
   const [customLinkText, setCustomLinkText] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
+  const [showPhoneField, setShowPhoneField] = useState(false);
+  const [phoneText, setPhoneText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
@@ -320,6 +324,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
       setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setPhoneNumber(task.phoneNumber ?? null);
       setBlockedById(task.blockedById ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
@@ -339,10 +344,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(false);
       setShowStreak(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setBlockedById(null);
     }
     setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
+    setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null);
     setNewChainItemTitle(''); setAddingChainItem(false);
@@ -401,6 +408,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       vacationPause: task?.vacationPause ?? false,
       showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       blockedById: task?.blockedById ?? null,
     });
   }, [visible, task]);
@@ -521,6 +529,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // recurring, or the chip would be waiting if it ever recurs again.
       showStreak: recurrenceType !== 'none' && showStreak,
       linkUrl: resolveLinkUrl(),
+      phoneNumber: resolvePhoneNumber(),
       blockedById,
     };
 
@@ -732,6 +741,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowLinkPicker(false);
   };
 
+  const commitPhone = () => {
+    const t = phoneText.trim();
+    setPhoneNumber(t || null);
+    setShowPhoneField(false);
+  };
+
   /**
    * Rescues a shopping item captured in the wrong place — "buy milk" typed
    * into quick-add before you thought about which list it belonged on.
@@ -770,6 +785,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const resolveLinkUrl = () => {
     const t = customLinkText.trim();
     return showLinkPicker && t ? t : linkUrl;
+  };
+
+  // Same race, same fix: a number still being typed when Save is tapped hasn't
+  // reached `phoneNumber` yet.
+  const resolvePhoneNumber = () => {
+    const t = phoneText.trim();
+    return showPhoneField && t ? t : phoneNumber;
   };
 
   const enableRecurrence = () => {
@@ -815,6 +837,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
       showStreak,
       linkUrl,
+      phoneNumber,
       blockedById,
     });
     if (current !== initialStateRef.current) {
@@ -2560,6 +2583,46 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 </View>
               </>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'phone', label: 'Phone', set: !!phoneNumber,
+            node: (
+              <>
+            <EditorRow
+              icon="call-outline"
+              label="Phone"
+              hint="Call this number straight from the task row"
+              value={phoneNumber ?? undefined}
+              expanded={showPhoneField}
+              onPress={() => {
+                // The field edits the stored number in place — there are no
+                // presets to pick from, so it opens with what's already there.
+                setPhoneText(phoneNumber ?? '');
+                setShowPhoneField(v => !v);
+              }}
+              onClear={phoneNumber ? () => { setPhoneNumber(null); setPhoneText(''); setShowPhoneField(false); } : undefined}
+            />
+            {showPhoneField && (
+              <View style={styles.linkCustomRow}>
+                <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={phoneText}
+                  onChangeText={setPhoneText}
+                  onSubmitEditing={commitPhone}
+                  onBlur={commitPhone}
+                  placeholder="(555) 123-4567"
+                  placeholderTextColor={colors.textTertiary}
+                  // No return key on the iOS phone pad, so this commits on
+                  // blur — same as the editor's other number-pad fields.
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                  autoFocus
+                />
+              </View>
             )}
               </>
             ),

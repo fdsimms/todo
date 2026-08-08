@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -440,6 +440,43 @@ describe('parseLinkInput', () => {
 
   it('returns null for empty input', () => {
     expect(parseLinkInput('')).toBeNull();
+  });
+});
+
+// ─── parsePhoneInput ───
+
+describe('parsePhoneInput', () => {
+  it('extracts a number trailing the title', () => {
+    const result = parsePhoneInput('call the doctor 555-123-4567');
+    expect(result?.number).toBe('555-123-4567');
+    expect(result?.cleanTitle).toBe('call the doctor');
+  });
+
+  it('extracts a number in the middle of the title', () => {
+    const result = parsePhoneInput('call (555) 123 4567 about the invoice');
+    expect(result?.number).toBe('(555) 123 4567');
+    expect(result?.cleanTitle).toBe('call about the invoice');
+  });
+
+  it('extracts an international number', () => {
+    const result = parsePhoneInput('ring the surgery +44 20 7946 0018');
+    expect(result?.number).toBe('+44 20 7946 0018');
+    expect(result?.cleanTitle).toBe('ring the surgery');
+  });
+
+  it('leaves quantities, prices and years alone', () => {
+    expect(parsePhoneInput('pay rent 1500')).toBeNull();
+    expect(parsePhoneInput('file taxes for 2026')).toBeNull();
+    expect(parsePhoneInput('walk 10000 steps')).toBeNull();
+  });
+
+  it('returns null when the entire input is the number', () => {
+    expect(parsePhoneInput('555-123-4567')).toBeNull();
+  });
+
+  it('returns null when there is no number', () => {
+    expect(parsePhoneInput('call the doctor')).toBeNull();
+    expect(parsePhoneInput('')).toBeNull();
   });
 });
 

@@ -242,6 +242,19 @@ export interface Task {
 
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 
+  // Number dialled by the call button on the task row — "call the doctor" with
+  // the surgery's number on it, so the task is the thing you act from rather
+  // than a reminder to go and look it up.
+  //
+  // Stored as the user typed it (see src/utils/phone.ts): a number is read far
+  // more often than it is dialled, and "+44 20 7946 0018" is legible where its
+  // dial string isn't. Sanitising happens at the point of dialling instead, so
+  // nothing about spacing, parentheses or an extension is lost on the way in.
+  // Deliberately its own field rather than a `tel:` linkUrl — that already
+  // works, but only if you know the scheme, and it gets you a URL keyboard and
+  // a chain-link glyph for something that is neither.
+  phoneNumber: string | null;
+
   // "Waiting on" — the id of another task that must be done before this one
   // becomes actionable (e.g. "return the router" waiting on "cancel the
   // internet plan"). The fifth reason a task can be hidden, and the only one

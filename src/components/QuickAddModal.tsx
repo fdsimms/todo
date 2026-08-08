@@ -50,7 +50,7 @@ import { CountStepper } from './CountStepper';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parseDurationInput } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -88,7 +88,7 @@ interface Props {
   initialType?: QuickAddType;
 }
 
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'category' | 'repeat' | 'segment' | 'link' | 'phone' | null;
 
 /** The type row's labels and icons. Order is fixed: plain first, then the modes. */
 const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -190,6 +190,7 @@ export function QuickAddModal({
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [type, setType] = useState<QuickAddType>('task');
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
   const [customTimedText, setCustomTimedText] = useState('');
@@ -198,6 +199,7 @@ export function QuickAddModal({
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
   const [newStepTitle, setNewStepTitle] = useState('');
   const [customLinkText, setCustomLinkText] = useState('');
+  const [phoneText, setPhoneText] = useState('');
   const [tagInput, setTagInput] = useState('');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
@@ -247,6 +249,7 @@ export function QuickAddModal({
       setCategory(seedRef.current?.category ?? null);
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
+      setPhoneNumber(null);
       setType(initialType);
       setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
       setCustomTimedText('');
@@ -254,6 +257,7 @@ export function QuickAddModal({
       setChainItems([]);
       setNewStepTitle('');
       setCustomLinkText('');
+      setPhoneText('');
       setTagInput('');
       setActivePanel(null);
       // A quota resets by spawning its next occurrence, so opening straight
@@ -306,6 +310,15 @@ export function QuickAddModal({
     () => (!parsed && title.trim() ? parseLinkInput(title) : null),
     [title, parsed]
   );
+  // "call the doctor 555-123-4567" — the same mechanism again, for the number
+  // rather than the URL. Checked after the link so a tel: URL someone pasted
+  // still reads as a link, and deliberately stricter about what counts (see
+  // looksLikePhoneNumber): this one is reading prose full of digits, so a
+  // year or a price must not light it up.
+  const phoneParsed = useMemo(
+    () => (!parsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, linkParsed]
+  );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule or link phrase always wins.
   //
@@ -314,19 +327,21 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !linkParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, linkParsed, type]
+    () => (!parsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, linkParsed, phoneParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : linkParsed
       ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
-      : durationParsed
-        ? {
-            matchStart: durationParsed.matchStart,
-            matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
-          }
-        : null;
+      : phoneParsed
+        ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
+        : durationParsed
+          ? {
+              matchStart: durationParsed.matchStart,
+              matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
+            }
+          : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -393,6 +408,15 @@ export function QuickAddModal({
     animateLayout();
     setTitle(linkParsed.cleanTitle);
     setLinkUrl(linkParsed.url);
+  };
+
+  // Apply the detected number and strip it from the title.
+  const applyPhone = () => {
+    if (!phoneParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(phoneParsed.cleanTitle);
+    setPhoneNumber(phoneParsed.number);
   };
 
   // Apply the detected duration and strip the phrase from the title. Typing
@@ -486,6 +510,12 @@ export function QuickAddModal({
     setActivePanel(null);
   };
 
+  const commitPhone = () => {
+    const t = phoneText.trim();
+    setPhoneNumber(t || null);
+    setActivePanel(null);
+  };
+
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -499,6 +529,7 @@ export function QuickAddModal({
       tags,
       category,
       linkUrl,
+      phoneNumber,
       // recurrenceType deliberately absent — it comes from `baked` above,
       // which is what turns a Target into a daily task.
       recurrenceInterval,
@@ -557,6 +588,7 @@ export function QuickAddModal({
       tags,
       category,
       linkUrl,
+      phoneNumber,
       recurrenceInterval,
       recurrenceDays,
       recurrenceMonthDay,
@@ -575,6 +607,9 @@ export function QuickAddModal({
     }
     if (panel === 'link' && linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === linkUrl)) {
       setCustomLinkText(linkUrl);
+    }
+    if (panel === 'phone') {
+      setPhoneText(phoneNumber ?? '');
     }
   };
 
@@ -846,7 +881,7 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : linkParsed ? applyLink : applyDuration}
+                  onPress={parsed ? applyParse : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
@@ -855,7 +890,9 @@ export function QuickAddModal({
                         ? (parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline')
                         : linkParsed
                           ? 'link-outline'
-                          : 'timer-outline'
+                          : phoneParsed
+                            ? 'call-outline'
+                            : 'timer-outline'
                     }
                     size={14}
                     color={colors.onAccent}
@@ -865,7 +902,9 @@ export function QuickAddModal({
                       ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                       : linkParsed
                         ? linkLabel(linkParsed.url)
-                        : `Timer · ${formatDuration(durationParsed!.minutes)}`}
+                        : phoneParsed
+                          ? `Call ${phoneParsed.number}`
+                          : `Timer · ${formatDuration(durationParsed!.minutes)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -1182,6 +1221,28 @@ export function QuickAddModal({
                 {linkUrl !== null && (
                   <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
                     {linkLabel(linkUrl)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Phone chip */}
+            {isChipVisible(type, 'phone') && (
+              <TouchableOpacity
+                style={[styles.toolChip, activePanel === 'phone' && styles.toolChipActive, phoneNumber !== null && styles.toolChipSet]}
+                onPress={() => togglePanel('phone')}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={phoneNumber !== null ? `Phone: ${phoneNumber}` : 'Set phone number'}
+              >
+                <Ionicons
+                  name="call-outline"
+                  size={13}
+                  color={phoneNumber ? colors.accent : colors.textTertiary}
+                />
+                {phoneNumber !== null && (
+                  <Text style={[styles.toolChipText, styles.toolChipTextSet, styles.toolChipTextTruncate]} numberOfLines={1}>
+                    {phoneNumber}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1635,6 +1696,33 @@ export function QuickAddModal({
                 {linkUrl !== null && (
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          )}
+
+          {activePanel === 'phone' && (
+            <View style={styles.panel}>
+              <View style={styles.linkCustomRow}>
+                <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={phoneText}
+                  onChangeText={setPhoneText}
+                  onSubmitEditing={commitPhone}
+                  onBlur={commitPhone}
+                  placeholder="(555) 123-4567"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="phone-pad"
+                  autoCorrect={false}
+                />
+                {phoneNumber !== null && (
+                  <TouchableOpacity
+                    onPress={() => { haptics.tap(); setPhoneNumber(null); setPhoneText(''); setActivePanel(null); }}
                     hitSlop={8}
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textTertiary} />

@@ -35,6 +35,7 @@ import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotY
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
+import { telUrl } from '../utils/phone';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
@@ -266,6 +267,22 @@ export const TaskItem = React.memo(function TaskItem({
       // itself isn't restricted — it just fails harmlessly if nothing
       // handles the scheme.
       await Linking.openURL(task.linkUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+  // Sanitised here rather than at save time, so the row keeps showing the
+  // number the way it was written (see utils/phone.ts). Null means the field
+  // holds nothing a dialler could use, and the button doesn't render at all.
+  const callUrl = telUrl(task.phoneNumber);
+  const handleCall = async () => {
+    if (!callUrl) return;
+    haptics.tap();
+    try {
+      // Same reasoning as the link button: no canOpenURL check. tel: needs no
+      // LSApplicationQueriesSchemes entry, and on a device with no phone (an
+      // iPad) openURL simply does nothing rather than throwing.
+      await Linking.openURL(callUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -1470,6 +1487,22 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && callUrl && (
+        <TouchableOpacity
+          onPress={handleCall}
+          hitSlop={8}
+          style={styles.callBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Call ${task.phoneNumber} for ${task.title}`}
+        >
+          {/* Accent, not the iOS phone-app green: in this row green already
+              means done (the checkbox) or ready (the timer), and the link and
+              timer buttons beside it are what "a control on this row" looks
+              like here. The handset glyph is what separates it from the link. */}
+          <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && showPin && (
         <TouchableOpacity
           onPress={() => {
@@ -2276,6 +2309,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   linkBtn: {
+    padding: 4,
+  },
+  callBtn: {
     padding: 4,
   },
   pinBtn: {

@@ -65,6 +65,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesRepeatMonths: 1,
   seriesDefaults: null,
   linkUrl: null,
+  phoneNumber: null,
   blockedById: null,
   pendingImport: null,
   ...overrides,

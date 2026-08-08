@@ -168,6 +168,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archived: false,
   archivedAt: null,
   linkUrl: null,
+  phoneNumber: null,
   blockedById: null,
   pendingImport: null,
   ...overrides,
@@ -425,6 +426,23 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [t] = dbGetAllTasks();
     expect(t.chainStepOnSchedule).toBe(false);
     expect(t.title).toBe('Renamed');
+  });
+
+  it('round-trips phoneNumber through both insert and update', () => {
+    // Bound last in both statements, same positional risk as
+    // chainStepOnSchedule above — and stored verbatim, so the formatting has
+    // to survive the trip too.
+    dbInsertTask(makeTask({ id: 'ph', phoneNumber: '+44 20 7946 0018' }));
+    expect(dbGetAllTasks()[0].phoneNumber).toBe('+44 20 7946 0018');
+    dbUpdateTask({ ...dbGetAllTasks()[0], phoneNumber: '(555) 123-4567', title: 'Renamed' });
+    const [t] = dbGetAllTasks();
+    expect(t.phoneNumber).toBe('(555) 123-4567');
+    expect(t.title).toBe('Renamed');
+  });
+
+  it('returns null phoneNumber when unset', () => {
+    dbInsertTask(makeTask({ id: 'nophone' }));
+    expect(dbGetAllTasks()[0].phoneNumber).toBeNull();
   });
 
   it('deserialises timeSegments from a JSON array', () => {

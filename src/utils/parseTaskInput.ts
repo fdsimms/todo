@@ -12,6 +12,7 @@ import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
 import type { RecurrenceType, TimeOfDay } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS } from './parseNaturalDate';
+import { looksLikePhoneNumber } from './phone';
 
 /**
  * The Nth (1-4) or last (-1) weekday-of-month occurrence within the month
@@ -559,6 +560,42 @@ export function parseLinkInput(input: string): ParsedLink | null {
   if (!cleanTitle) return null; // a bare pasted link keeps the input as a literal title
 
   return { url, cleanTitle, matchStart, matchEnd };
+}
+
+export interface ParsedPhone {
+  /** The number exactly as it was typed, since that's what gets stored. */
+  number: string;
+  /** Input minus the matched number, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// A run of digits and phone punctuation, anchored on digits at both ends so
+// the match can't end on a separator that belonged to the sentence. Length is
+// only a cheap floor here — looksLikePhoneNumber decides whether the run is
+// actually a number rather than a year, a price or a list of times.
+const PHONE_PATTERN = /[+(]?\d[\d\s().-]{5,}\d/;
+
+/**
+ * Finds a phone number pasted or dictated into a quick-add title — "call the
+ * surgery 020 7946 0018" — and splits it out, exactly as parseLinkInput does
+ * for a URL. Same "anywhere in the text, not suffix-anchored" rule, and the
+ * same refusal to fire when the number *is* the whole input: a title of
+ * nothing but digits is what someone typing a number as a task looks like.
+ */
+export function parsePhoneInput(input: string): ParsedPhone | null {
+  const match = input.match(PHONE_PATTERN);
+  if (!match || match.index === undefined) return null;
+  const number = match[0];
+  if (!looksLikePhoneNumber(number)) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + number.length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { number, cleanTitle, matchStart, matchEnd };
 }
 
 export interface ParsedDuration {
