@@ -52,6 +52,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const archiveProject = useTaskStore(s => s.archiveProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const deleteProject = useTaskStore(s => s.deleteProject);
+  // `project` is a snapshot handed down when the sheet was opened, so it never
+  // sees its own archived flag flip back — read that one field live instead,
+  // or unarchiving here leaves the toggle showing "archived" until the sheet
+  // is reopened even though the store already changed.
+  const liveArchived = useProjectStore(s => project ? s.projects.find(p => p.id === project.id)?.archived : undefined);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
 
@@ -128,6 +133,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   };
 
   if (!project) return null;
+  const archived = liveArchived ?? project.archived;
 
   return (
     <EditorSheet
@@ -365,7 +371,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => {
-            if (project.archived) {
+            if (archived) {
               unarchiveProject(project.id);
             } else {
               haptics.success();
@@ -376,17 +382,17 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
           accessibilityLabel="Archive"
-          accessibilityState={{ checked: project.archived }}
+          accessibilityState={{ checked: archived }}
         >
-          <Ionicons name="archive-outline" size={18} color={project.archived ? colors.accent : colors.textSecondary} />
+          <Ionicons name="archive-outline" size={18} color={archived ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Archive</Text>
             <Text style={styles.optionHint}>
-              {project.archived ? 'Hidden from the active list' : 'Move to the archived list'}
+              {archived ? 'Hidden from the active list' : 'Move to the archived list'}
             </Text>
           </View>
-          <View style={[styles.toggle, project.archived && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, project.archived && styles.toggleKnobOn]} />
+          <View style={[styles.toggle, archived && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>
