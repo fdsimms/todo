@@ -1,0 +1,4 @@
+{
+  "message": "Fixed reminders import: deleting or renaming a task that came from Reminders no longer brings the reminder straight back on the next foreground.",
+  "date": "2026-08-08"
+}

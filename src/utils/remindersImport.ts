@@ -315,7 +315,8 @@ export function isImportableList(list: ReminderList | undefined): boolean {
  * The picker's options: reminder lists we could actually import from.
  *
  * `excludeId` is how the two destinations (tasks, groceries) stay disjoint.
- * They must be, and it isn't cosmetic: `handledIds` is global, so a list wired
+ * They must be, and it isn't cosmetic: the handled record is read as one set
+ * across every list, so a list wired
  * to both would send each reminder to whichever drain reached it first — a
  * coin toss between the Inbox and the grocery list.
  */
@@ -391,12 +392,113 @@ export function importableReminders(
 }
 
 /**
- * Names already spoken for — the stand-in for the delete.
+ * The durable record of reminders this app has already dealt with — imported,
+ * or deliberately left alone — keyed by the list they were found in.
  *
- * Deleting the reminder is what normally stops an import happening twice: one
- * that has become a task isn't there to be read again. With "Delete after
- * importing" off it stays, and every foreground hands it straight back, so the
- * name is the only handle left to tell "already imported" from "new".
+ * **This is what makes editing an imported task safe.** The name index below
+ * used to be the only thing standing between "delete after importing" being off
+ * and a capture arriving twice, and it was wrong in the one way a user notices:
+ * it infers "already imported" from a task *title*, so renaming that task, or
+ * deleting it, destroys the evidence. The reminder is still sitting in
+ * Reminders, so the next foreground imports it again — and again, because
+ * nothing the user does to the task can ever stop it. A synced item you can't
+ * delete or rename is a sync loop, not a sync.
+ *
+ * An id is the right handle for that because EventKit never reuses one. A
+ * re-created reminder gets a new id, so a genuinely fresh capture is never
+ * mistaken for a handled one however it's titled, which is exactly the
+ * confusion the name index is capable of.
+ *
+ * **It is bounded by the list, not by time.** A record only says anything while
+ * the reminder it names is still there to be re-read, so every drain rewrites
+ * its list's bucket as "what we still see of what we knew, plus what we just
+ * handled" — see `reconcileHandledReminders`. With deletion on the imported
+ * reminder is gone by the next pass and its id goes with it, so this
+ * self-empties rather than growing for ever; the same discipline the
+ * completed-task retention window exists to impose.
+ *
+ * Per list rather than one flat set so a list that *wasn't* drained this pass —
+ * the other destination switched off, or gone from the device — keeps its
+ * bucket instead of having it pruned to nothing by a fetch that never covered
+ * it. Ids are unique across lists, so the read side flattens it again.
+ */
+export type HandledReminderIndex = Record<string, string[]>;
+
+/** Tolerant of anything: a record that won't parse is a record we don't have. */
+export function parseHandledReminders(raw: string | null | undefined): HandledReminderIndex {
+  if (!raw) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const out: HandledReminderIndex = {};
+  for (const [listId, ids] of Object.entries(parsed as Record<string, unknown>)) {
+    if (!listId || !Array.isArray(ids)) continue;
+    const kept = [...new Set(ids.filter((id): id is string => typeof id === 'string' && id !== ''))];
+    if (kept.length > 0) out[listId] = kept;
+  }
+  return out;
+}
+
+export function serializeHandledReminders(index: HandledReminderIndex): string {
+  return JSON.stringify(index);
+}
+
+/** Every id the record holds, whichever list it came from. */
+export function handledReminderIds(index: HandledReminderIndex): Set<string> {
+  const ids = new Set<string>();
+  for (const list of Object.values(index)) {
+    for (const id of list) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * The record after one list has been drained: what we still see of what we
+ * knew, plus what this pass handled.
+ *
+ * `present` is every id the *raw* fetch returned, not just the importable ones
+ * — a completed or blank reminder is still sitting in the list, and a reminder
+ * can be un-completed. Pruning against the importable set would forget those
+ * and re-import them the moment they came back.
+ *
+ * `handledNow` survives unconditionally rather than being intersected with
+ * `present`: it always comes from the same fetch, and with deletion on the
+ * reminder is destroyed moments later, so the one thing this must never do is
+ * fail to remember a row it just created. It drops out on the next pass, when
+ * the list no longer holds it.
+ *
+ * An empty bucket is deleted rather than stored as `[]`, so a list that has
+ * been emptied leaves nothing behind.
+ */
+export function reconcileHandledReminders(
+  index: HandledReminderIndex,
+  listId: string,
+  present: ReadonlySet<string>,
+  handledNow: ReadonlySet<string> = new Set()
+): HandledReminderIndex {
+  const next = { ...index };
+  const kept = [
+    ...new Set([...(index[listId] ?? []).filter(id => present.has(id)), ...handledNow]),
+  ];
+  if (kept.length > 0) next[listId] = kept;
+  else delete next[listId];
+  return next;
+}
+
+/**
+ * Names already spoken for — the *first* answer about a reminder we have no
+ * record of, and nothing more than that since the record above exists.
+ *
+ * It still earns its place twice. On the first launch after this shipped there
+ * is no record at all, so every reminder already imported into a task would
+ * come across a second time; the name index recognises them, and the drain
+ * writes each one into the record as it skips it, which is the whole backfill.
+ * And with "Delete after importing" off, a dictated name that already exists as
+ * a task is one the user almost certainly doesn't want twice.
  *
  * **The match is deliberately wide, and the asymmetry is the reason.** With
  * nothing being deleted, a false match costs a skip the user can undo by hand —
