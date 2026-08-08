@@ -32,6 +32,7 @@ import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { useGroceryStore } from './useGroceryStore';
+import { useRecipeStore } from './useRecipeStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -686,6 +687,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // in-memory rows pointed at the previous database while every other
     // surface showed the new one — i.e. your real groceries on a demo phone.
     useGroceryStore.getState().initialize();
+    // Same reasoning, and the same swap-the-database hazard: recipes bridge to
+    // the catalog by name_key, so a stale recipe list next to a fresh catalog
+    // would match nothing.
+    useRecipeStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 

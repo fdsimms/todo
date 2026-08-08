@@ -21,7 +21,10 @@ import {
   dbDeleteItemShopLink,
   dbGetLastShopId,
   dbSetLastShopId,
+  dbGetAllRecipes,
+  dbUpdateRecipe,
 } from '../db/database';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
@@ -48,6 +51,15 @@ jest.mock('../db/database', () => ({
   dbDeleteItemShopLink: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbSetLastShopId: jest.fn(),
+  // Runs the body inline — these tests assert on store state, not on
+  // transaction boundaries, and a no-op wrapper would silently skip the work.
+  dbTransaction: jest.fn((fn: () => void) => fn()),
+  // Reached only through useRecipeStore, which renameItem calls to keep
+  // ingredient keys in step.
+  dbGetAllRecipes: jest.fn().mockReturnValue([]),
+  dbInsertRecipe: jest.fn(),
+  dbUpdateRecipe: jest.fn(),
+  dbDeleteRecipe: jest.fn(),
 }));
 
 let seq = 0;
@@ -1200,5 +1212,159 @@ describe('remembered aisles', () => {
 
     expect(useGroceryStore.getState().rememberedAisleFor('Nduja')).toBe('Deli');
     expect(useGroceryStore.getState().rememberedAisleFor('Milk')).toBeNull();
+  });
+});
+
+describe('addFromPlan', () => {
+  it('adds a new name as a provisional row carrying its quantity and aisle', () => {
+    seed([]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Chicken thighs', quantity: '2 lb', aisle: 'Meat & Seafood' },
+    ]);
+
+    expect(result.added).toHaveLength(1);
+    expect(result.alreadyOnList).toHaveLength(0);
+    expect(result.skippedInCart).toHaveLength(0);
+
+    const item = useGroceryStore.getState().itemByNameKey('chicken thighs')!;
+    expect(item.onList).toBe(true);
+    expect(item.quantity).toBe('2 lb');
+    expect(item.aisle).toBe('Meat & Seafood');
+    // Typed for the first time, so it hasn't earned a catalog place yet.
+    expect(item.inCatalog).toBe(false);
+  });
+
+  it('re-lists a catalog row that was off the list', () => {
+    const parsley = makeItem({ name: 'Parsley', onList: false, aisle: 'Produce' });
+    seed([parsley]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce' },
+    ]);
+
+    expect(result.added.map(i => i.id)).toEqual([parsley.id]);
+    expect(useGroceryStore.getState().itemById(parsley.id)!.onList).toBe(true);
+  });
+
+  it('leaves a row already on the list exactly as it was', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, quantity: '2 gal' });
+    seed([milk]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Milk', quantity: '1 pint', aisle: 'Dairy & Eggs' },
+    ]);
+
+    expect(result.alreadyOnList.map(i => i.id)).toEqual([milk.id]);
+    expect(result.added).toHaveLength(0);
+    // The quantity the user set survives — this is the overwrite addByName
+    // already refuses to do, held to across the plan path too.
+    expect(useGroceryStore.getState().itemById(milk.id)!.quantity).toBe('2 gal');
+  });
+
+  it('never un-checks a row already in the trolley', () => {
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: true });
+    seed([eggs]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Eggs', quantity: '12', aisle: 'Dairy & Eggs' },
+    ]);
+
+    expect(result.skippedInCart.map(i => i.id)).toEqual([eggs.id]);
+    expect(result.added).toHaveLength(0);
+    // The whole point: adding a recipe mid-shop must not empty the trolley.
+    expect(useGroceryStore.getState().itemById(eggs.id)!.checked).toBe(true);
+  });
+
+  it('lets a filing the user made outrank the plan-supplied aisle', () => {
+    seed([], { aisleOverrides: { nduja: 'Deli' } });
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Nduja', quantity: '', aisle: 'Pantry' },
+    ]);
+
+    expect(useGroceryStore.getState().itemByNameKey('nduja')!.aisle).toBe('Deli');
+  });
+
+  it('takes the plan aisle when the user has never filed the name', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Gochujang', quantity: '2 tbsp', aisle: 'Pantry' },
+    ]);
+
+    expect(useGroceryStore.getState().itemByNameKey('gochujang')!.aisle).toBe('Pantry');
+  });
+
+  it('leaves the aisle to the lexicon when the plan has no opinion', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Bananas', quantity: '', aisle: null },
+    ]);
+
+    expect(useGroceryStore.getState().itemByNameKey('bananas')!.aisle).toBe('Produce');
+  });
+
+  it('sorts one mixed batch into all three buckets', () => {
+    const inCart = makeItem({ name: 'Garlic', onList: true, checked: true });
+    const onList = makeItem({ name: 'Onions', onList: true });
+    const known = makeItem({ name: 'Carrots', onList: false });
+    seed([inCart, onList, known]);
+
+    const result = useGroceryStore.getState().addFromPlan([
+      { name: 'Garlic', quantity: '1 bulb', aisle: 'Produce' },
+      { name: 'Onions', quantity: '3', aisle: 'Produce' },
+      { name: 'Carrots', quantity: '500 g', aisle: 'Produce' },
+      { name: 'Thyme', quantity: '1 bunch', aisle: 'Produce' },
+    ]);
+
+    expect(result.skippedInCart.map(i => i.name)).toEqual(['Garlic']);
+    expect(result.alreadyOnList.map(i => i.name)).toEqual(['Onions']);
+    expect(result.added.map(i => i.name)).toEqual(['Carrots', 'Thyme']);
+  });
+});
+
+describe('renameItem keeps recipe ingredients in step', () => {
+  it('moves ingredients sitting on the old key onto the new one', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([{
+      id: 'r1',
+      name: 'Ragu',
+      nameKey: 'ragu',
+      notes: '',
+      sourceUrl: null,
+      servings: null,
+      ingredients: [
+        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '2 cans', aisle: null },
+        { id: 'i2', name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null },
+      ],
+      favorite: false,
+      sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    }]);
+    useRecipeStore.getState().initialize();
+
+    const item = makeItem({ name: 'Tomatos' });
+    seed([item]);
+
+    useGroceryStore.getState().renameItem(item.id, 'Tomatoes');
+
+    const ingredients = useRecipeStore.getState().recipeById('r1')!.ingredients;
+    expect(ingredients.map(i => i.nameKey)).toEqual(['tomatoes', 'onions']);
+    // The label the recipe was written with is untouched — only the bridge moved.
+    expect(ingredients[0].name).toBe('Tomatos');
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('writes nothing when no recipe referenced the old key', () => {
+    (dbGetAllRecipes as jest.Mock).mockReturnValue([]);
+    useRecipeStore.getState().initialize();
+
+    const item = makeItem({ name: 'Sourdough' });
+    seed([item]);
+
+    useGroceryStore.getState().renameItem(item.id, 'Sourdough loaf');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

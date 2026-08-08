@@ -23,6 +23,12 @@ export function resetToGroceries(): void {
   navigationRef.navigate('Groceries');
 }
 
+// Where `dundundun://recipes` lands, the peer of resetToGroceries.
+export function resetToRecipes(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Recipes');
+}
+
 // Where the "Search" and "Projects" Home Screen quick actions land — both
 // already top-level tabs, so this is just tab navigation triggered from
 // outside the component tree.

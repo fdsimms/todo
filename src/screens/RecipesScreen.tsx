@@ -1,0 +1,236 @@
+import React, { useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  FlatList,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useShallow } from 'zustand/react/shallow';
+import type { Recipe } from '../types';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { ScreenHeader } from '../components/ScreenHeader';
+import { EmptyState } from '../components/EmptyState';
+import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
+import { Fab, FAB_SIZE } from '../components/Fab';
+import { useColors } from '../theme/ThemeContext';
+import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
+import { cleanRecipeName, describeRecipe, rankRecipes } from '../utils/recipeUtils';
+import { groceryNameKey } from '../utils/groceryParse';
+
+/**
+ * The recipe box.
+ *
+ * Deliberately flat — no recipe categories, which would be the fourth category
+ * table in this app (task / project / template / recipe) for a list most people
+ * will keep in the dozens. Favorites float to the top and the search field
+ * ranks by name and by ingredient; if that stops being enough, categories are
+ * the thing to add, not sections invented now.
+ */
+export function RecipesScreen() {
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
+
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const addRecipe = useRecipeStore(s => s.addRecipe);
+
+  const [query, setQuery] = useState('');
+  const [addVisible, setAddVisible] = useState(false);
+
+  const visible = useMemo(() => {
+    const matched = rankRecipes(query, recipes);
+    // rankRecipes already orders a search by weight; only the unfiltered list
+    // needs the favourites-first pass, or a name match would lose its place to
+    // a starred recipe that merely mentions the word.
+    if (query.trim()) return matched;
+    return [...matched].sort((a, b) =>
+      Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+    );
+  }, [query, recipes]);
+
+  const openRecipe = (recipe: Recipe) => {
+    haptics.tap();
+    navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+  };
+
+  const createRecipe = (name: string) => {
+    setAddVisible(false);
+    const recipe = addRecipe(name);
+    if (recipe) {
+      haptics.success();
+      navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+      return;
+    }
+    // The only way addRecipe refuses a non-empty name is one already in the
+    // box. Opening the recipe they already have beats an error — it's where
+    // they were trying to get.
+    const key = groceryNameKey(cleanRecipeName(name));
+    const existing = recipes.find(r => r.nameKey === key);
+    if (existing) openRecipe(existing);
+  };
+
+  const renderRecipe = ({ item: recipe }: { item: Recipe }) => (
+    <TouchableOpacity
+      style={styles.row}
+      onPress={() => openRecipe(recipe)}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe)}`}
+      accessibilityHint="Double tap to open this recipe."
+    >
+      <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
+        <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+      </View>
+      <View style={styles.info}>
+        <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
+        <Text style={styles.meta} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+      </View>
+      {recipe.favorite && (
+        <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
+      )}
+      <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScreenHeader
+        title="Recipes"
+        subtitle={recipes.length > 0
+          ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
+          : undefined}
+      />
+
+      {recipes.length === 0 ? (
+        <EmptyState
+          icon="restaurant-outline"
+          title="No recipes yet"
+          subtitle="Keep what you cook here, with what it takes to shop for it — then put a whole recipe on the grocery list in one tap"
+          actionLabel="New recipe"
+          onAction={() => setAddVisible(true)}
+          bottomOffset={tabBarHeight}
+        />
+      ) : (
+        <>
+          <View style={styles.searchWrap}>
+            <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} />
+            <TextInput
+              style={styles.searchInput}
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search recipes and ingredients"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+              accessibilityLabel="Search recipes"
+            />
+          </View>
+
+          {visible.length === 0 ? (
+            <EmptyState
+              icon="search-outline"
+              title="Nothing matched"
+              subtitle={`No recipe here is called “${query.trim()}” or uses it`}
+              bottomOffset={tabBarHeight}
+            />
+          ) : (
+            <FlatList
+              data={visible}
+              keyExtractor={r => r.id}
+              renderItem={renderRecipe}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.list}
+              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+            />
+          )}
+        </>
+      )}
+
+      <Fab
+        onPress={() => { haptics.tap(); setAddVisible(true); }}
+        accessibilityLabel="Add recipe"
+        bottom={insets.bottom + tabBarHeight + spacing.md}
+      />
+
+      <QuickAddNameSheet
+        visible={addVisible}
+        placeholder="Recipe name"
+        onSubmit={createRecipe}
+        onClose={() => setAddVisible(false)}
+      />
+    </View>
+  );
+}
+
+const makeStyles = (colors: Colors) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colors.bg,
+  },
+  searchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    // A box height rather than a lineHeight — RN maps lineHeight straight onto
+    // the iOS paragraph style with no baseline compensation, which sits the
+    // glyphs low in the field. See the note in CLAUDE.md.
+    height: 40,
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    padding: 0,
+  },
+  list: {
+    paddingTop: spacing.xs,
+  },
+  // Same inset-grouped card footprint as TaskItem and the Stacks rows.
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+    gap: spacing.md,
+  },
+  icon: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  info: {
+    flex: 1,
+    gap: 3,
+  },
+  name: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.medium,
+  },
+  meta: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+  },
+});

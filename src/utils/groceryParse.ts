@@ -21,6 +21,14 @@ import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
  * catalog. A change needs a guarded one-time backfill in the style of the
  * seen_at/category_registry migrations in database.ts: recompute every row's
  * key inside a `dbGetSetting('..._done') !== '1'` gate, then set the flag.
+ *
+ * That backfill now has to cover four places, not one. grocery_items.name_key
+ * and grocery_shops.name_key are plain columns an UPDATE can reach; recipes
+ * carry a name_key column AND a nameKey on every ingredient inside the
+ * `ingredients` JSON blob, which no UPDATE can rewrite — that half has to read
+ * each recipe, remap its ingredients, and write the row back. A stranded
+ * ingredient is the quiet failure of the set: it still renders correctly and
+ * merely stops matching the catalog, so nothing looks broken.
  */
 export function groceryNameKey(name: string): string {
   return name
