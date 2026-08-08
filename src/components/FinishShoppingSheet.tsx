@@ -157,12 +157,17 @@ export function FinishShoppingSheet({ visible, checkedCount, onClose, onFinished
             {!adding && (
               // neutral, not accent: this sits at the end of a row of already
               // tinted pills, where an accent fill reads as one more store
-              // rather than as the control that makes one.
+              // rather than as the control that makes one. It sits directly on
+              // the sheet's root background rather than a card, where the
+              // default neutral tint (bgTertiary) is nearly indistinguishable
+              // from colors.bg — so it's pinned to bgSecondary here, matching
+              // the sibling store pills' surface instead.
               <InlineAction
                 label="New store"
                 icon="add"
                 variant="neutral"
                 onPress={() => setAdding(true)}
+                style={styles.newStorePill}
               />
             )}
           </View>
@@ -247,6 +252,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
+    newStorePill: { backgroundColor: colors.bgSecondary },
     pillActive: { backgroundColor: colors.accent },
     pillText: { fontSize: font.sm, color: colors.textSecondary },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },

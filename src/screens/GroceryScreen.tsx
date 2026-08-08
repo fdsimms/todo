@@ -450,6 +450,7 @@ export function GroceryScreen() {
                   icon="trash-outline"
                   variant="neutral"
                   onPress={confirmClear}
+                  style={styles.clearButton}
                 />
               </View>
             )}
@@ -551,6 +552,10 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       marginTop: spacing.lg,
     },
+    // Same fix as FinishShoppingSheet's "New store" pill: this sits directly
+    // on the screen's root colors.bg rather than a card, where the default
+    // neutral tint (bgTertiary) is nearly indistinguishable from it.
+    clearButton: { backgroundColor: colors.bgSecondary },
     sectionTitle: {
       fontSize: font.xs,
       fontWeight: fontWeight.semibold,
