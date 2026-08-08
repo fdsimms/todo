@@ -384,6 +384,14 @@ describe('findSegmentMismatches', () => {
     expect(findSegmentMismatches(tasks)).toEqual([]);
   });
 
+  it('skips tasks that belong to a stack', () => {
+    const tasks = [
+      ...completionsAt('Feed cat', 20, 5, { timeSegments: ['morning'], groupId: 'g1' }),
+      makeTask({ title: 'Feed cat', completed: false, completedAt: null, timeSegments: ['morning'], groupId: 'g1' }),
+    ];
+    expect(findSegmentMismatches(tasks)).toEqual([]);
+  });
+
   it('sorts the most lopsided evidence first', () => {
     const tasks = [
       // 4/5 — strong but not unanimous.

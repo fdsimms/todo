@@ -324,6 +324,10 @@ export function findSegmentMismatches(
   for (const task of tasks) {
     if (task.parentId) continue;
     if (task.archived) continue;
+    // A stack member's schedule belongs to the stack, not the row — offering
+    // to move just this one instance would desync it from the label it hangs
+    // off, the same reason group children skip the roster elsewhere.
+    if (task.groupId) continue;
     const key = cohortKeyOf(task);
     if (!key) continue;
 
