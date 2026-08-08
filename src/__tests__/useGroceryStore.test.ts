@@ -326,6 +326,42 @@ describe('toggleChecked', () => {
   });
 });
 
+describe('setCheckedMany', () => {
+  it('checks a whole selection at once and holds every one of them', () => {
+    const milk = makeItem({ name: 'Milk', onList: true });
+    const eggs = makeItem({ name: 'Eggs', onList: true });
+    seed([milk, eggs]);
+
+    useGroceryStore.getState().setCheckedMany([milk.id, eggs.id], true);
+
+    expect(useGroceryStore.getState().items.every(i => i.checked)).toBe(true);
+    expect(new Set(useGroceryStore.getState().cartHoldIds)).toEqual(new Set([milk.id, eggs.id]));
+  });
+
+  it('unchecks a whole selection and drops the hold', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    const eggs = makeItem({ name: 'Eggs', onList: true, checked: true });
+    seed([milk, eggs]);
+    useGroceryStore.setState({ cartHoldIds: [milk.id, eggs.id] });
+
+    useGroceryStore.getState().setCheckedMany([milk.id, eggs.id], false);
+
+    expect(useGroceryStore.getState().items.every(i => !i.checked)).toBe(true);
+    expect(useGroceryStore.getState().cartHoldIds).toEqual([]);
+  });
+
+  it('skips rows already in the target state and rows off the list', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    const eggs = makeItem({ name: 'Eggs', onList: false });
+    seed([milk, eggs]);
+
+    useGroceryStore.getState().setCheckedMany([milk.id, eggs.id], true);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items.find(i => i.id === eggs.id)!.checked).toBe(false);
+  });
+});
+
 // ─── finishShopping / clearList ──────────────────────────────────────────────
 
 describe('finishShopping', () => {
@@ -503,6 +539,31 @@ describe('list membership', () => {
 
     expect(dbDeleteGroceryItem).toHaveBeenCalledWith(milk.id);
     expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('removeFromListMany splits a selection the same way removeFromList does per row', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, inCatalog: true });
+    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+    seed([milk, nduja]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id, nduja.id]);
+
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(nduja.id);
+    const after = useGroceryStore.getState().items;
+    expect(after).toHaveLength(1);
+    expect(after[0].id).toBe(milk.id);
+    expect(after[0].onList).toBe(false);
+    expect(after[0].checked).toBe(false);
+  });
+
+  it('removeFromListMany only touches ids that are on the list', () => {
+    const milk = makeItem({ name: 'Milk', onList: false });
+    seed([milk]);
+
+    useGroceryStore.getState().removeFromListMany([milk.id]);
+
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
   });
 });
 

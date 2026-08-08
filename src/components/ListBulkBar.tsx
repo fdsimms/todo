@@ -26,6 +26,8 @@ export interface ListBulkCategoryPanel {
   onSet: (category: string | null) => void;
   /** Called before onSet when the typed name isn't one of the options yet. */
   onCreate: (name: string) => void;
+  /** Off for a field that always holds a value — an aisle, say — where "None" isn't a real choice. Defaults to true. */
+  allowNone?: boolean;
 }
 
 interface Props {
@@ -198,7 +200,7 @@ export function ListBulkBar({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {!query && (
+            {!query && category.allowNone !== false && (
               <TouchableOpacity style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
                 <Text style={styles.categoryChipText}>None</Text>
               </TouchableOpacity>
