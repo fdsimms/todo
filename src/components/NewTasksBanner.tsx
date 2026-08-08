@@ -8,6 +8,7 @@ import { useReduceMotion } from '../utils/useReduceMotion';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import type { Task } from '../types';
 
 /** How many titles the banner lists before it collapses the rest into "+N more". */
@@ -38,9 +39,15 @@ interface Props {
  * It names the tasks rather than only counting them: a new task sorts into
  * its category like any other, so it can land at the bottom of a long list
  * (or under a collapsed header) where a bare count tells you nothing about
- * what showed up. Each title carries its category and, tapped, scrolls the
- * list to the row itself — so the banner answers both "what's new" and
+ * what showed up. Each title carries where it came from and, tapped, scrolls
+ * the list to the row itself — so the banner answers both "what's new" and
  * "where is it", the second one by pointing rather than describing.
+ *
+ * A title on its own is often not enough to recognise the task — "Find things
+ * to do" means nothing until you know it belongs to the Iceland trip — so a
+ * row in a project names it. That takes a second line, and only rows with a
+ * project spend one: a category alone still rides beside the title, which
+ * keeps the banner exactly as tall as it was for anyone not using projects.
  */
 export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
   const colors = useColors();
@@ -127,7 +134,7 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
           nestedScrollEnabled
         >
           {shown.map(task => (
-            <NewTaskRow key={task.id} task={task} styles={styles} onPress={() => onJumpToTask(task)} />
+            <NewTaskRow key={task.id} task={task} styles={styles} colors={colors} onPress={() => onJumpToTask(task)} />
           ))}
           {remaining > 0 && (
             <TouchableOpacity
@@ -149,16 +156,25 @@ export function NewTasksBanner({ tasks, onJumpToTask, onDismiss }: Props) {
 function NewTaskRow({
   task,
   styles,
+  colors,
   onPress,
 }: {
   task: Task;
   styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
   onPress: () => void;
 }) {
   const categoryEmoji = useCategoryStore(s => (task.category ? s.getCategoryByName(task.category)?.emoji ?? null : null));
+  const projectTitle = useProjectStore(s => (task.projectId ? s.getProjectById(task.projectId)?.title ?? null : null));
   const categoryLabel = task.category
     ? categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category
     : null;
+
+  const description = [
+    task.title,
+    projectTitle ? `in ${projectTitle}` : null,
+    task.category ? `in ${task.category}` : null,
+  ].filter(Boolean).join(', ');
 
   return (
     <TouchableOpacity
@@ -166,15 +182,33 @@ function NewTaskRow({
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={
-        categoryLabel ? `Show ${task.title} in the list, in ${task.category}` : `Show ${task.title} in the list`
-      }
+      accessibilityLabel={`Show ${description} in the list`}
     >
-      <View style={styles.dot} />
-      <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
-      {categoryLabel && (
-        <Text style={styles.taskCategory} numberOfLines={1}>{categoryLabel}</Text>
-      )}
+      <View style={[styles.dot, projectTitle ? styles.dotAligned : null]} />
+      <View style={styles.taskBody}>
+        <View style={styles.titleLine}>
+          <Text style={styles.taskTitle} numberOfLines={1}>{task.title}</Text>
+          {/* A category alone stays on the title's line, where it qualifies it
+              ("Play violin, the one in Hobbies"). It moves down to join the
+              project rather than trailing it, because two labels behind a
+              title is what squeezed the title to an ellipsis in the first
+              place — and the title is the half the user is reading. */}
+          {!projectTitle && categoryLabel && (
+            <Text style={styles.taskCategory} numberOfLines={1}>{categoryLabel}</Text>
+          )}
+        </View>
+        {projectTitle && (
+          <View style={styles.metaLine}>
+            <View style={styles.metaChip}>
+              <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
+              <Text style={styles.taskProject} numberOfLines={1}>{projectTitle}</Text>
+            </View>
+            {categoryLabel && (
+              <Text style={styles.taskCategory} numberOfLines={1}>{categoryLabel}</Text>
+            )}
+          </View>
+        )}
+      </View>
     </TouchableOpacity>
   );
 }
@@ -233,6 +267,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.warning,
   },
+  // A two-line row centres its dot against the whole row, which puts it
+  // between the title and the meta line; pin it to the title instead.
+  dotAligned: { alignSelf: 'flex-start', marginTop: 5 },
+  taskBody: { flex: 1, minWidth: 0, gap: 1 },
+  titleLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  metaLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  metaChip: {
+    flexShrink: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
   taskTitle: { flexShrink: 1, color: colors.text, fontSize: font.sm },
   // Sits with the title rather than pushed to the far edge: it qualifies the
   // title ("Play violin, the one in Hobbies"), and a right-aligned column of
@@ -240,6 +294,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // row without a category had nothing in it.
   taskCategory: {
     flexShrink: 0,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+  },
+  // Same rank as the category it shares the line with — one meta line, one
+  // weight — and behind the same briefcase the project chip carries on a task
+  // row, so it's recognisably the same fact in both places.
+  taskProject: {
+    flexShrink: 1,
     color: colors.textSecondary,
     fontSize: font.xs,
   },
