@@ -37,6 +37,7 @@ import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { telUrl } from '../utils/phone';
 import { animateLayout } from '../utils/layoutAnimation';
+import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
 import { useNowTick } from '../hooks/useNowTick';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -459,7 +460,11 @@ export const TaskItem = React.memo(function TaskItem({
   });
 
   const handleItemLayout = (e: LayoutChangeEvent) => {
-    if (!collapseStartedRef.current) setRowHeight(e.nativeEvent.layout.height);
+    // Same guard as the panel's, and it matters more here: this is the whole
+    // row, so it re-measures on every frame of its own panel animation.
+    if (!collapseStartedRef.current) {
+      setRowHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
+    }
   };
 
   // The store flips this on for every row of a burst in the same commit, which
@@ -1536,7 +1541,12 @@ export const TaskItem = React.memo(function TaskItem({
           cardClip keeps the slice edge's corners rounded. */}
       <View
         style={styles.panelMeasure}
-        onLayout={e => setPanelHeight(e.nativeEvent.layout.height)}
+        // Guarded like AnimatedCollapsible's: this feeds the animated height
+        // above it, so an accepted measurement costs a React commit — and a
+        // pixel-grid rounding difference is not a content change. Unguarded,
+        // an expanded row inside a stack commits on every layout pass of the
+        // section animating around it.
+        onLayout={e => setPanelHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height))}
       >
       <View style={styles.expandedPanel}>
         {!selectionMode && (

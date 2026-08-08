@@ -1,0 +1,4 @@
+{
+  "message": "Fixed expanding a stack sometimes leaving its tasks jittering up and down",
+  "date": "2026-08-08"
+}
