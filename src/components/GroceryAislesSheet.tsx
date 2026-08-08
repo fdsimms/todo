@@ -355,6 +355,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   variant="neutral"
                   onPress={handleAdd}
                   disabled={!newAisle.trim()}
+                  style={styles.addButton}
                 />
               </View>
             </View>
@@ -500,6 +501,7 @@ function StoresTab({
               variant="neutral"
               onPress={onAdd}
               disabled={!newShop.trim()}
+              style={styles.addButton}
             />
           </View>
         }
@@ -597,5 +599,9 @@ function makeStyles(colors: Colors) {
       color: colors.text,
       height: 44,
     },
+    // Both "Add" buttons sit directly on the sheet's root colors.bg, where
+    // the default neutral tint (bgTertiary) is nearly indistinguishable
+    // from it.
+    addButton: { backgroundColor: colors.bgSecondary },
   });
 }

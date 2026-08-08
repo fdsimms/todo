@@ -332,6 +332,7 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
                   icon="color-wand-outline"
                   variant="neutral"
                   onPress={confirmPrune}
+                  style={styles.pruneButton}
                 />
               </View>
             ) : null
@@ -439,5 +440,8 @@ function makeStyles(colors: Colors) {
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
     pruneWrap: { alignItems: 'center', marginTop: spacing.lg },
+    // Sits directly on the sheet's root colors.bg, where the default neutral
+    // tint (bgTertiary) is nearly indistinguishable from it.
+    pruneButton: { backgroundColor: colors.bgSecondary },
   });
 }
