@@ -34,7 +34,9 @@ import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
 import { InlineAction } from '../components/InlineAction';
+import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
+import { useRowSelection } from '../hooks/useRowSelection';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
@@ -85,6 +87,11 @@ export function GroceryScreen() {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
   const toggleChecked = useGroceryStore(s => s.toggleChecked);
+  const setCheckedMany = useGroceryStore(s => s.setCheckedMany);
+  const setAisleMany = useGroceryStore(s => s.setAisleMany);
+  const addAisle = useGroceryStore(s => s.addAisle);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
+  const deleteItems = useGroceryStore(s => s.deleteItems);
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
@@ -96,6 +103,17 @@ export function GroceryScreen() {
   const [finishOpen, setFinishOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
 
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
@@ -129,6 +147,22 @@ export function GroceryScreen() {
     }
     return out;
   }, [sections, inCart, cartOpen]);
+
+  // What's actually selectable right now — the cart's rows only join this
+  // when the cart is expanded, same as what's tappable on screen.
+  const selectableItemIds = useMemo(
+    () => rows.filter((r): r is Extract<ListRow, { type: 'item' }> => r.type === 'item').map(r => r.item.id),
+    [rows]
+  );
+  const selectedItems = useMemo(
+    () => items.filter(i => selectedIds.has(i.id)),
+    [items, selectedIds]
+  );
+  const allSelectedChecked = selectedItems.length > 0 && selectedItems.every(i => i.checked);
+
+  // Extra bottom padding so the last rows aren't hidden behind the floating
+  // bulk bar, same as the other bulk-selecting screens.
+  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -256,6 +290,58 @@ export function GroceryScreen() {
     setEditingId(id);
   }, []);
 
+  // "Check"/"Uncheck" flips direction based on the selection itself, the same
+  // way LogbookBulkBar's incomplete action always means the opposite of what's
+  // there — a selection that's already all in the cart has nothing left to
+  // check off.
+  const handleBulkCheck = useCallback(() => {
+    const next = !allSelectedChecked;
+    animateLayout();
+    setCheckedMany(Array.from(selectedIds), next);
+    haptics[next ? 'success' : 'tap']();
+    exitSelection();
+  }, [allSelectedChecked, selectedIds, setCheckedMany, exitSelection]);
+
+  const handleBulkSetAisle = useCallback(
+    (aisle: string | null) => {
+      if (!aisle) return;
+      animateLayout();
+      const ids = Array.from(selectedIds);
+      setAisleMany(Object.fromEntries(ids.map(id => [id, aisle])));
+      exitSelection();
+    },
+    [selectedIds, setAisleMany, exitSelection]
+  );
+
+  const handleBulkRemove = useCallback(() => {
+    animateLayout();
+    removeFromListMany(Array.from(selectedIds));
+    exitSelection();
+  }, [selectedIds, removeFromListMany, exitSelection]);
+
+  const handleBulkDelete = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    const count = ids.length;
+    const plural = count === 1 ? 'item' : 'items';
+    haptics.warning();
+    Alert.alert(
+      `Delete ${count} ${plural}?`,
+      `This removes ${count === 1 ? 'it' : 'them'} from your catalog too, along with ${count === 1 ? 'its' : 'their'} purchase history. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            deleteItems(ids);
+            exitSelection();
+          },
+        },
+      ]
+    );
+  }, [selectedIds, deleteItems, exitSelection]);
+
   // The confirm is a sheet rather than an Alert because it now carries a store
   // picker, and an Alert can't hold one. It's still a confirm: nothing is
   // recorded until Finish.
@@ -295,29 +381,36 @@ export function GroceryScreen() {
     // it lives at the foot of the list instead, which is where you look when
     // you're done rather than mid-shop.
     const list: ScreenHeaderAction[] = [];
+    if (listCount > 0) {
+      list.push({
+        icon: 'checkmark-circle-outline',
+        onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+        active: selectionMode,
+        accessibilityLabel: selectionMode ? 'Done selecting' : 'Select items',
+      });
+    }
     list.push({
       icon: 'basket-outline',
       onPress: () => setBuyAgainOpen(true),
+      disabled: selectionMode,
       accessibilityLabel: 'Buy again',
     });
     list.push({
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),
+      disabled: selectionMode,
       accessibilityLabel: 'Aisle order',
     });
     list.push({
       icon: 'bag-check-outline',
       onPress: () => setFinishOpen(true),
-      disabled: checkedCount === 0,
+      disabled: selectionMode || checkedCount === 0,
       badge: checkedCount || undefined,
       tint: 'accent',
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-    // No anthropicApiKey dep any more: the AI entry point moved to the FAB
-    // menu, and opening the finish sheet is a setState the memo doesn't close
-    // over anything else for.
-  }, [checkedCount]);
+  }, [checkedCount, listCount, selectionMode, enterSelectionMode, exitSelection]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // is gated on a key like every other AI affordance here, so a user without
@@ -385,12 +478,17 @@ export function GroceryScreen() {
           onEdit={handleEdit}
           // Nothing in the cart is draggable: that section is a record of the
           // trolley, not a place to file something (see groceryDragRange).
-          drag={row.inCart ? undefined : drag}
+          // Reordering is off while selecting too — the long press that would
+          // start a drag is how a mis-tapped row gets selected instead.
+          drag={selectionMode || row.inCart ? undefined : drag}
           isActive={isActive}
+          selectionMode={selectionMode}
+          selected={selectedIds.has(row.item.id)}
+          onSelect={toggleSelection}
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection]
   );
 
   return (
@@ -431,7 +529,9 @@ export function GroceryScreen() {
         // spacer would take its height off the box the empty state centres in
         // (the empty state clears the tab bar itself, via bottomOffset).
         ListFooterComponent={
-          rows.length === 0 ? null : (
+          rows.length === 0 ? null : selectionMode ? (
+            <View style={{ height: selectionListPadding }} />
+          ) : (
           <View>
             {!!anthropicApiKey && unsortedCount > 0 && (
               <View style={styles.clearWrap}>
@@ -474,15 +574,48 @@ export function GroceryScreen() {
       />
       </FabDropZoneProvider>
 
-      <AddGroceryFabWithDropLabel
-        channel={fabIntentChannel}
-        items={addMenuItems}
-        onSelect={handleAddMenuSelect}
-        bottom={insets.bottom + tabBarHeight + spacing.md}
-        accessibilityLabel="Add groceries"
-        drag={fabDrag}
-        dragHint="Drag onto the list to add an item there, or back to the button to cancel"
-      />
+      {/* The bulk bar sits where the button does, and adding an item isn't
+          something you're doing mid-selection anyway. */}
+      {!selectionMode && (
+        <AddGroceryFabWithDropLabel
+          channel={fabIntentChannel}
+          items={addMenuItems}
+          onSelect={handleAddMenuSelect}
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+          accessibilityLabel="Add groceries"
+          drag={fabDrag}
+          dragHint="Drag onto the list to add an item there, or back to the button to cancel"
+        />
+      )}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={selectableItemIds.length}
+          category={{
+            title: 'Move to Aisle',
+            options: aisleOrder,
+            onSet: handleBulkSetAisle,
+            onCreate: name => addAisle(name),
+            allowNone: false,
+          }}
+          actions={[
+            {
+              key: 'check',
+              icon: allSelectedChecked ? 'ellipse-outline' : 'checkmark-circle',
+              label: allSelectedChecked ? 'Uncheck' : 'Check',
+              onPress: handleBulkCheck,
+            },
+            { key: 'remove', icon: 'remove-circle', label: 'Remove', onPress: handleBulkRemove },
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+          ]}
+          onSelectAll={() => selectAll(selectableItemIds)}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
 
       <GroceryAddSheet
         visible={addOpen}

@@ -25,6 +25,10 @@ interface Props {
   drag?: () => void;
   /** True on the copy rendered inside the floating drag card. */
   isActive?: boolean;
+  /** While true, a tap selects instead of toggling, and neither drag nor edit fires. */
+  selectionMode?: boolean;
+  selected?: boolean;
+  onSelect?: (id: string) => void;
 }
 
 /**
@@ -52,6 +56,9 @@ export const GroceryRow = React.memo(function GroceryRow({
   onEdit,
   drag,
   isActive = false,
+  selectionMode = false,
+  selected = false,
+  onSelect,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -64,18 +71,32 @@ export const GroceryRow = React.memo(function GroceryRow({
 
   return (
     <TouchableOpacity
-      style={[styles.row, item.checked && styles.rowChecked, isActive && styles.rowActive]}
+      style={[
+        styles.row,
+        item.checked && styles.rowChecked,
+        isActive && styles.rowActive,
+        selectionMode && selected && styles.rowSelected,
+      ]}
       activeOpacity={interaction.activeOpacity}
-      onPress={() => onToggle(item.id)}
-      onLongPress={drag ?? (() => onEdit(item.id))}
+      onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
+      onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
       delayLongPress={interaction.delayLongPress}
       accessibilityRole="checkbox"
-      accessibilityState={{ checked: item.checked }}
+      accessibilityState={{ checked: selectionMode ? selected : item.checked }}
       accessibilityLabel={label}
-      accessibilityHint={drag ? 'Long press to move to another aisle' : 'Long press to edit'}
+      accessibilityHint={
+        selectionMode
+          ? selected ? 'Double tap to deselect' : 'Double tap to select'
+          : drag ? 'Long press to move to another aisle' : 'Long press to edit'
+      }
     >
-      <View style={[styles.checkbox, item.checked && styles.checkboxChecked]}>
-        {item.checked && (
+      <View
+        style={[
+          styles.checkbox,
+          selectionMode ? selected && styles.checkboxSelected : item.checked && styles.checkboxChecked,
+        ]}
+      >
+        {(selectionMode ? selected : item.checked) && (
           <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
         )}
       </View>
@@ -109,16 +130,18 @@ export const GroceryRow = React.memo(function GroceryRow({
       {/* Long-press opens the same sheet, but nothing on screen says so — and
           quantity and a wrong aisle are things people genuinely fix. A quiet
           trailing target is what makes that reachable without teaching a
-          gesture. */}
-      <TouchableOpacity
-        onPress={() => onEdit(item.id)}
-        activeOpacity={interaction.activeOpacity}
-        hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
-        accessibilityRole="button"
-        accessibilityLabel={`Edit ${item.name}`}
-      >
-        <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
-      </TouchableOpacity>
+          gesture. Hidden while selecting: editing isn't on offer there. */}
+      {!selectionMode && (
+        <TouchableOpacity
+          onPress={() => onEdit(item.id)}
+          activeOpacity={interaction.activeOpacity}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityLabel={`Edit ${item.name}`}
+        >
+          <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
 });
@@ -149,6 +172,11 @@ function makeStyles(colors: Colors) {
       // #F2F2F7 page and the row stops looking like a row.
       backgroundColor: colors.bgSunken,
     },
+    // Takes precedence over rowChecked in the style array — a selected row
+    // reads as selected even inside the cart section.
+    rowSelected: {
+      backgroundColor: colors.accent + '1A',
+    },
     checkbox: {
       width: CHECKBOX_SIZE,
       height: CHECKBOX_SIZE,
@@ -162,6 +190,10 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.green,
       borderColor: colors.green,
       opacity: 0.7,
+    },
+    checkboxSelected: {
+      backgroundColor: colors.accent,
+      borderColor: colors.accent,
     },
     body: {
       flex: 1,

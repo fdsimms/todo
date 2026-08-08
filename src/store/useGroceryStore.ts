@@ -120,6 +120,8 @@ interface GroceryStore {
   addExistingMany: (ids: string[]) => void;
 
   toggleChecked: (id: string) => void;
+  /** toggleChecked's invariant (checked implies onList), applied to a whole selection at once. */
+  setCheckedMany: (ids: string[], checked: boolean) => void;
   setQuantity: (id: string, quantity: string | null) => void;
   setAisle: (id: string, aisle: string) => void;
   setAisleMany: (assignments: Record<string, string>) => void;
@@ -129,6 +131,8 @@ interface GroceryStore {
   toggleFavorite: (id: string) => void;
 
   removeFromList: (id: string) => void;
+  /** removeFromList over a whole selection at once. */
+  removeFromListMany: (ids: string[]) => void;
   deleteItem: (id: string) => void;
   deleteItems: (ids: string[]) => void;
 
@@ -373,6 +377,29 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (updated.checked) armCartHold();
   },
 
+  setCheckedMany(ids, checked) {
+    if (ids.length === 0) return;
+    const wanted = new Set(ids);
+    const updates: GroceryItem[] = [];
+    for (const item of get().items) {
+      // Same invariant as toggleChecked: an off-list row has nothing to check.
+      if (!wanted.has(item.id) || !item.onList || item.checked === checked) continue;
+      updates.push({ ...item, checked });
+    }
+    if (updates.length === 0) return;
+
+    for (const u of updates) dbUpdateGroceryItem(u);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({
+      items: s.items.map(i => byId.get(i.id) ?? i),
+      cartHoldIds: checked
+        ? [...s.cartHoldIds.filter(x => !byId.has(x)), ...updates.map(u => u.id)]
+        // Un-checking inside the hold window just drops it, same as toggleChecked.
+        : s.cartHoldIds.filter(x => !byId.has(x)),
+    }));
+    if (checked) armCartHold();
+  },
+
   setQuantity(id, quantity) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -486,6 +513,31 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
       cartHoldIds: s.cartHoldIds.filter(x => x !== id),
+    }));
+  },
+
+  removeFromListMany(ids) {
+    if (ids.length === 0) return;
+    const wanted = new Set(ids);
+    const toDelete: string[] = [];
+    const toUpdate: GroceryItem[] = [];
+    for (const item of get().items) {
+      if (!wanted.has(item.id) || !item.onList) continue;
+      // Same split as removeFromList: a provisional row has nothing to keep.
+      if (!item.inCatalog) {
+        toDelete.push(item.id);
+        continue;
+      }
+      toUpdate.push({ ...item, onList: false, checked: false });
+    }
+    if (toDelete.length > 0) get().deleteItems(toDelete);
+    if (toUpdate.length === 0) return;
+
+    for (const u of toUpdate) dbUpdateGroceryItem(u);
+    const byId = new Map(toUpdate.map(u => [u.id, u]));
+    set(s => ({
+      items: s.items.map(i => byId.get(i.id) ?? i),
+      cartHoldIds: s.cartHoldIds.filter(x => !byId.has(x)),
     }));
   },
 
