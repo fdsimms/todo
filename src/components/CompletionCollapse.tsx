@@ -10,6 +10,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 import { useTaskStore } from '../store/useTaskStore';
 import { animation } from '../theme';
+import { nextMeasuredHeight } from '../utils/measuredHeight';
 
 /**
  * Takes a section header away in the same motion as the completed rows under
@@ -78,7 +79,10 @@ export function CompletionCollapse({
   // its row there: locking a height in mid-collapse would freeze the header at
   // whatever it had shrunk to if it ever came back.
   const handleLayout = (e: LayoutChangeEvent) => {
-    if (!startedRef.current) setHeight(e.nativeEvent.layout.height);
+    // Guarded like the two in TaskItem: this feeds an animated height, so a
+    // measurement accepted for a third of a point of pixel-grid rounding buys
+    // a React commit and nothing else.
+    if (!startedRef.current) setHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
   };
 
   const style = useAnimatedStyle(() => {

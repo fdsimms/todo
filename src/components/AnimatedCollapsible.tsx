@@ -9,6 +9,7 @@ import Reanimated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { animation } from '../theme';
+import { nextMeasuredHeight } from '../utils/measuredHeight';
 
 interface Props {
   expanded: boolean;
@@ -27,9 +28,10 @@ interface Props {
   children: React.ReactNode;
 }
 
-// Stands in for the measured height until the first onLayout lands: a cap so
-// far above any real section that it doesn't clamp anything, so "open but not
-// measured yet" renders at the children's natural height instead of at zero.
+// A cap so far above any real section that it doesn't clamp anything. Used in
+// the two states that must not be clamped: "open but not measured yet" (so it
+// renders at the children's natural height instead of at zero), and settled
+// open, where the measurement has no more work to do.
 const UNMEASURED_MAX = 100000;
 
 /**
@@ -45,6 +47,11 @@ const UNMEASURED_MAX = 100000;
  * unmeasured section falls back to exactly the height its children want, and
  * every state — first paint, mid-animation, settled — is driven by the one
  * animated style that has been attached since the very first render.
+ *
+ * The measured height only ever narrows the *animation*, never the section at
+ * rest: the clamp is released once `progress` reaches 1. Parking it at the
+ * measurement instead is what let a settled section be moved by a state value
+ * a frame behind the layout — see the note on `maxHeight` below.
  *
  * **Don't reintroduce a conditional style** (`cond && animatedStyle`) to
  * special-case the unmeasured render. Reanimated records a style's initial
@@ -73,13 +80,29 @@ export function AnimatedCollapsible({ expanded, clip = true, children }: Props) 
   const openHeight = contentHeight || UNMEASURED_MAX;
 
   const style = useAnimatedStyle(() => ({
-    maxHeight: interpolate(progress.value, [0, 1], [0, openHeight], Extrapolation.CLAMP),
+    // Settled open, the clamp is released rather than parked at the measured
+    // height. `maxHeight === contentHeight` is the same size on screen, but it
+    // sizes an open section from a JS state value that trails native layout by
+    // a frame — so every later measurement (a row inside expanding, a subtask
+    // added, sub-pixel noise) both re-arms this worklet and commits React
+    // *during* whatever else is animating in here. Above the sentinel it
+    // clamps nothing and none of that can move the section. Still returned as
+    // a key, never dropped: Reanimated only applies the keys an updater
+    // returns, so a branch that omits maxHeight would leave the last animating
+    // value pinned on the native view (see the header note).
+    maxHeight: progress.value >= 1
+      ? UNMEASURED_MAX
+      : interpolate(progress.value, [0, 1], [0, openHeight], Extrapolation.CLAMP),
     opacity: interpolate(progress.value, [0, 0.2, 1], [0, 1, 1], Extrapolation.CLAMP),
   }));
 
+  // Guarded rather than compared exactly: layout lands on a pixel grid, and a
+  // third of a point of rounding is not a content change. Accepting one would
+  // commit React for nothing, which is the expensive half here (see
+  // nextMeasuredHeight).
   const handleLayout = (e: LayoutChangeEvent) => {
     const height = e.nativeEvent.layout.height;
-    setContentHeight(prev => (prev === height ? prev : height));
+    setContentHeight(prev => nextMeasuredHeight(prev, height));
   };
 
   return (
