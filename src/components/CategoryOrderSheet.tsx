@@ -116,6 +116,7 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
                     variant="neutral"
                     onPress={sortAlphabetically}
                     accessibilityLabel="Sort categories alphabetically"
+                    style={styles.sortButton}
                   />
                 </View>
               </View>
@@ -190,6 +191,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   introWrap: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
   intro: { color: colors.textTertiary, fontSize: font.sm },
   introActions: { flexDirection: 'row', marginTop: spacing.md },
+  // Sits directly on the sheet's root colors.bg, where the default neutral
+  // tint (bgTertiary) is nearly indistinguishable from it.
+  sortButton: { backgroundColor: colors.bgSecondary },
   list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
   // Same inset-grouped card footprint as the Categories screen's rows.
   row: {

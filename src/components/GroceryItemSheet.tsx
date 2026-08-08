@@ -256,6 +256,7 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
                 haptic
                 onPress={() => setAddingAisle(true)}
                 accessibilityLabel="Add a new aisle"
+                style={styles.addButton}
               />
             )}
           </View>
@@ -286,6 +287,7 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
                 variant="neutral"
                 onPress={handleAddAisle}
                 disabled={!newAisle.trim()}
+                style={styles.addButton}
               />
             </View>
           )}
@@ -466,6 +468,10 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
+    // Both "New aisle" and "Add" sit directly on the sheet's root colors.bg,
+    // where the default neutral tint (bgTertiary) is nearly indistinguishable
+    // from it.
+    addButton: { backgroundColor: colors.bgSecondary },
     pillActive: { backgroundColor: colors.accent },
     pillText: { fontSize: font.sm, color: colors.textSecondary },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
