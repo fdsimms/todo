@@ -376,6 +376,9 @@ export function initDatabase(): void {
     // Where the no-duplicate-recipes guarantee actually lives, same as
     // idx_grocery_items_name_key does for the catalog.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_name_key ON recipes(name_key)',
+    // Nullable like link_url, and null is what every existing row wants: no
+    // task written before this shipped has a number to call.
+    'ALTER TABLE tasks ADD COLUMN phone_number TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -673,6 +676,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
     linkUrl: (row.link_url as string) ?? null,
+    phoneNumber: (row.phone_number as string) ?? null,
     blockedById: (row.blocked_by_id as string | null) ?? null,
     pendingImport: parsePendingImport(row.pending_import),
   };
@@ -696,8 +700,8 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      target_unit, phone_number
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -728,6 +732,7 @@ export function dbInsertTask(task: Task): void {
       task.missedAt ?? null,
       task.autoScheduledAt ?? null,
       task.targetUnit ?? null,
+      task.phoneNumber ?? null,
     ]
   );
 }
@@ -745,7 +750,7 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?
+      target_unit=?, phone_number=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -777,6 +782,7 @@ export function dbUpdateTask(task: Task): void {
       task.missedAt ?? null,
       task.autoScheduledAt ?? null,
       task.targetUnit ?? null,
+      task.phoneNumber ?? null,
       task.id,
     ]
   );
