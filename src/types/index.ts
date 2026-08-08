@@ -583,6 +583,60 @@ export const SHOP_NAME_MAX_LENGTH = 40;
 // longest built-in ('Meat & Seafood') is 14.
 export const AISLE_NAME_MAX_LENGTH = 32;
 
+// One line of a recipe's shopping implication — deliberately not a GroceryItem.
+// A GroceryItem is a forever-row carrying purchase counters that earned a place
+// in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
+// every ingredient at *authoring* time is exactly what the provisional
+// `inCatalog` axis exists to prevent. It would also poison the Buy again and
+// autocomplete rankings, which are scored on purchase history such a row would
+// never have.
+//
+// The bridge to the catalog is `nameKey`, never an id — see the field.
+export interface RecipeIngredient {
+  id: string;
+  // As typed — the label. Same rule as GroceryItem.name.
+  name: string;
+  // groceryNameKey(name). THE bridge to the catalog, and resolve-or-shrug like
+  // every other cross-row pointer here: a miss just falls through to
+  // addByName, which is the right behaviour anyway. Kept in step by
+  // useGroceryStore.renameItem → useRecipeStore.remapIngredientKey, exactly as
+  // renameRememberedAisle keeps the aisle memory in step.
+  nameKey: string;
+  // Free text, '' when the recipe didn't say. Nothing does arithmetic on it.
+  quantity: string;
+  // null means "no opinion", so the lexicon and the user's own filings decide
+  // at add time. Deliberately NOT 'Other': asserting Other here would outrank
+  // aisleForName and file a known item in the miscellaneous pile forever.
+  aisle: string | null;
+}
+
+// A dish you cook, with what it takes to shop for it.
+//
+// Its own table rather than a TaskTemplate variant: applyTemplate materialises
+// Task rows, and a recipe applied has to produce grocery writes. Ingredients
+// are a JSON array rather than their own table for the reason templates.items
+// is one — nothing outside this row holds an ingredient's id, so an ingredient
+// needs no identity that survives a rename, and a blob is one fewer
+// hand-written cascade in a database with foreign keys off.
+export interface Recipe {
+  id: string;
+  name: string;
+  // UNIQUE in SQLite, from groceryNameKey — so two spellings of one dish can't
+  // both exist, the same guarantee GroceryItem and Shop get.
+  nameKey: string;
+  notes: string;
+  sourceUrl: string | null;
+  servings: number | null;
+  ingredients: RecipeIngredient[];
+  favorite: boolean;
+  sortOrder: number;
+  createdAt: string;
+}
+
+// Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
+// is a list-row label at a larger font, not a task title.
+export const RECIPE_NAME_MAX_LENGTH = 80;
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',

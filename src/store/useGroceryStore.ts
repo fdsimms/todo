@@ -22,7 +22,9 @@ import {
   dbSetGroceryAisleOverrides,
   dbGetGroceryHiddenAisles,
   dbSetGroceryHiddenAisles,
+  dbTransaction,
 } from '../db/database';
+import { useRecipeStore } from './useRecipeStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import {
@@ -118,6 +120,12 @@ interface GroceryStore {
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
   addExisting: (id: string) => void;
   addExistingMany: (ids: string[]) => void;
+  /**
+   * Puts a reviewed set of planned rows — currently a recipe's ingredients —
+   * onto the list in one transaction. See the implementation for why this isn't
+   * just a loop over addByName at the call site.
+   */
+  addFromPlan: (rows: readonly PlannedRow[]) => PlanAddResult;
 
   toggleChecked: (id: string) => void;
   /** toggleChecked's invariant (checked implies onList), applied to a whole selection at once. */
@@ -192,6 +200,29 @@ interface GroceryStore {
 
 function nextSortOrder(items: GroceryItem[]): number {
   return items.reduce((m, i) => Math.max(m, i.sortOrder), 0) + 1;
+}
+
+/** One reviewed line on its way to the list. `aisle` null means "no opinion". */
+export interface PlannedRow {
+  name: string;
+  quantity: string | null;
+  aisle: string | null;
+}
+
+export interface PlanAddResult {
+  /** Rows that weren't on the list and now are — new catalog rows and re-listed ones alike. */
+  added: GroceryItem[];
+  /** Already on the list and left exactly as they were. */
+  alreadyOnList: GroceryItem[];
+  /**
+   * Already in the trolley, and deliberately untouched. THIS IS THE WHOLE
+   * REASON THIS FUNCTION EXISTS rather than a loop over addByName at the call
+   * site: addByName sets `checked: false` on a row it finds, so adding a
+   * recipe while standing in the shop would quietly pull things back *out* of
+   * the trolley, one row at a time, with nothing on screen to say so. Checked
+   * rows are reported and skipped.
+   */
+  skippedInCart: GroceryItem[];
 }
 
 /**
@@ -359,6 +390,50 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
   },
 
+  /**
+   * The recipe → list path, and the one place a plan is allowed to write to the
+   * catalog. It lives here rather than in the recipe store for the same reason
+   * finishShopping does: this store owns the inCatalog promotion rule,
+   * nextSortOrder, placeAisle and the aisle-order normalisation, and a caller
+   * reaching around them would get all four subtly wrong.
+   *
+   * Three differences from a loop over addByName, each load-bearing:
+   *   1. a row already in the trolley is skipped, not un-checked (see
+   *      PlanAddResult.skippedInCart);
+   *   2. a quantity the user set by hand is never overwritten — only a row this
+   *      call actually adds takes the plan's quantity;
+   *   3. an aisle the user has filed by hand always wins over the plan's guess,
+   *      the same precedence addByName gives aisleOverrides over the lexicon.
+   */
+  addFromPlan(rows) {
+    const added: GroceryItem[] = [];
+    const alreadyOnList: GroceryItem[] = [];
+    const skippedInCart: GroceryItem[] = [];
+
+    // One transaction rather than N: a ten-ingredient recipe is ten inserts and
+    // as many updates, and a half-applied recipe is a worse outcome than a
+    // failed one. Same shape as applyTemplate's single dbTransaction.
+    dbTransaction(() => {
+      for (const row of rows) {
+        const key = groceryNameKey(row.name);
+        const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
+
+        if (existing?.checked) { skippedInCart.push(existing); continue; }
+        if (existing?.onList) { alreadyOnList.push(existing); continue; }
+
+        // Passing the bare name, not "2 lb chicken thighs": the quantity is
+        // already split out on the ingredient, and re-parsing it here would
+        // run the guesswork twice.
+        const item = get().addByName(row.name);
+        if (row.aisle && !get().rememberedAisleFor(row.name)) get().setAisle(item.id, row.aisle);
+        if (row.quantity) get().setQuantity(item.id, row.quantity);
+        added.push(get().itemById(item.id) ?? item);
+      }
+    });
+
+    return { added, alreadyOnList, skippedInCart };
+  },
+
   toggleChecked(id) {
     const item = get().items.find(i => i.id === id);
     // The checked ⇒ onList invariant: an off-list row has nothing to check.
@@ -461,6 +536,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // rename exists to fix.
     const remembered = renameRememberedAisle(get().aisleOverrides, item.nameKey, key);
     if (remembered) dbSetGroceryAisleOverrides(remembered);
+    // Recipe ingredients are bridged to the catalog by name_key too, so they
+    // strand on a rename exactly as the remembered aisle above does — and
+    // silently, since a stranded ingredient still renders fine and only stops
+    // matching. Reached through the store rather than the rows because the key
+    // lives inside a JSON blob; remapIngredientKey is a no-op when nothing
+    // referenced the old spelling.
+    useRecipeStore.getState().remapIngredientKey(item.nameKey, key);
     set(s => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
       aisleOverrides: remembered ?? s.aisleOverrides,

@@ -1,8 +1,9 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
+import { parseRecipeIngredients } from '../utils/recipeUtils';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -233,6 +234,23 @@ export function initDatabase(): void {
       last_purchased_at TEXT,
       PRIMARY KEY (item_id, shop_id)
     );
+
+    -- A dish, and what it takes to shop for it. The ingredients column is a
+    -- JSON array rather than its own table for the reason templates.items is
+    -- one: nothing outside this row holds an ingredient's id. See Recipe in
+    -- types for the rest of the reasoning.
+    CREATE TABLE IF NOT EXISTS recipes (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      name_key TEXT NOT NULL,
+      notes TEXT NOT NULL DEFAULT '',
+      source_url TEXT,
+      servings INTEGER,
+      ingredients TEXT NOT NULL DEFAULT '[]',
+      favorite INTEGER NOT NULL DEFAULT 0,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    );
   `);
 
   // Migrations for existing installs (safe to run multiple times — fails silently if column exists)
@@ -355,6 +373,9 @@ export function initDatabase(): void {
     // Null for every existing target, which is exactly the old behaviour: no
     // unit means the meter keeps reading as the bare "5/12" it always has.
     'ALTER TABLE tasks ADD COLUMN target_unit TEXT',
+    // Where the no-duplicate-recipes guarantee actually lives, same as
+    // idx_grocery_items_name_key does for the catalog.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_recipes_name_key ON recipes(name_key)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -487,6 +508,7 @@ export const BACKUP_TABLES = [
   'grocery_shops',
   'grocery_items',
   'grocery_item_shops',
+  'recipes',
   'templates',
   'tasks',
   'settings',
@@ -1367,6 +1389,60 @@ export function dbSetItemShopLink(link: ItemShopLink): void {
 
 export function dbDeleteItemShopLink(itemId: string, shopId: string): void {
   db.runSync('DELETE FROM grocery_item_shops WHERE item_id = ? AND shop_id = ?', [itemId, shopId]);
+}
+
+// ─── Recipes ────────────────────────────────────────────────────────────────
+
+function rowToRecipe(row: Record<string, unknown>): Recipe {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nameKey: row.name_key as string,
+    notes: (row.notes as string) ?? '',
+    sourceUrl: (row.source_url as string) ?? null,
+    servings: (row.servings as number) ?? null,
+    ingredients: parseRecipeIngredients(row.ingredients),
+    favorite: Boolean(row.favorite),
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllRecipes(): Recipe[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM recipes ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToRecipe);
+}
+
+export function dbInsertRecipe(recipe: Recipe): void {
+  db.runSync(
+    `INSERT INTO recipes
+      (id, name, name_key, notes, source_url, servings, ingredients, favorite, sort_order, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+    [
+      recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
+      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateRecipe(recipe: Recipe): void {
+  db.runSync(
+    `UPDATE recipes SET
+       name=?, name_key=?, notes=?, source_url=?, servings=?, ingredients=?, favorite=?, sort_order=?
+     WHERE id=?`,
+    [
+      recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
+      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.id,
+    ]
+  );
+}
+
+export function dbDeleteRecipe(id: string): void {
+  db.runSync('DELETE FROM recipes WHERE id = ?', [id]);
 }
 
 // The store the last trip was finished at, used to preselect the next one. A

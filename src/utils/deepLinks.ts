@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { haptics } from './haptics';
-import { resetToToday, resetToGroceries } from '../navigation/navigationRef';
+import { resetToToday, resetToGroceries, resetToRecipes } from '../navigation/navigationRef';
 
 export interface AddTaskLink {
   title: string;
@@ -81,6 +81,14 @@ export function isGroceriesUrl(url: string): boolean {
   return typeof url === 'string' && GROCERIES_RE.test(url.trim());
 }
 
+// `dundundun://recipes` — the peer of the groceries link, so a "plan meals"
+// task can open the recipe box directly.
+const RECIPES_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?recipes\\/?$`, 'i');
+
+export function isRecipesUrl(url: string): boolean {
+  return typeof url === 'string' && RECIPES_RE.test(url.trim());
+}
+
 /**
  * Handles a URL this app owns itself, returning true when it did.
  *
@@ -93,6 +101,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (isGroceriesUrl(url)) {
     resetToGroceries();
+    return true;
+  }
+  if (isRecipesUrl(url)) {
+    resetToRecipes();
     return true;
   }
   if (isOpenAppUrl(url)) {

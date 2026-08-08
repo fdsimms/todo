@@ -33,6 +33,9 @@ const MENU_ITEMS: MenuItem[] = [
   // Sits with Tasks rather than down among Logbook/Archived: it's a peer
   // surface you go to on purpose, not somewhere things end up.
   { name: 'Groceries', icon: 'cart-outline', label: 'Groceries' },
+  // Sits directly under Groceries because that's what it feeds — you come here
+  // to put a recipe on that list, not to browse.
+  { name: 'Recipes', icon: 'restaurant-outline', label: 'Recipes' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },

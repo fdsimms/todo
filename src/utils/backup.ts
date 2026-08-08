@@ -193,6 +193,7 @@ const SUMMARY_LABELS: { table: string; one: string; many: string }[] = [
   { table: 'projects', one: 'project', many: 'projects' },
   { table: 'task_groups', one: 'stack', many: 'stacks' },
   { table: 'grocery_items', one: 'grocery item', many: 'grocery items' },
+  { table: 'recipes', one: 'recipe', many: 'recipes' },
   { table: 'templates', one: 'template', many: 'templates' },
   { table: 'categories', one: 'category', many: 'categories' },
 ];
