@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   Alert,
   View,
@@ -17,19 +17,48 @@ import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import {
+  categoriesByIndex,
+  type DragScroller,
+  type DropZone,
+  type FabDropIntent,
+} from '../utils/fabDrop';
 import { ReorderableList } from '../components/ReorderableList';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
-import { groupTemplatesByCategory, resolveTemplateDrop } from '../utils/templateGrouping';
+import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
 import type { TaskTemplate } from '../types';
+
+// The add button, naming what a release right now would do.
+function AddTemplateFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind !== 'insert') return null;
+    return intent.category ? `New template in ${intent.category}` : 'New template here';
+  });
+  return <Fab {...props} dragLabel={label} />;
+}
 
 export function TemplatesScreen() {
   const insets = useSafeAreaInsets();
@@ -92,9 +121,88 @@ export function TemplatesScreen() {
     [templates, templateCategoryOrder]
   );
 
+  // ——— Dragging the add button into the list ———————————————————————————
+  //
+  // Same gesture as Projects' (see that screen for the fuller writeup): no
+  // stacks and nothing pinned here either, so a drop means a category section
+  // and a spot in it.
+
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  // Lets the drag scroll the list once it reaches either end of the screen.
+  const scrollControl = useRef<DragScroller | null>(null);
+  // What the drag is aimed at goes through a channel rather than state: it
+  // changes as the finger crosses each row, and re-rendering this screen
+  // re-runs every row's renderItem. Only the button's label reads it.
+  const fabIntentChannel = useFabIntentChannel();
+  // The drop that opened the sheet, read once when the template comes back.
+  const pendingDropRef = useRef<FabDropIntent | null>(null);
+
+  const zoneByKey = useMemo(() => {
+    const categoriesFor = categoriesByIndex(
+      templateListItems.map(item => (item.type === 'header' ? item.label : null)),
+    );
+    const map = new Map<string, DropZone>();
+    templateListItems.forEach((item, i) => {
+      map.set(
+        item.key,
+        item.type === 'header'
+          ? { kind: 'header', key: item.key, category: item.label }
+          : { kind: 'task', key: item.key, category: categoriesFor[i] ?? null },
+      );
+    });
+    return map;
+  }, [templateListItems]);
+
+  /**
+   * Give the freshly created template the position it was dropped at.
+   *
+   * Same trick ProjectsScreen's placeCreatedProject uses: splice the new row
+   * into the list at the drop point and hand the result to the same
+   * resolveTemplateDrop a finished row drag runs, rather than duplicating its
+   * category-from-nearest-header rule and sortOrder renumber.
+   */
+  const placeCreatedTemplate = (template: TaskTemplate, intent: Extract<FabDropIntent, { kind: 'insert' }>) => {
+    const base = templateListItems.filter(item => item.type === 'header' || item.template.id !== template.id);
+    const anchor = base.findIndex(item => item.key === intent.anchorKey);
+    if (anchor < 0) return;
+
+    const spliced: TemplateListItem[] = [...base];
+    spliced.splice(intent.before ? anchor : anchor + 1, 0, { type: 'template', template, key: template.id });
+    const { templateIds, categoryUpdates } = resolveTemplateDrop(spliced, templateCategoryOrder);
+    reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
+  };
+
+  // Rebuilt each render so it closes over fresh state; the button reads it
+  // through a ref, and its responder is built once regardless.
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      const intent = dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' };
+      if (intent.kind === 'cancel') {
+        haptics.tap();
+        return;
+      }
+      pendingDropRef.current = intent;
+      setQuickAddVisible(true);
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
   const handleAddTemplate = (name: string) => {
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
     animateLayout();
     const tpl = addTemplate(name);
+    if (dropped?.kind === 'insert') placeCreatedTemplate(tpl, dropped);
     // Drop straight into the editor so the new template doesn't sit empty.
     (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
   };
@@ -145,14 +253,26 @@ export function TemplatesScreen() {
         ] : undefined}
       />
 
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
       <ReorderableList
         data={templateListItems}
         keyExtractor={item => item.key}
+        // The user can't scroll during an add-button drag (the button's
+        // responder has the touch); the drag scrolls it instead, through the
+        // control below.
+        scrollEnabled={!fabDragging}
+        scrollControlRef={scrollControl}
         onReorder={data => {
           const { templateIds, categoryUpdates } = resolveTemplateDrop(data, templateCategoryOrder);
           reorderTemplatesWithCategoryUpdates(templateIds, categoryUpdates);
         }}
         contentContainerStyle={templateListItems.length === 0 ? styles.emptyContainer : styles.list}
+        placeholderStyle={styles.dropSlot}
+        onHoverChange={haptics.dragTick}
         // No spacer when the list is empty — the empty state centres itself in
         // whatever box the content container gives it, and a fixed-height
         // footer takes that height off the bottom of the box. When there are
@@ -172,53 +292,66 @@ export function TemplatesScreen() {
             bottomOffset={tabBarHeight}
           />
         }
-        renderItem={({ item, drag }) => {
+        // Every row doubles as a target for the add button being dragged in.
+        // The wrapper only measures — it adds no styling and claims no
+        // touches — so a row behaves exactly as it did without one, and the
+        // dragged row's floating copy registers nothing (a null zone) rather
+        // than claiming the real row's slot under the same key.
+        renderItem={({ item, drag, isActive }) => {
           if (item.type === 'header') {
             return (
-              <View style={styles.categorySectionHeader}>
-                <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
-              </View>
+              <FabDropZone zone={isActive ? null : zoneByKey.get(item.key) ?? null}>
+                <View style={styles.categorySectionHeader}>
+                  <Text style={styles.categorySectionHeaderText}>{item.label}</Text>
+                </View>
+              </FabDropZone>
             );
           }
           const tpl = item.template;
           return (
-            <TemplateRow
-              template={tpl}
-              broken={templateHasBrokenRefs(tpl, templatesById)}
-              missingRefs={templateHasMissingRefs(tpl, allCategories, allTags)}
-              colors={colors}
-              styles={styles}
-              // Reordering is off while selecting: the long press that would
-              // start a drag is how a mis-tapped row gets picked up instead.
-              drag={selectionMode ? undefined : drag}
-              selectionMode={selectionMode}
-              selected={selectedIds.has(tpl.id)}
-              onPress={() =>
-                selectionMode
-                  ? toggleSelection(tpl.id)
-                  : (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })
-              }
-              onEdit={() => setEditingTemplate(tpl)}
-              onApply={() => {
-                if (tpl.items.length === 0) {
-                  (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
-                  return;
+            <FabDropZone zone={isActive ? null : zoneByKey.get(item.key) ?? null}>
+              <TemplateRow
+                template={tpl}
+                broken={templateHasBrokenRefs(tpl, templatesById)}
+                missingRefs={templateHasMissingRefs(tpl, allCategories, allTags)}
+                colors={colors}
+                styles={styles}
+                // Reordering is off while selecting: the long press that would
+                // start a drag is how a mis-tapped row gets picked up instead.
+                drag={selectionMode ? undefined : drag}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(tpl.id)}
+                onPress={() =>
+                  selectionMode
+                    ? toggleSelection(tpl.id)
+                    : (navigation as any).navigate('TemplateDetail', { templateId: tpl.id })
                 }
-                haptics.tap();
-                setApplyTemplateId(tpl.id);
-              }}
-            />
+                onEdit={() => setEditingTemplate(tpl)}
+                onApply={() => {
+                  if (tpl.items.length === 0) {
+                    (navigation as any).navigate('TemplateDetail', { templateId: tpl.id });
+                    return;
+                  }
+                  haptics.tap();
+                  setApplyTemplateId(tpl.id);
+                }}
+              />
+            </FabDropZone>
           );
         }}
       />
+      </FabDropZoneProvider>
 
       {/* The bulk bar sits where the button does, and adding a template isn't
           something you're doing mid-selection anyway. */}
       {!selectionMode && (
-        <Fab
+        <AddTemplateFabWithDropLabel
+          channel={fabIntentChannel}
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add template"
           bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag onto the list to add a template there, or back to the button to cancel"
         />
       )}
 
@@ -247,7 +380,10 @@ export function TemplatesScreen() {
         visible={quickAddVisible}
         placeholder="New template…"
         onSubmit={handleAddTemplate}
-        onClose={() => setQuickAddVisible(false)}
+        onClose={() => {
+          pendingDropRef.current = null;
+          setQuickAddVisible(false);
+        }}
       />
 
       {/* Used when applying from the template list. */}
@@ -416,6 +552,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tplRowSelected: {
     backgroundColor: colors.accent + '1A',
+  },
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
   },
   tplIcon: {
     width: 36,
