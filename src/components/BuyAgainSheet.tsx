@@ -396,7 +396,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.full,
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
+      paddingVertical: spacing.sm,
     },
     chipActive: { backgroundColor: colors.accent },
     chipText: { fontSize: font.sm, color: colors.textSecondary },
