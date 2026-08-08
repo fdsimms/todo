@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the target task checkbox's progress fill leaving a gap in the rounded corners instead of reaching the border",
+  "date": "2026-08-08"
+}
