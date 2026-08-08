@@ -326,12 +326,25 @@ package alphabetically is the culprit, not the module named in the error.
 The safety rules are load-bearing, not ceremony — this is the one feature that destroys data the
 user owns in another app. **Create the task, then delete the reminder**, never the reverse: a
 failed delete leaves a visible duplicate, a failed create after a delete loses the capture
-silently. `handledIds` records a reminder the moment its task exists, before the delete is
-attempted, because both a *failed* delete and a *slow* one hand the same reminder back to the
-next fetch. A list is only offered if `allowsModifications` — a read-only shared list imports
+silently. The handled record (`remindersImportHandled`) names a reminder the moment its task
+exists, before the delete is attempted, because both a *failed* delete and a *slow* one hand the
+same reminder back to the next fetch. A list is only offered if `allowsModifications` — a read-only shared list imports
 fine and fails every delete, re-importing itself for ever. And nothing runs until the user has
 confirmed an alert naming the list and the exact count, keyed on the list id so switching lists
 asks again.
+
+**"Already handled" is keyed on the reminder's id and persisted, never inferred from the task.**
+With "Delete after importing" off — and after any failed delete — the reminder stays in the list
+and is re-read on every foreground, so something has to say "we've seen this one". That used to
+be a title match against the store, which is evidence *the user can destroy*: renaming or
+deleting the task freed the reminder to import again, and again, with nothing they could do
+about it. The record is now a settings row keyed by list (`remindersImportHandled`), holding
+every id imported **or deliberately skipped** — a skip has to count, because on the first launch
+after this shipped the name index is the only thing that recognises the pre-existing imports, and
+recording what it recognises is the entire backfill. It stays bounded by pruning to what the list
+still holds on every drain (`reconcileHandledReminders`), so with deletion on it empties itself.
+The name index survives as the *first* answer about a reminder the record has never seen, not as
+the record.
 
 ### App lock, and the one secret this app holds
 

@@ -53,6 +53,21 @@ jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings, subscribe: jest.fn() },
 }));
 
+/**
+ * A real settings table, because the record of which reminders have already
+ * been handled lives in one — and the whole point of persisting it is that it
+ * outlives the module. `mockSettingsRows` deliberately survives freshSync(),
+ * which is what makes "relaunch the app" expressible below.
+ */
+let mockSettingsRows: Record<string, string> = {};
+const mockDb = {
+  dbGetSetting: jest.fn((key: string) => mockSettingsRows[key] ?? null),
+  dbSetSetting: jest.fn((key: string, value: string) => {
+    mockSettingsRows[key] = value;
+  }),
+};
+jest.mock('../db/database', () => mockDb);
+
 const LIST = {
   id: 'list-1',
   title: 'Reminders',
@@ -64,7 +79,11 @@ function reminder(id: string, overrides: Partial<Reminder> = {}): Reminder {
   return { id, title: `Task ${id}`, completed: false, ...overrides };
 }
 
-/** A fresh copy of the module, so skipIds and lastOutcome don't leak between tests. */
+/**
+ * A fresh copy of the module, so the in-process handled record and lastOutcome
+ * don't leak between tests. Calling it twice inside one test is how a relaunch
+ * is spelled: everything in memory goes, the settings table stays.
+ */
 function freshSync(): typeof import('../utils/remindersImportSync') {
   let mod!: typeof import('../utils/remindersImportSync');
   jest.isolateModules(() => {
@@ -79,6 +98,11 @@ beforeEach(() => {
   jest.resetAllMocks();
   mockTasks = [];
   mockGroceryItems = [];
+  mockSettingsRows = {};
+  mockDb.dbGetSetting.mockImplementation((key: string) => mockSettingsRows[key] ?? null);
+  mockDb.dbSetSetting.mockImplementation((key: string, value: string) => {
+    mockSettingsRows[key] = value;
+  });
   mockSettings = {
     remindersImportEnabled: true,
     remindersImportListId: LIST.id,
@@ -602,9 +626,10 @@ describe('importReminders — with the reminders left in place', () => {
     expect(mockAddTask).toHaveBeenCalledTimes(1);
   });
 
-  // The skip isn't remembered: nothing was created, so deleting the task that
-  // blocked it should free the capture to come across.
-  it('lets a skipped reminder through once its task is gone', async () => {
+  // The skip *is* remembered, and this is the sync loop it closes: a name index
+  // is evidence the user can destroy by renaming or deleting the task, so
+  // treating it as the only record meant the reminder came back for ever.
+  it('leaves a skipped reminder alone once its task is deleted', async () => {
     mockTasks = [{ title: 'book a haircut' }];
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a', { title: 'book a haircut' })]);
     const sync = freshSync();
@@ -612,8 +637,8 @@ describe('importReminders — with the reminders left in place', () => {
     expect((await sync.importReminders()).skipped).toBe(1);
 
     mockTasks = [];
-    expect((await sync.importReminders()).imported).toBe(1);
-    expect(mockAddTask).toHaveBeenCalledTimes(1);
+    expect((await sync.importReminders()).imported).toBe(0);
+    expect(mockAddTask).not.toHaveBeenCalled();
   });
 
   it('still deletes on the other destination, which has its own setting', async () => {
@@ -630,6 +655,136 @@ describe('importReminders — with the reminders left in place', () => {
 
     expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledTimes(1);
     expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('g1');
+  });
+});
+
+/**
+ * The bug these exist for: with the reminder left in place, editing the task it
+ * became used to hand the capture straight back on the next foreground. Every
+ * one of them relaunches the module mid-test — the in-memory guard was never
+ * the problem, the missing durable one was.
+ */
+describe('importReminders — editing an imported task cannot resurrect its reminder', () => {
+  beforeEach(() => {
+    mockSettings.remindersImportDelete = false;
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'book a haircut' }),
+    ]);
+  });
+
+  it('does not re-import after the task is deleted and the app relaunched', async () => {
+    await freshSync().importReminders();
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+
+    // The user deletes the task. The reminder is still sitting in Reminders.
+    mockTasks = [];
+    expect((await freshSync().importReminders()).imported).toBe(0);
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not re-import after the task is renamed and the app relaunched', async () => {
+    await freshSync().importReminders();
+    // Renaming is the worse half: the task is still there, so the duplicate
+    // lands right beside it.
+    mockTasks = [{ title: 'book a haircut at 3' }];
+
+    expect((await freshSync().importReminders()).imported).toBe(0);
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a name-skip too, so the backfill on the first launch holds', async () => {
+    // Nothing in the record yet and a task already carrying the name — which is
+    // every reminder imported before this shipped. The skip is what writes it in.
+    mockTasks = [{ title: 'book a haircut' }];
+    expect((await freshSync().importReminders()).skipped).toBe(1);
+
+    mockTasks = [];
+    expect((await freshSync().importReminders()).imported).toBe(0);
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  it('still lets a genuinely new reminder through', async () => {
+    await freshSync().importReminders();
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'book a haircut' }),
+      reminder('b', { title: 'call the dentist' }),
+    ]);
+
+    expect((await freshSync().importReminders()).imported).toBe(1);
+    expect(mockAddTask).toHaveBeenLastCalledWith({ title: 'call the dentist' });
+  });
+
+  it('forgets a reminder once it is gone from the list, so the record stays bounded', async () => {
+    await freshSync().importReminders();
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({ [LIST.id]: ['a'] });
+
+    // Deleted in the Reminders app by hand. Nothing left to guard against.
+    mockCalendar.getRemindersAsync.mockResolvedValue([]);
+    await freshSync().importReminders();
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({});
+  });
+
+  it('keeps holding a completed reminder, which can be un-completed', async () => {
+    await freshSync().importReminders();
+    // Excluded from the importable set but still sitting in the list — pruning
+    // against importable rather than the raw fetch would forget it here and
+    // re-import it the moment the user ticked it back open.
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'book a haircut', completed: true }),
+    ]);
+    await freshSync().importReminders();
+
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('a', { title: 'book a haircut' }),
+    ]);
+    expect((await freshSync().importReminders()).imported).toBe(0);
+  });
+});
+
+describe('importReminders — the handled record with deletion on', () => {
+  it('does not re-import across a relaunch when the delete failed', async () => {
+    // Delete-on mode has no name index at all, so before the record was
+    // persisted this duplicated the task on every single launch.
+    mockCalendar.deleteReminderAsync.mockRejectedValue(new Error('read-only'));
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    await freshSync().importReminders();
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+
+    await freshSync().importReminders();
+    expect(mockAddTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('empties itself once the delete has propagated', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+    await freshSync().importReminders();
+    // Fetched before the delete, so it is still held for one cycle.
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({ [LIST.id]: ['a'] });
+
+    mockCalendar.getRemindersAsync.mockResolvedValue([]);
+    await freshSync().importReminders();
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({});
+  });
+
+  it('leaves the other list alone when only one is drained', async () => {
+    // A list nobody fetched this pass must not be pruned by a fetch that never
+    // covered it — that is the whole reason the record is keyed by list.
+    mockSettingsRows.remindersImportHandled = JSON.stringify({ [GROCERY_LIST.id]: ['g9'] });
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    await freshSync().importReminders();
+
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({
+      [GROCERY_LIST.id]: ['g9'],
+      [LIST.id]: ['a'],
+    });
+  });
+
+  it('survives a settings row that cannot be read, rather than importing nothing', async () => {
+    mockSettingsRows.remindersImportHandled = 'not json';
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    expect((await freshSync().importReminders()).imported).toBe(1);
   });
 });
 

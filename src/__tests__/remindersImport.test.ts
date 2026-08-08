@@ -5,14 +5,18 @@ import {
   findReminderList,
   groceryItemKey,
   groceryItemKeys,
+  handledReminderIds,
   importableReminders,
   isImportableList,
   isReminderAlreadyPresent,
   isTitleTaken,
+  parseHandledReminders,
   pendingImportFor,
+  reconcileHandledReminders,
   recurrenceFromRule,
   reminderListOptions,
   reminderTimeFromAlarms,
+  serializeHandledReminders,
   taskTitleKey,
   taskTitleKeys,
 } from '../utils/remindersImport';
@@ -746,5 +750,97 @@ describe('isReminderAlreadyPresent', () => {
       .toBe(true);
     expect(isReminderAlreadyPresent(reminder({ title: 'chicken stock' }), 'grocery', keys, now))
       .toBe(false);
+  });
+});
+
+// ─── the durable handled record ──────────────────────────────────────────────
+
+/**
+ * The thing that makes deleting or renaming an imported task safe. Everything
+ * else in this file infers "already imported" from a title, which is evidence
+ * the user is free to destroy; these rules key on the reminder's own id.
+ */
+describe('parseHandledReminders', () => {
+  it('reads back what it wrote', () => {
+    const index = { 'list-1': ['a', 'b'], 'list-2': ['c'] };
+    expect(parseHandledReminders(serializeHandledReminders(index))).toEqual(index);
+  });
+
+  it('treats anything it cannot read as no record at all', () => {
+    // A throw here would strand the import for good, and the name index still
+    // catches the common case — so every one of these degrades, none rejects.
+    for (const raw of [null, undefined, '', 'not json', '[]', '"a"', '7']) {
+      expect(parseHandledReminders(raw)).toEqual({});
+    }
+  });
+
+  it('drops entries that are not lists of non-empty ids', () => {
+    const raw = JSON.stringify({ 'list-1': ['a', '', 7, null, 'a'], 'list-2': 'nope', '': ['x'] });
+    expect(parseHandledReminders(raw)).toEqual({ 'list-1': ['a'] });
+  });
+
+  it('keeps no empty buckets', () => {
+    expect(parseHandledReminders(JSON.stringify({ 'list-1': [] }))).toEqual({});
+  });
+});
+
+describe('handledReminderIds', () => {
+  it('flattens every list into one set, since ids are unique across them', () => {
+    expect(handledReminderIds({ 'list-1': ['a', 'b'], 'list-2': ['c'] }))
+      .toEqual(new Set(['a', 'b', 'c']));
+  });
+
+  it('is empty for an empty record', () => {
+    expect(handledReminderIds({}).size).toBe(0);
+  });
+});
+
+describe('reconcileHandledReminders', () => {
+  it('keeps what the list still holds and adds what this pass handled', () => {
+    const next = reconcileHandledReminders(
+      { 'list-1': ['a', 'b'] },
+      'list-1',
+      new Set(['a', 'c']),
+      new Set(['c'])
+    );
+    expect(next).toEqual({ 'list-1': ['a', 'c'] });
+  });
+
+  // Bounded by the list rather than by time: with deletion on the reminder is
+  // gone from the next fetch and its id goes with it, so this self-empties
+  // instead of growing for ever.
+  it('forgets an id the list no longer holds', () => {
+    expect(reconcileHandledReminders({ 'list-1': ['a'] }, 'list-1', new Set(), new Set()))
+      .toEqual({});
+  });
+
+  it('remembers what this pass handled even if the list no longer reports it', () => {
+    // With deletion on the row is destroyed moments after it is created; the one
+    // thing this must never do is fail to remember something it just imported.
+    expect(reconcileHandledReminders({}, 'list-1', new Set(), new Set(['a'])))
+      .toEqual({ 'list-1': ['a'] });
+  });
+
+  it('leaves every other list untouched', () => {
+    // A list that wasn't drained this pass has had no fetch to be pruned
+    // against — that is the whole reason the record is keyed by list.
+    const next = reconcileHandledReminders(
+      { 'list-1': ['a'], 'list-2': ['b'] },
+      'list-1',
+      new Set(['a']),
+      new Set()
+    );
+    expect(next['list-2']).toEqual(['b']);
+  });
+
+  it('does not mutate the record it was given', () => {
+    const index = { 'list-1': ['a'] };
+    reconcileHandledReminders(index, 'list-1', new Set(), new Set(['z']));
+    expect(index).toEqual({ 'list-1': ['a'] });
+  });
+
+  it('never stores a duplicate id', () => {
+    expect(reconcileHandledReminders({ 'list-1': ['a'] }, 'list-1', new Set(['a']), new Set(['a'])))
+      .toEqual({ 'list-1': ['a'] });
   });
 });
