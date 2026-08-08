@@ -71,6 +71,7 @@ export function ProjectDetailScreen() {
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
+  const [notesExpanded, setNotesExpanded] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   const flashTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -200,6 +201,24 @@ export function ProjectDetailScreen() {
             </TouchableOpacity>
           }
         />
+
+        {!!project?.notes && (
+          // Collapsed to one line by default — the notes are a reference, not
+          // the point of this screen, and a multi-paragraph note shouldn't push
+          // the task list below the fold. Tap to unfold in place.
+          <TouchableOpacity
+            style={styles.notesPreview}
+            onPress={() => { animateLayout(); setNotesExpanded(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${notesExpanded ? 'Collapse' : 'Expand'} project notes`}
+          >
+            <Ionicons name="document-text-outline" size={13} color={colors.textTertiary} style={styles.notesPreviewIcon} />
+            <Text style={styles.notesPreviewText} numberOfLines={notesExpanded ? undefined : 1}>
+              {project.notes}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {sequential && steps.length > 1 && (
           // Says why every row but one is wearing a padlock. Only worth the
@@ -489,6 +508,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     // Clears the floating add button so the last row is never under it.
     paddingBottom: spacing.xl * 2 + spacing.lg,
+  },
+  notesPreview: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  notesPreviewIcon: {
+    // Nudged down to sit on the text's cap height instead of its vertical
+    // center, matching sequenceNote's baseline alignment with a one-line icon.
+    marginTop: 2,
+  },
+  notesPreviewText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   sequenceNote: {
     flexDirection: 'row',
