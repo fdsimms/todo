@@ -267,6 +267,7 @@ export function RecipeDetailScreen() {
             multiline
             blurOnSubmit
             returnKeyType="done"
+            autoCapitalize="none"
             accessibilityLabel="Add an ingredient"
           />
           <InlineAction
