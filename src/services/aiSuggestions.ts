@@ -3,8 +3,8 @@ import { TITLE_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH,
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useSettingsStore } from '../store/useSettingsStore';
+import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 
-const MODEL = 'claude-haiku-4-5-20251001';
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const REQUEST_TIMEOUT_MS = 15_000;
 
@@ -13,8 +13,25 @@ interface AnthropicResponse {
   content?: Array<{ type: string; input?: unknown }>;
 }
 
+/**
+ * Reads the API key and this feature's enabled/model setting. Throws the same
+ * way an absent key already did, so describeAIError has one place to map both
+ * to user-facing copy.
+ */
+function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
+  const { anthropicApiKey: apiKey, aiFeatureConfig } = useSettingsStore.getState();
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  const { enabled, model } = aiFeatureConfig[id];
+  if (!enabled) throw new Error('AI feature disabled');
+  return { apiKey, model };
+}
+
 /** POSTs to the Messages API with a timeout and flags a max_tokens truncation as an error. */
-async function callAnthropic(body: Record<string, unknown>, apiKey: string): Promise<AnthropicResponse> {
+async function callAnthropic(
+  body: Record<string, unknown>,
+  apiKey: string,
+  model: AiModelId,
+): Promise<AnthropicResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
@@ -26,7 +43,9 @@ async function callAnthropic(body: Record<string, unknown>, apiKey: string): Pro
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({ model: MODEL, temperature: 0, ...body }),
+      // No `temperature` override — Opus 5/Sonnet 5 reject a non-default
+      // value, and the tool-forced extraction below doesn't need one.
+      body: JSON.stringify({ model, ...body }),
       signal: controller.signal,
     });
   } catch (e) {
@@ -49,6 +68,7 @@ export function describeAIError(error: unknown): string {
   if (message === 'No API key' || message.startsWith('No API key configured')) {
     return 'Add your Anthropic API key in Settings.';
   }
+  if (message === 'AI feature disabled') return 'This AI feature is turned off in Settings.';
   if (message === 'Request timed out') return 'The request timed out. Try again.';
   if (message === 'API error 401') return 'Check your API key in Settings.';
   if (message === 'API error 429') return 'Rate limited by Anthropic. Try again in a moment.';
@@ -72,8 +92,7 @@ export async function suggestTaskAttributes(
   availableTags: string[],
   availableCategories: string[],
 ): Promise<AISuggestions> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key');
+  const { apiKey, model } = requireFeature('taskSuggestions');
 
   const tagPart = availableTags.length > 0
     ? `Available tags (only suggest from this list): ${availableTags.join(', ')}`
@@ -119,7 +138,7 @@ export async function suggestTaskAttributes(
       role: 'user',
       content: `Task: "${title}"${notes ? `\nNotes: ${notes}` : ''}\n${tagPart}\n${categoryPart}\nStrongly prefer an existing category. Only if none of the existing categories reasonably fit, propose one short new category (1-2 words) matching the user's existing naming style; otherwise leave newCategory blank. Never invent a new category when an existing one fits.`,
     }],
-  }, apiKey);
+  }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   if (!toolUse?.input) throw new Error('No suggestion returned');
@@ -169,8 +188,7 @@ export async function suggestTemplateItems(
   templateName: string,
   existingTitles: string[],
 ): Promise<TemplateItemSuggestion[]> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  const { apiKey, model } = requireFeature('templateSuggestions');
 
   const existingPart = existingTitles.length > 0
     ? `The template already contains these tasks — do NOT repeat or rephrase them:\n${existingTitles.map(t => `- ${t}`).join('\n')}`
@@ -215,7 +233,7 @@ export async function suggestTemplateItems(
         existingPart,
       ].join('\n\n'),
     }],
-  }, apiKey);
+  }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as { tasks?: Array<{ title?: string; notes?: string }> } | undefined;
@@ -276,8 +294,7 @@ export async function suggestGroceryAisles(
   names: string[],
   availableAisles: string[],
 ): Promise<Record<string, string>> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  const { apiKey, model } = requireFeature('groceryAisles');
 
   const wanted = names.map(n => n.trim()).filter(Boolean).slice(0, MAX_AISLE_NAMES);
   if (wanted.length === 0) return {};
@@ -319,7 +336,7 @@ export async function suggestGroceryAisles(
         `Items:\n${wanted.map(n => `- ${n}`).join('\n')}`,
       ].join('\n\n'),
     }],
-  }, apiKey);
+  }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as { assignments?: Array<{ name?: unknown; aisle?: unknown }> } | undefined;
@@ -402,8 +419,7 @@ export async function extractRecipe(
   text: string,
   availableAisles: string[],
 ): Promise<ExtractedRecipe> {
-  const apiKey = useSettingsStore.getState().anthropicApiKey;
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = { name: '', servings: null, prepMinutes: null, ingredients: [] };
   const source = text.trim().slice(0, MAX_RECIPE_CHARS);
@@ -465,7 +481,7 @@ export async function extractRecipe(
         `Recipe:\n${source}`,
       ].join('\n\n'),
     }],
-  }, apiKey);
+  }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {

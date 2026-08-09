@@ -142,6 +142,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['grace', 'timeout'] },
   { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API Key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
+  { id: 'aiTaskSuggestions', groupId: 'privacyAi', label: 'Task suggestions', section: 'AI features',
+    keywords: ['claude', 'model', 'tag', 'effort', 'category'] },
+  { id: 'aiTemplateSuggestions', groupId: 'privacyAi', label: 'Template drafting', section: 'AI features',
+    keywords: ['claude', 'model', 'checklist'] },
+  { id: 'aiGroceryAisles', groupId: 'privacyAi', label: 'Grocery aisle sorting', section: 'AI features',
+    keywords: ['claude', 'model', 'shopping'] },
+  { id: 'aiRecipeExtraction', groupId: 'privacyAi', label: 'Recipe import', section: 'AI features',
+    keywords: ['claude', 'model', 'ingredients'] },
 
   // Data & reset
   { id: 'exportBackup', groupId: 'dataReset', label: 'Export all data', section: 'Backup',
