@@ -2270,17 +2270,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderColor: colors.green,
   },
   // Height and colour both come from Animated values at the call site — see
-  // quotaFill / quotaDone. Radius matches the circle's own, minus the border
-  // width it sits inside of — clipping via the parent's overflow:hidden alone
-  // rounds the fill to the *outer* radius, which is too round for this inset
-  // box and leaves a sliver of the border's own colour showing between the
-  // fill and the ring near the corners once the meter is close to full.
+  // quotaFill / quotaDone. Top radius matches the circle's own, minus the
+  // border width it sits inside of — clipping via the parent's
+  // overflow:hidden alone rounds the fill to the *outer* radius, which is too
+  // round for this inset box and leaves a sliver of the border's own colour
+  // showing between the fill and the ring near the top corners once the
+  // meter is close to full. The bottom corners get no radius at all: the
+  // fill's bottom edge sits flush on the circle's own bottom edge, so there's
+  // no curve there to match — rounding it just opened a gap between the fill
+  // and the ring along the bottom.
   quotaFill: {
     position: 'absolute',
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
+    borderTopLeftRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
+    borderTopRightRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   content: {
     flex: 1,
