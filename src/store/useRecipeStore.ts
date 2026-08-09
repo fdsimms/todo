@@ -61,6 +61,12 @@ interface RecipeStore {
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
   /** Appends a pasted block. Returns how many were new. */
   addIngredientsFromText: (recipeId: string, raw: string) => number;
+  /**
+   * Merges already-structured ingredients — e.g. from AI recipe extraction —
+   * bypassing makeIngredient's text parse, since these already arrived as
+   * name/quantity/aisle. Returns how many were new.
+   */
+  addStructuredIngredients: (recipeId: string, ingredients: RecipeIngredient[]) => number;
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
@@ -189,6 +195,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return 0;
     const merged = mergeIngredients(recipe.ingredients, ingredientsFromText(raw));
+    const added = merged.length - recipe.ingredients.length;
+    if (added === 0) return 0;
+    save(set, { ...recipe, ingredients: merged });
+    return added;
+  },
+
+  addStructuredIngredients(recipeId, ingredients) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return 0;
+    const merged = mergeIngredients(recipe.ingredients, ingredients);
     const added = merged.length - recipe.ingredients.length;
     if (added === 0) return 0;
     save(set, { ...recipe, ingredients: merged });

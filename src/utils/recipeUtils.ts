@@ -1,4 +1,4 @@
-import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
@@ -294,6 +294,71 @@ export function rankRecipeSuggestions(recipes: readonly Recipe[], now: Date, lim
   return recipes
     .filter(r => r.cookCount > 0)
     .map(recipe => ({ recipe, score: cookFamiliarity(recipe, now) }))
+    .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
+    .slice(0, limit)
+    .map(x => x.recipe);
+}
+
+/** Score halves every this many days since last bought — same monthly cadence as the cook-history one above. */
+const PURCHASE_RECENCY_HALF_LIFE_DAYS = 30;
+
+function purchaseRecency(item: GroceryItem, now: Date): number {
+  if (!item.lastPurchasedAt) return 0.5; // in the catalog but never bought — a wash, not a penalty
+  const days = Math.max(0, (now.getTime() - new Date(item.lastPurchasedAt).getTime()) / DAY_MS);
+  return 0.5 ** (days / PURCHASE_RECENCY_HALF_LIFE_DAYS);
+}
+
+/**
+ * How well a recipe fits what's actually in the catalog, for "what can I
+ * make tonight" — not what the user has cooked before (that's
+ * rankRecipeSuggestions' job), but what they could cook *right now* without
+ * a special trip. Coverage (the fraction of the recipe's ingredients that
+ * are already known items) dominates; how recently those ingredients were
+ * bought only nudges the ranking, since an item you bought once six months
+ * ago still means you've made this before and know how to get it.
+ *
+ * Zero for a recipe with no ingredients or nothing in common with the
+ * catalog — there is nothing here to recommend it over any other empty
+ * night.
+ */
+export function scoreRecipeAgainstCatalog(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+): number {
+  if (recipe.ingredients.length === 0) return 0;
+  const byKey = new Map(items.map(i => [i.nameKey, i]));
+  let matched = 0;
+  let recencySum = 0;
+  for (const ingredient of recipe.ingredients) {
+    const item = byKey.get(ingredient.nameKey);
+    if (!item) continue;
+    matched += 1;
+    recencySum += purchaseRecency(item, now);
+  }
+  if (matched === 0) return 0;
+  const coverage = matched / recipe.ingredients.length;
+  const avgRecency = recencySum / matched;
+  return coverage * (0.5 + 0.5 * avgRecency);
+}
+
+/**
+ * The "what can I make from what I've got" shelf for an empty night —
+ * `scoreRecipeAgainstCatalog`, ranked and capped. Deliberately offline and
+ * ungated: the AI half of meal-idea suggestion (inventing a new recipe from
+ * nothing) is a separate, much larger surface — this is "the offline
+ * suggestions should be the better ones" being taken at its word, not a
+ * fallback for when there's no API key.
+ */
+export function suggestRecipesForEmptyNight(
+  recipes: readonly Recipe[],
+  items: readonly GroceryItem[],
+  now: Date,
+  limit = 3,
+): Recipe[] {
+  return recipes
+    .map(recipe => ({ recipe, score: scoreRecipeAgainstCatalog(recipe, items, now) }))
+    .filter(x => x.score > 0)
     .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
     .slice(0, limit)
     .map(x => x.recipe);

@@ -14,6 +14,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -22,6 +23,7 @@ import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
+import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -50,6 +52,7 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [draft, setDraft] = useState('');
   const [prepDraft, setPrepDraft] = useState('');
@@ -57,6 +60,7 @@ export function RecipeDetailScreen() {
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
+  const [extractVisible, setExtractVisible] = useState(false);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -191,6 +195,16 @@ export function RecipeDetailScreen() {
         onBack={() => navigation.goBack()}
         actions={
           <View style={styles.headerActions}>
+            {!!anthropicApiKey && (
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setExtractVisible(true); }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Fill in from a pasted recipe"
+              >
+                <Ionicons name="sparkles" size={iconSize.md} color={colors.purple} />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               onPress={() => { haptics.tap(); toggleFavorite(recipe.id); }}
               hitSlop={8}
@@ -338,6 +352,12 @@ export function RecipeDetailScreen() {
         visible={addToListVisible}
         recipe={recipe}
         onClose={() => setAddToListVisible(false)}
+      />
+
+      <RecipeExtractSheet
+        visible={extractVisible}
+        recipe={recipe}
+        onClose={() => setExtractVisible(false)}
       />
     </View>
   );
