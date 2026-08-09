@@ -44,6 +44,8 @@ interface Props {
   visible: boolean;
   template: TaskTemplate | null;
   onClose: () => void;
+  /** Land every created task in this existing project instead of the template's own container — see ApplyTemplateOptions.targetProjectId. */
+  projectId?: string;
 }
 
 /** Sub-label for a checklist row: live dates when its anchor is set, offset labels otherwise. */
@@ -100,7 +102,7 @@ function initialLeafSelection(nodes: ApplyTreeNode[], ancestorOptional: boolean,
  * which items to include (optional items start unchecked, including whole
  * nested-template blocks), then create them all as real tasks.
  */
-export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
+export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -264,7 +266,11 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
   // and its hint don't appear and disappear as items are ticked.
   const selectedLeafItems = flatLeaves.map(l => l.item);
   const placeholderNames = extractPlaceholders(selectedLeafItems);
-  const container = resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
+  const resolvedContainer = resolveApplyContainer(template.applyContainer, flatLeaves, templatesById);
+  // Mirrors useTemplateStore.applyTemplate's downgrade: a project already
+  // exists here, so a resolved 'project' container becomes a stack inside it
+  // instead of a second project.
+  const container = projectId && resolvedContainer === 'project' ? 'stack' : resolvedContainer;
   const containerUpgraded = container !== template.applyContainer;
   // Nothing to name when the run has no container and no `{run}` to fill.
   const showRunField = container !== 'none' || declaresRunPlaceholder(selectedLeafItems);
@@ -278,6 +284,7 @@ export function ApplyTemplateSheet({ visible, template, onClose }: Props) {
     applyTemplate(template.id, flatSelection, anchors, {
       runName,
       placeholders: placeholderValues,
+      targetProjectId: projectId,
     });
     dismiss();
   };
