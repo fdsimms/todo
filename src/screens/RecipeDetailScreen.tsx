@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import {
-  Alert,
   View,
   Text,
   TextInput,
@@ -15,7 +14,6 @@ import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { useGroceryStore } from '../store/useGroceryStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
@@ -23,6 +21,7 @@ import { SortableList } from '../components/SortableList';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
+import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -49,7 +48,6 @@ export function RecipeDetailScreen() {
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
-  const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
 
@@ -58,6 +56,7 @@ export function RecipeDetailScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
+  const [addToListVisible, setAddToListVisible] = useState(false);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -93,27 +92,8 @@ export function RecipeDetailScreen() {
 
   const addToList = () => {
     if (recipe.ingredients.length === 0) return;
-    const result = addFromPlan(recipe.ingredients.map(i => ({
-      name: i.name,
-      // Prep lives in its own field so it stays out of the catalog name, but
-      // the shopper still needs it — folded into the free-text quantity is
-      // where the rest of "how much" already lives, and nothing does
-      // arithmetic on it either way.
-      quantity: [i.quantity, i.prep].filter(Boolean).join(', ') || null,
-      aisle: i.aisle,
-    })));
-    haptics.success();
-
-    // Each count is reported on its own terms and never added together — the
-    // same discipline describeShops keeps. "Added 6 · 2 already on your list"
-    // is true; "8 of 8" would imply an arithmetic these numbers don't support.
-    const parts = [`Added ${result.added.length}`];
-    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
-    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your trolley`);
-    Alert.alert(
-      result.added.length > 0 ? 'On the list' : 'Nothing to add',
-      parts.join(' · '),
-    );
+    haptics.tap();
+    setAddToListVisible(true);
   };
 
   const confirmRemove = (ingredient: RecipeIngredient) => {
@@ -352,6 +332,12 @@ export function RecipeDetailScreen() {
         recipeId={recipe.id}
         prepTask={editingPrepTask}
         onClose={() => setEditingPrepTask(null)}
+      />
+
+      <RecipeToListSheet
+        visible={addToListVisible}
+        recipe={recipe}
+        onClose={() => setAddToListVisible(false)}
       />
     </View>
   );
