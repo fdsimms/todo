@@ -29,6 +29,8 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
     ...overrides,
   };
 }
@@ -368,5 +370,25 @@ describe('deleteRecipe', () => {
 
     expect(dbDeleteRecipe).toHaveBeenCalledWith(r.id);
     expect(useRecipeStore.getState().recipes).toEqual([]);
+  });
+});
+
+describe('markCooked', () => {
+  it('bumps cookCount and stamps lastCookedAt', () => {
+    const r = makeRecipe('Ragu', { cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
+    seed([r]);
+
+    useRecipeStore.getState().markCooked(r.id);
+
+    const updated = useRecipeStore.getState().recipeById(r.id)!;
+    expect(updated.cookCount).toBe(3);
+    expect(updated.lastCookedAt).not.toBe('2026-01-01T00:00:00.000Z');
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().markCooked('gone')).not.toThrow();
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

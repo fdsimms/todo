@@ -73,6 +73,15 @@ interface MealPlanStore {
   removeEntry: (id: string) => void;
 
   /**
+   * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
+   * entry is a no-op, since the recipe's cookCount (bumped separately by the
+   * caller via useRecipeStore.markCooked) must only ever go up once per
+   * entry. One-way by design: there's no unmark, matching the streaks/
+   * completed-task precedent of not undoing a counted event.
+   */
+  markCooked: (id: string) => void;
+
+  /**
    * When "Add week to list" was last used for a given week, keyed by the
    * week's start day key. A stamp, not a lock — adding twice because you
    * forgot the mushrooms is a real action, so nothing here ever blocks a
@@ -137,6 +146,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         draft.slot
       ),
       createdAt: new Date().toISOString(),
+      cookedAt: null,
     };
 
     dbInsertMealPlanEntry(entry);
@@ -165,6 +175,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   removeEntry(id) {
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
+  },
+
+  markCooked(id) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry || entry.cookedAt) return;
+    const cooked: MealPlanEntry = { ...entry, cookedAt: new Date().toISOString() };
+    dbUpdateMealPlanEntry(cooked);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? cooked : e) }));
   },
 
   stampAddedToList(weekStartKey) {

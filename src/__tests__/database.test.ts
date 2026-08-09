@@ -1712,6 +1712,7 @@ describe('meal plan entries', () => {
       title: `Meal ${mealSeq}`,
       sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
+      cookedAt: null,
       ...overrides,
     };
   };

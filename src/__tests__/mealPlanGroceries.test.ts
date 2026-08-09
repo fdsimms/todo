@@ -44,6 +44,8 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
   };
 }
 
@@ -56,6 +58,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     title: overrides.title ?? 'Leftovers',
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookedAt: null,
     ...overrides,
   };
 }

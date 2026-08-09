@@ -28,6 +28,8 @@ interface Props {
   weekDays: Date[];
   onMove: (to: { date?: string; slot?: MealSlot }) => void;
   onRemove: () => void;
+  /** Present only while the entry hasn't already been marked cooked. */
+  onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /** Present only while the entry's recipe still resolves and has prep tasks. */
@@ -49,7 +51,7 @@ interface Props {
  * to Thursday *and* making it lunch is two taps rather than two round trips.
  */
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onOpenRecipe, onAddPrepTasks, onClose,
+  visible, entry, title, weekDays, onMove, onRemove, onMarkCooked, onOpenRecipe, onAddPrepTasks, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -154,6 +156,22 @@ export function MealEntrySheet({
               );
             })}
           </View>
+
+          {!!onMarkCooked && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.success(); dismiss(onMarkCooked); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Mark this meal cooked"
+              >
+                <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+                <Text style={[styles.actionText, { color: colors.accent }]}>Mark cooked</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
           {!!onOpenRecipe && (
             <>

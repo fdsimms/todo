@@ -49,6 +49,14 @@ interface RecipeStore {
   toggleFavorite: (id: string) => void;
   deleteRecipe: (id: string) => void;
 
+  /**
+   * Bumps cookCount and stamps lastCookedAt. Called once per "Mark cooked" on
+   * a planned meal entry — see useMealPlanStore.markCooked, which stamps the
+   * entry itself. The two are separate writes because the counter lives on
+   * the recipe and is never recomputed from entries (see Recipe.cookCount).
+   */
+  markCooked: (id: string) => void;
+
   /** Appends one typed line. Null when it parses to nothing or is already there. */
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
   /** Appends a pasted block. Returns how many were new. */
@@ -99,6 +107,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       favorite: false,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
+      cookCount: 0,
+      lastCookedAt: null,
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -156,6 +166,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   deleteRecipe(id) {
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
+  },
+
+  markCooked(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, cookCount: recipe.cookCount + 1, lastCookedAt: new Date().toISOString() });
   },
 
   addIngredient(recipeId, line) {

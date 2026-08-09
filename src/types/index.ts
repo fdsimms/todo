@@ -678,6 +678,16 @@ export interface Recipe {
   favorite: boolean;
   sortOrder: number;
   createdAt: string;
+  /**
+   * How many meal plan entries pointing at this recipe have been marked
+   * cooked. Bumped once per "Mark cooked" tap and **never recomputed by
+   * scanning entries** — the same discipline that keeps streaks safe from the
+   * completed-task purge keeps this safe from the 180-day meal plan entry
+   * prune (see MEAL_PLAN_RETENTION_DAYS).
+   */
+  cookCount: number;
+  /** When this recipe was last marked cooked; null if never. */
+  lastCookedAt: string | null;
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model
@@ -760,6 +770,14 @@ export interface MealPlanEntry {
    */
   sortOrder: number;
   createdAt: string;
+  /**
+   * When this meal was actually made, set by a "Mark cooked" row action; null
+   * until then. This is the one thing this row tracks about the *past* rather
+   * than the plan — bumping it also bumps the recipe's cookCount/lastCookedAt,
+   * but those live on the recipe and are never derived back from entries (see
+   * Recipe.cookCount), so a purged entry never un-counts a cooking.
+   */
+  cookedAt: string | null;
 }
 
 /**

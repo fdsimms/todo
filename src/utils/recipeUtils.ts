@@ -7,6 +7,7 @@ import {
   GROCERY_QUANTITY_MAX_LENGTH,
   TITLE_MAX_LENGTH,
 } from '../types';
+import { format } from 'date-fns/format';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
@@ -259,4 +260,41 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
+}
+
+/** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
+export function describeCookHistory(recipe: Recipe): string {
+  if (recipe.cookCount === 0) return '';
+  const times = recipe.cookCount === 1 ? 'once' : `${recipe.cookCount}×`;
+  if (!recipe.lastCookedAt) return `Cooked ${times}`;
+  return `Cooked ${times} · last on ${format(new Date(recipe.lastCookedAt), 'd MMM')}`;
+}
+
+const DAY_MS = 86_400_000;
+/** Score halves every this many days since last cooked — mirrors grocerySuggest's monthly halving. */
+const COOK_RECENCY_HALF_LIFE_DAYS = 30;
+
+function cookFamiliarity(recipe: Recipe, now: Date): number {
+  const frequency = 1 + Math.log1p(recipe.cookCount);
+  const days = recipe.lastCookedAt
+    ? Math.max(0, (now.getTime() - new Date(recipe.lastCookedAt).getTime()) / DAY_MS)
+    : Infinity;
+  const recency = days === Infinity ? 0.5 : 0.5 ** (days / COOK_RECENCY_HALF_LIFE_DAYS);
+  return frequency * recency;
+}
+
+/**
+ * The "Cook again" shelf — recipes made often and made recently, same
+ * frequency × recency halving as rankGrocerySuggestions/buyAgainItems so this
+ * behaves the way the grocery autocomplete has already taught the user to
+ * expect. Only recipes with at least one cooking: a never-made recipe has
+ * nothing to rank on here (rankRecipes' search already covers "what do I have").
+ */
+export function rankRecipeSuggestions(recipes: readonly Recipe[], now: Date, limit = 3): Recipe[] {
+  return recipes
+    .filter(r => r.cookCount > 0)
+    .map(recipe => ({ recipe, score: cookFamiliarity(recipe, now) }))
+    .sort((a, b) => b.score - a.score || a.recipe.name.localeCompare(b.recipe.name))
+    .slice(0, limit)
+    .map(x => x.recipe);
 }

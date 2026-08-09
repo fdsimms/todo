@@ -39,6 +39,7 @@ function entry(
     title: `Meal ${seq}`,
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookedAt: null,
     ...overrides,
   };
 }
@@ -264,6 +265,34 @@ describe('removeEntry', () => {
 
     expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(dinner.id);
     expect(getEntries()).toEqual([]);
+  });
+});
+
+describe('markCooked', () => {
+  it('stamps cookedAt and writes it back', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().markCooked(dinner.id);
+
+    const updated = getEntries().find(e => e.id === dinner.id)!;
+    expect(updated.cookedAt).not.toBeNull();
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) }));
+  });
+
+  it('is a no-op on an entry already marked cooked', () => {
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().markCooked(dinner.id);
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an unknown id', () => {
+    loadWeek([]);
+    expect(() => useMealPlanStore.getState().markCooked('gone')).not.toThrow();
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });
 

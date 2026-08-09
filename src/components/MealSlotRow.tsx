@@ -41,7 +41,7 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress }: Prop
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${slotLabel(entry.slot)}, ${title}`}
+      accessibilityLabel={[slotLabel(entry.slot), title, entry.cookedAt ? 'cooked' : null].filter(Boolean).join(', ')}
       accessibilityHint="Double tap to move or remove this meal."
     >
       <View
@@ -55,6 +55,11 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress }: Prop
           size={16}
           color={hasRecipe ? colors.accent : colors.textSecondary}
         />
+        {!!entry.cookedAt && (
+          <View style={styles.cookedBadge}>
+            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+          </View>
+        )}
       </View>
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={1}>{title}</Text>
@@ -79,6 +84,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  cookedBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.green,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: colors.bg,
   },
   info: { flex: 1, gap: 2 },
   title: {
