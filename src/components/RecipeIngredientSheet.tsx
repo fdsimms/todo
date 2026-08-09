@@ -114,6 +114,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           placeholder="Ingredient"
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_NAME_MAX_LENGTH}
+          autoCapitalize="none"
           accessibilityLabel="Ingredient name"
         />
         {!!catalogSuggestion && (
