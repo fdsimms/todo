@@ -15,10 +15,18 @@ interface State {
 // below this point would otherwise take the whole app down instead of just
 // this screen. Logged via console.error so the message shows up in device
 // logs (Settings > Privacy > Analytics Data on iOS) even without a debugger
-// attached — but that log has proven unreliable to find on-device, so the
-// component stack is also rendered directly on this screen (temporary,
-// pending a real crash reporter): the one thing this boundary can't do is
-// surface it anywhere else once the app has already crashed past retry.
+// attached — but that log has proven unreliable to find on-device, so both
+// stacks are also rendered directly on this screen (temporary, pending a
+// real crash reporter): the one thing this boundary can't do is surface them
+// anywhere else once the app has already crashed past retry.
+//
+// React's componentStack names every ancestor component, but in a release
+// build each frame's file:line:col is where that component TYPE was
+// declared, not where the throw actually happened inside it — every crash in
+// TaskItem points at the same line regardless of which statement failed.
+// error.stack is the real JS engine stack and has the throwing line; show
+// both, since componentStack is still the only thing naming the ancestor
+// chain.
 export class ErrorBoundary extends React.Component<Props, State> {
   state: State = { error: null, componentStack: null };
 
@@ -40,11 +48,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <PressableScale style={styles.button} onPress={() => this.setState({ error: null, componentStack: null })}>
             <Text style={styles.buttonText}>Try again</Text>
           </PressableScale>
-          {this.state.componentStack && (
-            <ScrollView style={styles.stackScroll} contentContainerStyle={styles.stackContent}>
-              <Text selectable style={styles.stackText}>{this.state.componentStack}</Text>
-            </ScrollView>
-          )}
+          <ScrollView style={styles.stackScroll} contentContainerStyle={styles.stackContent}>
+            {this.state.error.stack && (
+              <>
+                <Text style={styles.stackHeading}>error.stack</Text>
+                <Text selectable style={styles.stackText}>{this.state.error.stack}</Text>
+              </>
+            )}
+            {this.state.componentStack && (
+              <>
+                <Text style={styles.stackHeading}>componentStack</Text>
+                <Text selectable style={styles.stackText}>{this.state.componentStack}</Text>
+              </>
+            )}
+          </ScrollView>
         </View>
       );
     }
@@ -92,6 +109,13 @@ const styles = StyleSheet.create({
   },
   stackContent: {
     paddingHorizontal: 8,
+  },
+  stackHeading: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 12,
+    marginBottom: 4,
   },
   stackText: {
     color: '#666',
