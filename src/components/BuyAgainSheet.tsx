@@ -282,7 +282,11 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
                 >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]} numberOfLines={1}>
+                  <Text
+                    style={[styles.chipText, active && styles.chipTextActive]}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
                     {shop.name} {count}
                   </Text>
                 </TouchableOpacity>
@@ -397,9 +401,16 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.full,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
+      // Long store names need somewhere to stop growing before the Text's
+      // numberOfLines/ellipsizeMode can kick in — without a bound here the
+      // chip just grows to fit the string and nothing ever elides. With it,
+      // shortNames still hug their content (flexShrink only kicks in past
+      // maxWidth, it doesn't force every chip to that width).
+      maxWidth: 160,
+      flexShrink: 1,
     },
     chipActive: { backgroundColor: colors.accent },
-    chipText: { fontSize: font.sm, color: colors.textSecondary },
+    chipText: { fontSize: font.sm, color: colors.textSecondary, flexShrink: 1 },
     chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     selectionBar: {
       flexDirection: 'row',
