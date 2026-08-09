@@ -56,6 +56,21 @@ describe('parseGroceryInput', () => {
     expect(parseGroceryInput('12 eggs')).toEqual({ name: 'eggs', quantity: '12' });
   });
 
+  it('strips a leading "of" after a container unit match', () => {
+    expect(parseGroceryInput('2 boxes of cereal')).toEqual({
+      name: 'cereal',
+      quantity: '2 boxes',
+    });
+    expect(parseGroceryInput('1 jar of salsa')).toEqual({ name: 'salsa', quantity: '1 jar' });
+    expect(parseGroceryInput('3 cans of black beans')).toEqual({
+      name: 'black beans',
+      quantity: '3 cans',
+    });
+    // No trailing content after "of" — nothing to strip, so it stays part of
+    // the name rather than emptying it.
+    expect(parseGroceryInput('2 boxes of')).toEqual({ name: 'of', quantity: '2 boxes' });
+  });
+
   it('recognizes tbsp and tsp as units', () => {
     expect(parseGroceryInput('1 tbsp sugar')).toEqual({ name: 'sugar', quantity: '1 tbsp' });
     expect(parseGroceryInput('2 tsp vanilla extract')).toEqual({
