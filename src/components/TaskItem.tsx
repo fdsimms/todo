@@ -56,14 +56,6 @@ import { ProgressBar } from './ProgressBar';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
-// The completion checkmark's bouncy spring overshoots past 1 (see
-// animation.spring.bouncy), and animating a native-driven `scale` transform
-// on an Ionicons glyph scales the already-rasterized bitmap up rather than
-// re-rendering it — the overshoot frames are visibly pixelated. Rendering
-// the glyph at a higher fixed size and counter-scaling it down statically
-// means the animated scale only ever shrinks that bitmap, never enlarges it.
-const CHECK_ICON_DISPLAY_SIZE = 12;
-const CHECK_ICON_RENDER_SIZE = 24;
 // How long the meter takes to run up to the brim on the unit that meets the
 // target. Slower than a logged unit (duration.fast) — this rise is the payoff,
 // and the pop that follows it waits this out.
@@ -1159,10 +1151,17 @@ export const TaskItem = React.memo(function TaskItem({
             <Ionicons name="checkmark" size={12} color={colors.onAccent} />
           )}
           {!selectionMode && completing && !quotaCompleting && (
-            <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-              <View style={{ transform: [{ scale: CHECK_ICON_DISPLAY_SIZE / CHECK_ICON_RENDER_SIZE }] }}>
-                <Ionicons name="checkmark" size={CHECK_ICON_RENDER_SIZE} color={colors.onAccent} />
-              </View>
+            // The spring (animation.spring.bouncy) overshoots past 1 for the pop
+            // feel, but animating a native-driven `scale` transform on an Ionicons
+            // glyph scales the already-rasterized bitmap up rather than
+            // re-rendering it, so an uncapped overshoot is visibly pixelated.
+            // Clamping the *visual* scale at 1 keeps the glyph rendered at its
+            // native 12pt size — crisp at rest — while the transform only ever
+            // shrinks it on the way in, never enlarges it.
+            <Animated.View style={{
+              transform: [{ scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }],
+            }}>
+              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
             </Animated.View>
           )}
           {!selectionMode && !completing && recurrenceNotYetDue && (
