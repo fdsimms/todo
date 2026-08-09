@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
@@ -45,12 +45,14 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
+  const [prep, setPrep] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ingredient) return;
     setName(ingredient.name);
     setQuantity(ingredient.quantity);
+    setPrep(ingredient.prep ?? '');
     setAisle(ingredient.aisle);
   }, [ingredient]);
 
@@ -62,6 +64,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     updateIngredient(recipeId, ingredient.id, {
       name: trimmed || ingredient.name,
       quantity: quantity.trim(),
+      prep: prep.trim() || null,
       aisle,
     });
     onClose();
@@ -113,6 +116,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_QUANTITY_MAX_LENGTH}
           accessibilityLabel="Quantity"
+        />
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>Prep</Text>
+        <TextInput
+          style={styles.input}
+          value={prep}
+          onChangeText={setPrep}
+          placeholder="peeled and sliced, room temperature…"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={PREP_MAX_LENGTH}
+          accessibilityLabel="Prep instructions"
         />
       </View>
 

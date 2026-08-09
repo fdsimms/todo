@@ -1,4 +1,4 @@
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
 
 /**
  * Everything between raw keystrokes and a catalog row. Pure and store-free so
@@ -52,14 +52,63 @@ const UNITS = [
   'l', 'ml', 'liter', 'liters', 'litre', 'litres',
   'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
   'cup', 'cups', 'tbsp', 'tsp',
+  'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
   'pack', 'packs', 'pkg', 'box', 'boxes', 'bag', 'bags', 'can', 'cans',
   'jar', 'jars', 'bottle', 'bottles', 'bunch', 'bunches', 'head', 'heads',
-  'dozen', 'doz', 'loaf', 'loaves', 'x',
+  'clove', 'cloves', 'dozen', 'doz', 'loaf', 'loaves', 'x',
 ];
 const UNIT_SET = new Set(UNITS);
 
-// "2 lb", "1.5kg", "3 x" — a number, optionally glued to a unit.
-const LEADING_QTY = /^(\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
+// Spelled-out units collapse to the abbreviation someone would've typed by
+// hand — "1 tablespoon sugar" and "1 tbsp sugar" must produce the same
+// quantity string, or the two spellings pile up as separate-looking rows
+// even though parseGroceryInput correctly pulled the name out of both.
+const UNIT_ABBREVIATIONS: Record<string, string> = {
+  tablespoon: 'tbsp',
+  tablespoons: 'tbsp',
+  teaspoon: 'tsp',
+  teaspoons: 'tsp',
+};
+
+// "2 lb", "1.5kg", "1/4 cup", "1 1/2 tbsp", "3 x" — a number (whole, decimal,
+// a bare fraction, or a mixed number) optionally glued to a unit. The mixed
+// and bare-fraction alternatives are tried before the plain-decimal one so
+// "1 1/2 cups" isn't cut short at "1" with "1/2 cups" left dangling in front
+// of the unit match.
+const LEADING_QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
+
+// Weight/volume units usable as a container's *size* ("14 oz cans", "1 L
+// bottles"). Deliberately narrower than UNIT_SET as a whole — cup/tbsp/tsp/
+// dozen aren't how a can or jar gets sized, and including them would just
+// make CONTAINER_QTY fire on more inputs without any of them being real
+// container-size phrasing.
+const SIZE_UNITS = new Set([
+  'lb', 'lbs', 'pound', 'pounds',
+  'oz', 'ounce', 'ounces',
+  'kg', 'g', 'gram', 'grams',
+  'l', 'ml', 'liter', 'liters', 'litre', 'litres',
+  'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
+]);
+
+// The container word — always the second unit in "N SIZE-UNIT CONTAINER"
+// ("2 14 oz cans"). Same words UNIT_SET already treats as a bare quantity on
+// their own ("2 cans"); this only adds a size in front of them.
+const CONTAINER_UNITS = new Set([
+  'can', 'cans', 'jar', 'jars', 'box', 'boxes', 'bag', 'bags',
+  'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
+]);
+
+// "2 14 oz cans black beans", "2 (14.5 oz) jars salsa", "14-ounce can broth"
+// — a container line names both how many containers there are and how big
+// each one is, which LEADING_QTY can't express on its own (it only pulls one
+// number and one unit, so the second number would otherwise get read as part
+// of the name). Tried first, and gated on both SIZE_UNITS and CONTAINER_UNITS
+// — same discipline as every other unit match here — so it only fires on
+// real container phrasing rather than swallowing the first two words of an
+// ordinary line ("2 lb chicken thighs" has a unit but no container word, so
+// the gate fails and it falls through to LEADING_QTY untouched).
+const CONTAINER_QTY =
+  /^(?:(\d+(?:\.\d+)?)\s+)?\(?(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)?\s+([a-z]+)\s+(.+)$/i;
 // "milk x2", "eggs x 12"
 const TRAILING_X = /^(.*?)\s+x\s*(\d+)$/i;
 // "eggs (dozen)", "milk (2%)" — only when the parens close the string.
@@ -86,10 +135,30 @@ function clampQuantity(s: string): string {
  * number is treated as the start of the name rather than as a unit — so
  * "2 amazing tomatoes" yields quantity "2", not "2 amazing". Known miss:
  * "7 Up" parses as 7 × "Up". It stays editable in the item sheet.
+ *
+ * The leading count also accepts a bare fraction ("1/4 cup") and a mixed
+ * number ("1 1/2 tbsp") — recipe quantities are written that way as often as
+ * decimals, and without it "1/4 cup tomato paste" doesn't even look like it
+ * has a quantity.
+ *
+ * A container line ("2 14 oz cans black beans") also names a size in front of
+ * the container word — see CONTAINER_QTY — which needs its own pass since
+ * LEADING_QTY only ever captures one number and one unit.
  */
 export function parseGroceryInput(raw: string): { name: string; quantity: string | null } {
   const input = raw.trim().replace(/\s+/g, ' ');
   if (!input) return { name: '', quantity: null };
+
+  const container = CONTAINER_QTY.exec(input);
+  if (container) {
+    const [, count, sizeNum, sizeUnitRaw, containerRaw, rest] = container;
+    const sizeUnit = sizeUnitRaw.toLowerCase();
+    const containerWord = containerRaw.toLowerCase();
+    if (SIZE_UNITS.has(sizeUnit) && CONTAINER_UNITS.has(containerWord) && rest.trim()) {
+      const quantity = [count, sizeNum, sizeUnit, containerWord].filter(Boolean).join(' ');
+      return { name: clampName(rest), quantity: clampQuantity(quantity) };
+    }
+  }
 
   const leading = LEADING_QTY.exec(input);
   if (leading) {
@@ -97,7 +166,8 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
     if (rest.trim()) {
       const unit = maybeUnit?.toLowerCase();
       if (unit && UNIT_SET.has(unit)) {
-        return { name: clampName(rest), quantity: clampQuantity(`${count} ${unit}`) };
+        const canonicalUnit = UNIT_ABBREVIATIONS[unit] ?? unit;
+        return { name: clampName(rest), quantity: clampQuantity(`${count} ${canonicalUnit}`) };
       }
       if (!maybeUnit) {
         // Bare count: "3 avocados". The unit slot was whitespace, so `rest`
@@ -121,6 +191,80 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
   }
 
   return { name: clampName(input), quantity: null };
+}
+
+// Recipe sites (and plenty of shopping lists) write prep as a trailing clause
+// after a comma — "garlic, peeled and sliced", "black beans, drained and
+// rinsed", "cheese, plus more for topping" — never as the essential part of
+// the name. Splitting on the first comma is a convention match, not a guess
+// about the *words*, which is what makes it safe in the way LEADING_QTY's
+// unit whitelist is: it can't eat the name because the name is always
+// everything before the first comma.
+//
+// Deliberately doesn't also try to peel a *leading* prep word ("grated
+// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
+// sometimes the actual product ("sliced almonds" and "ground beef" are their
+// own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
+// there costs the first word of the name — the exact failure the unit
+// whitelist above is built to avoid. That case is left to the AI extractor.
+const PREP_SPLIT = /^(.*?),\s*(.+)$/;
+
+export function splitPrep(name: string): { name: string; prep: string | null } {
+  const trimmed = name.trim();
+  const match = PREP_SPLIT.exec(trimmed);
+  if (!match) return { name: trimmed, prep: null };
+  const [, core, prep] = match;
+  if (!core.trim()) return { name: trimmed, prep: null };
+  return {
+    name: core.trim(),
+    prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
+  };
+}
+
+/**
+ * What typing a line into the grocery quick-add field would produce, with the
+ * quantity and prep pieces each independently overridable — see
+ * `GroceryAddField`'s per-token × button, the whole reason this exists rather
+ * than callers chaining parseGroceryInput + splitPrep themselves.
+ *
+ * `rejected` names values the user has already dismissed *by their exact
+ * parsed text* rather than a plain on/off flag: typing further and landing on
+ * a different quantity or prep clause is a new candidate and re-offers itself,
+ * while continuing to type past a value that didn't change leaves it
+ * dismissed. That's what makes this safe to recompute on every keystroke
+ * rather than needing an effect to reconcile it.
+ *
+ * Quantity is peeled off first and prep is read from what's left, matching
+ * makeIngredient's order — but rejecting the quantity doesn't also swallow
+ * the prep clause: it re-runs the split against the *original* text, since a
+ * trailing comma clause sits after where the quantity would have been either
+ * way.
+ */
+export function resolveGroceryTokens(
+  raw: string,
+  rejected: { quantity: string | null; prep: string | null },
+): {
+  quantity: string | null;
+  quantityAccepted: boolean;
+  prep: string | null;
+  prepAccepted: boolean;
+  name: string;
+} {
+  const trimmed = raw.trim();
+  const { name: afterQty, quantity } = parseGroceryInput(trimmed);
+  const quantityAccepted = !!quantity && quantity !== rejected.quantity;
+
+  const base = quantityAccepted ? afterQty : trimmed;
+  const { name: withoutPrep, prep } = splitPrep(base);
+  const prepAccepted = !!prep && prep !== rejected.prep;
+
+  return {
+    quantity,
+    quantityAccepted,
+    prep,
+    prepAccepted,
+    name: prepAccepted ? withoutPrep : base,
+  };
 }
 
 // Bullet markers a pasted list might carry. The numbered form REQUIRES the

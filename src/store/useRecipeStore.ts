@@ -10,6 +10,7 @@ import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
 import {
   cleanRecipeName,
+  cleanRecipeSource,
   ingredientsFromText,
   makeIngredient,
   mergeIngredients,
@@ -42,6 +43,7 @@ interface RecipeStore {
   renameRecipe: (id: string, name: string) => boolean;
   setNotes: (id: string, notes: string) => void;
   setSourceUrl: (id: string, url: string | null) => void;
+  setSourceName: (id: string, source: string | null) => void;
   setServings: (id: string, servings: number | null) => void;
   toggleFavorite: (id: string) => void;
   deleteRecipe: (id: string) => void;
@@ -84,6 +86,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       nameKey: key,
       notes: '',
       sourceUrl: null,
+      sourceName: null,
       servings: null,
       ingredients: [],
       favorite: false,
@@ -119,6 +122,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const trimmed = url?.trim() ?? '';
     save(set, { ...recipe, sourceUrl: trimmed || null });
+  },
+
+  setSourceName(id, source) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(source ?? '');
+    save(set, { ...recipe, sourceName: clean || null });
   },
 
   setServings(id, servings) {

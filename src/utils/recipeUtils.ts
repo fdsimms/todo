@@ -1,7 +1,19 @@
 import type { Recipe, RecipeIngredient } from '../types';
-import { RECIPE_NAME_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines } from './groceryParse';
+import {
+  RECIPE_NAME_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
+  PREP_MAX_LENGTH,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_QUANTITY_MAX_LENGTH,
+} from '../types';
+import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
 import { generateId } from './id';
+
+// splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
+// runs the same split for its live preview, not just recipe ingredient lines
+// — but re-exported here so existing imports of it from this module keep
+// working.
+export { splitPrep } from './groceryParse';
 
 /**
  * Everything between raw recipe text and a stored Recipe. Pure and store-free
@@ -45,6 +57,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       ? r.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
+    prep: typeof r.prep === 'string' && r.prep.trim()
+      ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
+      : null,
   };
 }
 
@@ -58,7 +73,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
  * deleteAisle avoids by forgetting overrides rather than rewriting them.
  */
 export function makeIngredient(line: string): RecipeIngredient | null {
-  const { name, quantity } = parseGroceryInput(line);
+  const { name: rawName, quantity } = parseGroceryInput(line);
+  if (!rawName.trim()) return null;
+  const { name, prep } = splitPrep(rawName);
   if (!name.trim()) return null;
   return {
     id: generateId(),
@@ -66,6 +83,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     nameKey: groceryNameKey(name),
     quantity: quantity ?? '',
     aisle: null,
+    prep,
   };
 }
 
@@ -143,17 +161,23 @@ export function remapIngredientKeyIn(
   return changed;
 }
 
-/** "8 ingredients · serves 4" — the recipe row's subtitle. */
+/** "8 ingredients · serves 4 · NYT Cooking" — the recipe row's subtitle. */
 export function describeRecipe(recipe: Recipe): string {
   const count = recipe.ingredients.length;
   const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
+  if (recipe.sourceName) parts.push(recipe.sourceName);
   return parts.join(' · ');
 }
 
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */
 export function cleanRecipeName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_NAME_MAX_LENGTH).trim();
+}
+
+/** Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer — no attribution. */
+export function cleanRecipeSource(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_SOURCE_MAX_LENGTH).trim();
 }
 
 /**

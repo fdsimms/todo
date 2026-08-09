@@ -596,6 +596,13 @@ export const SHOP_NAME_MAX_LENGTH = 40;
 // longest built-in ('Meat & Seafood') is 14.
 export const AISLE_NAME_MAX_LENGTH = 32;
 
+// A prep clause ("drained and rinsed", "plus more for topping") is a short
+// phrase, not a sentence — same order of magnitude as GROCERY_QUANTITY_MAX_LENGTH
+// but roomier, since it's prose rather than a number-and-unit. Named generically
+// rather than RECIPE_-prefixed: splitPrep() runs on plain grocery quick-add text
+// too, not just recipe ingredient lines.
+export const PREP_MAX_LENGTH = 60;
+
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters that earned a place
 // in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
@@ -621,6 +628,12 @@ export interface RecipeIngredient {
   // at add time. Deliberately NOT 'Other': asserting Other here would outrank
   // aisleForName and file a known item in the miscellaneous pile forever.
   aisle: string | null;
+  // What to do to it, not what it is — "peeled and sliced", "drained and
+  // rinsed", "melted". Split out by splitPrep() so it never leaks into `name`:
+  // nameKey is the catalog bridge, and "garlic, peeled and sliced" would mint
+  // a separate catalog row from plain "garlic" every time the wording of the
+  // prep clause changed. null means the line didn't have one, same as aisle.
+  prep: string | null;
 }
 
 // A dish you cook, with what it takes to shop for it.
@@ -639,6 +652,11 @@ export interface Recipe {
   nameKey: string;
   notes: string;
   sourceUrl: string | null;
+  // Who it's from — "NYT Cooking", "Bon Appétit", a cookbook title. Separate
+  // from sourceUrl on purpose: a clipped recipe usually has a link, a recipe
+  // typed in from a magazine or a friend usually doesn't, and neither one
+  // implies the other. null means no attribution was given, not "unknown".
+  sourceName: string | null;
   servings: number | null;
   ingredients: RecipeIngredient[];
   favorite: boolean;
@@ -649,6 +667,8 @@ export interface Recipe {
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
 // is a list-row label at a larger font, not a task title.
 export const RECIPE_NAME_MAX_LENGTH = 80;
+// A byline, not a title — "NYT Cooking" not a full citation.
+export const RECIPE_SOURCE_MAX_LENGTH = 60;
 
 // Which meal of the day a plan entry sits in. A closed set rather than free
 // text: it orders the day, and a day whose sections are user-defined strings

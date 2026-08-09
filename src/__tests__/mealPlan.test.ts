@@ -49,6 +49,7 @@ function recipe(id: string, name: string): Recipe {
     nameKey: name.toLowerCase(),
     notes: '',
     sourceUrl: null,
+    sourceName: null,
     servings: null,
     ingredients: [],
     favorite: false,

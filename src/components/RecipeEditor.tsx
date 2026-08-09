@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
-import { RECIPE_NAME_MAX_LENGTH } from '../types';
+import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
@@ -40,24 +40,29 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const renameRecipe = useRecipeStore(s => s.renameRecipe);
   const setNotes = useRecipeStore(s => s.setNotes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
+  const setSourceName = useRecipeStore(s => s.setSourceName);
   const setServings = useRecipeStore(s => s.setServings);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
   const [name, setName] = useState('');
   const [notes, setNotesDraft] = useState('');
   const [url, setUrl] = useState('');
+  const [source, setSource] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
 
   useEffect(() => {
     if (!recipe) return;
     setName(recipe.name);
     setNotesDraft(recipe.notes);
     setUrl(recipe.sourceUrl ?? '');
+    setSource(recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
     setServingsOpen(false);
     setSourceOpen(false);
+    setLinkOpen(false);
   }, [recipe]);
 
   const saveAndClose = () => {
@@ -71,6 +76,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     }
     setNotes(recipe.id, notes);
     setSourceUrl(recipe.id, url);
+    setSourceName(recipe.id, source);
     setServings(recipe.id, servings);
     onClose();
   };
@@ -159,13 +165,34 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           </View>
         )}
         <EditorRow
-          icon="link-outline"
+          icon="newspaper-outline"
           label="Source"
-          value={url.trim() || undefined}
+          value={source.trim() || undefined}
+          hint="Who it's from — a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
+          onClear={source.trim() ? () => { setSource(''); setSourceOpen(false); } : undefined}
         />
         {sourceOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={source}
+            onChangeText={setSource}
+            placeholder="NYT Cooking, Bon Appétit…"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            accessibilityLabel="Recipe source"
+          />
+        )}
+        <EditorRow
+          icon="link-outline"
+          label="Link"
+          value={url.trim() || undefined}
+          expanded={linkOpen}
+          onPress={() => { animateLayout(); setLinkOpen(v => !v); }}
+          onClear={url.trim() ? () => { setUrl(''); setLinkOpen(false); } : undefined}
+        />
+        {linkOpen && (
           <TextInput
             style={styles.urlInput}
             value={url}
@@ -175,7 +202,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
-            accessibilityLabel="Recipe source"
+            accessibilityLabel="Recipe link"
           />
         )}
       </View>

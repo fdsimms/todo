@@ -1,4 +1,10 @@
-import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import {
+  groceryNameKey,
+  parseGroceryInput,
+  splitPrep,
+  resolveGroceryTokens,
+  splitGroceryLines,
+} from '../utils/groceryParse';
 
 // ─── groceryNameKey ──────────────────────────────────────────────────────────
 
@@ -57,6 +63,90 @@ describe('parseGroceryInput', () => {
     });
   });
 
+  it('recognizes spelled-out tablespoon/teaspoon and abbreviates them', () => {
+    expect(parseGroceryInput('3 tablespoons olive oil')).toEqual({
+      name: 'olive oil',
+      quantity: '3 tbsp',
+    });
+    expect(parseGroceryInput('1 tablespoon olive oil')).toEqual({
+      name: 'olive oil',
+      quantity: '1 tbsp',
+    });
+    expect(parseGroceryInput('2 teaspoons vanilla extract')).toEqual({
+      name: 'vanilla extract',
+      quantity: '2 tsp',
+    });
+    expect(parseGroceryInput('1 teaspoon salt')).toEqual({
+      name: 'salt',
+      quantity: '1 tsp',
+    });
+  });
+
+  it('recognizes "N SIZE-UNIT container" as a compound quantity', () => {
+    expect(parseGroceryInput('2 14 oz cans black beans, drained and rinsed')).toEqual({
+      name: 'black beans, drained and rinsed',
+      quantity: '2 14 oz cans',
+    });
+    expect(parseGroceryInput('2 (14.5 oz) cans diced tomatoes')).toEqual({
+      name: 'diced tomatoes',
+      quantity: '2 14.5 oz cans',
+    });
+    expect(parseGroceryInput('2 14-ounce cans black beans')).toEqual({
+      name: 'black beans',
+      quantity: '2 14 ounce cans',
+    });
+    // No leading multiplier — a single can, sized.
+    expect(parseGroceryInput('14 oz can black beans')).toEqual({
+      name: 'black beans',
+      quantity: '14 oz can',
+    });
+  });
+
+  it('does not misfire the container pattern on an ordinary unit + name', () => {
+    // "lb" is a size unit but "chicken" isn't a container word, so this must
+    // fall through to the plain leading-quantity match untouched.
+    expect(parseGroceryInput('2 lb chicken thighs')).toEqual({
+      name: 'chicken thighs',
+      quantity: '2 lb',
+    });
+    expect(parseGroceryInput('2 bottles wine')).toEqual({ name: 'wine', quantity: '2 bottles' });
+    expect(parseGroceryInput('1 can black beans')).toEqual({
+      name: 'black beans',
+      quantity: '1 can',
+    });
+  });
+
+  it('recognizes clove/cloves as a unit', () => {
+    expect(parseGroceryInput('5 cloves garlic, peeled and sliced')).toEqual({
+      name: 'garlic, peeled and sliced',
+      quantity: '5 cloves',
+    });
+    expect(parseGroceryInput('1 clove garlic')).toEqual({ name: 'garlic', quantity: '1 clove' });
+  });
+
+  it('peels a bare fraction as the leading count', () => {
+    expect(parseGroceryInput('1/4 cup tomato paste')).toEqual({
+      name: 'tomato paste',
+      quantity: '1/4 cup',
+    });
+    expect(parseGroceryInput('1/4 tsp red pepper flakes')).toEqual({
+      name: 'red pepper flakes',
+      quantity: '1/4 tsp',
+    });
+    expect(parseGroceryInput('1/2 avocado')).toEqual({ name: 'avocado', quantity: '1/2' });
+  });
+
+  it('peels a mixed number (whole + fraction) as the leading count', () => {
+    expect(parseGroceryInput('1 1/2 cups boiling water')).toEqual({
+      name: 'boiling water',
+      quantity: '1 1/2 cups',
+    });
+    expect(parseGroceryInput('2 1/4 lb chicken thighs')).toEqual({
+      name: 'chicken thighs',
+      quantity: '2 1/4 lb',
+    });
+  });
+
   it('peels a trailing xN', () => {
     expect(parseGroceryInput('milk x2')).toEqual({ name: 'milk', quantity: 'x2' });
     expect(parseGroceryInput('eggs x 12')).toEqual({ name: 'eggs', quantity: 'x12' });
@@ -98,6 +188,69 @@ describe('parseGroceryInput', () => {
 
   it('does not treat a lone number as a quantity with no item', () => {
     expect(parseGroceryInput('12')).toEqual({ name: '12', quantity: null });
+  });
+});
+
+// ─── splitPrep ───────────────────────────────────────────────────────────────
+
+describe('splitPrep', () => {
+  it('splits a trailing comma clause into prep', () => {
+    expect(splitPrep('garlic, peeled and sliced')).toEqual({
+      name: 'garlic',
+      prep: 'peeled and sliced',
+    });
+  });
+
+  it('leaves a name with no comma untouched', () => {
+    expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
+  });
+});
+
+// ─── resolveGroceryTokens ────────────────────────────────────────────────────
+
+describe('resolveGroceryTokens', () => {
+  const noneRejected = { quantity: null, prep: null };
+
+  it('accepts both the quantity and the prep clause by default', () => {
+    expect(resolveGroceryTokens('1 tsp ginger, minced', noneRejected)).toEqual({
+      quantity: '1 tsp',
+      quantityAccepted: true,
+      prep: 'minced',
+      prepAccepted: true,
+      name: 'ginger',
+    });
+  });
+
+  it('keeps the quantity in the name once its exact value is rejected', () => {
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: '1 tsp', prep: null });
+    expect(result.quantityAccepted).toBe(false);
+    expect(result.prepAccepted).toBe(true);
+    expect(result.quantity).toBe('1 tsp');
+    expect(result.name).toBe('1 tsp ginger');
+  });
+
+  it('keeps the prep clause in the name once its exact value is rejected', () => {
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: null, prep: 'minced' });
+    expect(result.quantityAccepted).toBe(true);
+    expect(result.prepAccepted).toBe(false);
+    expect(result.name).toBe('ginger, minced');
+  });
+
+  it('re-offers a token once continued typing changes its value', () => {
+    // Rejected "1 tsp" specifically; typing on to "1 tbsp" is a new candidate.
+    const result = resolveGroceryTokens('1 tbsp ginger', { quantity: '1 tsp', prep: null });
+    expect(result.quantityAccepted).toBe(true);
+    expect(result.quantity).toBe('1 tbsp');
+  });
+
+  it('leaves everything in the name when nothing was recognized', () => {
+    expect(resolveGroceryTokens('ginger', noneRejected)).toEqual({
+      quantity: null,
+      quantityAccepted: false,
+      prep: null,
+      prepAccepted: false,
+      name: 'ginger',
+    });
   });
 });
 

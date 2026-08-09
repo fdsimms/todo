@@ -21,6 +21,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { resolveGroceryTokens } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
@@ -68,25 +69,46 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  // Named by the exact parsed text they dismissed, not a plain on/off flag —
+  // see resolveGroceryTokens for why that's what makes a rejection survive
+  // continued typing without needing an effect to reconcile it.
+  const [rejectedQuantity, setRejectedQuantity] = useState<string | null>(null);
+  const [rejectedPrep, setRejectedPrep] = useState<string | null>(null);
 
   const suggestions = useMemo(
     () => (focused ? rankGrocerySuggestions(text, items, new Date()) : []),
     [focused, text, items]
   );
 
+  // What committing `text` right now would actually save — the whole point is
+  // showing this *before* the tap, not after, so the split is a visible
+  // decision rather than something the parser did behind your back.
+  const tokens = useMemo(() => {
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+    return resolveGroceryTokens(trimmed, { quantity: rejectedQuantity, prep: rejectedPrep });
+  }, [text, rejectedQuantity, rejectedPrep]);
+
   const commit = useCallback(
-    (raw: string) => {
+    (raw: string, override?: { name: string; quantity: string | null }) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
-      const item = addByName(trimmed);
+      const item = addByName(trimmed, override);
       haptics.tap();
       setText('');
       setStatus(null);
+      setRejectedQuantity(null);
+      setRejectedPrep(null);
       onAdded?.([item]);
     },
     [addByName, onAdded]
   );
+
+  const submit = useCallback(() => {
+    if (!tokens) return;
+    commit(text, { name: tokens.name, quantity: tokens.quantity });
+  }, [tokens, text, commit]);
 
   /**
    * Multi-line paste, without making this a multiline input.
@@ -141,7 +163,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           placeholder="Add an item"
           placeholderTextColor={colors.textTertiary}
           returnKeyType="done"
-          onSubmitEditing={() => commit(text)}
+          onSubmitEditing={submit}
           // The whole point: focus survives the submit, so ten items is ten
           // keystrokes-and-return rather than ten taps into a sheet.
           blurOnSubmit={false}
@@ -154,7 +176,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         />
         {!!text && (
           <TouchableOpacity
-            onPress={() => setText('')}
+            onPress={() => {
+              setText('');
+              setRejectedQuantity(null);
+              setRejectedPrep(null);
+            }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
             accessibilityLabel="Clear input"
@@ -164,6 +190,46 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Live preview of the split commit would produce, so it's a visible
+          decision rather than something the parser did silently. Each token
+          it pulled out of the text gets its own chip; tapping × keeps that
+          exact piece in the name instead — see resolveGroceryTokens. */}
+      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted) && (
+        <View style={styles.tokenRow}>
+          <View style={styles.tokenChips}>
+            {tokens.quantityAccepted && (
+              <View style={styles.tokenChip}>
+                <Text style={styles.tokenChipText}>{tokens.quantity}</Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setRejectedQuantity(tokens.quantity); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Keep "${tokens.quantity}" in the name instead of the quantity`}
+                >
+                  <Ionicons name="close" size={11} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {tokens.prepAccepted && (
+              <View style={styles.tokenChip}>
+                <Text style={styles.tokenChipText}>{tokens.prep}</Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setRejectedPrep(tokens.prep); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Keep "${tokens.prep}" in the name instead of splitting it out`}
+                >
+                  <Ionicons name="close" size={11} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+          <Text style={styles.tokenPreview} numberOfLines={1}>
+            Adding “{tokens.name}”
+          </Text>
+        </View>
+      )}
 
       {!!status && <Text style={styles.status}>{status}</Text>}
 
@@ -234,6 +300,38 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
       color: colors.textSecondary,
       marginLeft: spacing.xs,
+    },
+    tokenRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginLeft: spacing.xs,
+    },
+    tokenChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+    },
+    tokenChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: colors.accentSubtle,
+      borderRadius: radius.full,
+      paddingLeft: spacing.sm,
+      paddingRight: 6,
+      paddingVertical: 3,
+    },
+    tokenChipText: {
+      fontSize: font.xs,
+      fontWeight: fontWeight.medium,
+      color: colors.accent,
+    },
+    tokenPreview: {
+      flex: 1,
+      fontSize: font.xs,
+      color: colors.textTertiary,
     },
     matches: {
       backgroundColor: colors.bgTertiary,
