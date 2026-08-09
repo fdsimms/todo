@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
@@ -66,6 +67,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyServings, setApplyServings] = useState(true);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const reset = useCallback(() => {
     setText('');
@@ -146,7 +148,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
 
     if (!extracted) {
       return (
-        <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          ref={keyboardScroll.ref}
+          contentContainerStyle={styles.pasteWrap}
+          keyboardShouldPersistTaps="handled"
+          {...keyboardScroll.props}
+        >
           <Text style={styles.intro}>
             Paste a recipe — ingredients, method and all. Its servings and shopping list get added
             to {recipe?.name ?? 'this recipe'} instead of just going on the grocery list.
