@@ -1,4 +1,4 @@
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
 
 /**
  * Everything between raw keystrokes and a catalog row. Pure and store-free so
@@ -191,6 +191,80 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
   }
 
   return { name: clampName(input), quantity: null };
+}
+
+// Recipe sites (and plenty of shopping lists) write prep as a trailing clause
+// after a comma — "garlic, peeled and sliced", "black beans, drained and
+// rinsed", "cheese, plus more for topping" — never as the essential part of
+// the name. Splitting on the first comma is a convention match, not a guess
+// about the *words*, which is what makes it safe in the way LEADING_QTY's
+// unit whitelist is: it can't eat the name because the name is always
+// everything before the first comma.
+//
+// Deliberately doesn't also try to peel a *leading* prep word ("grated
+// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
+// sometimes the actual product ("sliced almonds" and "ground beef" are their
+// own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
+// there costs the first word of the name — the exact failure the unit
+// whitelist above is built to avoid. That case is left to the AI extractor.
+const PREP_SPLIT = /^(.*?),\s*(.+)$/;
+
+export function splitPrep(name: string): { name: string; prep: string | null } {
+  const trimmed = name.trim();
+  const match = PREP_SPLIT.exec(trimmed);
+  if (!match) return { name: trimmed, prep: null };
+  const [, core, prep] = match;
+  if (!core.trim()) return { name: trimmed, prep: null };
+  return {
+    name: core.trim(),
+    prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
+  };
+}
+
+/**
+ * What typing a line into the grocery quick-add field would produce, with the
+ * quantity and prep pieces each independently overridable — see
+ * `GroceryAddField`'s per-token × button, the whole reason this exists rather
+ * than callers chaining parseGroceryInput + splitPrep themselves.
+ *
+ * `rejected` names values the user has already dismissed *by their exact
+ * parsed text* rather than a plain on/off flag: typing further and landing on
+ * a different quantity or prep clause is a new candidate and re-offers itself,
+ * while continuing to type past a value that didn't change leaves it
+ * dismissed. That's what makes this safe to recompute on every keystroke
+ * rather than needing an effect to reconcile it.
+ *
+ * Quantity is peeled off first and prep is read from what's left, matching
+ * makeIngredient's order — but rejecting the quantity doesn't also swallow
+ * the prep clause: it re-runs the split against the *original* text, since a
+ * trailing comma clause sits after where the quantity would have been either
+ * way.
+ */
+export function resolveGroceryTokens(
+  raw: string,
+  rejected: { quantity: string | null; prep: string | null },
+): {
+  quantity: string | null;
+  quantityAccepted: boolean;
+  prep: string | null;
+  prepAccepted: boolean;
+  name: string;
+} {
+  const trimmed = raw.trim();
+  const { name: afterQty, quantity } = parseGroceryInput(trimmed);
+  const quantityAccepted = !!quantity && quantity !== rejected.quantity;
+
+  const base = quantityAccepted ? afterQty : trimmed;
+  const { name: withoutPrep, prep } = splitPrep(base);
+  const prepAccepted = !!prep && prep !== rejected.prep;
+
+  return {
+    quantity,
+    quantityAccepted,
+    prep,
+    prepAccepted,
+    name: prepAccepted ? withoutPrep : base,
+  };
 }
 
 // Bullet markers a pasted list might carry. The numbered form REQUIRES the

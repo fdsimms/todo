@@ -1,4 +1,10 @@
-import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import {
+  groceryNameKey,
+  parseGroceryInput,
+  splitPrep,
+  resolveGroceryTokens,
+  splitGroceryLines,
+} from '../utils/groceryParse';
 
 // ─── groceryNameKey ──────────────────────────────────────────────────────────
 
@@ -182,6 +188,69 @@ describe('parseGroceryInput', () => {
 
   it('does not treat a lone number as a quantity with no item', () => {
     expect(parseGroceryInput('12')).toEqual({ name: '12', quantity: null });
+  });
+});
+
+// ─── splitPrep ───────────────────────────────────────────────────────────────
+
+describe('splitPrep', () => {
+  it('splits a trailing comma clause into prep', () => {
+    expect(splitPrep('garlic, peeled and sliced')).toEqual({
+      name: 'garlic',
+      prep: 'peeled and sliced',
+    });
+  });
+
+  it('leaves a name with no comma untouched', () => {
+    expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
+  });
+});
+
+// ─── resolveGroceryTokens ────────────────────────────────────────────────────
+
+describe('resolveGroceryTokens', () => {
+  const noneRejected = { quantity: null, prep: null };
+
+  it('accepts both the quantity and the prep clause by default', () => {
+    expect(resolveGroceryTokens('1 tsp ginger, minced', noneRejected)).toEqual({
+      quantity: '1 tsp',
+      quantityAccepted: true,
+      prep: 'minced',
+      prepAccepted: true,
+      name: 'ginger',
+    });
+  });
+
+  it('keeps the quantity in the name once its exact value is rejected', () => {
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: '1 tsp', prep: null });
+    expect(result.quantityAccepted).toBe(false);
+    expect(result.prepAccepted).toBe(true);
+    expect(result.quantity).toBe('1 tsp');
+    expect(result.name).toBe('1 tsp ginger');
+  });
+
+  it('keeps the prep clause in the name once its exact value is rejected', () => {
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: null, prep: 'minced' });
+    expect(result.quantityAccepted).toBe(true);
+    expect(result.prepAccepted).toBe(false);
+    expect(result.name).toBe('ginger, minced');
+  });
+
+  it('re-offers a token once continued typing changes its value', () => {
+    // Rejected "1 tsp" specifically; typing on to "1 tbsp" is a new candidate.
+    const result = resolveGroceryTokens('1 tbsp ginger', { quantity: '1 tsp', prep: null });
+    expect(result.quantityAccepted).toBe(true);
+    expect(result.quantity).toBe('1 tbsp');
+  });
+
+  it('leaves everything in the name when nothing was recognized', () => {
+    expect(resolveGroceryTokens('ginger', noneRejected)).toEqual({
+      quantity: null,
+      quantityAccepted: false,
+      prep: null,
+      prepAccepted: false,
+      name: 'ginger',
+    });
   });
 });
 

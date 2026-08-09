@@ -598,8 +598,10 @@ export const AISLE_NAME_MAX_LENGTH = 32;
 
 // A prep clause ("drained and rinsed", "plus more for topping") is a short
 // phrase, not a sentence — same order of magnitude as GROCERY_QUANTITY_MAX_LENGTH
-// but roomier, since it's prose rather than a number-and-unit.
-export const RECIPE_PREP_MAX_LENGTH = 60;
+// but roomier, since it's prose rather than a number-and-unit. Named generically
+// rather than RECIPE_-prefixed: splitPrep() runs on plain grocery quick-add text
+// too, not just recipe ingredient lines.
+export const PREP_MAX_LENGTH = 60;
 
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters that earned a place

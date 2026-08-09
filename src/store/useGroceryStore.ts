@@ -114,8 +114,15 @@ interface GroceryStore {
 
   initialize: () => void;
 
-  /** Parse a typed line and put it on the list — creating the catalog row only if it's new. */
-  addByName: (raw: string) => GroceryItem;
+  /**
+   * Parse a typed line and put it on the list — creating the catalog row only
+   * if it's new. `override` skips parseGroceryInput entirely and uses the
+   * given name/quantity as-is — for GroceryAddField's per-token × button,
+   * where the user has already decided which pieces of what they typed count
+   * as quantity versus name and re-parsing `raw` would just reproduce the
+   * split they rejected.
+   */
+  addByName: (raw: string, override?: { name: string; quantity: string | null }) => GroceryItem;
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
   addExisting: (id: string) => void;
@@ -292,8 +299,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * there's never a duplicate, why autocomplete has history to rank, and why
    * next week's list starts from what you actually buy.
    */
-  addByName(raw) {
-    const { name, quantity } = parseGroceryInput(raw);
+  addByName(raw, override) {
+    const { name, quantity } = override ?? parseGroceryInput(raw);
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
     // such rows would collide on the UNIQUE index and the *second* insert

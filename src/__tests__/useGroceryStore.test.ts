@@ -203,6 +203,18 @@ describe('addByName', () => {
     expect(item.aisle).toBe('Meat & Seafood');
   });
 
+  it('uses an override name/quantity as-is instead of re-parsing raw', () => {
+    // GroceryAddField's per-token × button: the user rejected splitting "1
+    // tsp" off, so the override keeps it in the name and re-parsing `raw`
+    // (which would reproduce the same split) must not happen.
+    const item = useGroceryStore.getState().addByName('1 tsp ginger', {
+      name: '1 tsp ginger',
+      quantity: null,
+    });
+    expect(item.name).toBe('1 tsp ginger');
+    expect(item.quantity).toBeNull();
+  });
+
   it('puts a known item back on the list instead of inserting a duplicate', () => {
     // This is the whole product insight — no duplicates, ever.
     seed([makeItem({ name: 'Milk', onList: false, purchaseCount: 7 })]);

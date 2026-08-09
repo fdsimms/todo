@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_PREP_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
@@ -127,7 +127,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           onChangeText={setPrep}
           placeholder="peeled and sliced, room temperature…"
           placeholderTextColor={colors.textTertiary}
-          maxLength={RECIPE_PREP_MAX_LENGTH}
+          maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Prep instructions"
         />
       </View>

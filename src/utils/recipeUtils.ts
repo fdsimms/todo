@@ -2,12 +2,18 @@ import type { Recipe, RecipeIngredient } from '../types';
 import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
-  RECIPE_PREP_MAX_LENGTH,
+  PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
 } from '../types';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
 import { generateId } from './id';
+
+// splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
+// runs the same split for its live preview, not just recipe ingredient lines
+// — but re-exported here so existing imports of it from this module keep
+// working.
+export { splitPrep } from './groceryParse';
 
 /**
  * Everything between raw recipe text and a stored Recipe. Pure and store-free
@@ -52,36 +58,8 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
     prep: typeof r.prep === 'string' && r.prep.trim()
-      ? r.prep.trim().slice(0, RECIPE_PREP_MAX_LENGTH)
+      ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
       : null,
-  };
-}
-
-// Recipe sites write prep as a trailing clause after a comma — "garlic,
-// peeled and sliced", "black beans, drained and rinsed", "cheese, plus more
-// for topping" — never as the essential part of the name. Splitting on the
-// first comma is a convention match, not a guess about the *words*, which is
-// what makes it safe in the way parseGroceryInput's unit whitelist is: it
-// can't eat the name because the name is always everything before the first
-// comma.
-//
-// Deliberately doesn't also try to peel a *leading* prep word ("grated
-// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
-// sometimes the actual product ("sliced almonds" and "ground beef" are their
-// own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
-// there costs the first word of the name — the exact failure parseGroceryInput's
-// unit whitelist is built to avoid. That case is left to the AI extractor.
-const PREP_SPLIT = /^(.*?),\s*(.+)$/;
-
-export function splitPrep(name: string): { name: string; prep: string | null } {
-  const trimmed = name.trim();
-  const match = PREP_SPLIT.exec(trimmed);
-  if (!match) return { name: trimmed, prep: null };
-  const [, core, prep] = match;
-  if (!core.trim()) return { name: trimmed, prep: null };
-  return {
-    name: core.trim(),
-    prep: prep.trim().slice(0, RECIPE_PREP_MAX_LENGTH) || null,
   };
 }
 
