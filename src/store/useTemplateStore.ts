@@ -31,6 +31,14 @@ export interface ApplyTemplateOptions {
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
   placeholders?: Record<string, string>;
+  /**
+   * Land every created task in this existing project instead of the template's
+   * own container. A resolved 'project' container would otherwise create a
+   * *second* project to hold what's meant for this one, so it's capped at
+   * 'stack' — item-group sub-stacks still form (that pass is unconditional,
+   * see the second pass below) and still land inside this project.
+   */
+  targetProjectId?: string;
 }
 
 interface TemplateStore {
@@ -297,9 +305,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
 
     // An unnamed run has nothing to call a container, so it stays loose —
     // which is also exactly the behavior every apply had before this existed.
-    const container = runName
+    let container = runName
       ? resolveApplyContainer(template.applyContainer, expanded, templatesById)
       : 'none';
+    if (options?.targetProjectId && container === 'project') container = 'stack';
 
     const addTask = useTaskStore.getState().addTask;
     const addSubtask = useTaskStore.getState().addSubtask;
@@ -316,18 +325,19 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       const runGroup = container === 'stack'
         ? useTaskGroupStore.getState().createGroup(runName, null)
         : null;
-      const runProject = container === 'project'
+      const runProject = (!options?.targetProjectId && container === 'project')
         ? useProjectStore.getState().createProject(
             runName,
             anchors.start?.toISOString() ?? null,
             anchors.end?.toISOString() ?? null,
           )
         : null;
+      const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
       createdTasks = drafts.map(d => addTask({
         ...d,
         ...(runGroup ? { groupId: runGroup.id } : {}),
-        ...(runProject ? { projectId: runProject.id } : {}),
+        ...(projectId ? { projectId } : {}),
       }));
 
       // Second pass: subtasks and groups need ids that don't exist until

@@ -23,13 +23,15 @@ import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
+import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
+import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { EmptyState } from '../components/EmptyState';
 import { FabMenu, type FabMenuItem } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { Task, Project } from '../types';
+import type { Task, Project, TaskTemplate } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
@@ -67,6 +69,8 @@ export function ProjectDetailScreen() {
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
@@ -139,12 +143,17 @@ export function ProjectDetailScreen() {
   // Bottom-up: "New task" ends up closest to the button.
   const addMenuItems: FabMenuItem[] = [
     { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+    { key: 'template', label: 'Template', icon: 'copy' },
     { key: 'new', label: 'New task', icon: 'checkbox' },
   ];
 
   const handleAddMenuSelect = (key: string) => {
     if (key === 'new') {
       setQuickAddVisible(true);
+      return;
+    }
+    if (key === 'template') {
+      setTemplatePickerVisible(true);
       return;
     }
     setExistingSearch('');
@@ -452,6 +461,22 @@ export function ProjectDetailScreen() {
           context="unscheduled"
           onCreated={attachToProject}
           onResumed={attachToProject}
+        />
+
+        {/* Add from a template: pick one here, then the apply sheet below —
+            same two-step flow as Today, but the applied tasks land directly
+            in this project instead of the template's own container. */}
+        <TemplatePickerSheet
+          visible={templatePickerVisible}
+          onClose={() => setTemplatePickerVisible(false)}
+          onSelect={setApplyTemplate}
+        />
+
+        <ApplyTemplateSheet
+          visible={applyTemplate !== null}
+          template={applyTemplate}
+          onClose={() => setApplyTemplate(null)}
+          projectId={project?.id}
         />
 
         <ProjectEditor
