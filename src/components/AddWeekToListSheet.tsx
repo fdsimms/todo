@@ -83,7 +83,9 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   }, [classified]);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
+    new Set(['probablyHave']),
+  );
 
   // Reset to the default tick state fresh each time the sheet opens, rather
   // than living-recompute against classified while it's up — same model
