@@ -5,6 +5,7 @@ import {
   Modal,
   PanResponder,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -212,7 +213,11 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
           </View>
 
-          <View style={styles.items}>
+          <ScrollView
+            style={styles.items}
+            contentContainerStyle={styles.itemsContent}
+            showsVerticalScrollIndicator={false}
+          >
             {MENU_ITEMS.map((item, index) => {
               const isActive = activeTab === item.name;
               return (
@@ -257,7 +262,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
                 </DrawerItemAppear>
               );
             })}
-          </View>
+          </ScrollView>
 
           <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
             <DrawerItemAppear index={MENU_ITEMS.length}>
@@ -340,6 +345,8 @@ const styles = StyleSheet.create({
   },
   items: {
     flex: 1,
+  },
+  itemsContent: {
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
