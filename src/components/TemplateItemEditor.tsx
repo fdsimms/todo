@@ -33,6 +33,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
+import { NumberPadAccessory } from './NumberPadAccessory';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks';
@@ -261,6 +262,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
         </>
       }
+      footer={<NumberPadAccessory />}
     >
       <TextInput
         style={styles.titleInput}

@@ -1,7 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { font, radius, spacing, type Colors } from '../theme';
+import { NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 
 interface Props {
   /** Minutes this step is expected to take; null = inherit the task's estimate. */
@@ -46,6 +47,7 @@ export function ChainStepMinutes({ value, label, onChange }: Props) {
         placeholderTextColor={colors.textTertiary}
         maxLength={4}
         returnKeyType="done"
+        inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
         accessibilityLabel={`Time estimate in minutes for ${label}`}
       />
       {value != null ? <Text style={styles.unit}>m</Text> : null}
