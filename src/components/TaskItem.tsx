@@ -454,7 +454,12 @@ export const TaskItem = React.memo(function TaskItem({
   const handleItemLayout = (e: LayoutChangeEvent) => {
     // Same guard as the panel's, and it matters more here: this is the whole
     // row, so it re-measures on every frame of its own panel animation.
-    if (!collapseStartedRef.current) {
+    // `nativeEvent` has turned up null on this row's outer Reanimated.View in
+    // production (its `key={collapseGeneration}` can remount it mid-flight,
+    // and a layout event queued against the torn-down instance arrives empty)
+    // — bail rather than crash the whole app over a measurement that was
+    // going to be discarded anyway.
+    if (!collapseStartedRef.current && e.nativeEvent?.layout) {
       setRowHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
     }
   };
@@ -1545,7 +1550,10 @@ export const TaskItem = React.memo(function TaskItem({
         // pixel-grid rounding difference is not a content change. Unguarded,
         // an expanded row inside a stack commits on every layout pass of the
         // section animating around it.
-        onLayout={e => setPanelHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height))}
+        onLayout={e => {
+          if (!e.nativeEvent?.layout) return;
+          setPanelHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
+        }}
       >
       <View style={styles.expandedPanel}>
         {!selectionMode && (
