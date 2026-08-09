@@ -14,8 +14,10 @@ import {
   resolvePrepTaskDraft,
   describeCookHistory,
   rankRecipeSuggestions,
+  scoreRecipeAgainstCatalog,
+  suggestRecipesForEmptyNight,
 } from '../utils/recipeUtils';
-import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 
 let seq = 0;
 function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient {
@@ -469,5 +471,83 @@ describe('rankRecipeSuggestions', () => {
     const a = recipe('B recipe', { cookCount: 1, lastCookedAt: now.toISOString() });
     const b = recipe('A recipe', { cookCount: 1, lastCookedAt: now.toISOString() });
     expect(rankRecipeSuggestions([a, b], now).map(r => r.name)).toEqual(['A recipe', 'B recipe']);
+  });
+});
+
+function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string } = {}): GroceryItem {
+  return {
+    id: `gi-${++seq}`,
+    name,
+    nameKey: overrides.nameKey ?? name.toLowerCase(),
+    aisle: 'Other',
+    quantity: null,
+    note: '',
+    onList: false,
+    checked: false,
+    inCatalog: true,
+    sortOrder: seq,
+    favorite: false,
+    purchaseCount: 0,
+    lastAddedAt: null,
+    lastPurchasedAt: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
+    ...overrides,
+  } as GroceryItem;
+}
+
+describe('scoreRecipeAgainstCatalog', () => {
+  const now = new Date(2026, 7, 12); // 12 Aug 2026
+
+  it('is zero for a recipe with no ingredients', () => {
+    expect(scoreRecipeAgainstCatalog(recipe('Toast', { ingredients: [] }), [], now)).toBe(0);
+  });
+
+  it('is zero when nothing in the recipe is in the catalog', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    expect(scoreRecipeAgainstCatalog(r, [], now)).toBe(0);
+  });
+
+  it('scores higher for full coverage than partial coverage', () => {
+    const full = recipe('Full', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+    const partial = recipe('Partial', {
+      ingredients: [ing('Onions', { nameKey: 'onions' }), ing('Saffron', { nameKey: 'saffron' })],
+    });
+    const items = [item('Onions', { nameKey: 'onions' })];
+    expect(scoreRecipeAgainstCatalog(full, items, now))
+      .toBeGreaterThan(scoreRecipeAgainstCatalog(partial, items, now));
+  });
+
+  it('nudges a recently bought match above a stale one at equal coverage', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+    const fresh = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 7, 10).toISOString() })];
+    const stale = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 0, 1).toISOString() })];
+    expect(scoreRecipeAgainstCatalog(r, fresh, now)).toBeGreaterThan(scoreRecipeAgainstCatalog(r, stale, now));
+  });
+});
+
+describe('suggestRecipesForEmptyNight', () => {
+  const now = new Date(2026, 7, 12);
+
+  it('excludes a recipe with no catalog overlap', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    expect(suggestRecipesForEmptyNight([r], [], now)).toEqual([]);
+  });
+
+  it('ranks full coverage above partial', () => {
+    const full = recipe('Full', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+    const partial = recipe('Partial', {
+      ingredients: [ing('Onions', { nameKey: 'onions' }), ing('Saffron', { nameKey: 'saffron' })],
+    });
+    const items = [item('Onions', { nameKey: 'onions' })];
+    expect(suggestRecipesForEmptyNight([partial, full], items, now).map(r => r.name)).toEqual(['Full', 'Partial']);
+  });
+
+  it('respects the limit', () => {
+    const items = [item('Onions', { nameKey: 'onions' })];
+    const recipes = ['A', 'B', 'C', 'D'].map(name =>
+      recipe(name, { ingredients: [ing('Onions', { nameKey: 'onions' })] })
+    );
+    expect(suggestRecipesForEmptyNight(recipes, items, now, 2)).toHaveLength(2);
   });
 });

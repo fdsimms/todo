@@ -10,6 +10,7 @@ import {
   suggestTemplateItems,
   suggestGroceryAisles,
   suggestRecipeGroceries,
+  extractRecipe,
   describeAIError,
 } from '../services/aiSuggestions';
 import type { Task } from '../types';
@@ -617,5 +618,75 @@ describe('suggestRecipeGroceries', () => {
     await expect(suggestRecipeGroceries('some recipe', AISLES)).rejects.toThrow(
       'No suggestions returned'
     );
+  });
+});
+
+describe('extractRecipe', () => {
+  it('returns the name, servings, prep time, and shopping list', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        servings: 4,
+        prepMinutes: 45,
+        items: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+      })
+    );
+    await expect(extractRecipe('some recipe', AISLES)).resolves.toEqual({
+      name: 'Weeknight Chili',
+      servings: 4,
+      prepMinutes: 45,
+      ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+    });
+  });
+
+  it('is null for servings and prep time the text did not state', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Chili', servings: 0, prepMinutes: 0, items: [] })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.servings).toBeNull();
+    expect(result.prepMinutes).toBeNull();
+  });
+
+  it('clamps servings to 1-99', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', { name: 'Chili', servings: 500, items: [] })
+    );
+    expect((await extractRecipe('some recipe', AISLES)).servings).toBe(99);
+  });
+
+  it('is an empty name when the text did not give one', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { items: [] }));
+    expect((await extractRecipe('some recipe', AISLES)).name).toBe('');
+  });
+
+  it('validates the shopping list the same way suggestRecipeGroceries does', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Chili',
+        items: [
+          { name: 'nduja', quantity: '', aisle: 'Charcuterie' },
+          { name: 'Garlic', quantity: '1 bulb', aisle: 'Produce' },
+          { name: 'garlic', quantity: '2 cloves', aisle: 'Produce' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toHaveLength(2);
+    expect(result.ingredients[0].aisle).toBe('Other');
+    expect(result.ingredients[1].name).toBe('Garlic');
+  });
+
+  it('does not call the network for empty text', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
+      name: '', servings: null, prepMinutes: null, ingredients: [],
+    });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('throws when the model returns no tool use', async () => {
+    mockFetchOnce({ content: [{ type: 'text' }] });
+    await expect(extractRecipe('some recipe', AISLES)).rejects.toThrow('No suggestions returned');
   });
 });

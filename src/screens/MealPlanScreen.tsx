@@ -8,13 +8,14 @@ import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
-import type { MealSlot } from '../types';
+import type { MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { InlineAction } from '../components/InlineAction';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
+import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -26,7 +27,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
-import { resolvePrepTaskDraft } from '../utils/recipeUtils';
+import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -82,6 +83,7 @@ export function MealPlanScreen() {
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const addTask = useTaskStore(s => s.addTask);
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
 
   // The day being planned; null when the picker is closed.
@@ -91,6 +93,7 @@ export function MealPlanScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
   const [addingToList, setAddingToList] = useState(false);
+  const [suggestingMeals, setSuggestingMeals] = useState(false);
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -209,6 +212,19 @@ export function MealPlanScreen() {
   // collection just to light up a header icon.
   const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
 
+  // Offline "what can I make from what I've got" — only worth computing once
+  // there's an empty week to fill, and re-ranked each time the sheet reopens
+  // by staying a plain memo rather than sheet-local state.
+  const emptyWeekSuggestions = useMemo(
+    () => entries.length === 0 ? suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5) : [],
+    [entries.length, recipes, groceryItems]
+  );
+
+  const planSuggestion = (recipe: Recipe, dateKey: string) => {
+    animateLayout();
+    planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
+  };
+
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
     const actions: ScreenHeaderAction[] = [
       {
@@ -252,6 +268,16 @@ export function MealPlanScreen() {
         keyExtractor={d => dayKeyOf(d)}
         renderItem={renderDay}
         contentContainerStyle={styles.list}
+        ListHeaderComponent={emptyWeekSuggestions.length === 0 ? null : (
+          <InlineAction
+            label="Suggest meals"
+            icon="restaurant-outline"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
+            accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+            style={styles.suggestMeals}
+          />
+        )}
         ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
       />
 
@@ -301,6 +327,14 @@ export function MealPlanScreen() {
           onClose={() => setAddingToList(false)}
         />
       )}
+
+      <SuggestMealsSheet
+        visible={suggestingMeals}
+        recipes={emptyWeekSuggestions}
+        weekDays={days}
+        onPlan={planSuggestion}
+        onClose={() => setSuggestingMeals(false)}
+      />
     </View>
   );
 }
@@ -352,5 +386,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   add: {
     alignSelf: 'flex-start',
     marginTop: spacing.xs,
+  },
+  suggestMeals: {
+    alignSelf: 'flex-start',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
 });

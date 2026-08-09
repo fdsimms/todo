@@ -1,5 +1,5 @@
 import type { Effort } from '../types';
-import { TITLE_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { TITLE_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -347,31 +347,88 @@ export interface RecipeGroceryItem {
   aisle: string;
 }
 
+/** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
+function parseExtractedItems(
+  raw: unknown,
+  availableAisles: string[],
+): RecipeGroceryItem[] {
+  const items = raw as Array<{ name?: unknown; quantity?: unknown; aisle?: unknown }> | undefined;
+  if (!items) return [];
+
+  const seen = new Set<string>();
+  const result: RecipeGroceryItem[] = [];
+  for (const item of items) {
+    if (typeof item?.name !== 'string') continue;
+    const name = item.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
+    if (!name) continue;
+    // Dedupe on the same key the catalog uses, so two spellings of the same
+    // thing don't both get offered.
+    const key = groceryNameKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      name,
+      quantity: typeof item.quantity === 'string'
+        ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
+        : '',
+      aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
+    });
+  }
+  return result.slice(0, MAX_RECIPE_ITEMS);
+}
+
+export interface ExtractedRecipe {
+  /** Empty when the text didn't give one. */
+  name: string;
+  /** Clamped 1–99; null when not stated. */
+  servings: number | null;
+  /** Null when not stated. */
+  prepMinutes: number | null;
+  ingredients: RecipeGroceryItem[];
+}
+
 /**
- * Pulls the shopping items out of a pasted recipe.
+ * Pulls a whole recipe — name, servings, prep time, and the shopping list —
+ * out of pasted text.
  *
  * The one genuinely hard thing here that a parser can't do: recipe
  * ingredients are written for cooking, not for buying ("3 cloves garlic,
  * minced" is one bulb of garlic), and the method section has to be ignored.
+ * `suggestRecipeGroceries` below is a thin wrapper over this — one prompt,
+ * one schema, one validator — so GroceryAISheet's "From a recipe" mode keeps
+ * working exactly as it did before this existed.
  */
-export async function suggestRecipeGroceries(
+export async function extractRecipe(
   text: string,
   availableAisles: string[],
-): Promise<RecipeGroceryItem[]> {
+): Promise<ExtractedRecipe> {
   const apiKey = useSettingsStore.getState().anthropicApiKey;
   if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
 
+  const empty: ExtractedRecipe = { name: '', servings: null, prepMinutes: null, ingredients: [] };
   const source = text.trim().slice(0, MAX_RECIPE_CHARS);
-  if (!source) return [];
+  if (!source) return empty;
 
   const data = await callAnthropic({
-    max_tokens: 1500,
+    max_tokens: 2000,
     tools: [{
-      name: 'extract_groceries',
-      description: 'Extract the shopping list implied by a recipe',
+      name: 'extract_recipe',
+      description: 'Extract a recipe\'s name, servings, prep time, and shopping list from pasted text',
       input_schema: {
         type: 'object',
         properties: {
+          name: {
+            type: 'string',
+            description: `The recipe's name/title, if the text gives one. Under ${RECIPE_NAME_MAX_LENGTH} characters. Empty string if not stated.`,
+          },
+          servings: {
+            type: 'integer',
+            description: 'How many people this serves, if stated. 0 if not stated.',
+          },
+          prepMinutes: {
+            type: 'integer',
+            description: 'Total prep/cook time in minutes, if stated. 0 if not stated.',
+          },
           items: {
             type: 'array',
             description: 'The things a shopper needs to buy for this recipe.',
@@ -395,15 +452,15 @@ export async function suggestRecipeGroceries(
             },
           },
         },
-        required: ['items'],
+        required: ['name', 'items'],
       },
     }],
-    tool_choice: { type: 'tool', name: 'extract_groceries' },
+    tool_choice: { type: 'tool', name: 'extract_recipe' },
     messages: [{
       role: 'user',
       content: [
-        'Extract the shopping list from this recipe.',
-        'Name each item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method, and skip water.',
+        'Extract this recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method for the shopping list, and skip water.',
         `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
         `Recipe:\n${source}`,
       ].join('\n\n'),
@@ -411,27 +468,30 @@ export async function suggestRecipeGroceries(
   }, apiKey);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
-  const input = toolUse?.input as { items?: Array<{ name?: unknown; quantity?: unknown; aisle?: unknown }> } | undefined;
-  if (!input?.items) throw new Error('No suggestions returned');
+  const input = toolUse?.input as {
+    name?: unknown; servings?: unknown; prepMinutes?: unknown; items?: unknown;
+  } | undefined;
+  if (!input) throw new Error('No suggestions returned');
 
-  const seen = new Set<string>();
-  const result: RecipeGroceryItem[] = [];
-  for (const item of input.items) {
-    if (typeof item?.name !== 'string') continue;
-    const name = item.name.trim().slice(0, GROCERY_NAME_MAX_LENGTH);
-    if (!name) continue;
-    // Dedupe on the same key the catalog uses, so two spellings of the same
-    // thing don't both get offered.
-    const key = groceryNameKey(name);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    result.push({
-      name,
-      quantity: typeof item.quantity === 'string'
-        ? item.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
-        : '',
-      aisle: canonicalAisle(item.aisle, availableAisles) ?? OTHER_AISLE,
-    });
-  }
-  return result.slice(0, MAX_RECIPE_ITEMS);
+  const name = typeof input.name === 'string' ? input.name.trim().slice(0, RECIPE_NAME_MAX_LENGTH) : '';
+  const servings = typeof input.servings === 'number' && input.servings > 0
+    ? Math.max(1, Math.min(99, Math.round(input.servings)))
+    : null;
+  const prepMinutes = typeof input.prepMinutes === 'number' && input.prepMinutes > 0
+    ? Math.round(input.prepMinutes)
+    : null;
+
+  return { name, servings, prepMinutes, ingredients: parseExtractedItems(input.items, availableAisles) };
+}
+
+/**
+ * Pulls just the shopping items out of a pasted recipe — GroceryAISheet's
+ * "From a recipe" mode, which has no use for the name/servings/prep time.
+ */
+export async function suggestRecipeGroceries(
+  text: string,
+  availableAisles: string[],
+): Promise<RecipeGroceryItem[]> {
+  const extracted = await extractRecipe(text, availableAisles);
+  return extracted.ingredients;
 }

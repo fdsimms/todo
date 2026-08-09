@@ -5,7 +5,7 @@ import {
   dbUpdateRecipe,
   dbDeleteRecipe,
 } from '../db/database';
-import type { Recipe } from '../types';
+import type { Recipe, RecipeIngredient } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
@@ -227,6 +227,47 @@ describe('ingredients', () => {
 
     expect(useRecipeStore.getState().addIngredientsFromText(r.id, 'garlic')).toBe(0);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('addStructuredIngredients', () => {
+  const struct = (name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient => ({
+    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, ...overrides,
+  });
+
+  it('merges already-parsed ingredients, reporting how many were new', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const added = useRecipeStore.getState().addStructuredIngredients(r.id, [
+      struct('Ground beef', { nameKey: 'ground beef', quantity: '2 lb', aisle: 'Meat' }),
+      struct('Garlic', { nameKey: 'garlic' }),
+    ]);
+
+    expect(added).toBe(2);
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.name)).toEqual(['Ground beef', 'Garlic']);
+    expect(ingredients[0].quantity).toBe('2 lb');
+    expect(ingredients[0].aisle).toBe('Meat');
+  });
+
+  it('keeps the existing row on a key collision rather than overwriting it', () => {
+    const r = makeRecipe('Ragu', {
+      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null }],
+    });
+    seed([r]);
+
+    const added = useRecipeStore.getState().addStructuredIngredients(r.id, [
+      struct('garlic', { nameKey: 'garlic', quantity: '1 bulb' }),
+    ]);
+
+    expect(added).toBe(0);
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].quantity).toBe('3 cloves');
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(useRecipeStore.getState().addStructuredIngredients('gone', [struct('Garlic')])).toBe(0);
   });
 
   it('moves the key when a patch changes the name', () => {
