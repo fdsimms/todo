@@ -82,7 +82,13 @@ export function CompletionCollapse({
     // Guarded like the two in TaskItem: this feeds an animated height, so a
     // measurement accepted for a third of a point of pixel-grid rounding buys
     // a React commit and nothing else.
-    if (!startedRef.current) setHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
+    if (startedRef.current || !e.nativeEvent?.layout) return;
+    // Read now and close over the number, not `e` — see TaskItem's
+    // handleItemLayout for why a functional setState updater can't safely
+    // re-read `e.nativeEvent` itself (React can call it after RN has already
+    // recycled the event object).
+    const height = e.nativeEvent.layout.height;
+    setHeight(prev => nextMeasuredHeight(prev, height));
   };
 
   const style = useAnimatedStyle(() => {
