@@ -65,6 +65,22 @@ export function collectPlannedIngredients(
   return out;
 }
 
+/**
+ * One recipe's ingredients, standing alone rather than flattened out of a
+ * week — the source a single-recipe "Add ingredients to list" needs to run
+ * through the same classifyPlanned pantry-awareness AddWeekToListSheet gets,
+ * instead of the blind addFromPlan RecipeDetailScreen used before.
+ */
+export function plannedIngredientsForRecipe(recipe: Recipe): PlannedIngredient[] {
+  return recipe.ingredients.map(ingredient => ({
+    name: ingredient.name,
+    nameKey: ingredient.nameKey,
+    quantity: [ingredient.quantity, ingredient.prep].filter(Boolean).join(', '),
+    aisle: ingredient.aisle,
+    source: recipe.name,
+  }));
+}
+
 /** "2 lb" → `{ amount: 2, unit: 'lb' }`. Null for anything that isn't a bare number and unit word. */
 export function parseQuantityAmount(q: string): { amount: number; unit: string } | null {
   const trimmed = q.trim();

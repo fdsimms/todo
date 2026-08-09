@@ -2,6 +2,7 @@ import type { GroceryItem, MealPlanEntry, Recipe, RecipeIngredient } from '../ty
 import { groceryNameKey } from '../utils/groceryParse';
 import {
   collectPlannedIngredients,
+  plannedIngredientsForRecipe,
   parseQuantityAmount,
   mergeQuantities,
   describeQuantities,
@@ -125,6 +126,30 @@ describe('collectPlannedIngredients', () => {
     const recipesById = new Map([[ragu.id, ragu]]);
     const entries = [entry('2026-08-11', ragu.id)];
     expect(collectPlannedIngredients(entries, recipesById, RANGE)[0].aisle).toBe('Produce');
+  });
+});
+
+describe('plannedIngredientsForRecipe', () => {
+  it('maps each ingredient, tagged with the recipe as its own source', () => {
+    const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Garlic', { quantity: '3 cloves' })]);
+    expect(plannedIngredientsForRecipe(ragu)).toEqual([
+      { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù' },
+      { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù' },
+    ]);
+  });
+
+  it('folds prep into the quantity, same as RecipeDetailScreen\'s own add', () => {
+    const ragu = recipe('Ragù', [ing('Ginger', { quantity: '1 tsp', prep: 'minced' })]);
+    expect(plannedIngredientsForRecipe(ragu)[0].quantity).toBe('1 tsp, minced');
+  });
+
+  it('carries the aisle hint through', () => {
+    const ragu = recipe('Ragù', [ing('Basil', { aisle: 'Produce' })]);
+    expect(plannedIngredientsForRecipe(ragu)[0].aisle).toBe('Produce');
+  });
+
+  it('is empty for a recipe with no ingredients', () => {
+    expect(plannedIngredientsForRecipe(recipe('Toast', []))).toEqual([]);
   });
 });
 
