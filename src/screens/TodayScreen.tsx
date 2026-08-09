@@ -2025,18 +2025,14 @@ export function TodayScreen() {
     setLaterTaskLimit(limit => limit + LATER_TASK_PAGE_SIZE);
   }, []);
 
-  // Shared by the header overline and the "Lighten today" action's hint.
+  // Shared by the header subtitle and the "Lighten today" action's hint.
   const plannedLabel = useMemo(() => {
     const minutes = sumEstimatedMinutes(visibleTasks);
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [visibleTasks]);
 
-  // Rides the date overline rather than a subtitle: a subtitle is extra header
-  // height that only Today has, which left the view-mode pills sitting lower
-  // here than on Later/Unscheduled/Inbox. The overline's line is reserved on
-  // every screen, so hanging it there costs nothing below the header.
-  const workloadOverline =
-    viewMode === 'today' && plannedLabel ? `${plannedLabel} planned` : undefined;
+  const workloadSubtitle =
+    viewMode === 'today' && plannedLabel ? `${plannedLabel} planned today` : undefined;
 
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
@@ -2073,7 +2069,7 @@ export function TodayScreen() {
         <ScreenHeader
           title={VIEW_TITLES[viewMode]}
           overline={viewMode === 'today' ? today : undefined}
-          overlineTrailing={workloadOverline}
+          subtitle={workloadSubtitle}
           actions={headerActions}
         />
 
