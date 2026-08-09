@@ -13,3 +13,6 @@ web-build/
 
 # Generated from src/patchNotes/entries/ by scripts/build-patch-notes.js
 src/utils/patchNotesData.ts
+
+# Scratch worktrees for isolated subagents
+.claude/worktrees/
