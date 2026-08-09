@@ -96,6 +96,7 @@ export interface TaskDraft {
   groupId?: string | null;
   linkUrl?: string | null;
   phoneNumber?: string | null;
+  emailAddress?: string | null;
   targetCount?: number | null;
   targetUnit?: string | null;
 }
@@ -238,6 +239,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [showPhoneField, setShowPhoneField] = useState(false);
   const [phoneText, setPhoneText] = useState('');
+  const [emailAddress, setEmailAddress] = useState<string | null>(null);
+  const [showEmailField, setShowEmailField] = useState(false);
+  const [emailText, setEmailText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
@@ -326,6 +330,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setShowStreak(task.showStreak ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
+      setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
@@ -346,11 +351,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setShowStreak(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
+      setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
     }
     setShowBlockerPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
+    setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewCategory(''); setAddingCategory(false); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setAddingSubtask(false); setPendingSubtaskIndex(null);
     setNewChainItemTitle(''); setAddingChainItem(false);
@@ -410,6 +417,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       showStreak: task?.showStreak ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
+      emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       blockedById: task?.blockedById ?? null,
     });
   }, [visible, task]);
@@ -531,6 +539,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       showStreak: recurrenceType !== 'none' && showStreak,
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
+      emailAddress: resolveEmailAddress(),
       blockedById,
     };
 
@@ -748,6 +757,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowPhoneField(false);
   };
 
+  const commitEmail = () => {
+    const t = emailText.trim();
+    setEmailAddress(t || null);
+    setShowEmailField(false);
+  };
+
   /**
    * Rescues a shopping item captured in the wrong place — "buy milk" typed
    * into quick-add before you thought about which list it belonged on.
@@ -795,6 +810,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return showPhoneField && t ? t : phoneNumber;
   };
 
+  // Same race, same fix, for the email address field.
+  const resolveEmailAddress = () => {
+    const t = emailText.trim();
+    return showEmailField && t ? t : emailAddress;
+  };
+
   const enableRecurrence = () => {
     if (recurrenceType === 'none') setRecurrenceType('daily');
   };
@@ -839,6 +860,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       showStreak,
       linkUrl,
       phoneNumber,
+      emailAddress,
       blockedById,
     });
     if (current !== initialStateRef.current) {
@@ -2625,6 +2647,46 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   // blur — same as the editor's other number-pad fields.
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  autoFocus
+                />
+              </View>
+            )}
+              </>
+            ),
+          },
+          {
+            key: 'email', label: 'Email', set: !!emailAddress,
+            node: (
+              <>
+            <EditorRow
+              icon="mail-outline"
+              label="Email"
+              hint="Compose an email to this address straight from the task row"
+              value={emailAddress ?? undefined}
+              expanded={showEmailField}
+              onPress={() => {
+                // Same pattern as Phone: no presets, so it opens with what's
+                // already there.
+                setEmailText(emailAddress ?? '');
+                setShowEmailField(v => !v);
+              }}
+              onClear={emailAddress ? () => { setEmailAddress(null); setEmailText(''); setShowEmailField(false); } : undefined}
+            />
+            {showEmailField && (
+              <View style={styles.linkCustomRow}>
+                <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={emailText}
+                  onChangeText={setEmailText}
+                  onSubmitEditing={commitEmail}
+                  onBlur={commitEmail}
+                  placeholder="name@example.com"
+                  placeholderTextColor={colors.textTertiary}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
                   autoFocus
                 />
               </View>
