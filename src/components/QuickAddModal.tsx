@@ -47,6 +47,7 @@ import { WhenPicker } from './WhenPicker';
 import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -955,6 +956,7 @@ export function QuickAddModal({
                   keyboardType="number-pad"
                   placeholder="custom"
                   placeholderTextColor={colors.textTertiary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
                 />
               </View>
@@ -1552,6 +1554,7 @@ export function QuickAddModal({
                   keyboardType="number-pad"
                   placeholder="custom min"
                   placeholderTextColor={colors.textTertiary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <TouchableOpacity
                   style={styles.effortAiBtn}
@@ -1774,6 +1777,7 @@ export function QuickAddModal({
         }}
         onDismiss={() => setPendingCategory(null)}
       />
+      <NumberPadAccessory />
     </Modal>
 
   );

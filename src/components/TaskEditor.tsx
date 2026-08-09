@@ -59,6 +59,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorGroup } from './EditorGroup';
 import { CountStepper } from './CountStepper';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { BlockerPickerSheet } from './BlockerPickerSheet';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { RecurrencePicker, ordinal } from './RecurrencePicker';
@@ -1218,6 +1219,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClose={() => setShowBlockerPicker(false)}
             onSelect={setBlockedById}
           />
+          <NumberPadAccessory />
         </>
       }
     >
@@ -2276,6 +2278,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   keyboardType="number-pad"
                   placeholder="0"
                   placeholderTextColor={colors.textTertiary}
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoFocus
                 />
                 <View style={styles.unitToggle}>
@@ -2440,6 +2443,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={colors.textTertiary}
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               />
               <View style={styles.unitToggle}>
                 {(['min', 'hr'] as const).map(u => (
@@ -2477,6 +2481,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 keyboardType="number-pad"
                 placeholder="0"
                 placeholderTextColor={colors.textTertiary}
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 autoFocus
               />
               <View style={styles.unitToggle}>
