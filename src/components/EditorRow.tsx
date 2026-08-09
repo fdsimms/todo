@@ -76,7 +76,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 13,
   },
-  content: { flex: 1 },
+  // Grows to push the value column to the right when there's room, but never
+  // shrinks below the label's natural width — a long value should give way
+  // first (it already truncates via numberOfLines), not force the label to
+  // wrap mid-word.
+  content: { flexGrow: 1, flexShrink: 0 },
   label: { color: colors.text, fontSize: font.md },
   hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
