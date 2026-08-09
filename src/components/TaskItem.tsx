@@ -454,14 +454,16 @@ export const TaskItem = React.memo(function TaskItem({
   const handleItemLayout = (e: LayoutChangeEvent) => {
     // Same guard as the panel's, and it matters more here: this is the whole
     // row, so it re-measures on every frame of its own panel animation.
-    // `nativeEvent` has turned up null on this row's outer Reanimated.View in
-    // production (its `key={collapseGeneration}` can remount it mid-flight,
-    // and a layout event queued against the torn-down instance arrives empty)
-    // — bail rather than crash the whole app over a measurement that was
-    // going to be discarded anyway.
-    if (!collapseStartedRef.current && e.nativeEvent?.layout) {
-      setRowHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
-    }
+    if (collapseStartedRef.current || !e.nativeEvent?.layout) return;
+    // Read the height now, synchronously, rather than inside the updater
+    // below: `setRowHeight`'s functional form only *schedules* that function,
+    // and React can call it later, during a subsequent render, once this
+    // event has already returned — RN recycles the event object after the
+    // handler that received it returns, so `e.nativeEvent` reads back null by
+    // then. A crash from exactly that showed up in production with a stack
+    // through useState's reducer, not through this callback.
+    const height = e.nativeEvent.layout.height;
+    setRowHeight(prev => nextMeasuredHeight(prev, height));
   };
 
   // The store flips this on for every row of a burst in the same commit, which
@@ -1552,7 +1554,9 @@ export const TaskItem = React.memo(function TaskItem({
         // section animating around it.
         onLayout={e => {
           if (!e.nativeEvent?.layout) return;
-          setPanelHeight(prev => nextMeasuredHeight(prev, e.nativeEvent.layout.height));
+          // See handleItemLayout above: read now, close over the number, not `e`.
+          const height = e.nativeEvent.layout.height;
+          setPanelHeight(prev => nextMeasuredHeight(prev, height));
         }}
       >
       <View style={styles.expandedPanel}>
