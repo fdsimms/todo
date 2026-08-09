@@ -67,6 +67,13 @@ export function resolveOffsetDate(anchor: Date | null, offsetDays: number | null
   return d.toISOString();
 }
 
+/** "2 days before", "1 hour before", "45 min before" — a reminder offset, said out loud. */
+export function formatMinutesOffset(mins: number): string {
+  if (mins % 1440 === 0) { const d = mins / 1440; return `${d} day${d === 1 ? '' : 's'} before`; }
+  if (mins % 60 === 0) { const h = mins / 60; return `${h} hour${h === 1 ? '' : 's'} before`; }
+  return `${mins} min before`;
+}
+
 /**
  * Build task drafts from the (already user-selected) template items. Each
  * item resolves its offsets against whichever of the two anchor dates it's

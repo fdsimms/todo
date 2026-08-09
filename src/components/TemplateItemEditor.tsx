@@ -21,7 +21,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { anchorLabel, formatOffsetWithAnchor } from '../utils/templateUtils';
+import { anchorLabel, formatOffsetWithAnchor, formatMinutesOffset } from '../utils/templateUtils';
 import { categoryLabel } from '../utils/categoryLabel';
 import { formatHHMM, hhmmToDate, dateToHHMM } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
@@ -33,12 +33,6 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
-
-function formatMinutesOffset(mins: number): string {
-  if (mins % 1440 === 0) { const d = mins / 1440; return `${d} day${d === 1 ? '' : 's'} before`; }
-  if (mins % 60 === 0) { const h = mins / 60; return `${h} hour${h === 1 ? '' : 's'} before`; }
-  return `${mins} min before`;
-}
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks';

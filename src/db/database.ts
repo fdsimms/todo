@@ -3,7 +3,7 @@ import type { Task, Category, GroceryItem, ItemShopLink, MealPlanEntry, MealSlot
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
-import { parseRecipeIngredients } from '../utils/recipeUtils';
+import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -404,6 +404,9 @@ export function initDatabase(): void {
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
+    // Empty array for every existing recipe — no recipe written before this
+    // shipped had prep steps to carry. See Recipe.prepTasks.
+    "ALTER TABLE recipes ADD COLUMN prep_tasks TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1451,6 +1454,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     sourceName: (row.source_name as string) ?? null,
     servings: (row.servings as number) ?? null,
     ingredients: parseRecipeIngredients(row.ingredients),
+    prepTasks: parsePrepTasks(row.prep_tasks),
     favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
@@ -1467,12 +1471,12 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, servings, ingredients, favorite, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, servings, ingredients, prep_tasks, favorite, sort_order, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
-      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
     ]
   );
 }
@@ -1480,12 +1484,13 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, favorite=?, sort_order=?
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, prep_tasks=?,
+       favorite=?, sort_order=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
-      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.id,
+      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.id,
     ]
   );
 }

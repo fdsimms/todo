@@ -669,9 +669,29 @@ export interface Recipe {
   sourceName: string | null;
   servings: number | null;
   ingredients: RecipeIngredient[];
+  // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
+  // tasks" on a planned meal walks this list, not a meal-specific reminder
+  // path. src/utils/notifications.ts is Task-typed end to end
+  // (scheduleTaskReminder(task)), and forking it for one feature is how an
+  // app ends up with two reminder systems and one of them quietly broken.
+  prepTasks: RecipePrepTask[];
   favorite: boolean;
   sortOrder: number;
   createdAt: string;
+}
+
+// One prep step on a recipe — TemplateItem's anchor-relative offset model
+// reduced to the three fields this needs. Unlike TemplateItem.dueOffsetDays,
+// `offsetDays` is never null: a prep step with no date wouldn't have
+// anything to remind about, so every step in the list is dated relative to
+// the meal by definition.
+export interface RecipePrepTask {
+  id: string;
+  title: string;
+  /** Days relative to the meal's date — negative before, 0 the day of. */
+  offsetDays: number;
+  /** Minutes before the resolved due date a reminder fires; null = no reminder. */
+  reminderOffsetMinutes: number | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this

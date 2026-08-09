@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Alert } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -18,12 +18,14 @@ import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
+import { resolvePrepTaskDraft } from '../utils/recipeUtils';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -76,6 +78,7 @@ export function MealPlanScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  const addTask = useTaskStore(s => s.addTask);
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -106,6 +109,19 @@ export function MealPlanScreen() {
       title: pickResult.title,
     });
     setPlanningDay(null);
+  };
+
+  const addPrepTasksForSelected = () => {
+    if (!selected?.recipeId) return;
+    const recipe = recipesById.get(selected.recipeId);
+    if (!recipe || recipe.prepTasks.length === 0) return;
+    const mealDate = dayKeyToDate(selected.date);
+    recipe.prepTasks.forEach(prepTask => {
+      const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
+      addTask({ title: prepTask.title, dueDate, reminderTime });
+    });
+    haptics.success();
+    Alert.alert('Prep tasks added', `Added ${recipe.prepTasks.length} to your tasks.`);
   };
 
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
@@ -231,6 +247,11 @@ export function MealPlanScreen() {
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
+            : undefined
+        }
+        onAddPrepTasks={
+          selected?.recipeId && (recipesById.get(selected.recipeId)?.prepTasks.length ?? 0) > 0
+            ? addPrepTasksForSelected
             : undefined
         }
         onClose={() => setSelectedId(null)}

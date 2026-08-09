@@ -40,6 +40,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     sourceName: null,
     servings: null,
     ingredients,
+    prepTasks: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
