@@ -287,11 +287,10 @@ export function QuickAddModal({
         Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
         Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
         Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-      ]).start(() => {
-        // Focus (and the keyboard's own slide-up) is deferred until the sheet
-        // has settled, so the two motions don't overlap and fight each other.
-        inputRef.current?.focus();
-      });
+      ]).start();
+      // Focus (and the keyboard's own slide-up) starts alongside the sheet
+      // animation rather than after it, so the keyboard is up sooner.
+      inputRef.current?.focus();
     }
   }, [visible, context, initialType]);
 
