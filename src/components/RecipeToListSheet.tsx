@@ -81,7 +81,9 @@ export function RecipeToListSheet({ visible, recipe, onClose }: Props) {
   }, [classified]);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(
+    new Set(['probablyHave']),
+  );
 
   useEffect(() => {
     if (!visible) return;
