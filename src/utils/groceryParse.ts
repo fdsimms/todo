@@ -167,7 +167,13 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
       const unit = maybeUnit?.toLowerCase();
       if (unit && UNIT_SET.has(unit)) {
         const canonicalUnit = UNIT_ABBREVIATIONS[unit] ?? unit;
-        return { name: clampName(rest), quantity: clampQuantity(`${count} ${canonicalUnit}`) };
+        // "2 boxes of cereal" — the unit already carries the container, so the
+        // connecting "of" isn't part of the name. Only stripped when something
+        // remains after it ("2 boxes of" alone keeps "of" rather than emptying
+        // the name).
+        const stripped = rest.replace(/^of\s+/i, '');
+        const name = stripped.trim() ? stripped : rest;
+        return { name: clampName(name), quantity: clampQuantity(`${count} ${canonicalUnit}`) };
       }
       if (!maybeUnit) {
         // Bare count: "3 avocados". The unit slot was whitespace, so `rest`
