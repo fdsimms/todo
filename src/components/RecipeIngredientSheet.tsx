@@ -16,6 +16,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
+import { suggestShorterCatalogName } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
@@ -42,6 +43,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const catalogKeys = useMemo(
+    () => new Set(groceryItems.map(i => i.nameKey)),
+    [groceryItems]
+  );
 
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -77,6 +83,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // precedence addByName applies.
   const defaultAisle = rememberedAisleFor(name) ?? aisleForName(name) ?? 'Other';
 
+  // A one-tap correction for the offline parser's known limit: a leading
+  // prep/unit word it didn't recognise ("cloves garlic") stays in the name,
+  // but if the shorter name is already something in the catalog, that's
+  // confirmation rather than a guess — see suggestShorterCatalogName.
+  const catalogSuggestion = suggestShorterCatalogName(name, catalogKeys);
+
   return (
     <EditorSheet
       visible={visible}
@@ -104,6 +116,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           maxLength={GROCERY_NAME_MAX_LENGTH}
           accessibilityLabel="Ingredient name"
         />
+        {!!catalogSuggestion && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setName(catalogSuggestion); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Use "${catalogSuggestion}" instead — it's already in your catalog`}
+          >
+            <Text style={styles.suggestionText}>
+              Did you mean “{catalogSuggestion}”? Already in your catalog.
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.sectionCard}>
@@ -220,6 +245,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     // A box height, never lineHeight — see the TextInput note in CLAUDE.md.
     minHeight: 36,
+  },
+  suggestionRow: {
+    paddingBottom: spacing.xs,
+  },
+  suggestionText: {
+    color: colors.accent,
+    fontSize: font.sm,
   },
   pillRow: {
     flexDirection: 'row',

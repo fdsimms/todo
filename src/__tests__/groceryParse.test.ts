@@ -2,6 +2,7 @@ import {
   groceryNameKey,
   parseGroceryInput,
   splitPrep,
+  suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
 } from '../utils/groceryParse';
@@ -203,6 +204,38 @@ describe('splitPrep', () => {
 
   it('leaves a name with no comma untouched', () => {
     expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
+  });
+});
+
+// ─── suggestShorterCatalogName ────────────────────────────────────────────────
+
+describe('suggestShorterCatalogName', () => {
+  it('offers the catalog name when dropping the leading word matches it', () => {
+    const catalog = new Set(['garlic']);
+    expect(suggestShorterCatalogName('cloves garlic', catalog)).toBe('garlic');
+    expect(suggestShorterCatalogName('sprigs thyme', new Set(['thyme']))).toBe('thyme');
+  });
+
+  it('is null when the full name already matches the catalog', () => {
+    expect(suggestShorterCatalogName('garlic', new Set(['garlic']))).toBeNull();
+  });
+
+  it('is null when the shortened name is not in the catalog either', () => {
+    expect(suggestShorterCatalogName('cloves garlic', new Set(['onions']))).toBeNull();
+  });
+
+  it('is null for a one-word name — nothing to drop', () => {
+    expect(suggestShorterCatalogName('garlic', new Set())).toBeNull();
+  });
+
+  it('only tries dropping the first word, not chaining further', () => {
+    // "of garlic" isn't in the catalog either, so this must not keep
+    // stripping down to "garlic" — one confirmed hit or nothing.
+    expect(suggestShorterCatalogName('a bunch of garlic', new Set(['garlic']))).toBeNull();
+  });
+
+  it('is null for an empty name', () => {
+    expect(suggestShorterCatalogName('', new Set(['garlic']))).toBeNull();
   });
 });
 
