@@ -1263,7 +1263,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     const recurs = task.recurrenceType !== 'none';
     const chainAdvances = task.chainEnabled && task.chainItems.length > 0;
-    const atChainEnd = chainAdvances && task.chainIndex >= task.chainItems.length - 1;
+    // A miss never walks forward into the next step — that would read as
+    // having done Step 2 the moment Step 1 was marked missed. It ends the
+    // whole chain attempt on the spot, same as reaching the real last step,
+    // so the run's own bookkeeping (streak, recurrenceCount) treats a
+    // mid-chain miss as a missed cycle rather than a free pass through it.
+    const atChainEnd = chainAdvances && (missed || task.chainIndex >= task.chainItems.length - 1);
     // A chain is a singly linked list of steps: completing one immediately
     // creates the next, with no schedule needed, and it simply ends after
     // the last step. Repeat changes only what happens at that last step —
