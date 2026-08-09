@@ -50,6 +50,17 @@ export function dayKeyOf(date: Date): string {
 }
 
 /**
+ * The inverse of dayKeyOf: a stored `YYYY-MM-DD` key back into a local-midnight
+ * Date, for the handful of callers that need to format it (a weekday name, a
+ * calendar-day comparison). `new Date('2026-08-09')` parses as UTC midnight and
+ * reads as the previous day in any zone behind UTC — appending the local-time
+ * marker is what keeps it a *local* midnight instead.
+ */
+export function dayKeyToDate(key: string): Date {
+  return new Date(`${key}T00:00:00`);
+}
+
+/**
  * The logical-day-start instant for a *stored* date like a task's dueDate or
  * deferUntil — the calendar day the value represents, at the dayResetTime
  * clock time. Unlike getDayStart(), this never rolls the result back a day:

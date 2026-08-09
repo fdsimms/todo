@@ -12,6 +12,7 @@ import {
   getLogicalTomorrow,
   getLogicalNow,
   dayKeyOf,
+  dayKeyToDate,
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
@@ -1059,5 +1060,20 @@ describe('dayKeyOf', () => {
     expect(dayKeyOf(new Date(2026, 7, 5, 0, 0, 0))).toBe('2026-08-05');
     expect(dayKeyOf(new Date(2026, 7, 5, 1, 30, 0))).toBe('2026-08-05');
     expect(dayKeyOf(new Date(2026, 7, 5, 23, 59, 59))).toBe('2026-08-05');
+  });
+});
+
+describe('dayKeyToDate', () => {
+  it('round-trips through dayKeyOf', () => {
+    const key = dayKeyOf(new Date(2026, 7, 5));
+    expect(dayKeyOf(dayKeyToDate(key))).toBe(key);
+  });
+
+  it('lands on local midnight, not UTC midnight', () => {
+    const d = dayKeyToDate('2026-08-05');
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(7);
+    expect(d.getDate()).toBe(5);
+    expect(d.getHours()).toBe(0);
   });
 });

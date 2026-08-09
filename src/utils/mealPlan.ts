@@ -1,9 +1,12 @@
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
+import { isSameDay } from 'date-fns/isSameDay';
+import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { MEAL_SLOTS, MEAL_SLOT_LABELS, MEAL_PLAN_RETENTION_DAYS } from '../types';
 import { cleanRecipeName } from './recipeUtils';
 import { dayKeyOf } from './dateUtils';
+import type { WeekStart } from '../store/useSettingsStore';
 
 /**
  * Everything decidable about a week plan, kept store-free and node-testable —
@@ -179,4 +182,33 @@ export function mealPlanPurgeCutoffKey(
   days: number = MEAL_PLAN_RETENTION_DAYS
 ): string {
   return dayKeyOf(subDays(now, days));
+}
+
+/**
+ * "Added to list today", "Added to list yesterday", "Added to list on
+ * Sunday", "Added to list on Aug 3" — the week header's stamp line.
+ *
+ * Deliberately its own ladder rather than a reuse of dateUtils'
+ * formatScheduledDate/formatDeadlineDate family: those are written for a date
+ * that can be in the *future* relative to today (a task due date), so their
+ * "Nd ago" branch fires for anything more than one day in the past and never
+ * falls through to a weekday name. `addedAt` is a stamp about something that
+ * already happened — always today or earlier — so a weekday name is the
+ * right answer all the way back to the start of the week, same as this app's
+ * other read of a *past* instant, TaskItem's completed-row timestamp.
+ *
+ * `now` and `weekStartsOn` are parameters rather than reads of the settings
+ * store, matching buildWeekDays/weekdayHeaders — this module stays store-free
+ * so jest can reach it without a renderer.
+ */
+export function describeAddedToList(
+  addedAt: string,
+  now: Date = new Date(),
+  weekStartsOn: WeekStart = 0
+): string {
+  const d = new Date(addedAt);
+  if (isSameDay(d, now)) return 'Added to list today';
+  if (isSameDay(d, subDays(now, 1))) return 'Added to list yesterday';
+  if (isSameWeek(d, now, { weekStartsOn })) return `Added to list on ${format(d, 'EEEE')}`;
+  return `Added to list on ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
 }

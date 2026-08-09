@@ -5,6 +5,8 @@ import {
   dbUpdateMealPlanEntry,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
+  dbGetMealPlanAddedToList,
+  dbSetMealPlanAddedToList,
 } from '../db/database';
 import type { MealPlanEntry, MealSlot } from '../types';
 
@@ -14,6 +16,8 @@ jest.mock('../db/database', () => ({
   dbUpdateMealPlanEntry: jest.fn(),
   dbDeleteMealPlanEntry: jest.fn(),
   dbPurgeOldMealPlanEntries: jest.fn().mockReturnValue(0),
+  dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
+  dbSetMealPlanAddedToList: jest.fn(),
 }));
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -53,8 +57,9 @@ beforeEach(() => {
   seq = 0;
   (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
   (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(0);
+  (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({});
   useMealPlanStore.setState({
-    entries: [], rangeStart: null, rangeEnd: null, initialized: false,
+    entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
   });
 });
 
@@ -109,6 +114,12 @@ describe('initialize', () => {
     expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
     expect(getEntries()).toEqual([]);
     expect(useMealPlanStore.getState().initialized).toBe(true);
+  });
+
+  it('loads addedToListAt from the database, same as any other database swap', () => {
+    (dbGetMealPlanAddedToList as jest.Mock).mockReturnValue({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
+    useMealPlanStore.getState().initialize();
+    expect(useMealPlanStore.getState().addedToListAt).toEqual({ '2026-08-09': '2026-08-09T00:00:00.000Z' });
   });
 });
 
@@ -290,5 +301,49 @@ describe('purgeOldEntries', () => {
     loadWeek([entry('2026-08-05', 'dinner')]);
     useMealPlanStore.getState().purgeOldEntries();
     expect(getEntries()).toHaveLength(1);
+  });
+
+  it('trims addedToListAt stamps past the same horizon', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8));
+    useMealPlanStore.setState({
+      addedToListAt: { '2026-02-08': '2026-02-08T00:00:00.000Z', '2026-08-03': '2026-08-03T00:00:00.000Z' },
+    });
+
+    useMealPlanStore.getState().purgeOldEntries();
+
+    expect(useMealPlanStore.getState().addedToListAt).toEqual({
+      '2026-08-03': '2026-08-03T00:00:00.000Z',
+    });
+    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith({ '2026-08-03': '2026-08-03T00:00:00.000Z' });
+    jest.useRealTimers();
+  });
+
+  it('does not touch storage when no stamp was old enough to trim', () => {
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-03': '2026-08-03T00:00:00.000Z' } });
+    useMealPlanStore.getState().purgeOldEntries();
+    expect(dbSetMealPlanAddedToList).not.toHaveBeenCalled();
+  });
+});
+
+describe('stampAddedToList', () => {
+  it('records now against the week key and persists it', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 12, 9, 30));
+    useMealPlanStore.getState().stampAddedToList('2026-08-09');
+
+    expect(useMealPlanStore.getState().addedToListAt['2026-08-09']).toBe(
+      new Date(2026, 7, 12, 9, 30).toISOString()
+    );
+    expect(dbSetMealPlanAddedToList).toHaveBeenCalledWith(
+      expect.objectContaining({ '2026-08-09': expect.any(String) })
+    );
+    jest.useRealTimers();
+  });
+
+  it('keeps stamps for other weeks rather than replacing the whole map', () => {
+    useMealPlanStore.setState({ addedToListAt: { '2026-08-02': '2026-08-02T00:00:00.000Z' } });
+    useMealPlanStore.getState().stampAddedToList('2026-08-09');
+
+    const stamps = useMealPlanStore.getState().addedToListAt;
+    expect(Object.keys(stamps).sort()).toEqual(['2026-08-02', '2026-08-09']);
   });
 });

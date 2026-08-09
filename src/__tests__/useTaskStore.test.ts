@@ -86,6 +86,8 @@ jest.mock('../db/database', () => ({
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
+  // useTaskStore.initialize() fans out to the meal plan store too.
+  dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
 }));
 
 jest.mock('../store/useCategoryStore', () => ({
