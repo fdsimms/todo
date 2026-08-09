@@ -27,20 +27,24 @@ interface MenuItem {
   name: string;
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
+  /** Other tab names this row should also read as "active" for — the
+   *  Groceries/Recipes/Meal plan trio now shares one row and a `GroceriesHubPills`
+   *  switcher inside each screen, so the row must stay highlighted across all three. */
+  alsoActiveFor?: string[];
 }
+
+// Groceries, Recipes and Meal plan share one row: three screens tightly
+// coupled around a single kitchen workflow, switched via the pill row each
+// of them renders under its header (`GroceriesHubPills`) rather than three
+// separate drawer taps. The row always opens Groceries; the pills handle
+// getting to the other two once you're in.
+const GROCERIES_HUB_TABS = ['Groceries', 'Recipes', 'MealPlan'];
 
 const MENU_ITEMS: MenuItem[] = [
   { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
   // Sits with Tasks rather than down among Logbook/Archived: it's a peer
   // surface you go to on purpose, not somewhere things end up.
-  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries' },
-  // Sits directly under Groceries because that's what it feeds — you come here
-  // to put a recipe on that list, not to browse.
-  { name: 'Recipes', icon: 'restaurant-outline', label: 'Recipes' },
-  // The third of the kitchen trio, and last of them because it's the one that
-  // reads the other two: you plan a week out of the recipe box, and the week is
-  // what fills the list.
-  { name: 'MealPlan', icon: 'calendar-outline', label: 'Meal plan' },
+  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
@@ -219,7 +223,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             showsVerticalScrollIndicator={false}
           >
             {MENU_ITEMS.map((item, index) => {
-              const isActive = activeTab === item.name;
+              const isActive = activeTab === item.name || item.alsoActiveFor?.includes(activeTab) === true;
               return (
                 <DrawerItemAppear key={item.name} index={index}>
                 <TouchableOpacity

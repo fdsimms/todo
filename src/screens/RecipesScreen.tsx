@@ -16,6 +16,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -145,6 +146,7 @@ export function RecipesScreen() {
           ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
           : undefined}
       />
+      <GroceriesHubPills active="Recipes" />
 
       {recipes.length === 0 ? (
         <EmptyState
