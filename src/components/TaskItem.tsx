@@ -1316,7 +1316,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {showStreakChip && (
               <View
-                style={styles.metaChip}
+                style={[styles.metaChip, styles.streakChip]}
                 accessibilityLabel={
                   task.streakCount > 0
                     ? `${task.streakCount} day streak`
@@ -2296,6 +2296,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flexShrink: 1,
+  },
+  // The streak flame + count read as one glyph, not an icon-label pair, so it
+  // wants tighter spacing than every other metaChip (project, category, etc.)
+  // — override just this chip rather than tightening the shared gap.
+  streakChip: {
+    gap: spacing.xs / 2,
   },
   importRow: {
     flexDirection: 'row',
