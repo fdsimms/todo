@@ -13,7 +13,7 @@ import { format } from 'date-fns/format';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { dayKeyOf } from '../utils/dateUtils';
@@ -167,7 +167,9 @@ export function MealEntrySheet({
                 accessibilityRole="button"
                 accessibilityLabel="Mark this meal cooked"
               >
-                <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+                <View style={styles.actionIcon}>
+                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+                </View>
                 <Text style={[styles.actionText, { color: colors.accent }]}>Mark cooked</Text>
               </TouchableOpacity>
             </>
@@ -183,7 +185,9 @@ export function MealEntrySheet({
                 accessibilityRole="button"
                 accessibilityLabel="Open this recipe"
               >
-                <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
+                <View style={styles.actionIcon}>
+                  <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
+                </View>
                 <Text style={[styles.actionText, { color: colors.accent }]}>Open recipe</Text>
               </TouchableOpacity>
             </>
@@ -199,7 +203,9 @@ export function MealEntrySheet({
                 accessibilityRole="button"
                 accessibilityLabel="Add prep tasks for this meal"
               >
-                <Ionicons name="alarm-outline" size={16} color={colors.accent} />
+                <View style={styles.actionIcon}>
+                  <Ionicons name="alarm-outline" size={16} color={colors.accent} />
+                </View>
                 <Text style={[styles.actionText, { color: colors.accent }]}>Add prep tasks</Text>
               </TouchableOpacity>
             </>
@@ -213,7 +219,9 @@ export function MealEntrySheet({
             accessibilityRole="button"
             accessibilityLabel="Take this off the plan"
           >
-            <Ionicons name="trash-outline" size={16} color={colors.red} />
+            <View style={styles.actionIcon}>
+              <Ionicons name="trash-outline" size={16} color={colors.red} />
+            </View>
             <Text style={[styles.actionText, { color: colors.red }]}>Remove from plan</Text>
           </TouchableOpacity>
         </View>
@@ -323,6 +331,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 14,
+  },
+  // Fixed-width wrapper so the label starts at the same x regardless of the
+  // glyph's own optical width (checkmark-circle vs restaurant vs trash, all
+  // at size={16}) — same idea as SideMenuDrawer's iconWrap.
+  actionIcon: {
+    width: iconSize.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionText: {
     fontSize: font.md,
