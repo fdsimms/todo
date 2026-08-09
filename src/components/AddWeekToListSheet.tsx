@@ -38,13 +38,14 @@ interface Props {
   onClose: () => void;
 }
 
-const SECTIONS: { category: PlanCategory; label: string; interactive: boolean }[] = [
-  { category: 'needToBuy', label: 'Need to buy', interactive: true },
-  { category: 'alreadyOnList', label: 'Already on your list', interactive: true },
-  { category: 'inTrolley', label: 'In your trolley', interactive: false },
-  // 'probablyHave' is omitted outright rather than rendered empty — it needs
-  // the purchase-cadence inference that hasn't shipped yet (meal-planning
-  // increment 4), and classifyPlanned never puts a row there in the meantime.
+const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; collapsible: boolean }[] = [
+  { category: 'needToBuy', label: 'Need to buy', interactive: true, collapsible: false },
+  { category: 'alreadyOnList', label: 'Already on your list', interactive: true, collapsible: false },
+  { category: 'inTrolley', label: 'In your trolley', interactive: false, collapsible: false },
+  // Collapsed by default: this is grocerySuggest's pantry guess, not
+  // something the user asked for, so it starts out of the way with its
+  // count visible rather than pre-expanded among rows that need a decision.
+  { category: 'probablyHave', label: 'Probably have', interactive: true, collapsible: true },
 ];
 
 /**
@@ -82,6 +83,7 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   }, [classified]);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [expandedSections, setExpandedSections] = useState<Set<PlanCategory>>(new Set());
 
   // Reset to the default tick state fresh each time the sheet opens, rather
   // than living-recompute against classified while it's up — same model
@@ -89,8 +91,19 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
   useEffect(() => {
     if (!visible) return;
     setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
+    setExpandedSections(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const toggleSection = (category: PlanCategory) => {
+    haptics.tap();
+    setExpandedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  };
 
   const toggle = (row: ClassifiedIngredient) => {
     haptics.tap();
@@ -152,60 +165,80 @@ export function AddWeekToListSheet({ visible, entries, recipesById, range, onClo
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
-            {SECTIONS.map(({ category, label, interactive }) => {
+            {SECTIONS.map(({ category, label, interactive, collapsible }) => {
               const rows = byCategory[category];
               if (rows.length === 0) return null;
+              const isOpen = !collapsible || expandedSections.has(category);
               return (
                 <View key={category} style={styles.section}>
-                  <Text style={styles.sectionLabel}>{label} · {rows.length}</Text>
-                  <View style={styles.card}>
-                    {rows.map((row, i) => {
-                      const on = interactive && ticked.has(row.nameKey);
-                      return (
-                        <React.Fragment key={row.nameKey}>
-                          {i > 0 && <View style={styles.sep} />}
-                          <TouchableOpacity
-                            style={styles.row}
-                            activeOpacity={interactive ? interaction.activeOpacity : 1}
-                            onPress={interactive ? () => toggle(row) : undefined}
-                            disabled={!interactive}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: on, disabled: !interactive }}
-                            accessibilityLabel={
-                              [row.name, row.quantity, !interactive ? 'already in your trolley' : null]
-                                .filter(Boolean)
-                                .join(', ')
-                            }
-                          >
-                            <View style={[
-                              styles.checkbox,
-                              on && styles.checkboxOn,
-                              !interactive && styles.checkboxDisabled,
-                            ]}>
-                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                            </View>
-                            <View style={styles.body}>
-                              <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
-                                {row.name}
-                              </Text>
-                              {/* Only shown once merging actually happened — a
-                                  single-source row has nothing to expand into. */}
-                              {row.sources.length > 1 && (
-                                <Text style={styles.sources} numberOfLines={1}>
-                                  {row.sources.join(' · ')}
-                                </Text>
-                              )}
-                            </View>
-                            {!!row.quantity && (
-                              <View style={styles.qtyPill}>
-                                <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                  <TouchableOpacity
+                    style={styles.sectionHeaderRow}
+                    activeOpacity={collapsible ? interaction.activeOpacity : 1}
+                    onPress={collapsible ? () => toggleSection(category) : undefined}
+                    disabled={!collapsible}
+                    accessibilityRole={collapsible ? 'button' : undefined}
+                    accessibilityState={collapsible ? { expanded: isOpen } : undefined}
+                  >
+                    <Text style={styles.sectionLabel}>{label} · {rows.length}</Text>
+                    {collapsible && (
+                      <Ionicons
+                        name={isOpen ? 'chevron-up' : 'chevron-down'}
+                        size={12}
+                        color={colors.textTertiary}
+                      />
+                    )}
+                  </TouchableOpacity>
+                  {isOpen && (
+                    <View style={styles.card}>
+                      {rows.map((row, i) => {
+                        const on = interactive && ticked.has(row.nameKey);
+                        // A pantry-guess reason takes priority over the source
+                        // breakdown — it's the more useful "why is this here"
+                        // for a probablyHave row, and a single-source row has
+                        // no breakdown to show anyway.
+                        const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
+                        return (
+                          <React.Fragment key={row.nameKey}>
+                            {i > 0 && <View style={styles.sep} />}
+                            <TouchableOpacity
+                              style={styles.row}
+                              activeOpacity={interactive ? interaction.activeOpacity : 1}
+                              onPress={interactive ? () => toggle(row) : undefined}
+                              disabled={!interactive}
+                              accessibilityRole="checkbox"
+                              accessibilityState={{ checked: on, disabled: !interactive }}
+                              accessibilityLabel={
+                                [row.name, row.quantity, subtitle, !interactive ? 'already in your trolley' : null]
+                                  .filter(Boolean)
+                                  .join(', ')
+                              }
+                            >
+                              <View style={[
+                                styles.checkbox,
+                                on && styles.checkboxOn,
+                                !interactive && styles.checkboxDisabled,
+                              ]}>
+                                {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
                               </View>
-                            )}
-                          </TouchableOpacity>
-                        </React.Fragment>
-                      );
-                    })}
-                  </View>
+                              <View style={styles.body}>
+                                <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
+                                  {row.name}
+                                </Text>
+                                {!!subtitle && (
+                                  <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
+                                )}
+                              </View>
+                              {!!row.quantity && (
+                                <View style={styles.qtyPill}>
+                                  <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                                </View>
+                              )}
+                            </TouchableOpacity>
+                          </React.Fragment>
+                        );
+                      })}
+                    </View>
+                  )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
                       Already on the list — tick one to top up its quantity for this week.
@@ -236,6 +269,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   section: { gap: spacing.xs },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   sectionLabel: {
     color: colors.textTertiary,
     fontSize: font.xs,

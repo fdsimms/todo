@@ -80,6 +80,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastAddedAt: null,
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
     ...overrides,
   };
 }
@@ -426,6 +427,32 @@ describe('finishShopping', () => {
     seed([makeItem({ name: 'Milk', onList: true })]);
     expect(useGroceryStore.getState().finishShopping()).toBe(0);
     expect(useGroceryStore.getState().items[0].onList).toBe(true);
+  });
+
+  it('asserts the item on hand going forward, and passes the same map to the db layer', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 3, createdAt: '2026-01-01T00:00:00.000Z' });
+    seed([milk]);
+    (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+    useGroceryStore.getState().finishShopping();
+
+    const [, onHandUntilById] = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
+    expect(Object.keys(onHandUntilById)).toEqual([milk.id]);
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onHandUntil).toBe(onHandUntilById[milk.id]);
+    expect(new Date(updated.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('never asserts on hand for an item left unchecked', () => {
+    seed([makeItem({ name: 'Milk', onList: true, checked: true }), makeItem({ name: 'Eggs', onList: true, checked: false })]);
+    (dbFinishGroceryShopping as jest.Mock).mockImplementation(() => {
+      return useGroceryStore.getState().items.filter(i => i.checked && i.onList).map(i => i.id);
+    });
+
+    useGroceryStore.getState().finishShopping();
+
+    const [, onHandUntilById] = (dbFinishGroceryShopping as jest.Mock).mock.calls[0];
+    expect(Object.keys(onHandUntilById)).toHaveLength(1);
   });
 });
 
@@ -1036,7 +1063,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), costco.id);
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -1098,7 +1125,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -1113,7 +1140,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null);
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), expect.any(Object), null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -1378,5 +1405,34 @@ describe('renameItem keeps recipe ingredients in step', () => {
     useGroceryStore.getState().renameItem(item.id, 'Sourdough loaf');
 
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setOnHandUntil', () => {
+  it('writes the given value and persists it', () => {
+    const milk = makeItem({ name: 'Milk' });
+    seed([milk]);
+
+    useGroceryStore.getState().setOnHandUntil(milk.id, '2026-08-21T00:00:00.000Z');
+
+    expect(useGroceryStore.getState().items[0].onHandUntil).toBe('2026-08-21T00:00:00.000Z');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: milk.id, onHandUntil: '2026-08-21T00:00:00.000Z' })
+    );
+  });
+
+  it('clears back to null — the pantry guess deciding again', () => {
+    const milk = makeItem({ name: 'Milk', onHandUntil: '2026-08-21T00:00:00.000Z' });
+    seed([milk]);
+
+    useGroceryStore.getState().setOnHandUntil(milk.id, null);
+
+    expect(useGroceryStore.getState().items[0].onHandUntil).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setOnHandUntil('gone', '2026-08-21T00:00:00.000Z');
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

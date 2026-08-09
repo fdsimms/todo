@@ -1,3 +1,4 @@
+import { format } from 'date-fns/format';
 import type { GroceryItem } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
@@ -184,4 +185,83 @@ export function catalogPruneCandidates(
       daysBetween(now, i.lastAddedAt ?? i.createdAt) >= staleDays
     )
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// ─── The pantry ─────────────────────────────────────────────────────────────
+//
+// "Probably have" — an item off the list that purchase history says is still
+// around the kitchen. This is recencyScore turned around: instead of a smooth
+// decay that ranks suggestions, it asks a binary question — has the time
+// since the last purchase already passed how often *this specific item*
+// usually gets bought again? A per-item cadence rather than one global window
+// is the whole trick, and it's the one behaviour here that genuinely needs
+// purchase history: milk and soy sauce can't share a number.
+
+/** Bought at least this many times before its own cadence is trusted. */
+const MIN_PURCHASES_FOR_PANTRY_GUESS = 3;
+/** "Got it" without enough purchase history to compute a cadence of its own. */
+const DEFAULT_ON_HAND_DAYS = 14;
+
+/**
+ * "Out of it" — any definitively-past timestamp suppresses probablyHaveReason's
+ * guess below, so the exact value doesn't matter; a named constant beats a
+ * bare `new Date(0)` re-typed at each call site and says why it's there.
+ */
+export const OUT_OF_IT_UNTIL = new Date(0).toISOString();
+
+/**
+ * How many days apart this item's purchases have averaged, or null when
+ * there isn't enough to go on. Deliberately crude — `(now - createdAt) /
+ * purchaseCount` rather than a real inter-purchase average — because the
+ * catalog doesn't keep a purchase log to average over; the row's age and its
+ * running count are all there is, and that's already enough to tell milk
+ * from soy sauce.
+ */
+export function estimatedPurchaseCadenceDays(item: GroceryItem, now: Date): number | null {
+  if (item.purchaseCount < 1) return null;
+  const ageDays = daysBetween(now, item.createdAt);
+  if (ageDays <= 0) return null;
+  return ageDays / item.purchaseCount;
+}
+
+/**
+ * "bought 6× · last on 12 Jul" — why an item off the list is treated as
+ * probably still in the kitchen, or null when there's no such reason.
+ *
+ * `item.onHandUntil` is an explicit assertion and is checked first, because
+ * it's a fact the user handed over rather than a guess: a future value wins
+ * regardless of what the cadence math below would say, and a past one
+ * (`markOutOfIt`) *suppresses* the guess rather than letting stale purchase
+ * history overrule "I just told you I'm out." Only when there's no assertion
+ * at all does the guess run: enough purchases to trust a cadence, and the
+ * time since the last one still inside it.
+ */
+export function probablyHaveReason(item: GroceryItem, now: Date): string | null {
+  if (item.onHandUntil) {
+    const until = new Date(item.onHandUntil).getTime();
+    if (!Number.isNaN(until)) {
+      return until >= now.getTime() ? 'marked as on hand' : null;
+    }
+  }
+
+  if (item.purchaseCount < MIN_PURCHASES_FOR_PANTRY_GUESS || !item.lastPurchasedAt) return null;
+  const cadenceDays = estimatedPurchaseCadenceDays(item, now);
+  if (cadenceDays === null) return null;
+  if (daysBetween(now, item.lastPurchasedAt) >= cadenceDays) return null;
+
+  return `bought ${item.purchaseCount}× · last on ${format(new Date(item.lastPurchasedAt), 'd MMM')}`;
+}
+
+/**
+ * How far out a fresh "Got it" (or a just-recorded purchase) should assert
+ * on-hand: this item's own cadence once there's enough history to trust one,
+ * the same two-week guess `probablyHaveReason` implicitly falls back to
+ * otherwise. Shared by finishShopping (every purchased item gets this
+ * automatically) and GroceryItemSheet's "Got it" button, so the two don't
+ * quietly drift to different defaults.
+ */
+export function defaultOnHandUntil(item: GroceryItem, now: Date): string {
+  const cadenceDays = estimatedPurchaseCadenceDays(item, now);
+  const days = cadenceDays !== null && cadenceDays >= 1 ? cadenceDays : DEFAULT_ON_HAND_DAYS;
+  return new Date(now.getTime() + days * DAY_MS).toISOString();
 }

@@ -1445,6 +1445,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     lastAddedAt: null,
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
     ...overrides,
   };
 }
@@ -1575,6 +1576,26 @@ describe('grocery items', () => {
       dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
       expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual([]);
       expect(dbGetAllGroceryItems()[0].purchaseCount).toBe(0);
+    });
+
+    it('writes a per-item on_hand_until rather than one shared value', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: true }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {
+        g1: '2026-08-21T00:00:00.000Z',
+        g2: '2026-08-14T00:00:00.000Z',
+      });
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('g1')!.onHandUntil).toBe('2026-08-21T00:00:00.000Z');
+      expect(byId.get('g2')!.onHandUntil).toBe('2026-08-14T00:00:00.000Z');
+    });
+
+    it('leaves on_hand_until untouched for a row the map says nothing about', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, onHandUntil: '2026-08-01T00:00:00.000Z' }));
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', {});
+      expect(dbGetAllGroceryItems()[0].onHandUntil).toBe('2026-08-01T00:00:00.000Z');
     });
   });
 
