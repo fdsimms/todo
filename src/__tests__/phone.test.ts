@@ -1,4 +1,4 @@
-import { isDialable, looksLikePhoneNumber, phoneDigits, telUrl } from '../utils/phone';
+import { isDialable, looksLikePhoneNumber, phoneDigits, smsUrl, telUrl } from '../utils/phone';
 
 describe('telUrl', () => {
   it('strips presentation characters', () => {
@@ -28,6 +28,32 @@ describe('telUrl', () => {
     expect(telUrl('   ')).toBeNull();
     expect(telUrl('+')).toBeNull();
     expect(telUrl('call me')).toBeNull();
+  });
+});
+
+describe('smsUrl', () => {
+  it('strips presentation characters', () => {
+    expect(smsUrl('(555) 123-4567')).toBe('sms:5551234567');
+    expect(smsUrl('555.123.4567')).toBe('sms:5551234567');
+    expect(smsUrl('020 7946 0018')).toBe('sms:02079460018');
+  });
+
+  it('keeps a leading + for international numbers', () => {
+    expect(smsUrl('+44 20 7946 0018')).toBe('sms:+442079460018');
+    expect(smsUrl('  +1 555 123 4567 ')).toBe('sms:+15551234567');
+  });
+
+  it('drops a + that is not leading — it is a typo, not a country code', () => {
+    expect(smsUrl('555+1234567')).toBe('sms:5551234567');
+  });
+
+  it('returns null when there is nothing to text', () => {
+    expect(smsUrl(null)).toBeNull();
+    expect(smsUrl(undefined)).toBeNull();
+    expect(smsUrl('')).toBeNull();
+    expect(smsUrl('   ')).toBeNull();
+    expect(smsUrl('+')).toBeNull();
+    expect(smsUrl('call me')).toBeNull();
   });
 });
 

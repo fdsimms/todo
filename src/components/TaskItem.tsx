@@ -35,7 +35,7 @@ import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotY
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
-import { telUrl } from '../utils/phone';
+import { telUrl, smsUrl } from '../utils/phone';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -268,6 +268,7 @@ export const TaskItem = React.memo(function TaskItem({
   // number the way it was written (see utils/phone.ts). Null means the field
   // holds nothing a dialler could use, and the button doesn't render at all.
   const callUrl = telUrl(task.phoneNumber);
+  const textUrl = smsUrl(task.phoneNumber);
   const handleCall = async () => {
     if (!callUrl) return;
     haptics.tap();
@@ -276,6 +277,17 @@ export const TaskItem = React.memo(function TaskItem({
       // LSApplicationQueriesSchemes entry, and on a device with no phone (an
       // iPad) openURL simply does nothing rather than throwing.
       await Linking.openURL(callUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+  const handleText = async () => {
+    if (!textUrl) return;
+    haptics.tap();
+    try {
+      // Same reasoning as handleCall — sms: needs no
+      // LSApplicationQueriesSchemes entry either.
+      await Linking.openURL(textUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -1514,6 +1526,18 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && textUrl && (
+        <TouchableOpacity
+          onPress={handleText}
+          hitSlop={8}
+          style={styles.textBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Text ${task.phoneNumber} for ${task.title}`}
+        >
+          <Ionicons name="chatbubble" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && showPin && (
         <TouchableOpacity
           onPress={() => {
@@ -2333,6 +2357,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   callBtn: {
+    padding: 4,
+  },
+  textBtn: {
     padding: 4,
   },
   pinBtn: {
