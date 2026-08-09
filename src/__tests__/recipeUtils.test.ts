@@ -159,6 +159,14 @@ describe('makeIngredient', () => {
     expect(result.nameKey).toBe('garlic');
   });
 
+  it('captures a sized container as the quantity, leaving a clean catalog name', () => {
+    const result = makeIngredient('2 14 oz cans black beans, drained and rinsed')!;
+    expect(result.name).toBe('black beans');
+    expect(result.quantity).toBe('2 14 oz cans');
+    expect(result.prep).toBe('drained and rinsed');
+    expect(result.nameKey).toBe('black beans');
+  });
+
   it('leaves prep null when there is no comma clause', () => {
     expect(makeIngredient('2 lb chicken thighs')!.prep).toBeNull();
   });

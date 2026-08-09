@@ -76,6 +76,40 @@ describe('parseGroceryInput', () => {
     });
   });
 
+  it('recognizes "N SIZE-UNIT container" as a compound quantity', () => {
+    expect(parseGroceryInput('2 14 oz cans black beans, drained and rinsed')).toEqual({
+      name: 'black beans, drained and rinsed',
+      quantity: '2 14 oz cans',
+    });
+    expect(parseGroceryInput('2 (14.5 oz) cans diced tomatoes')).toEqual({
+      name: 'diced tomatoes',
+      quantity: '2 14.5 oz cans',
+    });
+    expect(parseGroceryInput('2 14-ounce cans black beans')).toEqual({
+      name: 'black beans',
+      quantity: '2 14 ounce cans',
+    });
+    // No leading multiplier — a single can, sized.
+    expect(parseGroceryInput('14 oz can black beans')).toEqual({
+      name: 'black beans',
+      quantity: '14 oz can',
+    });
+  });
+
+  it('does not misfire the container pattern on an ordinary unit + name', () => {
+    // "lb" is a size unit but "chicken" isn't a container word, so this must
+    // fall through to the plain leading-quantity match untouched.
+    expect(parseGroceryInput('2 lb chicken thighs')).toEqual({
+      name: 'chicken thighs',
+      quantity: '2 lb',
+    });
+    expect(parseGroceryInput('2 bottles wine')).toEqual({ name: 'wine', quantity: '2 bottles' });
+    expect(parseGroceryInput('1 can black beans')).toEqual({
+      name: 'black beans',
+      quantity: '1 can',
+    });
+  });
+
   it('recognizes clove/cloves as a unit', () => {
     expect(parseGroceryInput('5 cloves garlic, peeled and sliced')).toEqual({
       name: 'garlic, peeled and sliced',

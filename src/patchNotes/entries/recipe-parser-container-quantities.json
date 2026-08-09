@@ -1,0 +1,4 @@
+{
+  "message": "The recipe parser now reads \"2 14 oz cans black beans\" as quantity \"2 14 oz cans\" and name \"black beans\", instead of leaving the can size stuck in the ingredient name.",
+  "date": "2026-08-09"
+}

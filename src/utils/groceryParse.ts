@@ -76,6 +76,39 @@ const UNIT_ABBREVIATIONS: Record<string, string> = {
 // "1 1/2 cups" isn't cut short at "1" with "1/2 cups" left dangling in front
 // of the unit match.
 const LEADING_QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
+
+// Weight/volume units usable as a container's *size* ("14 oz cans", "1 L
+// bottles"). Deliberately narrower than UNIT_SET as a whole — cup/tbsp/tsp/
+// dozen aren't how a can or jar gets sized, and including them would just
+// make CONTAINER_QTY fire on more inputs without any of them being real
+// container-size phrasing.
+const SIZE_UNITS = new Set([
+  'lb', 'lbs', 'pound', 'pounds',
+  'oz', 'ounce', 'ounces',
+  'kg', 'g', 'gram', 'grams',
+  'l', 'ml', 'liter', 'liters', 'litre', 'litres',
+  'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
+]);
+
+// The container word — always the second unit in "N SIZE-UNIT CONTAINER"
+// ("2 14 oz cans"). Same words UNIT_SET already treats as a bare quantity on
+// their own ("2 cans"); this only adds a size in front of them.
+const CONTAINER_UNITS = new Set([
+  'can', 'cans', 'jar', 'jars', 'box', 'boxes', 'bag', 'bags',
+  'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
+]);
+
+// "2 14 oz cans black beans", "2 (14.5 oz) jars salsa", "14-ounce can broth"
+// — a container line names both how many containers there are and how big
+// each one is, which LEADING_QTY can't express on its own (it only pulls one
+// number and one unit, so the second number would otherwise get read as part
+// of the name). Tried first, and gated on both SIZE_UNITS and CONTAINER_UNITS
+// — same discipline as every other unit match here — so it only fires on
+// real container phrasing rather than swallowing the first two words of an
+// ordinary line ("2 lb chicken thighs" has a unit but no container word, so
+// the gate fails and it falls through to LEADING_QTY untouched).
+const CONTAINER_QTY =
+  /^(?:(\d+(?:\.\d+)?)\s+)?\(?(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)?\s+([a-z]+)\s+(.+)$/i;
 // "milk x2", "eggs x 12"
 const TRAILING_X = /^(.*?)\s+x\s*(\d+)$/i;
 // "eggs (dozen)", "milk (2%)" — only when the parens close the string.
@@ -107,10 +140,25 @@ function clampQuantity(s: string): string {
  * number ("1 1/2 tbsp") — recipe quantities are written that way as often as
  * decimals, and without it "1/4 cup tomato paste" doesn't even look like it
  * has a quantity.
+ *
+ * A container line ("2 14 oz cans black beans") also names a size in front of
+ * the container word — see CONTAINER_QTY — which needs its own pass since
+ * LEADING_QTY only ever captures one number and one unit.
  */
 export function parseGroceryInput(raw: string): { name: string; quantity: string | null } {
   const input = raw.trim().replace(/\s+/g, ' ');
   if (!input) return { name: '', quantity: null };
+
+  const container = CONTAINER_QTY.exec(input);
+  if (container) {
+    const [, count, sizeNum, sizeUnitRaw, containerRaw, rest] = container;
+    const sizeUnit = sizeUnitRaw.toLowerCase();
+    const containerWord = containerRaw.toLowerCase();
+    if (SIZE_UNITS.has(sizeUnit) && CONTAINER_UNITS.has(containerWord) && rest.trim()) {
+      const quantity = [count, sizeNum, sizeUnit, containerWord].filter(Boolean).join(' ');
+      return { name: clampName(rest), quantity: clampQuantity(quantity) };
+    }
+  }
 
   const leading = LEADING_QTY.exec(input);
   if (leading) {
