@@ -54,7 +54,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: { width: 22, height: 22, borderRadius: 11, backgroundColor: colors.textSecondary },
-  toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
+  toggleKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
 
   picker: { height: 180 },
   pickerButtons: {
