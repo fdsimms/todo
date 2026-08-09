@@ -252,7 +252,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.textSecondary,
   },
-  toggleKnobOn: { backgroundColor: colors.text, alignSelf: 'flex-end' },
+  toggleKnobOn: { backgroundColor: colors.onAccent, alignSelf: 'flex-end' },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
