@@ -76,7 +76,9 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
       <View style={styles.actions}>
         {actions?.map((action, i) => {
           const tintColor = action.tint === 'orange' ? colors.orange : colors.accent;
-          const iconColor = action.active ? colors.onAccent : colors.textSecondary;
+          const iconColor = action.disabled
+            ? colors.textTertiary
+            : action.active ? colors.onAccent : colors.textSecondary;
           return (
             <PressableScale
               key={`${action.icon}-${i}`}
