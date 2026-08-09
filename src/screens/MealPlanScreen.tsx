@@ -10,6 +10,7 @@ import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import type { MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
+import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { InlineAction } from '../components/InlineAction';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
@@ -262,6 +263,7 @@ export function MealPlanScreen() {
         subtitle={subtitle}
         actions={headerActions}
       />
+      <GroceriesHubPills active="MealPlan" />
 
       <FlatList
         data={days}
