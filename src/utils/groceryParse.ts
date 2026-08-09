@@ -222,6 +222,36 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
 }
 
 /**
+ * "cloves garlic" → "garlic", when "garlic" (and not "cloves garlic") is
+ * already a name in the catalog — a one-tap correction for exactly the
+ * leading-prep-word case splitPrep above declines to guess at ("sprigs
+ * thyme", "handful spinach", any word the unit whitelist hasn't heard of).
+ *
+ * This is the "surface it rather than solve it" answer to that same problem:
+ * guessing which leading word is prep is unsafe in general (see splitPrep's
+ * comment — "sliced almonds" is a real product), but *confirming against
+ * the user's own catalog* isn't a guess anymore. If "garlic" already exists
+ * as a name someone typed and bought, "cloves garlic" matching it once the
+ * first word is dropped is evidence, not a pattern match on the word
+ * "cloves" itself — so this only ever offers a name that's already real to
+ * this user, and never invents one.
+ *
+ * Only tries dropping exactly the *first* word. Two matches in a row
+ * ("a bunch of X" → "of X" → "X") is the pattern the leading-word guess is
+ * unsafe about in the first place; one confirmed hit is a correction, a
+ * chain of them is exactly the guessing this function exists to avoid.
+ */
+export function suggestShorterCatalogName(name: string, catalogKeys: ReadonlySet<string>): string | null {
+  const key = groceryNameKey(name);
+  if (!key || catalogKeys.has(key)) return null;
+  const words = name.trim().split(/\s+/);
+  if (words.length < 2) return null;
+  const rest = words.slice(1).join(' ').trim();
+  const restKey = groceryNameKey(rest);
+  return restKey && catalogKeys.has(restKey) ? rest : null;
+}
+
+/**
  * What typing a line into the grocery quick-add field would produce, with the
  * quantity and prep pieces each independently overridable — see
  * `GroceryAddField`'s per-token × button, the whole reason this exists rather
