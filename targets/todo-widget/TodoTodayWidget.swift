@@ -147,6 +147,11 @@ struct WidgetHeaderView: View {
                     .background(Circle().fill(palette.accent))
                     .contentShape(Circle())
             }
+            // Home Screen's tinted/monochrome appearance strips widget colors
+            // down to a single tone unless a view opts back in — without this,
+            // the accent-filled circle and the white plus glyph both render as
+            // the same flat tint and the plus disappears into its own button.
+            .widgetAccentable()
             .accessibilityLabel("Add task")
         }
         .frame(height: WidgetLayout.headerHeight)
