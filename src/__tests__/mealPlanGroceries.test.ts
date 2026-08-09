@@ -75,6 +75,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     lastAddedAt: null,
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null,
     ...overrides,
   };
 }
@@ -195,8 +196,20 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Saffron', nameKey: 'saffron', quantity: '1 pinch', aisle: null, source: 'Tue Paella' }];
     const rows = classifyPlanned(planned, [], now);
     expect(rows).toEqual([
-      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy' },
+      { nameKey: 'saffron', name: 'Saffron', aisle: null, quantity: '1 pinch', sources: ['Tue Paella'], category: 'needToBuy', reason: null },
     ]);
+  });
+
+  it('classifies a known, off-list row as probablyHave when the pantry guess says so, with its reason', () => {
+    const items = [item({
+      name: 'Milk', onList: false, purchaseCount: 3,
+      createdAt: new Date(2026, 4, 14).toISOString(), // 90 days before `now`
+      lastPurchasedAt: new Date(2026, 7, 2).toISOString(), // 10 days before `now`
+    })];
+    const planned = [{ name: 'Milk', nameKey: 'milk', quantity: '', aisle: null, source: 'Thu Cereal' }];
+    const row = classifyPlanned(planned, items, now)[0];
+    expect(row.category).toBe('probablyHave');
+    expect(row.reason).toBe('bought 3× · last on 2 Aug');
   });
 
   it('classifies a known catalog row that is off the list as needToBuy, not probablyHave', () => {

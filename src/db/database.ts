@@ -401,6 +401,9 @@ export function initDatabase(): void {
     // the week on screen, and the purge horizon. Nothing ever asks for an entry
     // by recipe, so there's no second index here.
     'CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_date ON meal_plan_entries(date)',
+    // Null for every existing row is exactly right: nothing predating this has
+    // been asserted as on hand. See GroceryItem.onHandUntil.
+    'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1168,6 +1171,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastAddedAt: (row.last_added_at as string) ?? null,
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
     createdAt: row.created_at as string,
+    onHandUntil: (row.on_hand_until as string) ?? null,
   };
 }
 
@@ -1182,13 +1186,14 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
-       favorite, purchase_count, last_added_at, last_purchased_at, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       favorite, purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
+      item.onHandUntil ?? null,
     ]
   );
 }
@@ -1197,13 +1202,15 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
   db.runSync(
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
-       sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?
+       sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
+       on_hand_until=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
-      item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.id,
+      item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
+      item.onHandUntil ?? null, item.id,
     ]
   );
 }
@@ -1232,7 +1239,11 @@ export function dbDeleteGroceryItem(id: string): void {
  * writes no link. That's what keeps this additive — picking a store never
  * became a step you have to complete mid-supermarket.
  */
-export function dbFinishGroceryShopping(purchasedAt: string, shopId: string | null = null): string[] {
+export function dbFinishGroceryShopping(
+  purchasedAt: string,
+  onHandUntilById: Readonly<Record<string, string>> = {},
+  shopId: string | null = null
+): string[] {
   const rows = db.getAllSync<{ id: string }>(
     'SELECT id FROM grocery_items WHERE checked = 1 AND on_list = 1'
   );
@@ -1245,6 +1256,14 @@ export function dbFinishGroceryShopping(purchasedAt: string, shopId: string | nu
       WHERE checked = 1 AND on_list = 1`,
     [purchasedAt]
   );
+  // Unlike every field above, on_hand_until is a per-item cadence guess (see
+  // grocerySuggest.defaultOnHandUntil) — never the same value twice across a
+  // trip — so it can't ride the single bulk UPDATE and gets its own pass, the
+  // same shape as the shop-link loop just below.
+  for (const row of rows) {
+    const until = onHandUntilById[row.id];
+    if (until) db.runSync('UPDATE grocery_items SET on_hand_until = ? WHERE id = ?', [until, row.id]);
+  }
   if (shopId) {
     for (const row of rows) {
       db.runSync(

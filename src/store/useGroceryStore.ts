@@ -27,6 +27,7 @@ import {
 import { useRecipeStore } from './useRecipeStore';
 import { generateId } from '../utils/id';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import { defaultOnHandUntil } from '../utils/grocerySuggest';
 import {
   aisleForName,
   normalizeAisleOrder,
@@ -144,6 +145,13 @@ interface GroceryStore {
   renameItem: (id: string, name: string) => boolean;
   setNote: (id: string, note: string) => void;
   toggleFavorite: (id: string) => void;
+  /**
+   * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
+   * setter, same as setQuantity/setNote: the caller decides the value
+   * (defaultOnHandUntil for "Got it", a past timestamp for "Out of it", or
+   * null to clear back to grocerySuggest.probablyHaveReason's own guess).
+   */
+  setOnHandUntil: (id: string, until: string | null) => void;
 
   removeFromList: (id: string) => void;
   /** removeFromList over a whole selection at once. */
@@ -355,6 +363,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       lastAddedAt: now,
       lastPurchasedAt: null,
       createdAt: now,
+      onHandUntil: null,
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
@@ -565,6 +574,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setOnHandUntil(id, until) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, onHandUntil: until };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
   toggleFavorite(id) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -654,10 +671,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   finishShopping(shopId = null) {
     const purchasedAt = new Date().toISOString();
+    const now = new Date(purchasedAt);
     // A shop deleted between opening the finish sheet and confirming it would
     // otherwise write links nothing can resolve.
     const shop = shopId ? get().shops.find(s => s.id === shopId) ?? null : null;
-    const ids = dbFinishGroceryShopping(purchasedAt, shop?.id ?? null);
+    // Computed from each item's *pre*-purchase history — its own cadence if
+    // it has one yet, defaultOnHandUntil's flat guess if not — so a trip
+    // asserts "you'll probably have this for about as long as you usually
+    // do" rather than a single flat window for everything bought today.
+    const onHandUntilById = Object.fromEntries(
+      get().items
+        .filter(i => i.checked && i.onList)
+        .map(i => [i.id, defaultOnHandUntil(i, now)])
+    );
+    const ids = dbFinishGroceryShopping(purchasedAt, onHandUntilById, shop?.id ?? null);
     if (ids.length === 0) return 0;
     const done = new Set(ids);
 
@@ -692,6 +719,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 inCatalog: true,
                 purchaseCount: i.purchaseCount + 1,
                 lastPurchasedAt: purchasedAt,
+                onHandUntil: onHandUntilById[i.id] ?? i.onHandUntil,
               }
             : i
         ),

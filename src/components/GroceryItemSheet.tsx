@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { format } from 'date-fns/format';
 import {
   Modal,
   View,
@@ -27,6 +28,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
 import { describeShops, shopsForItem } from '../utils/groceryShops';
+import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
 
 interface Props {
@@ -53,6 +55,7 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const setAisle = useGroceryStore(s => s.setAisle);
   const addAisle = useGroceryStore(s => s.addAisle);
   const toggleFavorite = useGroceryStore(s => s.toggleFavorite);
+  const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const removeFromList = useGroceryStore(s => s.removeFromList);
   const deleteItem = useGroceryStore(s => s.deleteItem);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -118,6 +121,24 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
     shopsForItem(item.id, itemShops, shops).map(s => [s.shop.id, s.purchaseCount])
   );
   const summary = describeShops(item, itemShops, shops);
+
+  // A future onHandUntil is an active "Got it"; a past one (always
+  // OUT_OF_IT_UNTIL in practice) is an active "Out of it"; null leaves the
+  // pantry guess deciding — see GroceryItem.onHandUntil.
+  const onHandFuture = !!item.onHandUntil && new Date(item.onHandUntil).getTime() >= Date.now();
+  const onHandPast = !!item.onHandUntil && !onHandFuture;
+  const markGotIt = () => {
+    haptics.tap();
+    setOnHandUntil(item.id, defaultOnHandUntil(item, new Date()));
+  };
+  const markOutOfIt = () => {
+    haptics.tap();
+    setOnHandUntil(item.id, OUT_OF_IT_UNTIL);
+  };
+  const clearOnHand = () => {
+    haptics.tap();
+    setOnHandUntil(item.id, null);
+  };
 
   const toggleShop = (shopId: string) => {
     const count = linkedCounts.get(shopId);
@@ -331,6 +352,37 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
               </View>
             </>
           )}
+
+          <Text style={styles.label}>PANTRY</Text>
+          <Text style={styles.hint}>
+            {onHandFuture
+              ? `Marked on hand until ${format(new Date(item.onHandUntil!), 'd MMM')}.`
+              : onHandPast
+                ? 'Marked out of it — won’t show as probably-have until you buy it again.'
+                : 'Decided automatically from purchase history when this comes up in a week plan.'}
+          </Text>
+          <View style={styles.pills}>
+            <TouchableOpacity
+              style={[styles.pill, onHandFuture && styles.pillActive]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={onHandFuture ? clearOnHand : markGotIt}
+              accessibilityRole="button"
+              accessibilityState={{ selected: onHandFuture }}
+              accessibilityLabel={onHandFuture ? 'Got it, marked on hand. Tap to clear.' : 'Got it — mark as on hand'}
+            >
+              <Text style={[styles.pillText, onHandFuture && styles.pillTextActive]}>Got it</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.pill, onHandPast && styles.pillActive]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={onHandPast ? clearOnHand : markOutOfIt}
+              accessibilityRole="button"
+              accessibilityState={{ selected: onHandPast }}
+              accessibilityLabel={onHandPast ? 'Out of it, marked not on hand. Tap to clear.' : 'Out of it — mark as not on hand'}
+            >
+              <Text style={[styles.pillText, onHandPast && styles.pillTextActive]}>Out of it</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={styles.actionRow}

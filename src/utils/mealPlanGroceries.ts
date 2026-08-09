@@ -2,6 +2,7 @@ import { format } from 'date-fns/format';
 import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
+import { probablyHaveReason } from './grocerySuggest';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -145,6 +146,8 @@ export interface ClassifiedIngredient {
   /** Every "Tue ragù"-style source this row came from, for the row's expandable breakdown. */
   sources: string[];
   category: PlanCategory;
+  /** Set only for `probablyHave` — grocerySuggest.probablyHaveReason's "bought 6× · last on 12 Jul". */
+  reason: string | null;
 }
 
 /**
@@ -156,25 +159,24 @@ export interface ClassifiedIngredient {
  * | needToBuy        | no catalog row, or known but off the list    |
  * | alreadyOnList     | on the list, unchecked                       |
  * | inTrolley         | on the list *and* checked                    |
- * | probablyHave      | known, recently bought, not on the list      |
+ * | probablyHave      | known, off the list, and grocerySuggest's    |
+ * |                   | pantry guess (or an explicit onHandUntil     |
+ * |                   | assertion) says it's probably still around   |
  *
- * `probablyHave` never classifies here — it needs the purchase-cadence
- * inference that hasn't shipped yet. Nothing is silently dropped in the
- * meantime: a name that would eventually land there instead falls into
- * `needToBuy`, exactly like the table says for "known but off-list", which is
- * the correct default until the inference exists. `now` is accepted and
- * unused for the same reason — the signature is already right for when that
- * inference arrives, rather than changing again then.
+ * `probablyHaveReason` is checked only for a row that's known but off the
+ * list — never for one already on the list or in the trolley, and never for
+ * a name with no catalog row at all, which has no purchase history to guess
+ * from in the first place.
  *
  * Display name, among sources sharing a key: the live catalog row's own name
- * wins (`itemByNameKey`-equivalent lookup by nameKey) — that's what the user
- * themselves typed, and addByName already holds the line that the typed name
- * wins over anything else. Failing that, the shortest source name.
+ * wins — that's what the user themselves typed, and addByName already holds
+ * the line that the typed name wins over anything else. Failing that, the
+ * shortest source name.
  */
 export function classifyPlanned(
   planned: readonly PlannedIngredient[],
   items: readonly GroceryItem[],
-  _now: Date
+  now: Date
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -199,15 +201,16 @@ export function classifyPlanned(
     const sources = group.map(g => g.source);
 
     let category: PlanCategory;
-    if (!match || !match.onList) {
-      category = 'needToBuy';
-    } else if (match.checked) {
-      category = 'inTrolley';
+    let reason: string | null = null;
+    if (match?.onList) {
+      category = match.checked ? 'inTrolley' : 'alreadyOnList';
+    } else if (match && (reason = probablyHaveReason(match, now))) {
+      category = 'probablyHave';
     } else {
-      category = 'alreadyOnList';
+      category = 'needToBuy';
     }
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category });
+    rows.push({ nameKey: key, name, aisle, quantity, sources, category, reason });
   }
   return rows;
 }

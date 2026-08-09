@@ -544,6 +544,16 @@ export interface GroceryItem {
   lastAddedAt: string | null;
   lastPurchasedAt: string | null;
   createdAt: string;
+  // The pantry override — an explicit "Got it"/"Out of it" assertion from
+  // GroceryItemSheet, or set forward automatically when finishShopping
+  // records a purchase. A future value reads as "on hand" regardless of what
+  // grocerySuggest.probablyHaveReason's purchase-cadence guess would say on
+  // its own; a past value reads as "confirmed not on hand" and *suppresses*
+  // that guess, rather than letting stale purchase history overrule what the
+  // user just said with their own hands. null defers entirely to the guess.
+  // Self-expiring: once a future date passes, this reads exactly as null
+  // again, so "Got it" never needs a separate action to wear off.
+  onHandUntil: string | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task

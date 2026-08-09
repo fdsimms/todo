@@ -3,6 +3,9 @@ import {
   buyAgainItems,
   buildGrocerySections,
   catalogPruneCandidates,
+  estimatedPurchaseCadenceDays,
+  probablyHaveReason,
+  defaultOnHandUntil,
 } from '../utils/grocerySuggest';
 import { groceryNameKey } from '../utils/groceryParse';
 import type { GroceryItem } from '../types';
@@ -31,6 +34,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastAddedAt: null,
     lastPurchasedAt: null,
     createdAt: daysAgo(365),
+    onHandUntil: null,
     ...overrides,
   };
 }
@@ -216,5 +220,82 @@ describe('catalogPruneCandidates', () => {
   it('leaves a recent typo alone — it might still be wanted', () => {
     const items = [makeItem({ name: 'Mlik', lastAddedAt: daysAgo(2) })];
     expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+  });
+});
+
+// ─── estimatedPurchaseCadenceDays ────────────────────────────────────────────
+
+describe('estimatedPurchaseCadenceDays', () => {
+  it('divides the row\'s age by how many times it has been bought', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90) });
+    expect(estimatedPurchaseCadenceDays(item, NOW)).toBe(30);
+  });
+
+  it('is null when it has never been bought', () => {
+    expect(estimatedPurchaseCadenceDays(makeItem({ name: 'Saffron', purchaseCount: 0 }), NOW)).toBeNull();
+  });
+
+  it('is null for a row created this instant — nothing to divide by yet', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: NOW.toISOString() });
+    expect(estimatedPurchaseCadenceDays(item, NOW)).toBeNull();
+  });
+});
+
+// ─── probablyHaveReason ──────────────────────────────────────────────────────
+
+describe('probablyHaveReason', () => {
+  it('is null without enough purchases to trust a cadence, even if bought recently', () => {
+    const item = makeItem({
+      name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(1),
+    });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('gives a reason when the last purchase is still inside the item\'s own cadence', () => {
+    // Bought every 30 days on average; last one was 10 days ago.
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+  });
+
+  it('is null once the item is overdue by its own cadence — that is a guess it is gone', () => {
+    // Same 30-day cadence, but the last purchase was 40 days ago.
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(40),
+    });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('is null with no purchase recorded at all', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: null });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+
+  it('a future onHandUntil wins regardless of purchase history', () => {
+    const item = makeItem({ name: 'Saffron', purchaseCount: 0, onHandUntil: daysAgo(-5) });
+    expect(probablyHaveReason(item, NOW)).toBe('marked as on hand');
+  });
+
+  it('a past onHandUntil suppresses what would otherwise be a true guess', () => {
+    const item = makeItem({
+      name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+      onHandUntil: daysAgo(1),
+    });
+    expect(probablyHaveReason(item, NOW)).toBeNull();
+  });
+});
+
+// ─── defaultOnHandUntil ──────────────────────────────────────────────────────
+
+describe('defaultOnHandUntil', () => {
+  it('uses the item\'s own cadence once it has one', () => {
+    const item = makeItem({ name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90) }); // 30-day cadence
+    expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-30));
+  });
+
+  it('falls back to a flat two weeks with no cadence to trust', () => {
+    const item = makeItem({ name: 'Saffron', purchaseCount: 0 });
+    expect(defaultOnHandUntil(item, NOW)).toBe(daysAgo(-14));
   });
 });
