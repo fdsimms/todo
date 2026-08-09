@@ -279,10 +279,14 @@ describe('ingredients', () => {
 describe('remapIngredientKey', () => {
   it('rewrites every recipe that referenced the old key, and only those', () => {
     const ragu = makeRecipe('Ragu', {
-      ingredients: [{ id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null }],
+      ingredients: [
+        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null },
+      ],
     });
     const soup = makeRecipe('Soup', {
-      ingredients: [{ id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null }],
+      ingredients: [
+        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null },
+      ],
     });
     seed([ragu, soup]);
 

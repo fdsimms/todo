@@ -2,6 +2,7 @@ import type { Recipe, RecipeIngredient } from '../types';
 import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
 } from '../types';
@@ -50,6 +51,37 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
       ? r.quantity.trim().slice(0, GROCERY_QUANTITY_MAX_LENGTH)
       : '',
     aisle: typeof r.aisle === 'string' && r.aisle ? r.aisle : null,
+    prep: typeof r.prep === 'string' && r.prep.trim()
+      ? r.prep.trim().slice(0, RECIPE_PREP_MAX_LENGTH)
+      : null,
+  };
+}
+
+// Recipe sites write prep as a trailing clause after a comma — "garlic,
+// peeled and sliced", "black beans, drained and rinsed", "cheese, plus more
+// for topping" — never as the essential part of the name. Splitting on the
+// first comma is a convention match, not a guess about the *words*, which is
+// what makes it safe in the way parseGroceryInput's unit whitelist is: it
+// can't eat the name because the name is always everything before the first
+// comma.
+//
+// Deliberately doesn't also try to peel a *leading* prep word ("grated
+// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
+// sometimes the actual product ("sliced almonds" and "ground beef" are their
+// own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
+// there costs the first word of the name — the exact failure parseGroceryInput's
+// unit whitelist is built to avoid. That case is left to the AI extractor.
+const PREP_SPLIT = /^(.*?),\s*(.+)$/;
+
+export function splitPrep(name: string): { name: string; prep: string | null } {
+  const trimmed = name.trim();
+  const match = PREP_SPLIT.exec(trimmed);
+  if (!match) return { name: trimmed, prep: null };
+  const [, core, prep] = match;
+  if (!core.trim()) return { name: trimmed, prep: null };
+  return {
+    name: core.trim(),
+    prep: prep.trim().slice(0, RECIPE_PREP_MAX_LENGTH) || null,
   };
 }
 
@@ -63,7 +95,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
  * deleteAisle avoids by forgetting overrides rather than rewriting them.
  */
 export function makeIngredient(line: string): RecipeIngredient | null {
-  const { name, quantity } = parseGroceryInput(line);
+  const { name: rawName, quantity } = parseGroceryInput(line);
+  if (!rawName.trim()) return null;
+  const { name, prep } = splitPrep(rawName);
   if (!name.trim()) return null;
   return {
     id: generateId(),
@@ -71,6 +105,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     nameKey: groceryNameKey(name),
     quantity: quantity ?? '',
     aisle: null,
+    prep,
   };
 }
 

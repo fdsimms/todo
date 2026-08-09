@@ -2,6 +2,7 @@ import {
   parseRecipeIngredients,
   normalizeIngredient,
   makeIngredient,
+  splitPrep,
   ingredientsFromText,
   mergeIngredients,
   remapIngredientKeyIn,
@@ -19,6 +20,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     nameKey: name.toLowerCase(),
     quantity: '',
     aisle: null,
+    prep: null,
     ...overrides,
   };
 }
@@ -42,9 +44,18 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
 
 describe('parseRecipeIngredients', () => {
   it('reads a stored array', () => {
+    const stored = JSON.stringify([
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
+    ]);
+    expect(parseRecipeIngredients(stored)).toEqual([
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
+    ]);
+  });
+
+  it('defaults prep to null for a blob written before the field existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null },
     ]);
   });
 
@@ -71,10 +82,53 @@ describe('normalizeIngredient', () => {
     expect(result.id).toBeTruthy();
     expect(result.quantity).toBe('');
     expect(result.aisle).toBeNull();
+    expect(result.prep).toBeNull();
   });
 
   it('treats an empty aisle string as no opinion', () => {
     expect(normalizeIngredient({ name: 'Salt', aisle: '' })!.aisle).toBeNull();
+  });
+
+  it('treats an empty or blank prep string as no opinion', () => {
+    expect(normalizeIngredient({ name: 'Salt', prep: '' })!.prep).toBeNull();
+    expect(normalizeIngredient({ name: 'Salt', prep: '   ' })!.prep).toBeNull();
+  });
+
+  it('keeps a stored prep clause', () => {
+    expect(normalizeIngredient({ name: 'Garlic', prep: 'minced' })!.prep).toBe('minced');
+  });
+});
+
+describe('splitPrep', () => {
+  it('splits a trailing comma clause into prep', () => {
+    expect(splitPrep('garlic, peeled and sliced')).toEqual({
+      name: 'garlic',
+      prep: 'peeled and sliced',
+    });
+    expect(splitPrep('black beans, drained and rinsed')).toEqual({
+      name: 'black beans',
+      prep: 'drained and rinsed',
+    });
+  });
+
+  it('keeps everything after the first comma together as one prep clause', () => {
+    expect(splitPrep('chicken breast, boneless, skinless')).toEqual({
+      name: 'chicken breast',
+      prep: 'boneless, skinless',
+    });
+  });
+
+  it('leaves a name with no comma untouched', () => {
+    expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
+  });
+
+  it('does not strip a leading prep word — that case is a guess, not a convention match', () => {
+    expect(splitPrep('grated cheddar')).toEqual({ name: 'grated cheddar', prep: null });
+    expect(splitPrep('ground cumin')).toEqual({ name: 'ground cumin', prep: null });
+  });
+
+  it('refuses to empty the name out — a comma right at the start is not a split point', () => {
+    expect(splitPrep(', peeled and sliced')).toEqual({ name: ', peeled and sliced', prep: null });
   });
 });
 
@@ -95,6 +149,18 @@ describe('makeIngredient', () => {
     // The lexicon knows bananas are Produce, but asserting it here would
     // outrank the user's own filing for ever after.
     expect(makeIngredient('bananas')!.aisle).toBeNull();
+  });
+
+  it('splits prep out of the name after the quantity is peeled off', () => {
+    const result = makeIngredient('5 cloves garlic, peeled and sliced')!;
+    expect(result.name).toBe('garlic');
+    expect(result.quantity).toBe('5 cloves');
+    expect(result.prep).toBe('peeled and sliced');
+    expect(result.nameKey).toBe('garlic');
+  });
+
+  it('leaves prep null when there is no comma clause', () => {
+    expect(makeIngredient('2 lb chicken thighs')!.prep).toBeNull();
   });
 
   it('returns null for a line that parses to nothing', () => {

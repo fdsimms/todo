@@ -89,7 +89,11 @@ export function RecipeDetailScreen() {
     if (recipe.ingredients.length === 0) return;
     const result = addFromPlan(recipe.ingredients.map(i => ({
       name: i.name,
-      quantity: i.quantity || null,
+      // Prep lives in its own field so it stays out of the catalog name, but
+      // the shopper still needs it — folded into the free-text quantity is
+      // where the rest of "how much" already lives, and nothing does
+      // arithmetic on it either way.
+      quantity: [i.quantity, i.prep].filter(Boolean).join(', ') || null,
       aisle: i.aisle,
     })));
     haptics.success();
@@ -126,13 +130,14 @@ export function RecipeDetailScreen() {
       delayLongPress={interaction.delayLongPress}
       accessibilityRole="button"
       accessibilityLabel={
-        ingredient.quantity
-          ? `${ingredient.name}, ${ingredient.quantity}`
-          : ingredient.name
+        [ingredient.name, ingredient.quantity, ingredient.prep].filter(Boolean).join(', ')
       }
       accessibilityHint="Double tap to edit. Long press to reorder."
     >
-      <Text style={styles.ingredientName}>{ingredient.name}</Text>
+      <View style={styles.ingredientText}>
+        <Text style={styles.ingredientName}>{ingredient.name}</Text>
+        {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+      </View>
       {!!ingredient.quantity && (
         <View style={styles.qtyPill}>
           <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
@@ -314,10 +319,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ingredientDragging: {
     backgroundColor: colors.bgTertiary,
   },
-  ingredientName: {
+  ingredientText: {
     flex: 1,
+    gap: 1,
+  },
+  ingredientName: {
     color: colors.text,
     fontSize: font.md,
+  },
+  ingredientPrep: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontStyle: 'italic',
   },
   qtyPill: {
     backgroundColor: colors.bgTertiary,

@@ -1,0 +1,4 @@
+{
+  "message": "Prep instructions like \"peeled and sliced\" or \"drained and rinsed\" are now split into their own field instead of riding along in the ingredient name, so recipe ingredients match the grocery catalog correctly. Edit it from the ingredient sheet.",
+  "date": "2026-08-09"
+}
