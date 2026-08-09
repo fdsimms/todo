@@ -342,6 +342,15 @@ export const TaskItem = React.memo(function TaskItem({
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
+  // Crossfades the checkbox glyph into the selection dot (and back) when bulk
+  // selection toggles. The circle View itself stays mounted across the swap —
+  // LayoutAnimation (see enterSelectionMode/exitSelection in useRowSelection)
+  // only smooths mounts/removes and frame changes, not a style/content swap on
+  // a view that stays put — so without this the content pops instead of
+  // transitioning along with the rest of the row. Seeded at the current mode
+  // so a row that mounts already in selection (e.g. scrolled into view mid
+  // bulk-edit) doesn't play the fade-in it never needed.
+  const selectionSwap = useRef(new Animated.Value(selectionMode ? 1 : 0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
   // The daily-target meter's level, 0–1. An Animated.Value rather than a height
   // computed straight from progressCount so a logged unit slides up instead of
@@ -553,6 +562,15 @@ export const TaskItem = React.memo(function TaskItem({
       haptics.impactMedium();
     }
   }, [isActive]);
+
+  useEffect(() => {
+    if (reduceMotion) { selectionSwap.setValue(selectionMode ? 1 : 0); return; }
+    Animated.timing(selectionSwap, {
+      toValue: selectionMode ? 1 : 0,
+      duration: animation.duration.fast,
+      useNativeDriver: true,
+    }).start();
+  }, [selectionMode]);
 
   useEffect(() => {
     if (!highlighted || reduceMotion) return;
@@ -1179,29 +1197,52 @@ export const TaskItem = React.memo(function TaskItem({
               pointerEvents="none"
             />
           )}
-          {selectionMode && selected && (
-            <Ionicons name="checkmark" size={12} color={colors.onAccent} />
-          )}
-          {!selectionMode && completing && !quotaCompleting && (
-            // The spring (animation.spring.bouncy) overshoots past 1 for the pop
-            // feel, but animating a native-driven `scale` transform on an Ionicons
-            // glyph scales the already-rasterized bitmap up rather than
-            // re-rendering it, so an uncapped overshoot is visibly pixelated.
-            // Clamping the *visual* scale at 1 keeps the glyph rendered at its
-            // native 12pt size — crisp at rest — while the transform only ever
-            // shrinks it on the way in, never enlarges it.
-            <Animated.View style={{
-              transform: [{ scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }],
-            }}>
-              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
-            </Animated.View>
-          )}
-          {!selectionMode && !completing && recurrenceNotYetDue && (
-            <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
-          )}
-          {!selectionMode && !completing && !recurrenceNotYetDue && locked && (
-            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
-          )}
+          {/* Two overlapping layers crossfade via selectionSwap rather than
+              popping between selectionMode branches on the same mounted view —
+              see the comment on selectionSwap above. Both are absolutely
+              positioned over the circle (which centers its children), so they
+              can overlap mid-transition instead of the layout jumping between
+              them. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.circleContentLayer,
+              {
+                opacity: selectionSwap,
+                transform: [{ scale: selectionSwap.interpolate({ inputRange: [0, 1], outputRange: [0.5, 1], extrapolate: 'clamp' }) }],
+              },
+            ]}
+          >
+            {selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
+          </Animated.View>
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.circleContentLayer,
+              { opacity: selectionSwap.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
+            ]}
+          >
+            {completing && !quotaCompleting && (
+              // The spring (animation.spring.bouncy) overshoots past 1 for the pop
+              // feel, but animating a native-driven `scale` transform on an Ionicons
+              // glyph scales the already-rasterized bitmap up rather than
+              // re-rendering it, so an uncapped overshoot is visibly pixelated.
+              // Clamping the *visual* scale at 1 keeps the glyph rendered at its
+              // native 12pt size — crisp at rest — while the transform only ever
+              // shrinks it on the way in, never enlarges it.
+              <Animated.View style={{
+                transform: [{ scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }],
+              }}>
+                <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+              </Animated.View>
+            )}
+            {!completing && recurrenceNotYetDue && (
+              <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+            )}
+            {!completing && !recurrenceNotYetDue && locked && (
+              <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
+            )}
+          </Animated.View>
         </Animated.View>
       </TouchableOpacity>
 
@@ -2197,6 +2238,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleCompleting: {
     backgroundColor: colors.green,
     borderColor: colors.green,
+  },
+  // Both crossfading layers (checkbox glyph, selection dot) sit here so they
+  // can overlap mid-transition instead of the circle's own alignItems/
+  // justifyContent flow reshuffling between them.
+  circleContentLayer: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   circleLocked: {
     borderWidth: 0,
