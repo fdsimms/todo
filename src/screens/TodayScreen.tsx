@@ -23,6 +23,8 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { Task, TaskGroup, TaskTemplate, Category } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
+import { isRealCompletion } from '../utils/missed';
+import { isToday } from 'date-fns/isToday';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -2031,8 +2033,26 @@ export function TodayScreen() {
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [visibleTasks]);
 
+  // Same estimate machinery, scoped to what's already been finished today —
+  // paired with plannedLabel so the header reads "done · planned" instead of
+  // planned alone.
+  const completedTodayLabel = useMemo(() => {
+    const completedToday = allTasks.filter(
+      t => !t.parentId && isRealCompletion(t) && t.completedAt && isToday(new Date(t.completedAt)),
+    );
+    const minutes = sumEstimatedMinutes(completedToday);
+    return minutes > 0 ? formatDuration(minutes) : undefined;
+  }, [allTasks]);
+
   const workloadSubtitle =
-    viewMode === 'today' && plannedLabel ? `${plannedLabel} planned today` : undefined;
+    viewMode === 'today' && (plannedLabel || completedTodayLabel)
+      ? [
+          completedTodayLabel ? `${completedTodayLabel} done` : undefined,
+          plannedLabel ? `${plannedLabel} planned` : undefined,
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : undefined;
 
   const headerActions: ScreenHeaderAction[] = [
     ...(viewMode === 'today'
