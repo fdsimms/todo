@@ -36,6 +36,10 @@ const MENU_ITEMS: MenuItem[] = [
   // Sits directly under Groceries because that's what it feeds — you come here
   // to put a recipe on that list, not to browse.
   { name: 'Recipes', icon: 'restaurant-outline', label: 'Recipes' },
+  // The third of the kitchen trio, and last of them because it's the one that
+  // reads the other two: you plan a week out of the recipe box, and the week is
+  // what fills the list.
+  { name: 'MealPlan', icon: 'calendar-outline', label: 'Meal plan' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },

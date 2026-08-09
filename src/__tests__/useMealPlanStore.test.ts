@@ -1,0 +1,294 @@
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import {
+  dbGetMealPlanEntries,
+  dbInsertMealPlanEntry,
+  dbUpdateMealPlanEntry,
+  dbDeleteMealPlanEntry,
+  dbPurgeOldMealPlanEntries,
+} from '../db/database';
+import type { MealPlanEntry, MealSlot } from '../types';
+
+jest.mock('../db/database', () => ({
+  dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
+  dbInsertMealPlanEntry: jest.fn(),
+  dbUpdateMealPlanEntry: jest.fn(),
+  dbDeleteMealPlanEntry: jest.fn(),
+  dbPurgeOldMealPlanEntries: jest.fn().mockReturnValue(0),
+}));
+
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
+let seq = 0;
+function entry(
+  date: string,
+  slot: MealSlot,
+  overrides: Partial<MealPlanEntry> = {}
+): MealPlanEntry {
+  seq += 1;
+  return {
+    id: `m-${seq}`,
+    date,
+    slot,
+    recipeId: null,
+    title: `Meal ${seq}`,
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  };
+}
+
+const getEntries = () => useMealPlanStore.getState().entries;
+
+/** Loads the week of 3–9 Aug 2026 with whatever rows the db is pretending to hold. */
+function loadWeek(rows: MealPlanEntry[] = []) {
+  (dbGetMealPlanEntries as jest.Mock).mockReturnValue(rows);
+  useMealPlanStore.getState().loadRange('2026-08-03', '2026-08-09');
+  (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  seq = 0;
+  (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(0);
+  useMealPlanStore.setState({
+    entries: [], rangeStart: null, rangeEnd: null, initialized: false,
+  });
+});
+
+describe('loadRange', () => {
+  it('reads only the window asked for', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-03', '2026-08-09');
+    expect(getEntries()).toHaveLength(1);
+    expect(useMealPlanStore.getState().rangeStart).toBe('2026-08-03');
+    expect(useMealPlanStore.getState().rangeEnd).toBe('2026-08-09');
+  });
+
+  it('puts what it loaded into reading order', () => {
+    loadWeek([
+      entry('2026-08-05', 'dinner'),
+      entry('2026-08-05', 'breakfast'),
+      entry('2026-08-04', 'dinner'),
+    ]);
+
+    expect(getEntries().map(e => [e.date, e.slot])).toEqual([
+      ['2026-08-04', 'dinner'],
+      ['2026-08-05', 'breakfast'],
+      ['2026-08-05', 'dinner'],
+    ]);
+  });
+
+  it('replaces the previous window rather than accumulating', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-12', 'dinner')]);
+    useMealPlanStore.getState().loadRange('2026-08-10', '2026-08-16');
+
+    expect(getEntries().map(e => e.date)).toEqual(['2026-08-12']);
+  });
+});
+
+describe('initialize', () => {
+  it('reloads whatever window is loaded, so a database swap is picked up', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-06', 'lunch')]);
+
+    useMealPlanStore.getState().initialize();
+
+    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith('2026-08-03', '2026-08-09');
+    expect(getEntries().map(e => e.date)).toEqual(['2026-08-06']);
+    expect(useMealPlanStore.getState().initialized).toBe(true);
+  });
+
+  it('holds nothing when no window has been asked for yet', () => {
+    useMealPlanStore.getState().initialize();
+
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+    expect(getEntries()).toEqual([]);
+    expect(useMealPlanStore.getState().initialized).toBe(true);
+  });
+});
+
+describe('planMeal', () => {
+  it('writes the row and shows it on the week', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: '  Sausage   ragù ',
+    })!;
+
+    expect(planned.title).toBe('Sausage ragù');
+    expect(planned.recipeId).toBe('r1');
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
+    expect(getEntries()).toEqual([planned]);
+  });
+
+  // "Leftovers" is a plan, not a skipped step.
+  it('accepts a meal with no recipe at all', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: 'Leftovers',
+    })!;
+
+    expect(planned.recipeId).toBeNull();
+    expect(getEntries()).toEqual([planned]);
+  });
+
+  it('refuses a blank title', () => {
+    loadWeek();
+    expect(useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: '   ',
+    })).toBeNull();
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(getEntries()).toEqual([]);
+  });
+
+  // Two things on one dinner is real — chicken *and* a salad.
+  it('lets a slot hold more than one thing, ordered behind what is there', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', { sortOrder: 3 }),
+    ]);
+    const second = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: 'Green salad',
+    })!;
+
+    expect(second.sortOrder).toBe(4);
+  });
+
+  /**
+   * The invariant that makes this store range-scoped rather than a partial copy
+   * of the table that grows every time something is planned offscreen.
+   */
+  it('writes a row outside the loaded window without holding it in memory', () => {
+    loadWeek();
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-09-20', slot: 'dinner', title: 'Roast',
+    })!;
+
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
+    expect(getEntries()).toEqual([]);
+  });
+
+  it('holds nothing before a window has been loaded', () => {
+    const planned = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', title: 'Roast',
+    })!;
+
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledWith(planned);
+    expect(getEntries()).toEqual([]);
+  });
+});
+
+describe('moveEntry', () => {
+  it('moves a meal to another day', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-08-07' });
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, date: '2026-08-07', slot: 'dinner' })
+    );
+    expect(getEntries().map(e => e.date)).toEqual(['2026-08-07']);
+  });
+
+  it('changes the slot without touching the day', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().moveEntry(dinner.id, { slot: 'lunch' });
+
+    expect(getEntries()[0]).toEqual(expect.objectContaining({
+      date: '2026-08-05', slot: 'lunch',
+    }));
+  });
+
+  it('re-orders to the end of where it lands', () => {
+    const moving = entry('2026-08-05', 'dinner', { sortOrder: 1 });
+    loadWeek([moving]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-07', 'dinner', { sortOrder: 5 }),
+    ]);
+
+    useMealPlanStore.getState().moveEntry(moving.id, { date: '2026-08-07' });
+
+    expect(getEntries()[0].sortOrder).toBe(6);
+  });
+
+  it('drops a meal moved out of the loaded window from memory', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-10-01' });
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledTimes(1);
+    expect(getEntries()).toEqual([]);
+  });
+
+  it('does nothing when the move changes nothing', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().moveEntry(dinner.id, { date: '2026-08-05', slot: 'dinner' });
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    loadWeek();
+    useMealPlanStore.getState().moveEntry('gone', { date: '2026-08-07' });
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('removeEntry', () => {
+  it('deletes the row and takes it off the week', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().removeEntry(dinner.id);
+
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledWith(dinner.id);
+    expect(getEntries()).toEqual([]);
+  });
+});
+
+describe('purgeOldEntries', () => {
+  it('reports what the delete took', () => {
+    (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(4);
+    expect(useMealPlanStore.getState().purgeOldEntries()).toBe(4);
+  });
+
+  it('passes a day key 180 days back', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8));
+    useMealPlanStore.getState().purgeOldEntries();
+    expect(dbPurgeOldMealPlanEntries).toHaveBeenCalledWith('2026-02-09');
+    jest.useRealTimers();
+  });
+
+  // The loaded window can overlap the horizon — someone paging back through
+  // spring — so memory has to follow the delete rather than wait for a reload.
+  it('drops purged days from the loaded window too', () => {
+    jest.useFakeTimers().setSystemTime(new Date(2026, 7, 8));
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-02-08', 'dinner'),
+      entry('2026-02-10', 'dinner'),
+    ]);
+    useMealPlanStore.getState().loadRange('2026-02-08', '2026-02-14');
+    (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(1);
+
+    useMealPlanStore.getState().purgeOldEntries();
+
+    expect(getEntries().map(e => e.date)).toEqual(['2026-02-10']);
+    jest.useRealTimers();
+  });
+
+  it('leaves the window alone when nothing was old enough', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    useMealPlanStore.getState().purgeOldEntries();
+    expect(getEntries()).toHaveLength(1);
+  });
+});

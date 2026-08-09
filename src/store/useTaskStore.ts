@@ -33,6 +33,7 @@ import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
+import { useMealPlanStore } from './useMealPlanStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
@@ -692,6 +693,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // the catalog by name_key, so a stale recipe list next to a fresh catalog
     // would match nothing.
     useRecipeStore.getState().initialize();
+    // And the plan, which points at those recipes by id. Range-scoped, so this
+    // reloads whatever week is on screen rather than the whole table.
+    useMealPlanStore.getState().initialize();
     const tasks = dbGetAllTasks();
     const tagRegistry = dbGetTagRegistry();
 

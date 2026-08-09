@@ -1,0 +1,311 @@
+import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import {
+  cleanMealTitle,
+  dayKeyRange,
+  describeWeekPlan,
+  describeWeekRange,
+  entriesForDay,
+  entriesForSlot,
+  isKeyInRange,
+  mealPlanPurgeCutoffKey,
+  nextSortOrder,
+  recipeIndex,
+  slotLabel,
+  slotRank,
+  sortMealEntries,
+  titleForEntry,
+} from '../utils/mealPlan';
+
+// mealPlan reaches dateUtils for dayKeyOf, which reaches the settings store for
+// dayResetTime — which nothing here needs, since a day key is a calendar day
+// and carries no time at all.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
+let seq = 0;
+function entry(
+  date: string,
+  slot: MealSlot,
+  overrides: Partial<MealPlanEntry> = {}
+): MealPlanEntry {
+  seq += 1;
+  return {
+    id: `m-${seq}`,
+    date,
+    slot,
+    recipeId: null,
+    title: `Meal ${seq}`,
+    sortOrder: 1,
+    createdAt: `2026-01-01T00:00:0${seq % 10}.000Z`,
+    ...overrides,
+  };
+}
+
+function recipe(id: string, name: string): Recipe {
+  return {
+    id,
+    name,
+    nameKey: name.toLowerCase(),
+    notes: '',
+    sourceUrl: null,
+    sourceName: null,
+    servings: null,
+    ingredients: [],
+    favorite: false,
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
+beforeEach(() => { seq = 0; });
+
+describe('slotRank', () => {
+  it('orders the day', () => {
+    expect(slotRank('breakfast')).toBeLessThan(slotRank('lunch'));
+    expect(slotRank('lunch')).toBeLessThan(slotRank('dinner'));
+    expect(slotRank('dinner')).toBeLessThan(slotRank('snack'));
+  });
+
+  // A row the reader doesn't understand — a restored backup from a build with
+  // more slots — must not push breakfast down the day.
+  it('sorts an unknown slot last rather than first', () => {
+    expect(slotRank('brunch' as MealSlot)).toBeGreaterThan(slotRank('snack'));
+  });
+});
+
+describe('slotLabel', () => {
+  it('names each slot', () => {
+    expect(slotLabel('breakfast')).toBe('Breakfast');
+    expect(slotLabel('snack')).toBe('Snack');
+  });
+
+  it('falls back rather than rendering undefined', () => {
+    expect(slotLabel('brunch' as MealSlot)).toBe('Meal');
+  });
+});
+
+describe('sortMealEntries', () => {
+  it('orders by day, then down the day, then within the meal', () => {
+    const a = entry('2026-08-05', 'dinner', { sortOrder: 2 });
+    const b = entry('2026-08-05', 'dinner', { sortOrder: 1 });
+    const c = entry('2026-08-05', 'breakfast');
+    const d = entry('2026-08-04', 'snack');
+
+    expect(sortMealEntries([a, b, c, d]).map(e => e.id)).toEqual([d.id, c.id, b.id, a.id]);
+  });
+
+  it('breaks a sortOrder tie on createdAt so the order is stable', () => {
+    const later = entry('2026-08-05', 'dinner', { createdAt: '2026-08-01T10:00:00.000Z' });
+    const earlier = entry('2026-08-05', 'dinner', { createdAt: '2026-08-01T09:00:00.000Z' });
+    expect(sortMealEntries([later, earlier]).map(e => e.id)).toEqual([earlier.id, later.id]);
+  });
+
+  it('does not mutate its input', () => {
+    const entries = [entry('2026-08-05', 'dinner'), entry('2026-08-04', 'lunch')];
+    const before = entries.map(e => e.id);
+    sortMealEntries(entries);
+    expect(entries.map(e => e.id)).toEqual(before);
+  });
+
+  it('sorts day keys by date rather than by string length', () => {
+    // Zero-padding is what makes a lexical sort correct — "2026-08-09" before
+    // "2026-08-10" only works because the day is two digits.
+    const ninth = entry('2026-08-09', 'dinner');
+    const tenth = entry('2026-08-10', 'dinner');
+    expect(sortMealEntries([tenth, ninth]).map(e => e.date)).toEqual(['2026-08-09', '2026-08-10']);
+  });
+});
+
+describe('entriesForDay / entriesForSlot', () => {
+  const week = [
+    entry('2026-08-05', 'dinner', { sortOrder: 2 }),
+    entry('2026-08-05', 'dinner', { sortOrder: 1 }),
+    entry('2026-08-05', 'breakfast'),
+    entry('2026-08-06', 'dinner'),
+  ];
+
+  it('takes only the day asked for, in reading order', () => {
+    const day = entriesForDay(week, '2026-08-05');
+    expect(day).toHaveLength(3);
+    expect(day[0].slot).toBe('breakfast');
+    expect(day.map(e => e.sortOrder)).toEqual([1, 1, 2]);
+  });
+
+  it('returns nothing for an unplanned day', () => {
+    expect(entriesForDay(week, '2026-08-07')).toEqual([]);
+  });
+
+  // Two things on one dinner is real — chicken *and* a salad — which is why
+  // there is no UNIQUE(date, slot).
+  it('returns every entry in a slot, not just the first', () => {
+    expect(entriesForSlot(week, '2026-08-05', 'dinner')).toHaveLength(2);
+    expect(entriesForSlot(week, '2026-08-05', 'lunch')).toEqual([]);
+  });
+});
+
+describe('nextSortOrder', () => {
+  it('lands a new entry at the end of its slot', () => {
+    const entries = [
+      entry('2026-08-05', 'dinner', { sortOrder: 1 }),
+      entry('2026-08-05', 'dinner', { sortOrder: 4 }),
+    ];
+    expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(5);
+  });
+
+  it('starts at 1 in an empty slot', () => {
+    expect(nextSortOrder([], '2026-08-05', 'dinner')).toBe(1);
+  });
+
+  it('is scoped to the slot, not to the day', () => {
+    const entries = [entry('2026-08-05', 'breakfast', { sortOrder: 9 })];
+    expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+
+  it('is scoped to the day, not to the whole plan', () => {
+    const entries = [entry('2026-08-04', 'dinner', { sortOrder: 9 })];
+    expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+});
+
+describe('cleanMealTitle', () => {
+  it('trims and collapses whitespace', () => {
+    expect(cleanMealTitle('  Sausage   ragù ')).toBe('Sausage ragù');
+  });
+
+  it('reads an empty or blank input as "not a name"', () => {
+    expect(cleanMealTitle('')).toBe('');
+    expect(cleanMealTitle('   ')).toBe('');
+  });
+
+  it('caps a long one', () => {
+    expect(cleanMealTitle('x'.repeat(200))).toHaveLength(80);
+  });
+});
+
+describe('titleForEntry', () => {
+  const ragu = recipe('r1', 'Sausage ragù');
+  const index = recipeIndex([ragu]);
+
+  it('prefers the live recipe name, so a rename follows through onto the plan', () => {
+    const planned = entry('2026-08-05', 'dinner', { recipeId: 'r1', title: 'Old name' });
+    expect(titleForEntry(planned, index)).toBe('Sausage ragù');
+  });
+
+  // No cascade on recipe_id is deliberate: deleting a recipe must not blank
+  // last Tuesday.
+  it('falls back to the captured title when the recipe is gone', () => {
+    const planned = entry('2026-08-05', 'dinner', { recipeId: 'deleted', title: 'Sausage ragù' });
+    expect(titleForEntry(planned, index)).toBe('Sausage ragù');
+  });
+
+  it('uses the typed title for a free-text meal', () => {
+    const planned = entry('2026-08-05', 'dinner', { recipeId: null, title: 'Leftovers' });
+    expect(titleForEntry(planned, index)).toBe('Leftovers');
+  });
+});
+
+describe('dayKeyRange', () => {
+  it('spans the first and last day', () => {
+    const days = [new Date(2026, 7, 3), new Date(2026, 7, 6), new Date(2026, 7, 9)];
+    expect(dayKeyRange(days)).toEqual({ startKey: '2026-08-03', endKey: '2026-08-09' });
+  });
+
+  // The caller passes whatever buildWeekDays handed back; a range read that
+  // quietly depended on that array being sorted would break the day something
+  // reorders it.
+  it('takes the min and max rather than the first and last', () => {
+    const days = [new Date(2026, 7, 9), new Date(2026, 7, 3)];
+    expect(dayKeyRange(days)).toEqual({ startKey: '2026-08-03', endKey: '2026-08-09' });
+  });
+
+  it('is null for no days at all', () => {
+    expect(dayKeyRange([])).toBeNull();
+  });
+});
+
+describe('isKeyInRange', () => {
+  it('includes both ends', () => {
+    expect(isKeyInRange('2026-08-03', '2026-08-03', '2026-08-09')).toBe(true);
+    expect(isKeyInRange('2026-08-09', '2026-08-03', '2026-08-09')).toBe(true);
+  });
+
+  it('excludes what falls outside', () => {
+    expect(isKeyInRange('2026-08-02', '2026-08-03', '2026-08-09')).toBe(false);
+    expect(isKeyInRange('2026-08-10', '2026-08-03', '2026-08-09')).toBe(false);
+  });
+
+  it('compares by date across a month boundary', () => {
+    expect(isKeyInRange('2026-08-01', '2026-07-28', '2026-08-03')).toBe(true);
+    expect(isKeyInRange('2026-09-01', '2026-07-28', '2026-08-03')).toBe(false);
+  });
+});
+
+describe('describeWeekPlan', () => {
+  it('says nothing is planned rather than "0 meals"', () => {
+    expect(describeWeekPlan([])).toBe('Nothing planned yet');
+  });
+
+  it('counts entries, singular and plural', () => {
+    expect(describeWeekPlan([entry('2026-08-05', 'dinner')])).toBe('1 meal planned');
+    expect(describeWeekPlan([
+      entry('2026-08-05', 'dinner'),
+      entry('2026-08-06', 'dinner'),
+    ])).toBe('2 meals planned');
+  });
+
+  // "Leftovers" is a plan. A count that quietly ignored it would tell the user
+  // their week is emptier than it is.
+  it('counts a free-text meal exactly like a recipe-backed one', () => {
+    expect(describeWeekPlan([
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+      entry('2026-08-06', 'dinner', { recipeId: null, title: 'Leftovers' }),
+    ])).toBe('2 meals planned');
+  });
+});
+
+describe('describeWeekRange', () => {
+  const week = (y: number, m: number, d: number) =>
+    Array.from({ length: 7 }, (_, i) => new Date(y, m, d + i));
+
+  it('drops the repeated month inside one month', () => {
+    expect(describeWeekRange(week(2026, 7, 3))).toBe('3 – 9 Aug');
+  });
+
+  it('names both months across a month boundary', () => {
+    expect(describeWeekRange(week(2026, 6, 28))).toBe('28 Jul – 3 Aug');
+  });
+
+  // The year is the one thing you can't read off the rest of the screen when a
+  // week straddles New Year.
+  it('adds the year only across a year boundary', () => {
+    expect(describeWeekRange(week(2026, 11, 28))).toBe('28 Dec – 3 Jan 2027');
+  });
+
+  it('is empty for no days', () => {
+    expect(describeWeekRange([])).toBe('');
+  });
+
+  it('does not depend on the order it is given', () => {
+    const days = week(2026, 7, 3);
+    expect(describeWeekRange([...days].reverse())).toBe('3 – 9 Aug');
+  });
+});
+
+describe('mealPlanPurgeCutoffKey', () => {
+  it('is the day key `days` before now', () => {
+    expect(mealPlanPurgeCutoffKey(new Date(2026, 7, 8), 180)).toBe('2026-02-09');
+  });
+
+  it('defaults to the 180-day horizon', () => {
+    expect(mealPlanPurgeCutoffKey(new Date(2026, 7, 8)))
+      .toBe(mealPlanPurgeCutoffKey(new Date(2026, 7, 8), 180));
+  });
+
+  // Anchored to the calendar day, so it takes the same rows whenever in the day
+  // the app happens to be opened — the rows it judges carry no time at all.
+  it('ignores the time of day', () => {
+    expect(mealPlanPurgeCutoffKey(new Date(2026, 7, 8, 0, 0, 1), 30))
+      .toBe(mealPlanPurgeCutoffKey(new Date(2026, 7, 8, 23, 59, 59), 30));
+  });
+});

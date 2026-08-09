@@ -6,6 +6,7 @@ import {
   resetToToday,
   resetToGroceries,
   resetToRecipes,
+  resetToMealPlan,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 
@@ -108,6 +109,14 @@ export function isRecipesUrl(url: string): boolean {
   return typeof url === 'string' && RECIPES_RE.test(url.trim());
 }
 
+// `dundundun://mealplan` — the third kitchen link, so a recurring "Plan the
+// week" task opens the week it's asking about.
+const MEAL_PLAN_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?mealplan\\/?$`, 'i');
+
+export function isMealPlanUrl(url: string): boolean {
+  return typeof url === 'string' && MEAL_PLAN_RE.test(url.trim());
+}
+
 /**
  * Handles a URL this app owns itself, returning true when it did.
  *
@@ -128,6 +137,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isRecipesUrl(url)) {
     resetToRecipes();
+    return true;
+  }
+  if (isMealPlanUrl(url)) {
+    resetToMealPlan();
     return true;
   }
   if (isOpenAppUrl(url)) {
