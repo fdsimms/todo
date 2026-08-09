@@ -2,7 +2,12 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { haptics } from './haptics';
-import { resetToToday, resetToGroceries, resetToRecipes } from '../navigation/navigationRef';
+import {
+  resetToToday,
+  resetToGroceries,
+  resetToRecipes,
+  openQuickAddFromShortcut,
+} from '../navigation/navigationRef';
 
 export interface AddTaskLink {
   title: string;
@@ -63,6 +68,20 @@ export function handleIncomingUrl(url: string | null): boolean {
   return true;
 }
 
+// `dundundun://add` carrying no usable title — what the Today widget's "+"
+// button opens. An add link *with* a title is a silent capture (a Shortcut
+// dictated it, nobody is looking at the screen); with nothing to capture, the
+// only sensible reading is "I want to type one", so it pops quick add instead
+// of being dropped on the floor, which is what a title-less add link used to
+// do. Defined in terms of parseAddTaskUrl rather than a second title check, so
+// the two can't disagree about what counts as a title.
+const ADD_PATH_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?add\\/?(?:\\?(.*))?$`, 'i');
+
+export function isQuickAddUrl(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  return ADD_PATH_RE.test(url.trim()) && parseAddTaskUrl(url) === null;
+}
+
 // Matches the bare scheme with no path — what the Today widget's
 // `.widgetURL` opens (see targets/todo-widget/TodoTodayWidget.swift). Tapping
 // the widget should always surface the Today tab's Today sub-view, even if
@@ -99,6 +118,10 @@ export function isRecipesUrl(url: string): boolean {
  */
 export function openInAppUrl(url: string | null | undefined): boolean {
   if (!url) return false;
+  if (isQuickAddUrl(url)) {
+    openQuickAddFromShortcut();
+    return true;
+  }
   if (isGroceriesUrl(url)) {
     resetToGroceries();
     return true;

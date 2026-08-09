@@ -5,6 +5,7 @@ const mockAddTask = jest.fn();
 const mockSuccess = jest.fn();
 const mockResetToToday = jest.fn();
 const mockResetToGroceries = jest.fn();
+const mockOpenQuickAdd = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -23,9 +24,16 @@ jest.mock('../utils/haptics', () => ({
 jest.mock('../navigation/navigationRef', () => ({
   resetToToday: (...args: unknown[]) => mockResetToToday(...args),
   resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
+  openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
 }));
 
-import { parseAddTaskUrl, handleIncomingUrl, isGroceriesUrl, openInAppUrl } from '../utils/deepLinks';
+import {
+  parseAddTaskUrl,
+  handleIncomingUrl,
+  isGroceriesUrl,
+  isQuickAddUrl,
+  openInAppUrl,
+} from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
   it('parses a plain title', () => {
@@ -128,10 +136,55 @@ describe('isGroceriesUrl', () => {
   });
 });
 
+describe('isQuickAddUrl', () => {
+  it('accepts an add link with nothing to capture', () => {
+    expect(isQuickAddUrl('dundundun://add')).toBe(true);
+    expect(isQuickAddUrl('dundundun:///add')).toBe(true);
+    expect(isQuickAddUrl('dundundun://add/')).toBe(true);
+    expect(isQuickAddUrl('DUNDUNDUN://ADD')).toBe(true);
+    expect(isQuickAddUrl('  dundundun://add  ')).toBe(true);
+    expect(isQuickAddUrl('dundundun://add?title=')).toBe(true);
+    expect(isQuickAddUrl('dundundun://add?title=%20%20')).toBe(true);
+    // Notes with no title is nothing to capture either.
+    expect(isQuickAddUrl('dundundun://add?notes=orphan')).toBe(true);
+  });
+
+  // The two readings of an add link are mutually exclusive: with a title it's
+  // a silent capture, so it must not also pop the composer.
+  it('rejects an add link that carries a title', () => {
+    expect(isQuickAddUrl('dundundun://add?title=Buy%20milk')).toBe(false);
+    expect(isQuickAddUrl('dundundun://add?title=Hi&notes=there')).toBe(false);
+  });
+
+  it('rejects anything else', () => {
+    expect(isQuickAddUrl('dundundun://')).toBe(false);
+    expect(isQuickAddUrl('dundundun://groceries')).toBe(false);
+    expect(isQuickAddUrl('dundundun://addtask')).toBe(false);
+    expect(isQuickAddUrl('https://add')).toBe(false);
+    expect(isQuickAddUrl('')).toBe(false);
+  });
+});
+
 describe('openInAppUrl', () => {
   beforeEach(() => {
     mockResetToToday.mockClear();
     mockResetToGroceries.mockClear();
+    mockOpenQuickAdd.mockClear();
+    mockAddTask.mockClear();
+  });
+
+  // The widget's "+" button.
+  it('pops quick add for a title-less add link', () => {
+    expect(openInAppUrl('dundundun://add')).toBe(true);
+    expect(mockOpenQuickAdd).toHaveBeenCalledTimes(1);
+    expect(mockAddTask).not.toHaveBeenCalled();
+  });
+
+  // handleIncomingUrl has already created the task by the time this runs;
+  // opening the composer on top of it would be a second, empty capture.
+  it('leaves an add link with a title to handleIncomingUrl', () => {
+    expect(openInAppUrl('dundundun://add?title=Buy%20milk')).toBe(false);
+    expect(mockOpenQuickAdd).not.toHaveBeenCalled();
   });
 
   it('navigates to the grocery list and claims the URL', () => {
