@@ -1309,7 +1309,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days — each date gets its own row"
+              hint="The same task on several days — each date can be checked off separately"
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
