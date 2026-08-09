@@ -55,7 +55,7 @@ const UNITS = [
   'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
   'pack', 'packs', 'pkg', 'box', 'boxes', 'bag', 'bags', 'can', 'cans',
   'jar', 'jars', 'bottle', 'bottles', 'bunch', 'bunches', 'head', 'heads',
-  'dozen', 'doz', 'loaf', 'loaves', 'x',
+  'clove', 'cloves', 'dozen', 'doz', 'loaf', 'loaves', 'x',
 ];
 const UNIT_SET = new Set(UNITS);
 
@@ -70,8 +70,12 @@ const UNIT_ABBREVIATIONS: Record<string, string> = {
   teaspoons: 'tsp',
 };
 
-// "2 lb", "1.5kg", "3 x" — a number, optionally glued to a unit.
-const LEADING_QTY = /^(\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
+// "2 lb", "1.5kg", "1/4 cup", "1 1/2 tbsp", "3 x" — a number (whole, decimal,
+// a bare fraction, or a mixed number) optionally glued to a unit. The mixed
+// and bare-fraction alternatives are tried before the plain-decimal one so
+// "1 1/2 cups" isn't cut short at "1" with "1/2 cups" left dangling in front
+// of the unit match.
+const LEADING_QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
 // "milk x2", "eggs x 12"
 const TRAILING_X = /^(.*?)\s+x\s*(\d+)$/i;
 // "eggs (dozen)", "milk (2%)" — only when the parens close the string.
@@ -98,6 +102,11 @@ function clampQuantity(s: string): string {
  * number is treated as the start of the name rather than as a unit — so
  * "2 amazing tomatoes" yields quantity "2", not "2 amazing". Known miss:
  * "7 Up" parses as 7 × "Up". It stays editable in the item sheet.
+ *
+ * The leading count also accepts a bare fraction ("1/4 cup") and a mixed
+ * number ("1 1/2 tbsp") — recipe quantities are written that way as often as
+ * decimals, and without it "1/4 cup tomato paste" doesn't even look like it
+ * has a quantity.
  */
 export function parseGroceryInput(raw: string): { name: string; quantity: string | null } {
   const input = raw.trim().replace(/\s+/g, ' ');

@@ -132,7 +132,7 @@ export function RecipeDetailScreen() {
       }
       accessibilityHint="Double tap to edit. Long press to reorder."
     >
-      <Text style={styles.ingredientName} numberOfLines={1}>{ingredient.name}</Text>
+      <Text style={styles.ingredientName}>{ingredient.name}</Text>
       {!!ingredient.quantity && (
         <View style={styles.qtyPill}>
           <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
@@ -303,7 +303,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   ingredient: {
     flexDirection: 'row',
-    alignItems: 'center',
+    // flex-start, not center: the name wraps instead of truncating (see
+    // ingredientName), and centering would drift the qty pill and remove
+    // button downward as a wrapped name grows past two lines.
+    alignItems: 'flex-start',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,

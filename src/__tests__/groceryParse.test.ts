@@ -76,6 +76,37 @@ describe('parseGroceryInput', () => {
     });
   });
 
+  it('recognizes clove/cloves as a unit', () => {
+    expect(parseGroceryInput('5 cloves garlic, peeled and sliced')).toEqual({
+      name: 'garlic, peeled and sliced',
+      quantity: '5 cloves',
+    });
+    expect(parseGroceryInput('1 clove garlic')).toEqual({ name: 'garlic', quantity: '1 clove' });
+  });
+
+  it('peels a bare fraction as the leading count', () => {
+    expect(parseGroceryInput('1/4 cup tomato paste')).toEqual({
+      name: 'tomato paste',
+      quantity: '1/4 cup',
+    });
+    expect(parseGroceryInput('1/4 tsp red pepper flakes')).toEqual({
+      name: 'red pepper flakes',
+      quantity: '1/4 tsp',
+    });
+    expect(parseGroceryInput('1/2 avocado')).toEqual({ name: 'avocado', quantity: '1/2' });
+  });
+
+  it('peels a mixed number (whole + fraction) as the leading count', () => {
+    expect(parseGroceryInput('1 1/2 cups boiling water')).toEqual({
+      name: 'boiling water',
+      quantity: '1 1/2 cups',
+    });
+    expect(parseGroceryInput('2 1/4 lb chicken thighs')).toEqual({
+      name: 'chicken thighs',
+      quantity: '2 1/4 lb',
+    });
+  });
+
   it('peels a trailing xN', () => {
     expect(parseGroceryInput('milk x2')).toEqual({ name: 'milk', quantity: 'x2' });
     expect(parseGroceryInput('eggs x 12')).toEqual({ name: 'eggs', quantity: 'x12' });

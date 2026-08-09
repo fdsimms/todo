@@ -1,5 +1,10 @@
 import type { Recipe, RecipeIngredient } from '../types';
-import { RECIPE_NAME_MAX_LENGTH, GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import {
+  RECIPE_NAME_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_QUANTITY_MAX_LENGTH,
+} from '../types';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from './groceryParse';
 import { generateId } from './id';
 
@@ -143,17 +148,23 @@ export function remapIngredientKeyIn(
   return changed;
 }
 
-/** "8 ingredients · serves 4" — the recipe row's subtitle. */
+/** "8 ingredients · serves 4 · NYT Cooking" — the recipe row's subtitle. */
 export function describeRecipe(recipe: Recipe): string {
   const count = recipe.ingredients.length;
   const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
   if (recipe.servings) parts.push(`serves ${recipe.servings}`);
+  if (recipe.sourceName) parts.push(recipe.sourceName);
   return parts.join(' · ');
 }
 
 /** Trims and caps a name for storage. Empty means "not a name" — callers refuse it. */
 export function cleanRecipeName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_NAME_MAX_LENGTH).trim();
+}
+
+/** Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer — no attribution. */
+export function cleanRecipeSource(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_SOURCE_MAX_LENGTH).trim();
 }
 
 /**

@@ -22,6 +22,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     nameKey: name.toLowerCase(),
     notes: '',
     sourceUrl: null,
+    sourceName: null,
     servings: null,
     ingredients: [],
     favorite: false,
@@ -130,6 +131,17 @@ describe('field setters', () => {
     expect(updated.sourceUrl).toBeNull();
   });
 
+  it('trims a source name and normalises an empty one to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setSourceName(r.id, '  NYT Cooking  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourceName).toBe('NYT Cooking');
+
+    useRecipeStore.getState().setSourceName(r.id, '   ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourceName).toBeNull();
+  });
+
   it('clamps servings into range and allows clearing it', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
@@ -182,19 +194,14 @@ describe('ingredients', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients).toHaveLength(1);
   });
 
-  // Pinning the offline parser's known limit rather than wishing it away:
-  // "cloves" isn't in parseGroceryInput's unit whitelist, so it stays in the
-  // name and this does NOT collapse onto "garlic". The whitelist is deliberate
-  // — guessing costs you the first word of the item name — so the fix is the
-  // AI extractor, not a longer list of words to swallow.
-  it('keeps a preparation word in the name when it is not a known unit', () => {
+  it('recognizes clove/cloves as a unit', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
 
     const added = useRecipeStore.getState().addIngredient(r.id, '3 cloves garlic')!;
 
-    expect(added.name).toBe('cloves garlic');
-    expect(added.quantity).toBe('3');
+    expect(added.name).toBe('garlic');
+    expect(added.quantity).toBe('3 cloves');
   });
 
   it('adds a pasted block and reports how many were new', () => {

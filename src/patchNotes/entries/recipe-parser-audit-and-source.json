@@ -1,0 +1,4 @@
+{
+  "message": "Ingredient names no longer get cut off with an ellipsis, the offline parser now recognizes \"clove/cloves\" and fraction quantities like \"1/4 cup\" and \"1 1/2 tbsp\", and recipes can carry an optional Source (NYT Cooking, Bon Appétit, a cookbook) separate from the link.",
+  "date": "2026-08-09"
+}

@@ -379,6 +379,9 @@ export function initDatabase(): void {
     // Nullable like link_url, and null is what every existing row wants: no
     // task written before this shipped has a number to call.
     'ALTER TABLE tasks ADD COLUMN phone_number TEXT',
+    // Null for every existing recipe — no recipe written before this shipped
+    // had a place to say who it's from. See Recipe.sourceName.
+    'ALTER TABLE recipes ADD COLUMN source_name TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1406,6 +1409,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     nameKey: row.name_key as string,
     notes: (row.notes as string) ?? '',
     sourceUrl: (row.source_url as string) ?? null,
+    sourceName: (row.source_name as string) ?? null,
     servings: (row.servings as number) ?? null,
     ingredients: parseRecipeIngredients(row.ingredients),
     favorite: Boolean(row.favorite),
@@ -1424,11 +1428,11 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, servings, ingredients, favorite, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, servings, ingredients, favorite, sort_order, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
     ]
   );
@@ -1437,11 +1441,11 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, servings=?, ingredients=?, favorite=?, sort_order=?
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, favorite=?, sort_order=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.id,
     ]
   );

@@ -639,6 +639,11 @@ export interface Recipe {
   nameKey: string;
   notes: string;
   sourceUrl: string | null;
+  // Who it's from — "NYT Cooking", "Bon Appétit", a cookbook title. Separate
+  // from sourceUrl on purpose: a clipped recipe usually has a link, a recipe
+  // typed in from a magazine or a friend usually doesn't, and neither one
+  // implies the other. null means no attribution was given, not "unknown".
+  sourceName: string | null;
   servings: number | null;
   ingredients: RecipeIngredient[];
   favorite: boolean;
@@ -649,6 +654,8 @@ export interface Recipe {
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
 // is a list-row label at a larger font, not a task title.
 export const RECIPE_NAME_MAX_LENGTH = 80;
+// A byline, not a title — "NYT Cooking" not a full citation.
+export const RECIPE_SOURCE_MAX_LENGTH = 60;
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [

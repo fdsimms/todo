@@ -30,6 +30,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     nameKey: name.toLowerCase(),
     notes: '',
     sourceUrl: null,
+    sourceName: null,
     servings: null,
     ingredients: [],
     favorite: false,
@@ -109,8 +110,8 @@ describe('ingredientsFromText', () => {
       '3. 3 cloves garlic',
     ].join('\n'));
 
-    expect(result.map(i => i.name)).toEqual(['chicken thighs', 'parsley', 'cloves garlic']);
-    expect(result.map(i => i.quantity)).toEqual(['2 lb', '1 bunch', '3']);
+    expect(result.map(i => i.name)).toEqual(['chicken thighs', 'parsley', 'garlic']);
+    expect(result.map(i => i.quantity)).toEqual(['2 lb', '1 bunch', '3 cloves']);
   });
 
   it('dedupes within the paste on the catalog key', () => {
@@ -187,6 +188,16 @@ describe('describeRecipe', () => {
   it('adds servings only when set', () => {
     expect(describeRecipe(recipe('D', { ingredients: [ing('Salt')], servings: 4 })))
       .toBe('1 ingredient · serves 4');
+  });
+
+  it('adds the source name only when set, after servings', () => {
+    expect(describeRecipe(recipe('E', { ingredients: [ing('Salt')], sourceName: 'NYT Cooking' })))
+      .toBe('1 ingredient · NYT Cooking');
+    expect(describeRecipe(recipe('F', {
+      ingredients: [ing('Salt')],
+      servings: 4,
+      sourceName: 'Bon Appétit',
+    }))).toBe('1 ingredient · serves 4 · Bon Appétit');
   });
 });
 
