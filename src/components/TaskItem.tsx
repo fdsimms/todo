@@ -2235,7 +2235,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     flex: 1,
-    gap: 3,
+    gap: 2,
   },
   title: {
     color: colors.text,
