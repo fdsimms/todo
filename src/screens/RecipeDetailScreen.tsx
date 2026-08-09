@@ -277,6 +277,10 @@ export function RecipeDetailScreen() {
             disabled={!draft.trim()}
           />
         </View>
+        <Text style={styles.inputHint}>
+          Quantity and unit go first, e.g. “2 cups flour” — add a comma for prep, e.g.
+          “garlic, minced”
+        </Text>
 
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
@@ -446,6 +450,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'flex-end',
     gap: spacing.sm,
     marginTop: spacing.md,
+  },
+  inputHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
   },
   addInput: {
     flex: 1,
