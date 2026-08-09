@@ -6,6 +6,10 @@ import type { SortOption, Priority, Effort } from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { loadAnthropicApiKey, saveAnthropicApiKey } from '../utils/secureApiKey';
+import {
+  AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
+  type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
+} from '../utils/aiFeatures';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -74,6 +78,13 @@ interface SettingsStore {
   // isn't, so initializeSecrets() fills it in (and migrates the old plaintext
   // row) right after. Everything that reads it already treats '' as "AI is off".
   anthropicApiKey: string;
+  // Per-feature on/off + model choice for every place the app calls out to
+  // Anthropic (see src/utils/aiFeatures.ts and src/services/aiSuggestions.ts).
+  // Kept out of DEFAULT_SETTINGS/resetToDefaults for the same reason as
+  // patchNotesQaStatus: it's an object, and String(value) doesn't round-trip
+  // one. "Reset settings" also has no business quietly re-enabling a feature
+  // someone turned off or changing which model they pay for.
+  aiFeatureConfig: AiFeatureConfigMap;
   // Face ID (or the device passcode) in front of the whole app. Both of these
   // stay out of DEFAULT_SETTINGS: "reset settings" must not be a way to turn
   // someone's lock off.
@@ -152,6 +163,7 @@ interface SettingsStore {
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
   setAnthropicApiKey: (key: string) => void;
+  setAiFeatureConfig: (id: AiFeatureId, patch: Partial<AiFeatureConfig>) => void;
   setAppLockEnabled: (on: boolean) => void;
   setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
@@ -266,6 +278,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   anthropicApiKey: '',
+  aiFeatureConfig: defaultAiFeatureConfig(),
   appLockEnabled: false,
   appLockGraceSeconds: DEFAULT_APP_LOCK_GRACE_SECONDS,
   vacationMode: false,
@@ -351,7 +364,29 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         patchNotesQaStatus = {};
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, initialized: true });
+    // Merged feature-by-feature against the defaults, rather than trusted
+    // wholesale, so a feature added after this setting was first saved shows up
+    // enabled with the default model instead of silently missing from the map.
+    const aiFeatureConfig = defaultAiFeatureConfig();
+    const storedAiFeatureConfig = dbGetSetting('aiFeatureConfig');
+    if (storedAiFeatureConfig) {
+      try {
+        const parsed = JSON.parse(storedAiFeatureConfig) as Partial<
+          Record<AiFeatureId, Partial<AiFeatureConfig>>
+        >;
+        for (const id of AI_FEATURE_IDS) {
+          const stored = parsed[id];
+          if (!stored) continue;
+          aiFeatureConfig[id] = {
+            enabled: typeof stored.enabled === 'boolean' ? stored.enabled : aiFeatureConfig[id].enabled,
+            model: isAiModelId(stored.model) ? stored.model : aiFeatureConfig[id].model,
+          };
+        }
+      } catch {
+        // keep defaults
+      }
+    }
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, initialized: true });
   },
 
   /**
@@ -475,6 +510,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setAnthropicApiKey(key: string) {
     set({ anthropicApiKey: key });
     saveAnthropicApiKey(key);
+  },
+
+  setAiFeatureConfig(id: AiFeatureId, patch: Partial<AiFeatureConfig>) {
+    set(state => {
+      const next = { ...state.aiFeatureConfig, [id]: { ...state.aiFeatureConfig[id], ...patch } };
+      dbSetSetting('aiFeatureConfig', JSON.stringify(next));
+      return { aiFeatureConfig: next };
+    });
   },
 
   setAppLockEnabled(on: boolean) {

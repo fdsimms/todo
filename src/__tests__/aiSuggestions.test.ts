@@ -19,9 +19,19 @@ import type { Task } from '../types';
 // Mocks
 // ---------------------------------------------------------------------------
 
+const TEST_AI_FEATURE_CONFIG = {
+  taskSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  templateSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+};
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({ anthropicApiKey: 'test-key-does-not-hit-network' }),
+    getState: () => ({
+      anthropicApiKey: 'test-key-does-not-hit-network',
+      aiFeatureConfig: TEST_AI_FEATURE_CONFIG,
+    }),
   },
 }));
 
@@ -136,6 +146,22 @@ describe('suggestTaskAttributes', () => {
     await expect(
       suggestTaskAttributes('Buy milk', '', [], []),
     ).rejects.toThrow('No API key');
+  });
+
+  it('throws without hitting the network when the feature is turned off', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({
+      anthropicApiKey: 'test-key-does-not-hit-network',
+      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, taskSuggestions: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
+    });
+    const spy = jest.spyOn(global, 'fetch');
+
+    await expect(
+      suggestTaskAttributes('Buy milk', '', [], []),
+    ).rejects.toThrow('AI feature disabled');
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('throws on a non-OK HTTP response', async () => {
@@ -386,7 +412,9 @@ describe('suggestTemplateItems', () => {
 // ============================================================================
 
 describe('shared Anthropic request handling', () => {
-  it('sends temperature: 0 so suggestions are deterministic', async () => {
+  it('sends the feature\'s configured model and no temperature override', async () => {
+    // No `temperature` — Opus 5 / Sonnet 5 reject a non-default value, and the
+    // tool-forced extraction below doesn't need one for determinism.
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -396,7 +424,8 @@ describe('shared Anthropic request handling', () => {
     await suggestTaskAttributes('task', '', [], []);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.temperature).toBe(0);
+    expect(body.temperature).toBeUndefined();
+    expect(body.model).toBe(TEST_AI_FEATURE_CONFIG.taskSuggestions.model);
   });
 
   it('aborts the request after 15s and reports a timeout', async () => {
@@ -433,6 +462,10 @@ describe('shared Anthropic request handling', () => {
 describe('describeAIError', () => {
   it('points at Settings for a missing API key', () => {
     expect(describeAIError(new Error('No API key'))).toContain('Settings');
+  });
+
+  it('names the feature as turned off for a disabled feature', () => {
+    expect(describeAIError(new Error('AI feature disabled'))).toContain('turned off');
   });
 
   it('points at Settings for an unauthorized response', () => {

@@ -10,6 +10,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
+import { AI_FEATURES, AI_MODEL_OPTIONS } from '../../utils/aiFeatures';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -26,6 +27,8 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const setAppLockGraceSeconds = useSettingsStore(s => s.setAppLockGraceSeconds);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const setAnthropicApiKey = useSettingsStore(s => s.setAnthropicApiKey);
+  const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
+  const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -145,7 +148,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           icon="sparkles-outline"
           iconColor={anthropicApiKey ? colors.purple : undefined}
           label="Anthropic API Key"
-          hint="Enables auto-tag, effort, and date suggestions in the task editor, plus template drafting"
+          hint="Required for any of the features below to work"
         >
           <TextInput
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}
@@ -164,6 +167,38 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             accessibilityLabel="Anthropic API key"
           />
         </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection
+        label="AI features"
+        footer="Turn any of these off if you'd rather they never call out to Anthropic, or pick a different model per feature — a faster, cheaper model for quick suggestions, or a stronger one where it's worth the extra cost."
+      >
+        {AI_FEATURES.map((feature, i) => {
+          const config = aiFeatureConfig[feature.id];
+          return (
+            <React.Fragment key={feature.id}>
+              {i > 0 && <View style={styles.sep} />}
+              <SettingsRow
+                icon="sparkles-outline"
+                iconColor={config.enabled ? colors.purple : undefined}
+                label={feature.label}
+                hint={feature.hint}
+                toggle={config.enabled}
+                onPress={() => setAiFeatureConfig(feature.id, { enabled: !config.enabled })}
+                tight={config.enabled}
+              />
+              {config.enabled && (
+                <SettingsPills
+                  attached
+                  options={AI_MODEL_OPTIONS}
+                  selected={config.model}
+                  onSelect={model => setAiFeatureConfig(feature.id, { model })}
+                  accessibilityLabelFor={o => `${feature.label} model: ${o.label}`}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
       </SettingsSection>
     </>
   );
