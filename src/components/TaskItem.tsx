@@ -36,6 +36,7 @@ import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
+import { mailtoUrl } from '../utils/email';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -288,6 +289,18 @@ export const TaskItem = React.memo(function TaskItem({
       // Same reasoning as handleCall — sms: needs no
       // LSApplicationQueriesSchemes entry either.
       await Linking.openURL(textUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+  // Same sanitise-at-render, null-hides-the-button pattern as callUrl above.
+  const emailUrl = mailtoUrl(task.emailAddress);
+  const handleEmail = async () => {
+    if (!emailUrl) return;
+    haptics.tap();
+    try {
+      // Same reasoning as call/link: no canOpenURL check needed for mailto:.
+      await Linking.openURL(emailUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -1538,6 +1551,18 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && emailUrl && (
+        <TouchableOpacity
+          onPress={handleEmail}
+          hitSlop={8}
+          style={styles.emailBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Email ${task.emailAddress} for ${task.title}`}
+        >
+          <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && showPin && (
         <TouchableOpacity
           onPress={() => {
@@ -2360,6 +2385,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   textBtn: {
+    padding: 4,
+  },
+  emailBtn: {
     padding: 4,
   },
   pinBtn: {

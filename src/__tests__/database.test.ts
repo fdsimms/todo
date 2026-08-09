@@ -177,6 +177,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   archivedAt: null,
   linkUrl: null,
   phoneNumber: null,
+  emailAddress: null,
   blockedById: null,
   pendingImport: null,
   ...overrides,
@@ -451,6 +452,20 @@ describe('dbInsertTask + rowToTask round-trip', () => {
   it('returns null phoneNumber when unset', () => {
     dbInsertTask(makeTask({ id: 'nophone' }));
     expect(dbGetAllTasks()[0].phoneNumber).toBeNull();
+  });
+
+  it('round-trips emailAddress through both insert and update', () => {
+    dbInsertTask(makeTask({ id: 'em', emailAddress: 'first@example.com' }));
+    expect(dbGetAllTasks()[0].emailAddress).toBe('first@example.com');
+    dbUpdateTask({ ...dbGetAllTasks()[0], emailAddress: 'second@example.com', title: 'Renamed' });
+    const [t] = dbGetAllTasks();
+    expect(t.emailAddress).toBe('second@example.com');
+    expect(t.title).toBe('Renamed');
+  });
+
+  it('returns null emailAddress when unset', () => {
+    dbInsertTask(makeTask({ id: 'noemail' }));
+    expect(dbGetAllTasks()[0].emailAddress).toBeNull();
   });
 
   it('deserialises timeSegments from a JSON array', () => {

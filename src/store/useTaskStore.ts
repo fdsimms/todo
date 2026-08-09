@@ -68,7 +68,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl', 'phoneNumber',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl', 'phoneNumber', 'emailAddress',
   // Grouped with the other visibility gates (windowStart, timeSegments) rather
   // than the recurrence rule: "this occurrence waits on that one-off errand" is
   // a normal thing to want, and without this a scope:'occurrence' edit would
@@ -178,6 +178,7 @@ function newTaskFromDraft(
     archivedAt: null,
     linkUrl: draft.linkUrl ?? null,
     phoneNumber: draft.phoneNumber ?? null,
+    emailAddress: draft.emailAddress ?? null,
     blockedById: draft.blockedById ?? null,
     pendingImport: draft.pendingImport ?? null,
   };
@@ -2231,6 +2232,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archivedAt: null,
       linkUrl: null,
       phoneNumber: null,
+      emailAddress: null,
       blockedById: null,
       pendingImport: null,
     };
@@ -2360,6 +2362,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       archivedAt: null,
       linkUrl: null,
       phoneNumber: null,
+      emailAddress: null,
       blockedById: null,
       pendingImport: null,
     };

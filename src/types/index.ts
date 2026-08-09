@@ -255,6 +255,13 @@ export interface Task {
   // a chain-link glyph for something that is neither.
   phoneNumber: string | null;
 
+  // An email address to compose to — same shape as phoneNumber and for the
+  // same reason: stored as typed (no canonicalisation, no validation beyond
+  // "worth putting a compose button on the row"), and deliberately its own
+  // field rather than a `mailto:` linkUrl for the same reason phoneNumber
+  // isn't a `tel:` linkUrl.
+  emailAddress: string | null;
+
   // "Waiting on" — the id of another task that must be done before this one
   // becomes actionable (e.g. "return the router" waiting on "cancel the
   // internet plan"). The fifth reason a task can be hidden, and the only one
