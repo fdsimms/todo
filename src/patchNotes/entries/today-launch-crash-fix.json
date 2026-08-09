@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a crash on launch caused by a task row's layout measurement",
+  "date": "2026-08-09"
+}
