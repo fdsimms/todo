@@ -60,7 +60,18 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
           <Text style={styles.overline} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
         )}
         <Text style={styles.title}>{title}</Text>
-        {subtitle != null && <Text style={styles.subtitle}>{subtitle}</Text>}
+        {subtitle != null ? (
+          <Text style={styles.subtitle}>{subtitle}</Text>
+        ) : (
+          // Same reservation, one line down: without it, any screen whose
+          // subtitle depends on data (a count that's sometimes 0, Today's
+          // workload total) has two different header heights depending on
+          // whether that data renders anything — and on Today specifically,
+          // that's what put its view-mode pills a line below Later's/
+          // Unscheduled's/Inbox's, since only the 'today' sub-view ever
+          // passes one.
+          <Text style={styles.subtitle} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
+        )}
       </View>
       <View style={styles.actions}>
         {actions?.map((action, i) => {
