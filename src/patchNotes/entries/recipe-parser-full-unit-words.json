@@ -1,0 +1,4 @@
+{
+  "message": "The recipe ingredient parser now recognizes \"tablespoons\", \"teaspoons\" and other spelled-out units, not just tbsp/tsp, so a pasted line like \"3 tablespoons olive oil\" merges into the quantity instead of becoming a duplicate ingredient.",
+  "date": "2026-08-09"
+}

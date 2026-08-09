@@ -57,6 +57,25 @@ describe('parseGroceryInput', () => {
     });
   });
 
+  it('recognizes spelled-out tablespoon/teaspoon and abbreviates them', () => {
+    expect(parseGroceryInput('3 tablespoons olive oil')).toEqual({
+      name: 'olive oil',
+      quantity: '3 tbsp',
+    });
+    expect(parseGroceryInput('1 tablespoon olive oil')).toEqual({
+      name: 'olive oil',
+      quantity: '1 tbsp',
+    });
+    expect(parseGroceryInput('2 teaspoons vanilla extract')).toEqual({
+      name: 'vanilla extract',
+      quantity: '2 tsp',
+    });
+    expect(parseGroceryInput('1 teaspoon salt')).toEqual({
+      name: 'salt',
+      quantity: '1 tsp',
+    });
+  });
+
   it('peels a trailing xN', () => {
     expect(parseGroceryInput('milk x2')).toEqual({ name: 'milk', quantity: 'x2' });
     expect(parseGroceryInput('eggs x 12')).toEqual({ name: 'eggs', quantity: 'x12' });

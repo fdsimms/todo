@@ -52,11 +52,23 @@ const UNITS = [
   'l', 'ml', 'liter', 'liters', 'litre', 'litres',
   'gal', 'gallon', 'gallons', 'qt', 'quart', 'quarts', 'pt', 'pint', 'pints',
   'cup', 'cups', 'tbsp', 'tsp',
+  'tablespoon', 'tablespoons', 'teaspoon', 'teaspoons',
   'pack', 'packs', 'pkg', 'box', 'boxes', 'bag', 'bags', 'can', 'cans',
   'jar', 'jars', 'bottle', 'bottles', 'bunch', 'bunches', 'head', 'heads',
   'dozen', 'doz', 'loaf', 'loaves', 'x',
 ];
 const UNIT_SET = new Set(UNITS);
+
+// Spelled-out units collapse to the abbreviation someone would've typed by
+// hand — "1 tablespoon sugar" and "1 tbsp sugar" must produce the same
+// quantity string, or the two spellings pile up as separate-looking rows
+// even though parseGroceryInput correctly pulled the name out of both.
+const UNIT_ABBREVIATIONS: Record<string, string> = {
+  tablespoon: 'tbsp',
+  tablespoons: 'tbsp',
+  teaspoon: 'tsp',
+  teaspoons: 'tsp',
+};
 
 // "2 lb", "1.5kg", "3 x" — a number, optionally glued to a unit.
 const LEADING_QTY = /^(\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(.*)$/i;
@@ -97,7 +109,8 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
     if (rest.trim()) {
       const unit = maybeUnit?.toLowerCase();
       if (unit && UNIT_SET.has(unit)) {
-        return { name: clampName(rest), quantity: clampQuantity(`${count} ${unit}`) };
+        const canonicalUnit = UNIT_ABBREVIATIONS[unit] ?? unit;
+        return { name: clampName(rest), quantity: clampQuantity(`${count} ${canonicalUnit}`) };
       }
       if (!maybeUnit) {
         // Bare count: "3 avocados". The unit slot was whitespace, so `rest`
