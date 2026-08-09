@@ -19,7 +19,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
@@ -91,7 +91,6 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'night', label: 'Night', icon: 'moon' },
 ];
 
-const dayKey = (d: Date) => format(d, 'yyyy-MM-dd');
 const noonOf = (d: Date) => {
   const n = new Date(d);
   n.setHours(12, 0, 0, 0);
@@ -130,7 +129,7 @@ export function WhenPicker({
 
   const today = useMemo(() => getLogicalToday(dayResetTime), [visible, dayResetTime]);
   const tomorrow = useMemo(() => getLogicalTomorrow(dayResetTime), [visible, dayResetTime]);
-  const tomorrowKey = dayKey(tomorrow);
+  const tomorrowKey = dayKeyOf(tomorrow);
 
   useEffect(() => {
     if (visible) {
@@ -190,7 +189,7 @@ export function WhenPicker({
   };
 
   const handleDayPress = (day: Date) => {
-    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKey(day));
+    confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day));
   };
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
@@ -222,7 +221,7 @@ export function WhenPicker({
         estimatedMinutes: taskEstimatedMinutes ?? null,
       };
       const res = computeSnoozeSuggestion(draftTask, tasks);
-      setSuggestion({ key: dayKey(res.date), reason: res.reason });
+      setSuggestion({ key: dayKeyOf(res.date), reason: res.reason });
       setDisplayMonth(startOfMonth(res.date));
       haptics.success();
     } catch (e) {
@@ -389,9 +388,9 @@ export function WhenPicker({
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
                 const todayDay = isSameDay(day, today);
-                const key = todayDay ? 'today' : dayKey(day);
+                const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
-                const isSuggested = suggestion?.key === dayKey(day);
+                const isSuggested = suggestion?.key === dayKeyOf(day);
 
                 return (
                   <TouchableOpacity

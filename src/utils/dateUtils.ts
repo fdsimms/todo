@@ -33,6 +33,23 @@ export function getCurrentDayStart(): Date {
 }
 
 /**
+ * A date's calendar day as a `YYYY-MM-DD` string, in local time.
+ *
+ * Two jobs, which is why it's here rather than local to a component. It's the
+ * identity of a day for comparison — CalendarPicker and WhenPicker each held
+ * their own copy of this, and the three calendars have already had to be
+ * de-duplicated once (that's what weekdayHeaders exists for). And it's the
+ * *stored* form of a meal plan entry's date: a slot is a calendar day rather
+ * than a moment, so it deliberately carries no time and no dayResetTime.
+ *
+ * Zero-padded, so the keys sort lexically — which is what lets a range read be
+ * a plain `date >= ? AND date <= ?`.
+ */
+export function dayKeyOf(date: Date): string {
+  return format(date, 'yyyy-MM-dd');
+}
+
+/**
  * The logical-day-start instant for a *stored* date like a task's dueDate or
  * deferUntil — the calendar day the value represents, at the dayResetTime
  * clock time. Unlike getDayStart(), this never rolls the result back a day:

@@ -58,9 +58,14 @@ import {
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
   dbSetGroceryAisleOrder,
+  dbGetMealPlanEntries,
+  dbInsertMealPlanEntry,
+  dbUpdateMealPlanEntry,
+  dbDeleteMealPlanEntry,
+  dbPurgeOldMealPlanEntries,
 } from '../db/database';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, MealPlanEntry, MealSlot } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -82,9 +87,12 @@ jest.mock('expo-sqlite', () => {
       execSync(sql: string) {
         mockRawDb.exec(sql);
       },
+      // Returns better-sqlite3's result, which carries `changes` — expo-sqlite's
+      // does too, and dbPurgeOldMealPlanEntries reads it to report what a purge
+      // took.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       runSync(sql: string, params: any[] = []) {
-        mockRawDb.prepare(sql).run(...params);
+        return mockRawDb.prepare(sql).run(...params);
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       getAllSync<T>(sql: string, params: any[] = []): T[] {
@@ -1659,6 +1667,151 @@ describe('grocery items', () => {
 
       dbReplaceAllData(backup);
       expect(dbGetAllGroceryItems()).toEqual([item]);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Meal plan
+// ---------------------------------------------------------------------------
+
+describe('meal plan entries', () => {
+  let mealSeq = 0;
+  const makeEntry = (
+    date: string,
+    slot: MealSlot = 'dinner',
+    overrides: Partial<MealPlanEntry> = {}
+  ): MealPlanEntry => {
+    mealSeq += 1;
+    return {
+      id: `meal-${mealSeq}`,
+      date,
+      slot,
+      recipeId: null,
+      title: `Meal ${mealSeq}`,
+      sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      ...overrides,
+    };
+  };
+
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM meal_plan_entries');
+    mealSeq = 0;
+  });
+
+  it('round-trips an entry', () => {
+    const planned = makeEntry('2026-08-05', 'dinner', {
+      recipeId: 'r1', title: 'Sausage ragù', sortOrder: 2,
+    });
+    dbInsertMealPlanEntry(planned);
+
+    expect(dbGetMealPlanEntries('2026-08-03', '2026-08-09')).toEqual([planned]);
+  });
+
+  it('stores a free-text meal with a null recipe', () => {
+    const planned = makeEntry('2026-08-05', 'dinner', { recipeId: null, title: 'Leftovers' });
+    dbInsertMealPlanEntry(planned);
+
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeId).toBeNull();
+  });
+
+  it('reads a range inclusively at both ends and excludes what falls outside', () => {
+    dbInsertMealPlanEntry(makeEntry('2026-08-02'));
+    dbInsertMealPlanEntry(makeEntry('2026-08-03'));
+    dbInsertMealPlanEntry(makeEntry('2026-08-09'));
+    dbInsertMealPlanEntry(makeEntry('2026-08-10'));
+
+    expect(dbGetMealPlanEntries('2026-08-03', '2026-08-09').map(e => e.date))
+      .toEqual(['2026-08-03', '2026-08-09']);
+  });
+
+  it('orders by day then by sort order', () => {
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner', { sortOrder: 2 }));
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner', { sortOrder: 1 }));
+    dbInsertMealPlanEntry(makeEntry('2026-08-04', 'dinner', { sortOrder: 9 }));
+
+    expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31').map(e => [e.date, e.sortOrder]))
+      .toEqual([['2026-08-04', 9], ['2026-08-05', 1], ['2026-08-05', 2]]);
+  });
+
+  // Two things on one dinner is real — chicken *and* a salad — so there is
+  // deliberately no UNIQUE(date, slot) for an insert to trip over.
+  it('accepts two entries in the same slot on the same day', () => {
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner'));
+    dbInsertMealPlanEntry(makeEntry('2026-08-05', 'dinner', { sortOrder: 2 }));
+
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')).toHaveLength(2);
+  });
+
+  it('updates a moved entry in place', () => {
+    const planned = makeEntry('2026-08-05', 'dinner');
+    dbInsertMealPlanEntry(planned);
+    dbUpdateMealPlanEntry({ ...planned, date: '2026-08-07', slot: 'lunch', sortOrder: 3 });
+
+    expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31')).toEqual([
+      { ...planned, date: '2026-08-07', slot: 'lunch', sortOrder: 3 },
+    ]);
+  });
+
+  it('deletes one entry and leaves the rest', () => {
+    const a = makeEntry('2026-08-05');
+    const b = makeEntry('2026-08-06');
+    dbInsertMealPlanEntry(a);
+    dbInsertMealPlanEntry(b);
+
+    dbDeleteMealPlanEntry(a.id);
+
+    expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31').map(e => e.id)).toEqual([b.id]);
+  });
+
+  // The column is a bare string and a restored backup can carry anything. An
+  // entry that renders in the wrong slot is recoverable; one that vanishes from
+  // the week is not.
+  it('reads an unrecognised slot as dinner rather than dropping the row', () => {
+    mockRawDb.prepare(
+      `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run('m-odd', '2026-08-05', 'brunch', null, 'Shakshuka', 1, '2026-01-01T00:00:00.000Z');
+
+    const [row] = dbGetMealPlanEntries('2026-08-05', '2026-08-05');
+    expect(row.slot).toBe('dinner');
+    expect(row.title).toBe('Shakshuka');
+  });
+
+  describe('purge', () => {
+    it('takes everything before the cutoff and reports how many', () => {
+      dbInsertMealPlanEntry(makeEntry('2026-02-08'));
+      dbInsertMealPlanEntry(makeEntry('2026-02-09'));
+      dbInsertMealPlanEntry(makeEntry('2026-08-05'));
+
+      expect(dbPurgeOldMealPlanEntries('2026-02-09')).toBe(1);
+      expect(dbGetMealPlanEntries('2026-01-01', '2026-12-31').map(e => e.date))
+        .toEqual(['2026-02-09', '2026-08-05']);
+    });
+
+    it('is a no-op when nothing is old enough', () => {
+      dbInsertMealPlanEntry(makeEntry('2026-08-05'));
+      expect(dbPurgeOldMealPlanEntries('2026-02-09')).toBe(0);
+      expect(dbGetMealPlanEntries('2026-01-01', '2026-12-31')).toHaveLength(1);
+    });
+  });
+
+  describe('backup', () => {
+    it('is in BACKUP_TABLES, so the first restore does not silently destroy it', () => {
+      expect(BACKUP_TABLES).toContain('meal_plan_entries');
+    });
+
+    it('survives an export/restore round trip', () => {
+      const planned = makeEntry('2026-08-05', 'dinner', { recipeId: 'r1', title: 'Sausage ragù' });
+      dbInsertMealPlanEntry(planned);
+
+      const backup = dbExportTables();
+      mockRawDb.exec('DELETE FROM meal_plan_entries');
+      expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31')).toEqual([]);
+
+      dbReplaceAllData(backup);
+      expect(dbGetMealPlanEntries('2026-08-01', '2026-08-31')).toEqual([planned]);
     });
   });
 });

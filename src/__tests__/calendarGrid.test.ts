@@ -1,6 +1,6 @@
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
+import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 
@@ -129,6 +129,70 @@ describe('buildCalendarGrid', () => {
       const days = buildCalendarGrid(new Date(2025, 7, 6));
       expect(days.map(iso)).toEqual(buildCalendarGrid(new Date(2025, 7, 6), 0).map(iso));
     });
+  });
+});
+
+describe('buildWeekDays', () => {
+  it('returns the seven consecutive days of the week the date falls in', () => {
+    // Wed 6 Aug 2025.
+    const days = buildWeekDays(new Date(2025, 7, 6));
+    expect(days).toHaveLength(7);
+    expect(days.map(iso)).toEqual([
+      '2025-08-03', '2025-08-04', '2025-08-05', '2025-08-06',
+      '2025-08-07', '2025-08-08', '2025-08-09',
+    ]);
+  });
+
+  it('starts on Monday when asked', () => {
+    expect(buildWeekDays(new Date(2025, 7, 6), 1).map(iso)).toEqual([
+      '2025-08-04', '2025-08-05', '2025-08-06', '2025-08-07',
+      '2025-08-08', '2025-08-09', '2025-08-10',
+    ]);
+  });
+
+  it('defaults to Sunday', () => {
+    expect(buildWeekDays(new Date(2025, 7, 6)).map(iso))
+      .toEqual(buildWeekDays(new Date(2025, 7, 6), 0).map(iso));
+  });
+
+  // A Sunday under a Monday-first setting belongs to the week that is *ending*,
+  // not the one about to start — the off-by-seven that would show the user next
+  // week's plan every Sunday.
+  it('puts a Sunday at the end of a Monday-first week', () => {
+    const days = buildWeekDays(new Date(2025, 7, 3), 1).map(iso);
+    expect(days[6]).toBe('2025-08-03');
+    expect(days[0]).toBe('2025-07-28');
+  });
+
+  it('is unaffected by the time of day on the input', () => {
+    const morning = buildWeekDays(new Date(2025, 7, 6, 0, 0, 0));
+    const evening = buildWeekDays(new Date(2025, 7, 6, 23, 59, 59));
+    expect(morning.map(iso)).toEqual(evening.map(iso));
+  });
+
+  it('crosses month and year boundaries without skipping a day', () => {
+    expect(buildWeekDays(new Date(2025, 11, 31)).map(iso)).toEqual([
+      '2025-12-28', '2025-12-29', '2025-12-30', '2025-12-31',
+      '2026-01-01', '2026-01-02', '2026-01-03',
+    ]);
+  });
+
+  it('keeps seven unique consecutive days across a DST transition', () => {
+    // US DST starts Mar 9 2025 and ends Nov 2 2025 — a naive +24h would either
+    // repeat or skip a calendar day.
+    for (const date of [new Date(2025, 2, 12), new Date(2025, 10, 5)]) {
+      const days = buildWeekDays(date);
+      expect(new Set(days.map(iso)).size).toBe(7);
+    }
+  });
+
+  it('agrees with the month grid about which days share a week', () => {
+    for (const weekStart of [0, 1] as const) {
+      const week = buildWeekDays(new Date(2025, 7, 6), weekStart).map(iso);
+      const grid = buildCalendarGrid(new Date(2025, 7, 6), weekStart).map(iso);
+      const rowStart = grid.indexOf(week[0]);
+      expect(grid.slice(rowStart, rowStart + 7)).toEqual(week);
+    }
   });
 });
 

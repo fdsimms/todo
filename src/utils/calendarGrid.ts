@@ -22,6 +22,23 @@ export function weekdayHeaders(weekStartsOn: WeekStart = 0): string[] {
 }
 
 /**
+ * The seven days of the week `date` falls in, rotated to match `weekStartsOn`.
+ *
+ * Same parameter-with-a-default shape as buildCalendarGrid, and for the same
+ * reason: it stays a pure function its tests can drive without a store.
+ *
+ * `weekdayHeaders` is deliberately *not* its companion here the way it is for
+ * the month grid — the meal plan renders seven vertical day sections rather
+ * than seven columns, so there is nothing to label. (At 390pt a 7-column strip
+ * gives each day ~52pt, which cannot hold "Sausage & fennel ragù". A strip is a
+ * date-*picker* affordance; every cell of a week plan carries content.)
+ */
+export function buildWeekDays(date: Date, weekStartsOn: WeekStart = 0): Date[] {
+  const start = startOfWeek(date, { weekStartsOn });
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+}
+
+/**
  * The days to render for a month grid: the whole month, padded out to complete
  * weeks at both ends, then padded further so the grid is always 42 cells /
  * 6 rows. The fixed height is what keeps the calendar from resizing as you

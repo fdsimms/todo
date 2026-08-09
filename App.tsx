@@ -8,6 +8,7 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
+import { useMealPlanStore } from './src/store/useMealPlanStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
@@ -70,6 +71,7 @@ function AppRoot() {
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
+  const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
 
   useEffect(() => {
     // Every step is isolated (see src/utils/startup.ts): these are independent
@@ -110,6 +112,11 @@ function AppRoot() {
       // rolloverQuotas means a completion that pass just wrote is judged on the
       // same footing as any other.
       ['purge old completed tasks', purgeOldCompletedTasks],
+      // The meal plan's own horizon, alongside it rather than inside it: these
+      // are per-event rows on a fixed 180-day window, deliberately not wired to
+      // completedRetentionDays — that setting is a promise about the Logbook,
+      // and "keep completions forever" must not also mean four years of dinners.
+      ['purge old meal plan entries', purgeOldMealPlanEntries],
       // Request notification permissions
       ['request notification permissions', requestNotificationPermissions],
       // AlarmKit has its own authorization, separate from UNUserNotificationCenter
@@ -118,7 +125,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks]);
+  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

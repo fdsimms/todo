@@ -650,6 +650,79 @@ export interface Recipe {
 // is a list-row label at a larger font, not a task title.
 export const RECIPE_NAME_MAX_LENGTH = 80;
 
+// Which meal of the day a plan entry sits in. A closed set rather than free
+// text: it orders the day, and a day whose sections are user-defined strings
+// can't be sorted without inventing a second ordering table.
+export type MealSlot = 'breakfast' | 'lunch' | 'dinner' | 'snack';
+
+// The order a day is read in. MEAL_SLOTS is the sort key for entries sharing a
+// date — see slotRank in src/utils/mealPlan.ts.
+export const MEAL_SLOTS: readonly MealSlot[] = ['breakfast', 'lunch', 'dinner', 'snack'];
+
+export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+};
+
+/**
+ * One thing planned for one meal of one day.
+ *
+ * **Its own row, never a Task, and never a Task carrying a marker.** Four
+ * concrete failures if it were one: sweepExpiredTasks deletes next week's plan,
+ * purgeOldCompletedTasks eats the history, completing a recurring one spawns
+ * phantom dinners, and seriesId becomes a second, conflicting way to say "this
+ * on several dates". A Task-with-a-flag is the hidden-second-row-type move this
+ * app has already rejected twice in writing (Series ghost rows, and
+ * TaskGroup.completedAt).
+ */
+export interface MealPlanEntry {
+  id: string;
+  /**
+   * A `YYYY-MM-DD` **local day key**, deliberately unlike every other date in
+   * this app, which stores an ISO instant. A meal slot is a calendar day rather
+   * than a moment: an instant would reopen the dayResetTime question (does
+   * Tuesday's dinner belong to Tuesday at 02:00?) and make a range read shift
+   * under the user the moment they travel. Built with dayKeyOf().
+   */
+  date: string;
+  slot: MealSlot;
+  /**
+   * Null is a first-class answer — Thursday is allowed to just say "leftovers",
+   * and such an entry holds its place, renders on the week and counts toward
+   * "6 dinners planned" with no second-class treatment. Every planner that
+   * demands a recipe per night is abandoned on a Wednesday.
+   *
+   * **Deliberately no cascade when the recipe is deleted.** Foreign keys are off
+   * in expo-sqlite so ON DELETE CASCADE would silently do nothing anyway, but
+   * here no cascade is the choice rather than an accident: deleting a recipe
+   * must not blank last Tuesday. Readers are resolve-or-shrug and fall back to
+   * `title`, exactly as TemplateItem.refTemplateName does.
+   */
+  recipeId: string | null;
+  /** Captured at plan time, so the row still reads right when recipeId stops resolving. */
+  title: string;
+  /**
+   * Orders entries within one (date, slot). There is deliberately no
+   * UNIQUE(date, slot) — two things on one dinner is real (chicken *and* a
+   * salad), and a uniqueness constraint would make the second one unsayable.
+   */
+  sortOrder: number;
+  createdAt: string;
+}
+
+/**
+ * How long a planned meal is kept, in days.
+ *
+ * Entries are the first per-event rows this app adds since the grocery model
+ * was built to avoid exactly that, so the prune is not optional. It is
+ * deliberately *not* wired to `completedRetentionDays`: that setting is a
+ * promise about the user's Logbook, and quietly reusing it would mean "keep
+ * completions forever" also means "keep four years of dinners".
+ */
+export const MEAL_PLAN_RETENTION_DAYS = 180;
+
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
 export const PRIORITY_COLORS = [
   'transparent',

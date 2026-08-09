@@ -22,6 +22,7 @@ import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
+import { dayKeyOf } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
 interface Props {
@@ -42,9 +43,6 @@ interface Props {
   values?: Date[];
   onConfirmMultiple?: (dates: Date[]) => void;
 }
-
-/** Calendar identity of a date — the day the user tapped, ignoring its time. */
-const dayKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2 - spacing.xs * 6) / 7);
@@ -107,10 +105,10 @@ export function CalendarPicker({
     if (multiple) {
       // Toggle: tapping a picked day takes it back out, so correcting a
       // mistake doesn't mean cancelling and starting the set over.
-      const key = dayKey(day);
+      const key = dayKeyOf(day);
       setSelectedDates(prev =>
-        prev.some(d => dayKey(d) === key)
-          ? prev.filter(d => dayKey(d) !== key)
+        prev.some(d => dayKeyOf(d) === key)
+          ? prev.filter(d => dayKeyOf(d) !== key)
           : [...prev, merged].sort((a, b) => +a - +b)
       );
     } else {

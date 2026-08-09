@@ -29,6 +29,13 @@ export function resetToRecipes(): void {
   navigationRef.navigate('Recipes');
 }
 
+// Where `dundundun://mealplan` lands — the third of the kitchen links, so a
+// recurring "Plan the week" task can open the week it's asking about.
+export function resetToMealPlan(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('MealPlan');
+}
+
 // Where the "Search" and "Projects" Home Screen quick actions land — both
 // already top-level tabs, so this is just tab navigation triggered from
 // outside the component tree.
