@@ -2599,7 +2599,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="call-outline"
               label="Phone"
-              hint="Call this number straight from the task row"
+              hint="Call or text this number straight from the task row"
               value={phoneNumber ?? undefined}
               expanded={showPhoneField}
               onPress={() => {

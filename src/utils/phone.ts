@@ -48,6 +48,21 @@ export function isDialable(raw: string | null | undefined): boolean {
 }
 
 /**
+ * The number as `sms:` wants it — same normalisation as `telUrl`, `sms:`
+ * scheme instead of `tel:`. Every messaging app that understands `tel:` links
+ * understands `sms:` the same way, so there is nothing new to sanitise here
+ * beyond swapping the scheme.
+ */
+export function smsUrl(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  const intl = trimmed.startsWith('+');
+  const dial = trimmed.replace(DIAL_STRIP, '').replace(/\+/g, '');
+  if (!phoneDigits(dial)) return null;
+  return `sms:${intl ? '+' : ''}${dial}`;
+}
+
+/**
  * What a phone number typed into a *sentence* looks like — deliberately
  * stricter than what the field itself accepts.
  *
