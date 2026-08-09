@@ -1,5 +1,11 @@
-import { suggestTitles } from '../utils/titleSuggestions';
+import { suggestTitles as suggestTitlesAt } from '../utils/titleSuggestions';
 import type { Task } from '../types';
+
+// Fixed reference point so single-occurrence fixtures below (completed 2025-05-01)
+// stay within the "recently completed" window most tests aren't exercising.
+const NOW = Date.parse('2025-05-03T00:00:00.000Z');
+const suggestTitles = (tasks: Task[], query: string, limit?: number, now: number = NOW) =>
+  suggestTitlesAt(tasks, query, limit, now);
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: '1',
@@ -189,8 +195,8 @@ describe('suggestTitles', () => {
 
     it('breaks score ties by recency (most recent first)', () => {
       const tasks = [
-        done({ id: 'older', title: 'gym at noon', completedAt: '2025-01-01T00:00:00.000Z' }),
-        done({ id: 'newer', title: 'gym at dawn', completedAt: '2025-06-01T00:00:00.000Z' }),
+        done({ id: 'older', title: 'gym at noon', completedAt: '2025-04-28T00:00:00.000Z' }),
+        done({ id: 'newer', title: 'gym at dawn', completedAt: '2025-05-02T00:00:00.000Z' }),
       ];
       expect(suggestTitles(tasks, 'gym at').map(s => s.title)).toEqual(['gym at dawn', 'gym at noon']);
     });
@@ -203,6 +209,26 @@ describe('suggestTitles', () => {
     it('respects an explicit limit', () => {
       const tasks = Array.from({ length: 10 }, (_, i) => done({ id: String(i), title: `task number ${i}` }));
       expect(suggestTitles(tasks, 'task', 5)).toHaveLength(5);
+    });
+  });
+
+  describe('single-occurrence staleness', () => {
+    it('suggests a title completed once within the last week', () => {
+      const tasks = [done({ title: 'use BOGO ticket', completedAt: '2025-04-27T00:00:00.000Z' })]; // 6 days before NOW
+      expect(suggestTitles(tasks, 'use bogo').map(s => s.title)).toEqual(['use BOGO ticket']);
+    });
+
+    it('drops a title completed once more than a week ago', () => {
+      const tasks = [done({ title: 'put on new Steam Deck screen protector', completedAt: '2025-04-01T00:00:00.000Z' })];
+      expect(suggestTitles(tasks, 'put')).toEqual([]);
+    });
+
+    it('keeps suggesting a title completed 2+ times no matter how stale', () => {
+      const tasks = [
+        done({ id: 'a', title: 'use BOGO ticket', completedAt: '2024-01-01T00:00:00.000Z' }),
+        done({ id: 'b', title: 'use BOGO ticket', completedAt: '2024-02-01T00:00:00.000Z' }),
+      ];
+      expect(suggestTitles(tasks, 'use bogo').map(s => s.title)).toEqual(['use BOGO ticket']);
     });
   });
 });
