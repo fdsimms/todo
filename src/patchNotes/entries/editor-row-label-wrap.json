@@ -1,0 +1,4 @@
+{
+  "message": "Fixed editor row labels like \"Waiting on\" breaking mid-word when the value next to them is long",
+  "date": "2026-08-09"
+}
