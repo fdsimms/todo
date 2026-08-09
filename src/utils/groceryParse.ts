@@ -56,6 +56,7 @@ const UNITS = [
   'pack', 'packs', 'pkg', 'box', 'boxes', 'bag', 'bags', 'can', 'cans',
   'jar', 'jars', 'bottle', 'bottles', 'bunch', 'bunches', 'head', 'heads',
   'clove', 'cloves', 'dozen', 'doz', 'loaf', 'loaves', 'x',
+  'slice', 'slices', 'link', 'links',
 ];
 const UNIT_SET = new Set(UNITS);
 

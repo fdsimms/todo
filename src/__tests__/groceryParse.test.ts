@@ -140,6 +140,19 @@ describe('parseGroceryInput', () => {
     expect(parseGroceryInput('1 clove garlic')).toEqual({ name: 'garlic', quantity: '1 clove' });
   });
 
+  it('recognizes slice/slices and link/links as units', () => {
+    expect(parseGroceryInput('2 slices bread')).toEqual({
+      name: 'bread',
+      quantity: '2 slices',
+    });
+    expect(parseGroceryInput('1 slice cheese')).toEqual({ name: 'cheese', quantity: '1 slice' });
+    expect(parseGroceryInput('4 links sausage')).toEqual({
+      name: 'sausage',
+      quantity: '4 links',
+    });
+    expect(parseGroceryInput('1 link sausage')).toEqual({ name: 'sausage', quantity: '1 link' });
+  });
+
   it('peels a bare fraction as the leading count', () => {
     expect(parseGroceryInput('1/4 cup tomato paste')).toEqual({
       name: 'tomato paste',

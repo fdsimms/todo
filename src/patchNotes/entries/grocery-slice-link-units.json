@@ -1,0 +1,4 @@
+{
+  "message": "Grocery quantity parsing now recognizes \"slice(s)\" and \"link(s)\" as units, so pasted recipe lines like \"2 slices bread\" or \"4 links sausage\" split correctly.",
+  "date": "2026-08-09"
+}
