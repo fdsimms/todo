@@ -12,6 +12,8 @@ import {
   parsePrepTasks,
   normalizePrepTask,
   resolvePrepTaskDraft,
+  describeCookHistory,
+  rankRecipeSuggestions,
 } from '../utils/recipeUtils';
 import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -42,6 +44,8 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
     ...overrides,
   };
 }
@@ -410,5 +414,60 @@ describe('rankRecipes', () => {
 
   it('drops what does not match at all', () => {
     expect(rankRecipes('lasagne', all)).toEqual([]);
+  });
+});
+
+describe('describeCookHistory', () => {
+  it('is empty for a never-cooked recipe', () => {
+    expect(describeCookHistory(recipe('Ragù', { cookCount: 0, lastCookedAt: null }))).toBe('');
+  });
+
+  it('says "once" for a single cooking', () => {
+    const r = recipe('Ragù', { cookCount: 1, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    expect(describeCookHistory(r)).toBe('Cooked once · last on 12 Jul');
+  });
+
+  it('counts multiple cookings with a ×', () => {
+    const r = recipe('Ragù', { cookCount: 4, lastCookedAt: '2026-07-12T00:00:00.000Z' });
+    expect(describeCookHistory(r)).toBe('Cooked 4× · last on 12 Jul');
+  });
+
+  it('drops the date clause when there is a count but no stamp', () => {
+    const r = recipe('Ragù', { cookCount: 2, lastCookedAt: null });
+    expect(describeCookHistory(r)).toBe('Cooked 2×');
+  });
+});
+
+describe('rankRecipeSuggestions', () => {
+  const now = new Date(2026, 7, 12); // 12 Aug 2026
+
+  it('excludes a recipe that has never been cooked', () => {
+    const r = recipe('Ragù', { cookCount: 0, lastCookedAt: null });
+    expect(rankRecipeSuggestions([r], now)).toEqual([]);
+  });
+
+  it('ranks a recently and often cooked recipe above one cooked once long ago', () => {
+    const often = recipe('Ragù', {
+      cookCount: 8,
+      lastCookedAt: new Date(2026, 7, 10).toISOString(), // 2 days ago
+    });
+    const once = recipe('Fennel soup', {
+      cookCount: 1,
+      lastCookedAt: new Date(2026, 0, 1).toISOString(), // months ago
+    });
+    expect(rankRecipeSuggestions([once, often], now).map(r => r.name)).toEqual(['Ragù', 'Fennel soup']);
+  });
+
+  it('respects the limit', () => {
+    const recipes = ['A', 'B', 'C', 'D'].map(name =>
+      recipe(name, { cookCount: 1, lastCookedAt: now.toISOString() })
+    );
+    expect(rankRecipeSuggestions(recipes, now, 2)).toHaveLength(2);
+  });
+
+  it('breaks a tie on name', () => {
+    const a = recipe('B recipe', { cookCount: 1, lastCookedAt: now.toISOString() });
+    const b = recipe('A recipe', { cookCount: 1, lastCookedAt: now.toISOString() });
+    expect(rankRecipeSuggestions([a, b], now).map(r => r.name)).toEqual(['A recipe', 'B recipe']);
   });
 });

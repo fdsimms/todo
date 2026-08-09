@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  ScrollView,
   TextInput,
   TouchableOpacity,
   StyleSheet,
@@ -21,7 +22,7 @@ import { Fab, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { cleanRecipeName, describeRecipe, rankRecipes } from '../utils/recipeUtils';
+import { cleanRecipeName, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
@@ -56,6 +57,14 @@ export function RecipesScreen() {
       Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
     );
   }, [query, recipes]);
+
+  // Only offered on the unfiltered list — a search is already a specific
+  // question ("what has fennel"), and a shelf of suggestions above the
+  // results would answer a question nobody asked.
+  const cookAgain = useMemo(
+    () => query.trim() ? [] : rankRecipeSuggestions(recipes, new Date()),
+    [query, recipes]
+  );
 
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();
@@ -92,13 +101,40 @@ export function RecipesScreen() {
       </View>
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
-        <Text style={styles.meta} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+        <Text style={styles.meta} numberOfLines={1}>
+          {[describeRecipe(recipe), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+        </Text>
       </View>
       {recipe.favorite && (
         <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
       )}
       <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
     </TouchableOpacity>
+  );
+
+  const cookAgainShelf = cookAgain.length === 0 ? null : (
+    <View style={styles.shelf}>
+      <Text style={styles.shelfLabel}>Cook again</Text>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.shelfRow}
+      >
+        {cookAgain.map(recipe => (
+          <TouchableOpacity
+            key={recipe.id}
+            style={styles.shelfCard}
+            onPress={() => openRecipe(recipe)}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`${recipe.name}. ${describeCookHistory(recipe)}`}
+          >
+            <Text style={styles.shelfName} numberOfLines={1}>{recipe.name}</Text>
+            <Text style={styles.shelfMeta} numberOfLines={1}>{describeCookHistory(recipe)}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
   );
 
   return (
@@ -151,6 +187,7 @@ export function RecipesScreen() {
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.list}
+              ListHeaderComponent={cookAgainShelf}
               ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
             />
           )}
@@ -200,6 +237,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   list: {
     paddingTop: spacing.xs,
+  },
+  shelf: {
+    paddingTop: spacing.sm,
+    gap: spacing.xs,
+  },
+  shelfLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginHorizontal: spacing.md,
+  },
+  shelfRow: {
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  shelfCard: {
+    width: 160,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: 3,
+  },
+  shelfName: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  shelfMeta: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   // Same inset-grouped card footprint as TaskItem and the Stacks rows.
   row: {

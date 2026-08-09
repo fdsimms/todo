@@ -39,6 +39,7 @@ function entry(
     title: `Meal ${seq}`,
     sortOrder: 1,
     createdAt: `2026-01-01T00:00:0${seq % 10}.000Z`,
+    cookedAt: null,
     ...overrides,
   };
 }
@@ -57,6 +58,8 @@ function recipe(id: string, name: string): Recipe {
     favorite: false,
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
   };
 }
 

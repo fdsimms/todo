@@ -17,6 +17,7 @@ import { RecipePickerSheet, type MealPick } from '../components/RecipePickerShee
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
@@ -74,11 +75,14 @@ export function MealPlanScreen() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
+  const markEntryCooked = useMealPlanStore(s => s.markCooked);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const addTask = useTaskStore(s => s.addTask);
+  const addFromPlan = useGroceryStore(s => s.addFromPlan);
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -122,6 +126,36 @@ export function MealPlanScreen() {
     });
     haptics.success();
     Alert.alert('Prep tasks added', `Added ${recipe.prepTasks.length} to your tasks.`);
+  };
+
+  const markCookedForSelected = () => {
+    if (!selected) return;
+    markEntryCooked(selected.id);
+    const recipe = selected.recipeId ? recipesById.get(selected.recipeId) : undefined;
+    if (recipe) markRecipeCooked(recipe.id);
+    haptics.success();
+
+    // A recipe with nothing to re-shop offers nothing — same restraint
+    // RecipeDetailScreen's own "Add ingredients to list" already keeps.
+    if (!recipe || recipe.ingredients.length === 0) return;
+    Alert.alert(
+      'Marked cooked',
+      `Add ${recipe.name}'s ingredients back to your grocery list?`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        {
+          text: 'Add to list',
+          onPress: () => {
+            addFromPlan(recipe.ingredients.map(i => ({
+              name: i.name,
+              quantity: [i.quantity, i.prep].filter(Boolean).join(', ') || null,
+              aisle: i.aisle,
+            })));
+            haptics.success();
+          },
+        },
+      ]
+    );
   };
 
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
@@ -244,6 +278,7 @@ export function MealPlanScreen() {
           removeEntry(selected.id);
           setSelectedId(null);
         }}
+        onMarkCooked={selected && !selected.cookedAt ? markCookedForSelected : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })

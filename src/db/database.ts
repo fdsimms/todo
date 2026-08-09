@@ -407,6 +407,12 @@ export function initDatabase(): void {
     // Empty array for every existing recipe — no recipe written before this
     // shipped had prep steps to carry. See Recipe.prepTasks.
     "ALTER TABLE recipes ADD COLUMN prep_tasks TEXT NOT NULL DEFAULT '[]'",
+    // Zero/null for every existing recipe and entry — nothing predating this
+    // has ever been marked cooked. See Recipe.cookCount/lastCookedAt and
+    // MealPlanEntry.cookedAt.
+    'ALTER TABLE recipes ADD COLUMN cook_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE recipes ADD COLUMN last_cooked_at TEXT',
+    'ALTER TABLE meal_plan_entries ADD COLUMN cooked_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1458,6 +1464,8 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
+    cookCount: (row.cook_count as number) ?? 0,
+    lastCookedAt: (row.last_cooked_at as string) ?? null,
   };
 }
 
@@ -1471,12 +1479,13 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, servings, ingredients, prep_tasks, favorite, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, servings, ingredients, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      recipe.cookCount, recipe.lastCookedAt ?? null,
     ]
   );
 }
@@ -1485,12 +1494,13 @@ export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
        name=?, name_key=?, notes=?, source_url=?, source_name=?, servings=?, ingredients=?, prep_tasks=?,
-       favorite=?, sort_order=?
+       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.servings ?? null, JSON.stringify(recipe.ingredients),
-      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.id,
+      JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder,
+      recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
     ]
   );
 }
@@ -1516,6 +1526,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     title: (row.title as string) ?? '',
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
+    cookedAt: (row.cooked_at as string) ?? null,
   };
 }
 
@@ -1539,19 +1550,19 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at)
-     VALUES (?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at)
+     VALUES (?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
-      entry.title, entry.sortOrder, entry.createdAt,
+      entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=? WHERE id=?`,
-    [entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder, entry.id]
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=? WHERE id=?`,
+    [entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder, entry.cookedAt ?? null, entry.id]
   );
 }
 
