@@ -21,6 +21,8 @@ export function TasksProjectsSettings() {
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
   const autoArchiveProjectsOnComplete = useSettingsStore(s => s.autoArchiveProjectsOnComplete);
   const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
+  const hideCategories = useSettingsStore(s => s.hideCategories);
+  const setHideCategories = useSettingsStore(s => s.setHideCategories);
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
 
@@ -90,6 +92,20 @@ export function TasksProjectsSettings() {
             : 'Kept in an Expired section until you delete them'}
           toggle={autoRemoveExpiredTasks}
           onPress={() => setAutoRemoveExpiredTasks(!autoRemoveExpiredTasks)}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Today"
+        footer="Also available from Today's … menu."
+      >
+        <SettingsRow
+          icon="eye-off-outline"
+          iconColor={hideCategories ? colors.accent : undefined}
+          label="Hide categories"
+          hint={hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
+          toggle={hideCategories}
+          onPress={() => setHideCategories(!hideCategories)}
         />
       </SettingsSection>
 
