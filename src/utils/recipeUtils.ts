@@ -1,13 +1,15 @@
-import type { Recipe, RecipeIngredient } from '../types';
+import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
+  TITLE_MAX_LENGTH,
 } from '../types';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
 import { generateId } from './id';
+import { resolveOffsetDate } from './templateUtils';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -159,6 +161,55 @@ export function remapIngredientKeyIn(
     });
   }
   return changed;
+}
+
+/** Tolerates a null column, a corrupt blob, or a shape from a newer app version — same as parseRecipeIngredients. */
+export function parsePrepTasks(raw: unknown): RecipePrepTask[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw as string); } catch { return []; }
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map(normalizePrepTask).filter((t): t is RecipePrepTask => t !== null);
+}
+
+/** Repairs one stored prep task. Returns null for a row with no usable title — see normalizeIngredient. */
+export function normalizePrepTask(raw: unknown): RecipePrepTask | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Partial<RecipePrepTask>;
+  const title = typeof r.title === 'string' ? r.title.trim().slice(0, TITLE_MAX_LENGTH) : '';
+  if (!title) return null;
+  return {
+    id: typeof r.id === 'string' && r.id ? r.id : generateId(),
+    title,
+    offsetDays: typeof r.offsetDays === 'number' && Number.isFinite(r.offsetDays) ? Math.round(r.offsetDays) : 0,
+    reminderOffsetMinutes: typeof r.reminderOffsetMinutes === 'number' && Number.isFinite(r.reminderOffsetMinutes)
+      ? Math.round(r.reminderOffsetMinutes)
+      : null,
+  };
+}
+
+/**
+ * A prep task plus the meal date it's attached to, into what `addTask` needs.
+ *
+ * Reuses templateUtils.resolveOffsetDate rather than re-deriving the same
+ * noon-normalized-day math a second time — a prep task's `offsetDays` is
+ * TemplateItem's `dueOffsetDays` reduced to one anchor (the meal itself,
+ * never null), so the date arithmetic is identical. The reminder instant is
+ * the same inline "dueDate minus N minutes" buildDraftsFromTemplate already
+ * does, for the same reason: no separate "compute a reminder" helper exists
+ * to call instead.
+ */
+export function resolvePrepTaskDraft(
+  prepTask: RecipePrepTask,
+  mealDate: Date
+): { dueDate: string; reminderTime: string | null } {
+  // Never null: mealDate is always a real Date and offsetDays is never null
+  // on a RecipePrepTask (see the type).
+  const dueDate = resolveOffsetDate(mealDate, prepTask.offsetDays)!;
+  const reminderTime = prepTask.reminderOffsetMinutes !== null
+    ? new Date(new Date(dueDate).getTime() - prepTask.reminderOffsetMinutes * 60_000).toISOString()
+    : null;
+  return { dueDate, reminderTime };
 }
 
 /** "8 ingredients · serves 4 · NYT Cooking" — the recipe row's subtitle. */

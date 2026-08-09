@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient } from '../types';
+import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import { TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -56,6 +57,11 @@ interface RecipeStore {
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
 
+  /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
+  addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
+  updatePrepTask: (recipeId: string, prepTaskId: string, patch: Partial<RecipePrepTask>) => void;
+  removePrepTask: (recipeId: string, prepTaskId: string) => void;
+
   /**
    * Follows a grocery item's rename across every recipe that referenced its old
    * key. Called by useGroceryStore.renameItem — see the note there.
@@ -89,6 +95,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       sourceName: null,
       servings: null,
       ingredients: [],
+      prepTasks: [],
       favorite: false,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
@@ -206,6 +213,39 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const named = new Set(ordered.map(i => i.id));
     const rest = recipe.ingredients.filter(i => !named.has(i.id));
     save(set, { ...recipe, ingredients: [...ordered, ...rest] });
+  },
+
+  addPrepTask(recipeId, title) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const clean = title.trim().slice(0, TITLE_MAX_LENGTH);
+    if (!clean) return null;
+    // A day before, no reminder — the least committal default, same reasoning
+    // CountStepper's own docs give for not picking a ceiling nobody asked for.
+    const prepTask: RecipePrepTask = { id: generateId(), title: clean, offsetDays: -1, reminderOffsetMinutes: null };
+    save(set, { ...recipe, prepTasks: [...recipe.prepTasks, prepTask] });
+    return prepTask;
+  },
+
+  updatePrepTask(recipeId, prepTaskId, patch) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    let touched = false;
+    const prepTasks = recipe.prepTasks.map(t => {
+      if (t.id !== prepTaskId) return t;
+      touched = true;
+      return { ...t, ...patch };
+    });
+    if (!touched) return;
+    save(set, { ...recipe, prepTasks });
+  },
+
+  removePrepTask(recipeId, prepTaskId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const prepTasks = recipe.prepTasks.filter(t => t.id !== prepTaskId);
+    if (prepTasks.length === recipe.prepTasks.length) return;
+    save(set, { ...recipe, prepTasks });
   },
 
   remapIngredientKey(fromKey, toKey) {

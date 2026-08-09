@@ -30,6 +30,8 @@ interface Props {
   onRemove: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
+  /** Present only while the entry's recipe still resolves and has prep tasks. */
+  onAddPrepTasks?: () => void;
   onClose: () => void;
 }
 
@@ -47,7 +49,7 @@ interface Props {
  * to Thursday *and* making it lunch is two taps rather than two round trips.
  */
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onOpenRecipe, onClose,
+  visible, entry, title, weekDays, onMove, onRemove, onOpenRecipe, onAddPrepTasks, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -165,6 +167,22 @@ export function MealEntrySheet({
               >
                 <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                 <Text style={[styles.actionText, { color: colors.accent }]}>Open recipe</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {!!onAddPrepTasks && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.tap(); dismiss(onAddPrepTasks); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Add prep tasks for this meal"
+              >
+                <Ionicons name="alarm-outline" size={16} color={colors.accent} />
+                <Text style={[styles.actionText, { color: colors.accent }]}>Add prep tasks</Text>
               </TouchableOpacity>
             </>
           )}

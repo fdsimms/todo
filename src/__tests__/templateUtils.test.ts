@@ -3,6 +3,7 @@ import {
   resolveOffsetDate,
   buildDraftsFromTemplate,
   formatOffsetLabel,
+  formatMinutesOffset,
   anchorLabel,
   formatOffsetWithAnchor,
   wouldCreateCycle,
@@ -235,6 +236,23 @@ describe('formatOffsetLabel', () => {
     [2, '2 days after'],
   ] as Array<[number | null, string]>)('formats %p as %p', (offset, label) => {
     expect(formatOffsetLabel(offset)).toBe(label);
+  });
+});
+
+describe('formatMinutesOffset', () => {
+  it('formats whole days', () => {
+    expect(formatMinutesOffset(1440)).toBe('1 day before');
+    expect(formatMinutesOffset(2880)).toBe('2 days before');
+  });
+
+  it('formats whole hours', () => {
+    expect(formatMinutesOffset(60)).toBe('1 hour before');
+    expect(formatMinutesOffset(120)).toBe('2 hours before');
+  });
+
+  it('falls back to raw minutes otherwise', () => {
+    expect(formatMinutesOffset(45)).toBe('45 min before');
+    expect(formatMinutesOffset(90)).toBe('90 min before');
   });
 });
 

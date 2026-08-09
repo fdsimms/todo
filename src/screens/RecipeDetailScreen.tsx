@@ -12,8 +12,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { RecipeIngredient } from '../types';
-import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import type { RecipeIngredient, RecipePrepTask } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { DetailHeader } from '../components/DetailHeader';
@@ -22,11 +22,13 @@ import { InlineAction } from '../components/InlineAction';
 import { SortableList } from '../components/SortableList';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
+import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describeRecipe } from '../utils/recipeUtils';
+import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitGroceryLines } from '../utils/groceryParse';
 
 type RootStackParamList = {
@@ -48,10 +50,14 @@ export function RecipeDetailScreen() {
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
+  const addPrepTask = useRecipeStore(s => s.addPrepTask);
+  const removePrepTask = useRecipeStore(s => s.removePrepTask);
 
   const [draft, setDraft] = useState('');
+  const [prepDraft, setPrepDraft] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
+  const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -116,6 +122,21 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
+  const submitPrepDraft = () => {
+    if (!prepDraft.trim()) return;
+    animateLayout();
+    const added = addPrepTask(recipe.id, prepDraft);
+    setPrepDraft('');
+    if (added) haptics.tap();
+    else haptics.warning();
+  };
+
+  const confirmRemovePrepTask = (prepTask: RecipePrepTask) => {
+    animateLayout();
+    removePrepTask(recipe.id, prepTask.id);
+    haptics.tap();
+  };
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -148,6 +169,35 @@ export function RecipeDetailScreen() {
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={`Remove ${ingredient.name}`}
+      >
+        <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+
+  // No drag-to-reorder here — unlike ingredients, prep tasks don't read as a
+  // list with a meaningful order (each just names its own day).
+  const renderPrepTask = (prepTask: RecipePrepTask) => (
+    <TouchableOpacity
+      key={prepTask.id}
+      style={styles.ingredient}
+      activeOpacity={interaction.activeOpacity}
+      onPress={() => { haptics.tap(); setEditingPrepTask(prepTask); }}
+      accessibilityRole="button"
+      accessibilityLabel={`${prepTask.title}, ${formatOffsetLabel(prepTask.offsetDays)}`}
+      accessibilityHint="Double tap to edit"
+    >
+      <View style={styles.ingredientText}>
+        <Text style={styles.ingredientName}>{prepTask.title}</Text>
+      </View>
+      <View style={styles.qtyPill}>
+        <Text style={styles.qtyText} numberOfLines={1}>{formatOffsetLabel(prepTask.offsetDays)}</Text>
+      </View>
+      <TouchableOpacity
+        onPress={() => confirmRemovePrepTask(prepTask)}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={`Remove ${prepTask.title}`}
       >
         <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
       </TouchableOpacity>
@@ -232,6 +282,41 @@ export function RecipeDetailScreen() {
             disabled={!draft.trim()}
           />
         </View>
+
+        <Text style={styles.sectionLabel}>Prep tasks</Text>
+
+        {recipe.prepTasks.length === 0 ? (
+          <Text style={styles.hint}>
+            Add a reminder for anything that needs doing ahead of the meal — “Marinate the
+            chicken” a day before, say — and it'll turn into a Task once this recipe is
+            planned for a date.
+          </Text>
+        ) : (
+          <View style={styles.card}>
+            {recipe.prepTasks.map(renderPrepTask)}
+          </View>
+        )}
+
+        <View style={styles.addRow}>
+          <TextInput
+            style={styles.addInput}
+            value={prepDraft}
+            onChangeText={setPrepDraft}
+            onSubmitEditing={submitPrepDraft}
+            placeholder="Add a prep task"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={TITLE_MAX_LENGTH}
+            blurOnSubmit
+            returnKeyType="done"
+            accessibilityLabel="Add a prep task"
+          />
+          <InlineAction
+            label="Add"
+            icon="add"
+            onPress={submitPrepDraft}
+            disabled={!prepDraft.trim()}
+          />
+        </View>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
@@ -260,6 +345,13 @@ export function RecipeDetailScreen() {
         recipeId={recipe.id}
         ingredient={editingIngredient}
         onClose={() => setEditingIngredient(null)}
+      />
+
+      <PrepTaskSheet
+        visible={editingPrepTask !== null}
+        recipeId={recipe.id}
+        prepTask={editingPrepTask}
+        onClose={() => setEditingPrepTask(null)}
       />
     </View>
   );

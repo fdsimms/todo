@@ -9,8 +9,11 @@ import {
   describeRecipe,
   cleanRecipeName,
   rankRecipes,
+  parsePrepTasks,
+  normalizePrepTask,
+  resolvePrepTaskDraft,
 } from '../utils/recipeUtils';
-import type { Recipe, RecipeIngredient } from '../types';
+import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 
 let seq = 0;
 function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient {
@@ -35,6 +38,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     sourceName: null,
     servings: null,
     ingredients: [],
+    prepTasks: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -249,6 +253,92 @@ describe('remapIngredientKeyIn', () => {
     expect(remapIngredientKeyIn([r], 'onions', 'onions')).toEqual([]);
     expect(remapIngredientKeyIn([r], '', 'onions')).toEqual([]);
     expect(remapIngredientKeyIn([r], 'onions', '')).toEqual([]);
+  });
+});
+
+describe('normalizePrepTask', () => {
+  it('fills in a missing id and defaults', () => {
+    const t = normalizePrepTask({ title: 'Defrost the chicken' })!;
+    expect(t.id).toBeTruthy();
+    expect(t.title).toBe('Defrost the chicken');
+    expect(t.offsetDays).toBe(0);
+    expect(t.reminderOffsetMinutes).toBeNull();
+  });
+
+  it('returns null for a row with no usable title', () => {
+    expect(normalizePrepTask({ title: '  ' })).toBeNull();
+    expect(normalizePrepTask({})).toBeNull();
+    expect(normalizePrepTask(null)).toBeNull();
+    expect(normalizePrepTask('not an object')).toBeNull();
+  });
+
+  it('rounds a fractional offset rather than storing it', () => {
+    const t = normalizePrepTask({ title: 'Marinate', offsetDays: -1.6, reminderOffsetMinutes: 29.4 })!;
+    expect(t.offsetDays).toBe(-2);
+    expect(t.reminderOffsetMinutes).toBe(29);
+  });
+
+  it('keeps a stored id and reminder rather than regenerating them', () => {
+    const t = normalizePrepTask({ id: 'p1', title: 'Marinate', offsetDays: -1, reminderOffsetMinutes: 30 })!;
+    expect(t.id).toBe('p1');
+    expect(t.reminderOffsetMinutes).toBe(30);
+  });
+});
+
+describe('parsePrepTasks', () => {
+  it('reads a stored array', () => {
+    const stored = JSON.stringify([{ id: 'p1', title: 'Defrost', offsetDays: -2, reminderOffsetMinutes: null }]);
+    expect(parsePrepTasks(stored)).toEqual([
+      { id: 'p1', title: 'Defrost', offsetDays: -2, reminderOffsetMinutes: null },
+    ]);
+  });
+
+  it('returns empty for null, corrupt JSON, a non-array, or a blob written before the column existed', () => {
+    expect(parsePrepTasks(null)).toEqual([]);
+    expect(parsePrepTasks('{not json')).toEqual([]);
+    expect(parsePrepTasks('{"a":1}')).toEqual([]);
+    expect(parsePrepTasks(undefined)).toEqual([]);
+  });
+
+  it('drops rows with no usable title rather than rendering blanks forever', () => {
+    const stored = JSON.stringify([{ title: '  ' }, { title: 'Defrost' }, null, 7]);
+    expect(parsePrepTasks(stored).map(t => t.title)).toEqual(['Defrost']);
+  });
+});
+
+describe('resolvePrepTaskDraft', () => {
+  function prepTask(overrides: Partial<RecipePrepTask> = {}): RecipePrepTask {
+    return { id: 'p1', title: 'Defrost the chicken', offsetDays: -2, reminderOffsetMinutes: null, ...overrides };
+  }
+
+  it('resolves the due date relative to the meal date, noon-normalized', () => {
+    const mealDate = new Date(2026, 7, 15); // a Saturday
+    const { dueDate } = resolvePrepTaskDraft(prepTask({ offsetDays: -2 }), mealDate);
+    const d = new Date(dueDate);
+    expect(d.getFullYear()).toBe(2026);
+    expect(d.getMonth()).toBe(7);
+    expect(d.getDate()).toBe(13);
+    expect(d.getHours()).toBe(12);
+  });
+
+  it('offsetDays 0 is the day of the meal', () => {
+    const mealDate = new Date(2026, 7, 15);
+    const { dueDate } = resolvePrepTaskDraft(prepTask({ offsetDays: 0 }), mealDate);
+    expect(new Date(dueDate).getDate()).toBe(15);
+  });
+
+  it('has no reminder when reminderOffsetMinutes is null', () => {
+    const { reminderTime } = resolvePrepTaskDraft(prepTask({ reminderOffsetMinutes: null }), new Date(2026, 7, 15));
+    expect(reminderTime).toBeNull();
+  });
+
+  it('the reminder is exactly N minutes before the resolved due date', () => {
+    const mealDate = new Date(2026, 7, 15);
+    const { dueDate, reminderTime } = resolvePrepTaskDraft(
+      prepTask({ offsetDays: -1, reminderOffsetMinutes: 90 }),
+      mealDate
+    );
+    expect(new Date(dueDate).getTime() - new Date(reminderTime!).getTime()).toBe(90 * 60_000);
   });
 });
 

@@ -25,6 +25,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     sourceName: null,
     servings: null,
     ingredients: [],
+    prepTasks: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -273,6 +274,60 @@ describe('ingredients', () => {
 
     expect(useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.id))
       .toEqual([c.id, a.id, b.id]);
+  });
+});
+
+describe('prepTasks', () => {
+  it('adds one, defaulting to a day before with no reminder', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    const added = useRecipeStore.getState().addPrepTask(r.id, '  Defrost the chicken  ')!;
+
+    expect(added.title).toBe('Defrost the chicken');
+    expect(added.offsetDays).toBe(-1);
+    expect(added.reminderOffsetMinutes).toBeNull();
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepTasks).toEqual([added]);
+  });
+
+  it('refuses a blank title', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    expect(useRecipeStore.getState().addPrepTask(r.id, '   ')).toBeNull();
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepTasks).toEqual([]);
+  });
+
+  it('patches the offset and reminder', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const task = useRecipeStore.getState().addPrepTask(r.id, 'Marinate')!;
+
+    useRecipeStore.getState().updatePrepTask(r.id, task.id, { offsetDays: -2, reminderOffsetMinutes: 30 });
+
+    const updated = useRecipeStore.getState().recipeById(r.id)!.prepTasks[0];
+    expect(updated.offsetDays).toBe(-2);
+    expect(updated.reminderOffsetMinutes).toBe(30);
+  });
+
+  it('removes one', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const task = useRecipeStore.getState().addPrepTask(r.id, 'Marinate')!;
+
+    useRecipeStore.getState().removePrepTask(r.id, task.id);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepTasks).toEqual([]);
+  });
+
+  it('shrugs at a recipe or prep task id it does not hold', () => {
+    seed([]);
+    expect(useRecipeStore.getState().addPrepTask('gone', 'Marinate')).toBeNull();
+
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().updatePrepTask(r.id, 'gone', { offsetDays: -2 });
+    useRecipeStore.getState().removePrepTask(r.id, 'gone');
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepTasks).toEqual([]);
   });
 });
 
