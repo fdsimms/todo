@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask } from '../types';
@@ -64,6 +65,7 @@ export function RecipeDetailScreen() {
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -230,9 +232,11 @@ export function RecipeDetailScreen() {
       />
 
       <ScrollView
+        ref={keyboardScroll.ref}
         scrollEnabled={!dragging}
         contentContainerStyle={styles.scroll}
         keyboardShouldPersistTaps="handled"
+        {...keyboardScroll.props}
       >
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
         {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
