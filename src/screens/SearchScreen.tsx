@@ -26,7 +26,15 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { HighlightedText } from '../components/HighlightedText';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { format } from 'date-fns/format';
+
+// How long the field waits for typing to pause before the expensive
+// fuzzySearch recompute runs. The TextInput's own value/onChangeText stay
+// bound to the raw `query` state below regardless — this only delays the
+// results useMemo, so fast typing never desyncs the controlled input from
+// what's on screen while still keeping the recompute off every keystroke.
+const SEARCH_DEBOUNCE_MS = 180;
 
 const CHECKBOX_SIZE = 20;
 
@@ -158,9 +166,11 @@ export function SearchScreen() {
     [projects]
   );
 
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+
   const results: SearchResult[] = useMemo(
-    () => fuzzySearch(tasks, query, projectNamesById),
-    [tasks, query, projectNamesById]
+    () => fuzzySearch(tasks, debouncedQuery, projectNamesById),
+    [tasks, debouncedQuery, projectNamesById]
   );
 
   const activeResults = results.filter(r => !r.task.completed);
