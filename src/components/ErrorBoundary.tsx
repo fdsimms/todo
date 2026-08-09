@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { PressableScale } from './PressableScale';
 
 interface Props {
@@ -8,22 +8,27 @@ interface Props {
 
 interface State {
   error: Error | null;
+  componentStack: string | null;
 }
 
 // There is no other safety net in the app: an uncaught render error anywhere
 // below this point would otherwise take the whole app down instead of just
 // this screen. Logged via console.error so the message shows up in device
 // logs (Settings > Privacy > Analytics Data on iOS) even without a debugger
-// attached.
+// attached — but that log has proven unreliable to find on-device, so the
+// component stack is also rendered directly on this screen (temporary,
+// pending a real crash reporter): the one thing this boundary can't do is
+// surface it anywhere else once the app has already crashed past retry.
 export class ErrorBoundary extends React.Component<Props, State> {
-  state: State = { error: null };
+  state: State = { error: null, componentStack: null };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { error };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('Unhandled error caught by ErrorBoundary', error, info.componentStack);
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
   render() {
@@ -32,9 +37,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
         <View style={styles.container}>
           <Text style={styles.title}>Something went wrong</Text>
           <Text style={styles.message}>{this.state.error.message}</Text>
-          <PressableScale style={styles.button} onPress={() => this.setState({ error: null })}>
+          <PressableScale style={styles.button} onPress={() => this.setState({ error: null, componentStack: null })}>
             <Text style={styles.buttonText}>Try again</Text>
           </PressableScale>
+          {this.state.componentStack && (
+            <ScrollView style={styles.stackScroll} contentContainerStyle={styles.stackContent}>
+              <Text selectable style={styles.stackText}>{this.state.componentStack}</Text>
+            </ScrollView>
+          )}
         </View>
       );
     }
@@ -74,5 +84,18 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '600',
+  },
+  stackScroll: {
+    marginTop: 24,
+    maxHeight: 300,
+    width: '100%',
+  },
+  stackContent: {
+    paddingHorizontal: 8,
+  },
+  stackText: {
+    color: '#666',
+    fontSize: 11,
+    fontFamily: 'Courier',
   },
 });
