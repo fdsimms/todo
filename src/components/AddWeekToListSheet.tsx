@@ -1,0 +1,291 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useShallow } from 'zustand/react/shallow';
+import type { MealPlanEntry, Recipe } from '../types';
+import { useColors } from '../theme/ThemeContext';
+import {
+  spacing,
+  radius,
+  font,
+  fontWeight,
+  border,
+  iconSize,
+  interaction,
+  checkboxRadius,
+  type Colors,
+} from '../theme';
+import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import {
+  collectPlannedIngredients,
+  classifyPlanned,
+  type ClassifiedIngredient,
+  type PlanCategory,
+} from '../utils/mealPlanGroceries';
+import { SheetHeaderButton } from './SheetHeaderButton';
+import { EmptyState } from './EmptyState';
+import { haptics } from '../utils/haptics';
+
+const CHECKBOX_SIZE = 22;
+
+interface Props {
+  visible: boolean;
+  /** The loaded week's entries — already range-scoped by useMealPlanStore. */
+  entries: readonly MealPlanEntry[];
+  recipesById: ReadonlyMap<string, Recipe>;
+  range: { startKey: string; endKey: string };
+  onClose: () => void;
+}
+
+const SECTIONS: { category: PlanCategory; label: string; interactive: boolean }[] = [
+  { category: 'needToBuy', label: 'Need to buy', interactive: true },
+  { category: 'alreadyOnList', label: 'Already on your list', interactive: true },
+  { category: 'inTrolley', label: 'In your trolley', interactive: false },
+  // 'probablyHave' is omitted outright rather than rendered empty — it needs
+  // the purchase-cadence inference that hasn't shipped yet (meal-planning
+  // increment 4), and classifyPlanned never puts a row there in the meantime.
+];
+
+/**
+ * Review-then-commit, same shape as GroceryAISheet and the recipe detail
+ * screen's "Add ingredients to list" — a week's worth of recipes is exactly
+ * the kind of bulk add that must never silently land on a list the user may
+ * have curated.
+ *
+ * Ticking follows the table this feature was speced against: "Need to buy"
+ * starts ticked (that's the point of the button), "Already on your list"
+ * starts unticked because the only thing ticking it does is top up the
+ * quantity of a row that's already there, and "In your trolley" is shown for
+ * information but can't be toggled at all — it's already been dealt with
+ * this trip.
+ */
+export function AddWeekToListSheet({ visible, entries, recipesById, range, onClose }: Props) {
+  const colors = useColors();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const items = useGroceryStore(useShallow(s => s.items));
+  const addFromPlan = useGroceryStore(s => s.addFromPlan);
+  const stampAddedToList = useMealPlanStore(s => s.stampAddedToList);
+
+  const classified = useMemo(() => {
+    const planned = collectPlannedIngredients(entries, recipesById, range);
+    return classifyPlanned(planned, items, new Date());
+  }, [entries, recipesById, range, items]);
+
+  const byCategory = useMemo(() => {
+    const out: Record<PlanCategory, ClassifiedIngredient[]> = {
+      needToBuy: [], alreadyOnList: [], inTrolley: [], probablyHave: [],
+    };
+    for (const row of classified) out[row.category].push(row);
+    return out;
+  }, [classified]);
+
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+
+  // Reset to the default tick state fresh each time the sheet opens, rather
+  // than living-recompute against classified while it's up — same model
+  // GroceryAISheet uses for its own accepted-rows state.
+  useEffect(() => {
+    if (!visible) return;
+    setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  const toggle = (row: ClassifiedIngredient) => {
+    haptics.tap();
+    setTicked(prev => {
+      const next = new Set(prev);
+      if (next.has(row.nameKey)) next.delete(row.nameKey);
+      else next.add(row.nameKey);
+      return next;
+    });
+  };
+
+  const handleAdd = () => {
+    const rows: PlannedRow[] = classified
+      .filter(r => r.category !== 'inTrolley' && ticked.has(r.nameKey))
+      .map(r => ({ name: r.name, quantity: r.quantity || null, aisle: r.aisle }));
+
+    if (rows.length === 0) { onClose(); return; }
+
+    const result = addFromPlan(rows);
+    stampAddedToList(range.startKey);
+    haptics.success();
+
+    // Each count on its own terms, never added together — the same
+    // discipline describeShops and RecipeDetailScreen's addToList keep.
+    const parts = [`Added ${result.added.length}`];
+    if (result.alreadyOnList.length > 0) parts.push(`${result.alreadyOnList.length} already on your list`);
+    if (result.skippedInCart.length > 0) parts.push(`${result.skippedInCart.length} already in your trolley`);
+    Alert.alert(
+      result.added.length > 0 ? 'On the list' : 'Nothing to add',
+      parts.join(' · ')
+    );
+    onClose();
+  };
+
+  const addCount = ticked.size;
+  const nothingToShow = classified.length === 0;
+
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={styles.root}>
+        <View style={styles.header}>
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <Text style={styles.headerTitle}>Add week to list</Text>
+          <SheetHeaderButton
+            label={addCount > 0 ? `Add ${addCount}` : 'Add'}
+            onPress={handleAdd}
+            disabled={addCount === 0}
+            minWidth={72}
+          />
+        </View>
+
+        {nothingToShow ? (
+          <View style={styles.centered}>
+            <EmptyState
+              icon="cart-outline"
+              title="Nothing to add"
+              subtitle="Plan a dinner from your recipe box and its ingredients show up here."
+            />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.list}>
+            {SECTIONS.map(({ category, label, interactive }) => {
+              const rows = byCategory[category];
+              if (rows.length === 0) return null;
+              return (
+                <View key={category} style={styles.section}>
+                  <Text style={styles.sectionLabel}>{label} · {rows.length}</Text>
+                  <View style={styles.card}>
+                    {rows.map((row, i) => {
+                      const on = interactive && ticked.has(row.nameKey);
+                      return (
+                        <React.Fragment key={row.nameKey}>
+                          {i > 0 && <View style={styles.sep} />}
+                          <TouchableOpacity
+                            style={styles.row}
+                            activeOpacity={interactive ? interaction.activeOpacity : 1}
+                            onPress={interactive ? () => toggle(row) : undefined}
+                            disabled={!interactive}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on, disabled: !interactive }}
+                            accessibilityLabel={
+                              [row.name, row.quantity, !interactive ? 'already in your trolley' : null]
+                                .filter(Boolean)
+                                .join(', ')
+                            }
+                          >
+                            <View style={[
+                              styles.checkbox,
+                              on && styles.checkboxOn,
+                              !interactive && styles.checkboxDisabled,
+                            ]}>
+                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                            </View>
+                            <View style={styles.body}>
+                              <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={1}>
+                                {row.name}
+                              </Text>
+                              {/* Only shown once merging actually happened — a
+                                  single-source row has nothing to expand into. */}
+                              {row.sources.length > 1 && (
+                                <Text style={styles.sources} numberOfLines={1}>
+                                  {row.sources.join(' · ')}
+                                </Text>
+                              )}
+                            </View>
+                            {!!row.quantity && (
+                              <View style={styles.qtyPill}>
+                                <Text style={styles.qtyText} numberOfLines={1}>{row.quantity}</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        </React.Fragment>
+                      );
+                    })}
+                  </View>
+                  {category === 'alreadyOnList' && (
+                    <Text style={styles.sectionHint}>
+                      Already on the list — tick one to top up its quantity for this week.
+                    </Text>
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+const makeStyles = (colors: Colors) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
+  },
+  headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
+  section: { gap: spacing.xs },
+  sectionLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  sectionHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    lineHeight: font.xs * 1.4,
+  },
+  card: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  sep: {
+    height: border.hairline,
+    backgroundColor: colors.separator,
+    marginLeft: spacing.md + CHECKBOX_SIZE + spacing.md,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+  },
+  checkbox: {
+    width: CHECKBOX_SIZE,
+    height: CHECKBOX_SIZE,
+    borderRadius: checkboxRadius(CHECKBOX_SIZE),
+    borderWidth: border.md,
+    borderColor: colors.separator,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxDisabled: { opacity: 0.4 },
+  body: { flex: 1, gap: 2 },
+  name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
+  nameDisabled: { color: colors.textSecondary },
+  sources: { fontSize: font.xs, color: colors.textTertiary },
+  qtyPill: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    maxWidth: 110,
+  },
+  qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+});

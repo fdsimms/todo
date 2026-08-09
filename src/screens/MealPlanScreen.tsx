@@ -14,6 +14,7 @@ import { InlineAction } from '../components/InlineAction';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
+import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -22,9 +23,10 @@ import { spacing, font, fontWeight, radius, border, type Colors } from '../theme
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
-import { dayKeyOf } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
   dayKeyRange,
+  describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
   entriesForDay,
@@ -70,6 +72,7 @@ export function MealPlanScreen() {
   const planMeal = useMealPlanStore(s => s.planMeal);
   const moveEntry = useMealPlanStore(s => s.moveEntry);
   const removeEntry = useMealPlanStore(s => s.removeEntry);
+  const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
@@ -80,6 +83,7 @@ export function MealPlanScreen() {
   // just made — the row itself is re-read from the store on every render.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
+  const [addingToList, setAddingToList] = useState(false);
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -150,8 +154,19 @@ export function MealPlanScreen() {
     );
   }, [entries, recipesById, styles]);
 
+  // Cheap enough to compute on every render: whether there's anything an "Add
+  // week to list" could possibly find, without running the full ingredient
+  // collection just to light up a header icon.
+  const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
+
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
     const actions: ScreenHeaderAction[] = [
+      {
+        icon: 'cart-outline',
+        onPress: () => { haptics.tap(); setAddingToList(true); },
+        disabled: !hasPlannableEntries,
+        accessibilityLabel: 'Add this week to the grocery list',
+      },
       { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
       { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
     ];
@@ -165,14 +180,20 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek]);
+  }, [onThisWeek, hasPlannableEntries]);
+
+  const addedStamp = range ? addedToListAt[range.startKey] : undefined;
+  const subtitle = [
+    describeWeekPlan(entries),
+    addedStamp ? describeAddedToList(addedStamp, new Date(), weekStartsOn) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Meal plan"
         overline={describeWeekRange(days)}
-        subtitle={describeWeekPlan(entries)}
+        subtitle={subtitle}
         actions={headerActions}
       />
 
@@ -186,7 +207,7 @@ export function MealPlanScreen() {
 
       <RecipePickerSheet
         visible={planningDay !== null}
-        dayLabel={planningDay ? format(new Date(`${planningDay}T00:00:00`), 'EEEE') : ''}
+        dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
         // Dinner is what a week plan is mostly about, and it's the slot a tap
         // means when the user didn't say. The chips are right there to say
         // otherwise.
@@ -214,6 +235,16 @@ export function MealPlanScreen() {
         }
         onClose={() => setSelectedId(null)}
       />
+
+      {range && (
+        <AddWeekToListSheet
+          visible={addingToList}
+          entries={entries}
+          recipesById={recipesById}
+          range={range}
+          onClose={() => setAddingToList(false)}
+        />
+      )}
     </View>
   );
 }

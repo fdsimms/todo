@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import {
   cleanMealTitle,
   dayKeyRange,
+  describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
   entriesForDay,
@@ -307,5 +308,42 @@ describe('mealPlanPurgeCutoffKey', () => {
   it('ignores the time of day', () => {
     expect(mealPlanPurgeCutoffKey(new Date(2026, 7, 8, 0, 0, 1), 30))
       .toBe(mealPlanPurgeCutoffKey(new Date(2026, 7, 8, 23, 59, 59), 30));
+  });
+});
+
+describe('describeAddedToList', () => {
+  // Wednesday, so "days back" within the same Sunday-first week actually
+  // lands on different days rather than rolling into the previous one.
+  const now = new Date(2026, 7, 12);
+
+  it('says today and yesterday', () => {
+    expect(describeAddedToList(new Date(2026, 7, 12, 9).toISOString(), now))
+      .toBe('Added to list today');
+    expect(describeAddedToList(new Date(2026, 7, 11, 9).toISOString(), now))
+      .toBe('Added to list yesterday');
+  });
+
+  it('names the weekday for anything else in the same week, including its first day', () => {
+    expect(describeAddedToList(new Date(2026, 7, 10).toISOString(), now, 0))
+      .toBe('Added to list on Monday');
+    expect(describeAddedToList(new Date(2026, 7, 9).toISOString(), now, 0))
+      .toBe('Added to list on Sunday');
+  });
+
+  it('respects weekStartsOn', () => {
+    // Sunday Aug 9 2026: inside the Sun-Sat week `now` (Wed Aug 12) falls in
+    // when weeks start Sunday, but it's the *last* day of the *previous*
+    // Mon-Sun week when they start Monday — so the same instant reads as a
+    // weekday name under one flag and a calendar date under the other.
+    const sun = new Date(2026, 7, 9);
+    expect(describeAddedToList(sun.toISOString(), now, 0)).toBe('Added to list on Sunday');
+    expect(describeAddedToList(sun.toISOString(), now, 1)).toBe('Added to list on Aug 9');
+  });
+
+  it('falls back to a calendar date once it is out of the week, with a year suffix across one', () => {
+    expect(describeAddedToList(new Date(2026, 7, 8).toISOString(), now, 0))
+      .toBe('Added to list on Aug 8');
+    expect(describeAddedToList(new Date(2025, 11, 20).toISOString(), new Date(2026, 0, 5)))
+      .toBe('Added to list on Dec 20, 2025');
   });
 });

@@ -1547,6 +1547,35 @@ export function dbPurgeOldMealPlanEntries(beforeKey: string): number {
   return db.runSync('DELETE FROM meal_plan_entries WHERE date < ?', [beforeKey]).changes ?? 0;
 }
 
+// When "Add week to list" was last used, keyed by the week's start day key —
+// a stamp, not a lock, so the week header can say "Added to list on Sunday"
+// without that ever blocking a second, deliberate add (someone remembering the
+// mushrooms after the fact is a real action, not a mistake to guard against).
+// A settings-JSON map like grocery_aisle_order rather than a column on
+// anything, since it names a week rather than a row. Bounded the same way
+// entries are: useMealPlanStore.purgeOldEntries drops keys past the same
+// horizon, so this can't grow forever the way the map that inspired the
+// pattern (grocery_aisle_order) doesn't need to.
+export function dbGetMealPlanAddedToList(): Record<string, string> {
+  const val = dbGetSetting('meal_plan_added_to_list');
+  if (!val) return {};
+  try {
+    const parsed = JSON.parse(val) as unknown;
+    if (!parsed || typeof parsed !== 'object') return {};
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof value === 'string') out[key] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function dbSetMealPlanAddedToList(map: Record<string, string>): void {
+  dbSetSetting('meal_plan_added_to_list', JSON.stringify(map));
+}
+
 // The store the last trip was finished at, used to preselect the next one. A
 // scalar, so it's a settings key like grocery_aisle_order rather than a column
 // on anything. Validated against live shops at read time by the store, because

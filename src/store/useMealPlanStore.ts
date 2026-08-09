@@ -6,6 +6,8 @@ import {
   dbUpdateMealPlanEntry,
   dbDeleteMealPlanEntry,
   dbPurgeOldMealPlanEntries,
+  dbGetMealPlanAddedToList,
+  dbSetMealPlanAddedToList,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import {
@@ -70,6 +72,17 @@ interface MealPlanStore {
 
   removeEntry: (id: string) => void;
 
+  /**
+   * When "Add week to list" was last used for a given week, keyed by the
+   * week's start day key. A stamp, not a lock — adding twice because you
+   * forgot the mushrooms is a real action, so nothing here ever blocks a
+   * repeat add. Loaded wholesale (it's a small settings-JSON map, not a
+   * per-event table) and kept in step by stampAddedToList/purgeOldEntries.
+   */
+  addedToListAt: Record<string, string>;
+  /** Stamps `weekStartKey` with now, for the week header's "Added to list on X" line. */
+  stampAddedToList: (weekStartKey: string) => void;
+
   /** Enforces the 180-day horizon. Returns how many rows went. */
   purgeOldEntries: () => number;
 }
@@ -78,17 +91,23 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   entries: [],
   rangeStart: null,
   rangeEnd: null,
+  addedToListAt: {},
   initialized: false,
 
   initialize() {
+    const addedToListAt = dbGetMealPlanAddedToList();
     const { rangeStart, rangeEnd } = get();
     if (rangeStart && rangeEnd) {
-      set({ entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)), initialized: true });
+      set({
+        entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
+        addedToListAt,
+        initialized: true,
+      });
       return;
     }
     // Nothing has asked for a window yet, so there is nothing to hold. The
     // screen loads its own on mount.
-    set({ entries: [], initialized: true });
+    set({ entries: [], addedToListAt, initialized: true });
   },
 
   loadRange(startKey, endKey) {
@@ -148,6 +167,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
   },
 
+  stampAddedToList(weekStartKey) {
+    const next = { ...get().addedToListAt, [weekStartKey]: new Date().toISOString() };
+    dbSetMealPlanAddedToList(next);
+    set({ addedToListAt: next });
+  },
+
   purgeOldEntries() {
     const cutoff = mealPlanPurgeCutoffKey();
     const removed = dbPurgeOldMealPlanEntries(cutoff);
@@ -157,6 +182,17 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // next load.
       set(s => ({ entries: s.entries.filter(e => e.date >= cutoff) }));
     }
+
+    // Bounds the stamp map the same way the prune bounds entries — nothing
+    // else ever removes a key from it, so without this it would grow for as
+    // long as the user keeps adding weeks to their list.
+    const stamps = get().addedToListAt;
+    const trimmed = Object.fromEntries(Object.entries(stamps).filter(([key]) => key >= cutoff));
+    if (Object.keys(trimmed).length !== Object.keys(stamps).length) {
+      dbSetMealPlanAddedToList(trimmed);
+      set({ addedToListAt: trimmed });
+    }
+
     return removed;
   },
 }));
