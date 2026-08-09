@@ -1,6 +1,6 @@
 # dundundun
 
-A personal todo app built with Expo (React Native). Inspired by Things 3, with a key differentiator: tasks can be hidden until a specific time — either as a one-time snooze or as a daily visibility rule baked into the task itself.
+A personal productivity app built with Expo (React Native), started as a Things 3-inspired todo list and grown well past that: task management with a granular visibility model (defer, time-of-day gating, due dates, vacation pauses), recurrence, chains, stacks, projects/categories/tags, and templates — plus a grocery list with aisle sorting and per-store history, recipes, and meal planning. Optional AI suggestions (via a user-supplied Anthropic API key) help fill in task and grocery details, and Face ID app-locking, an Apple Reminders import for voice capture, and a home-screen widget round it out. Everything runs entirely on-device against a local SQLite database — there is no backend, and the Anthropic call is the only network request the app ever makes, opt-in and inert until a key is added.
 
 ## Tech stack
 
@@ -32,7 +32,7 @@ The Today tab is really four lenses over the same tasks, switched by the pill ro
 | Unscheduled | Tasks with no date at all |
 | Inbox | Newly captured tasks not yet filed |
 
-The side menu reaches Categories, Tags, Templates, Logbook, Stats, Archived and Settings.
+The side menu reaches Groceries, Recipes, Meal Plan, Categories, Tags, Stacks, Templates, Logbook, Stats, Waiting, Archived and Settings.
 
 ## Running locally
 
@@ -47,7 +47,7 @@ Scan the QR code with **Expo Go** (iOS/Android) — the app itself runs there, a
 
 ```bash
 npx tsc --noEmit   # typecheck
-npm test           # 27 suites, ~4s
+npm test           # ~70 suites, ~2,600 tests, a few seconds
 ```
 
 CI runs both plus `npx expo export --platform ios` on every PR.
