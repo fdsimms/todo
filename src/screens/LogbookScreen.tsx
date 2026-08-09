@@ -641,7 +641,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 7,
     borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: colors.bgQuaternary,
   },
   filterButtonText: {
     color: colors.text,
