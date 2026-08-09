@@ -330,6 +330,11 @@ export function ProjectsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Projects"
+        subtitle={visibleProjects.length > 0
+          ? showArchived
+            ? `${visibleProjects.length} archived`
+            : `${visibleProjects.length} active ${visibleProjects.length === 1 ? 'project' : 'projects'}`
+          : undefined}
         actions={[
           {
             icon: 'ellipsis-horizontal',
