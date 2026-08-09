@@ -523,7 +523,7 @@ const LogbookRow = React.memo(function LogbookRow({
             <Ionicons
               name={missed ? 'close' : partial ? 'remove' : 'checkmark'}
               size={12}
-              color={missed ? colors.red : partial ? colors.textTertiary : colors.green}
+              color={missed ? colors.textSecondary : partial ? colors.textTertiary : colors.green}
             />
           )}
         </TouchableOpacity>
@@ -550,7 +550,7 @@ const LogbookRow = React.memo(function LogbookRow({
           <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
           <View style={styles.metaRow}>
             <Text style={styles.taskTime}>{formatTime(task.completedAt!)}</Text>
-            {/* Named, not just glyphed. The red × on the left says something is
+            {/* Named, not just glyphed. The neutral × on the left says something is
                 different about this row, but a Logbook is read as a list of
                 things that happened and "missed" is the one entry whose
                 meaning inverts — it has to survive being skimmed. */}
@@ -736,9 +736,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexShrink: 0,
   },
   // Same metrics as taskTime so it sits on the meta row's baseline; only the
-  // colour and weight lift it, matching the red × on the row's left.
+  // colour and weight lift it, matching the neutral × on the row's left.
+  // Deliberately not colors.red — a miss is bookkeeping, not a failure grade.
   missedTag: {
-    color: colors.red,
+    color: colors.textSecondary,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,
