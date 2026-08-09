@@ -79,14 +79,26 @@ visual change** below), and say so plainly rather than implying you ran them.
 
 **Delegate a search, not an edit.** A subagent earns its round trip when the question is a wide
 sweep and you only want the conclusion — "every call site of `groupRosterOf`", "which screens
-mount `PaintSelectionProvider`", "where does `dayResetTime` get read". When you already know the
-file from the table above, just grep. Never hand off the writing: one agent making the whole
-diff is what keeps it coherent.
+mount `PaintSelectionProvider`", "where does `dayResetTime` get read". Rule of thumb: if
+answering it yourself would take more than ~3 grep/read round trips, delegate it instead of
+grinding through them inline. When you already know the file from the table above, just grep —
+don't spawn an agent for a one-file lookup. Never hand off the writing: one agent making the
+whole diff is what keeps it coherent.
+
+**Reach for Explore, not a manual read, on the seven 1,000+ line files.** Grepping and reading
+the surrounding range is still the right move (see above), but for an unfamiliar change to
+`useTaskStore.ts`, `TaskEditor.tsx`, `TodayScreen.tsx`, or the others in that list, running that
+grep-then-read loop through an Explore agent keeps the raw file content out of your own context
+— you get the relevant chunk and a citation, not the whole file. Reach for it especially when
+you expect more than one round trip into the same file.
 
 **Say the sequence before a change that spans layers.** Anything touching db + store + UI
 should be planned in a sentence or two first, because the constraint almost always lives
 downstream: the schema and the visibility rules decide what the UI is allowed to do, not the
-other way round.
+other way round. When the plan requires understanding current behavior in each layer first,
+fan that out — one Explore agent per layer, run in parallel — rather than reading them
+sequentially yourself; the layers are independent to read even though the change across them
+isn't.
 
 **Mock a visual change instead of describing it.** There are no component tests and no way to
 run the app from here, so a change to spacing, hierarchy, colour or a row treatment otherwise
