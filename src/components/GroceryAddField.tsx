@@ -38,6 +38,8 @@ interface Props {
 /** Lets the sheet focus the field once its entrance animation has settled. */
 export interface GroceryAddFieldHandle {
   focus: () => void;
+  /** Commits whatever's currently typed, same as pressing return — so closing the sheet doesn't silently drop it. */
+  commitPending: () => void;
 }
 
 /**
@@ -59,8 +61,6 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const inputRef = useRef<TextInput>(null);
-
-  useImperativeHandle(ref, () => ({ focus: () => inputRef.current?.focus() }), []);
 
   const items = useGroceryStore(s => s.items);
   const addByName = useGroceryStore(s => s.addByName);
@@ -109,6 +109,11 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     if (!tokens) return;
     commit(text, { name: tokens.name, quantity: tokens.quantity });
   }, [tokens, text, commit]);
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current?.focus(),
+    commitPending: submit,
+  }), [submit]);
 
   /**
    * Multi-line paste, without making this a multiline input.
