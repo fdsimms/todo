@@ -1,0 +1,4 @@
+{
+  "message": "Tapping a member row in a stack's editor now opens that task's own editor, instead of only offering reorder and remove",
+  "date": "2026-08-10"
+}
