@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
+import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 
 interface Props {
@@ -20,6 +21,14 @@ interface Props {
    */
   showSlot: boolean;
   onPress: () => void;
+  /**
+   * Marks the entry cooked directly from the row, without opening
+   * MealEntrySheet — the same shortcut a task row's checkbox gives over its
+   * editor. Omitted (and the badge left untappable) once the entry is
+   * already cooked, matching MealEntrySheet's own "Mark cooked" action,
+   * which likewise disappears once there's nothing left to mark.
+   */
+  onMarkCooked?: () => void;
 }
 
 /**
@@ -31,9 +40,10 @@ interface Props {
  * will open it). Thursday is allowed to just say "leftovers"; every planner
  * that treats that as an unfinished row is abandoned on a Wednesday.
  */
-export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress }: Props) {
+export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMarkCooked }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const cooked = !!entry.cookedAt;
 
   return (
     <TouchableOpacity
@@ -41,7 +51,7 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress }: Prop
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={[slotLabel(entry.slot), title, entry.cookedAt ? 'cooked' : null].filter(Boolean).join(', ')}
+      accessibilityLabel={[slotLabel(entry.slot), title, cooked ? 'cooked' : null].filter(Boolean).join(', ')}
       accessibilityHint="Double tap to move or remove this meal."
     >
       <View
@@ -55,7 +65,26 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress }: Prop
           size={16}
           color={hasRecipe ? colors.accent : colors.textSecondary}
         />
-        {!!entry.cookedAt && (
+        {/*
+          The badge is the row's own checkbox: an outline circle that fills in
+          on tap, same glyph swap TaskItem's checkbox does. It's a nested
+          TouchableOpacity inside the row's own — RN's responder system
+          resolves the touch to whichever one is under the finger, so tapping
+          here never also opens the sheet. Only interactive while there's an
+          onMarkCooked to call — once cooked, it's the same static badge this
+          row always showed, matching MealEntrySheet dropping its "Mark
+          cooked" action for the same reason.
+        */}
+        {onMarkCooked ? (
+          <TouchableOpacity
+            style={styles.cookedBadgeOutline}
+            onPress={() => { haptics.success(); onMarkCooked(); }}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Mark ${title} cooked`}
+          />
+        ) : cooked && (
           <View style={styles.cookedBadge}>
             <Ionicons name="checkmark" size={9} color={colors.onAccent} />
           </View>
@@ -97,6 +126,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1.5,
     borderColor: colors.bg,
+  },
+  cookedBadgeOutline: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: colors.bg,
+    borderWidth: 1.5,
+    borderColor: colors.separator,
   },
   info: { flex: 1, gap: 2 },
   title: {
