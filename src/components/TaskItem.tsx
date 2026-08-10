@@ -32,6 +32,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { chainPreview } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
@@ -130,8 +131,6 @@ interface Props {
 }
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-// Steps shown on each side of the active chain step before truncating with '…'.
-const CHAIN_PREVIEW_RADIUS = 2;
 
 const MONTH_DAY_SUFFIXES: Record<number, string> = { 1: 'st', 2: 'nd', 3: 'rd', 21: 'st', 22: 'nd', 23: 'rd', 31: 'st' };
 function ordinalMonthDay(n: number): string {
@@ -1778,14 +1777,8 @@ export const TaskItem = React.memo(function TaskItem({
             )}
 
             {activeChainItem && task.chainItems.length > 0 && (() => {
-              const total = task.chainItems.length;
-              const currentIdx = task.chainIndex % total;
-              // Long chains overflow the row unreadably, so only show a
-              // window of steps around the current one, with ellipses
-              // standing in for whatever's trimmed off each end.
-              const start = Math.max(0, currentIdx - CHAIN_PREVIEW_RADIUS);
-              const end = Math.min(total - 1, currentIdx + CHAIN_PREVIEW_RADIUS);
-              const visibleItems = task.chainItems.slice(start, end + 1);
+              const preview = chainPreview(task);
+              if (!preview) return null;
               return (
                 <View style={[
                   styles.recurrenceRow,
@@ -1793,19 +1786,9 @@ export const TaskItem = React.memo(function TaskItem({
                 ]}>
                   <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
                   <Text style={styles.expandMeta} numberOfLines={1}>
-                    Chain {currentIdx + 1}/{total}:{start > 0 ? ' … →' : ''}
-                    {visibleItems.map((item, i) => {
-                      const actualIdx = start + i;
-                      return (
-                        <Text
-                          key={item.id}
-                          style={actualIdx === currentIdx && styles.expandMetaActive}
-                        >
-                          {i > 0 ? ' → ' : ' '}{item.title}
-                        </Text>
-                      );
-                    })}
-                    {end < total - 1 ? ' → …' : ''}
+                    Chain {preview.currentIdx + 1}/{preview.total}:{' '}
+                    <Text style={styles.expandMetaActive}>On: {preview.currentTitle}</Text>
+                    {preview.nextTitle ? ` → Next: ${preview.nextTitle}` : ''}
                   </Text>
                 </View>
               );

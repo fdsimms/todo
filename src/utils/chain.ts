@@ -47,3 +47,32 @@ export function parseChainItems(raw: unknown): ChainItem[] {
     estimatedMinutes: typeof c?.estimatedMinutes === 'number' ? c.estimatedMinutes : null,
   }));
 }
+
+/** The current-step and (if any) next-step titles for a chain preview row. */
+export interface ChainPreview {
+  currentIdx: number;
+  total: number;
+  currentTitle: string;
+  nextTitle: string | null;
+}
+
+/**
+ * What the expanded row's chain summary should show: the CURRENT step leads
+ * (it's the only actionable one), followed by the next step if there is one.
+ * A finished earlier step is never included — with the row truncated to one
+ * line, spending width on something already done pushed the upcoming step
+ * past the truncation point.
+ */
+export function chainPreview(task: ChainCarrier): ChainPreview | null {
+  const items = task.chainItems;
+  if (!items || items.length === 0) return null;
+  const total = items.length;
+  const currentIdx = (task.chainIndex ?? 0) % total;
+  const nextItem = currentIdx + 1 < total ? items[currentIdx + 1] : null;
+  return {
+    currentIdx,
+    total,
+    currentTitle: items[currentIdx].title,
+    nextTitle: nextItem ? nextItem.title : null,
+  };
+}
