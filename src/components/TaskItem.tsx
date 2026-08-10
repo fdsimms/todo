@@ -68,8 +68,10 @@ const QUOTA_TOPPING_MS = animation.duration.normal;
 // the gap between taps, not a budget for the whole burst.
 const QUOTA_LINGER_MS = 4000;
 
-// The daily-target meter's level as a 0–1 fraction of the target.
-const quotaFraction = (task: Task) =>
+// The daily-target meter's level as a 0–1 fraction of the target. Exported so
+// the Logbook can fill its own circle to the same proportion rather than
+// collapsing progress to a static dash.
+export const quotaFraction = (task: Task) =>
   task.targetCount ? Math.min(1, task.progressCount / task.targetCount) : 0;
 
 interface Props {
