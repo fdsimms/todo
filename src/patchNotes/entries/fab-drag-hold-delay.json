@@ -1,0 +1,4 @@
+{
+  "message": "The + button no longer starts a drag on a quick tap that wobbles a bit — it now waits for a brief hold before dragging.",
+  "date": "2026-08-10"
+}

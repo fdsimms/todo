@@ -130,6 +130,13 @@ function FabButton({
   // Read from inside the responder, which is created once.
   const dragRef = useRef(drag);
   dragRef.current = drag;
+  // When the finger went down, so a drag can require a hold before it claims
+  // the gesture — set from `onStartShouldSetPanResponderCapture`, which fires
+  // on every touch-down regardless of what it returns (it always returns
+  // false here; the tap and the menu own touch-down). There's no
+  // `onPanResponderGrant`-equivalent for touch-down alone, since grant only
+  // fires once something has already claimed the responder.
+  const touchStartRef = useRef(0);
 
   const panResponder = useMemo(() => {
     /** Where the gesture stands relative to home, latching `leftHomeRef` on the way. */
@@ -150,14 +157,25 @@ function FabButton({
       ]).start();
     };
     return PanResponder.create({
-      // Never claim the touch down — that's the tap's, and the menu's.
+      // Never claim the touch down — that's the tap's, and the menu's. Still
+      // record when it happened, so a move shortly after can be told apart
+      // from one after a genuine hold.
       onStartShouldSetPanResponder: () => false,
-      onStartShouldSetPanResponderCapture: () => false,
+      onStartShouldSetPanResponderCapture: () => {
+        touchStartRef.current = Date.now();
+        return false;
+      },
       // Capture rather than bubble, for the same reason ReorderableList does:
       // once the finger has committed to a drag the press underneath has to be
-      // taken from it cleanly, not negotiated with.
+      // taken from it cleanly, not negotiated with. Gated on both distance
+      // *and* hold time — mirroring `interaction.delayLongPress`, the same
+      // token drag handles use elsewhere — so a fast flick-tap that happens to
+      // wobble past the distance threshold still doesn't start a drag; only a
+      // press held past the delay and then moved does.
       onMoveShouldSetPanResponderCapture: (_e, g) =>
-        !!dragRef.current && Math.hypot(g.dx, g.dy) > interaction.tapMoveThreshold,
+        !!dragRef.current &&
+        Math.hypot(g.dx, g.dy) > interaction.tapMoveThreshold &&
+        Date.now() - touchStartRef.current >= interaction.delayLongPress,
       onPanResponderTerminationRequest: () => false,
       onPanResponderGrant: () => {
         leftHomeRef.current = false;
