@@ -8,7 +8,7 @@ import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
-import type { MealSlot, Recipe } from '../types';
+import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { InlineAction } from '../components/InlineAction';
@@ -132,10 +132,12 @@ export function MealPlanScreen() {
     Alert.alert('Prep tasks added', `Added ${recipe.prepTasks.length} to your tasks.`);
   };
 
-  const markCookedForSelected = () => {
-    if (!selected) return;
-    markEntryCooked(selected.id);
-    const recipe = selected.recipeId ? recipesById.get(selected.recipeId) : undefined;
+  // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
+  // same mutation, same "add ingredients back to the list" follow-up either
+  // way, so marking cooked from the row isn't a lesser version of the sheet's.
+  const markCooked = (entry: MealPlanEntry) => {
+    markEntryCooked(entry.id);
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     if (recipe) markRecipeCooked(recipe.id);
     haptics.success();
 
@@ -190,6 +192,7 @@ export function MealPlanScreen() {
                   // dinner "DINNER" says it twice.
                   showSlot={idx === 0 || dayEntries[idx - 1].slot !== entry.slot}
                   onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
+                  onMarkCooked={entry.cookedAt ? undefined : () => markCooked(entry)}
                 />
               </React.Fragment>
             ))}
@@ -306,7 +309,7 @@ export function MealPlanScreen() {
           removeEntry(selected.id);
           setSelectedId(null);
         }}
-        onMarkCooked={selected && !selected.cookedAt ? markCookedForSelected : undefined}
+        onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
