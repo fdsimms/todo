@@ -18,7 +18,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
@@ -26,6 +26,7 @@ import { MiniFabList } from './MiniFabList';
 import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { TaskEditor } from './TaskEditor';
 import type { FabMenuItem } from './Fab';
 
 // Rendered bottom-up, so "New task" lands nearest the button — the same
@@ -99,6 +100,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [pendingChildIndex, setPendingChildIndex] = useState<number | null>(null);
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
+  // A member row opens the task's own editor on top of this one, same as
+  // tapping a task row anywhere else in the app.
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
 
   useEffect(() => {
     if (!group) return;
@@ -263,6 +267,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   if (!group) return null;
 
   return (
+    <>
     <EditorSheet
       visible={visible}
       onRequestClose={saveAndClose}
@@ -398,7 +403,13 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                   >
                     <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
                   </TouchableOpacity>
-                  <View style={styles.childText}>
+                  <TouchableOpacity
+                    style={styles.childText}
+                    onPress={() => setEditingTask(child)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${child.title}`}
+                  >
                     <Text
                       style={[styles.childTitle, child.completed && styles.childTitleDone]}
                       numberOfLines={1}
@@ -406,7 +417,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                       {child.title}
                     </Text>
                     {subtitle !== '' && <Text style={styles.childSubtitle}>{subtitle}</Text>}
-                  </View>
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => removeFromGroup(child.id)}
                     hitSlop={8}
@@ -480,6 +491,12 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
         </View>
       </View>
     </EditorSheet>
+    <TaskEditor
+      visible={!!editingTask}
+      task={editingTask}
+      onClose={() => setEditingTask(null)}
+    />
+    </>
   );
 }
 
