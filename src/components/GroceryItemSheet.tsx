@@ -62,6 +62,7 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const linkItemShop = useGroceryStore(s => s.linkItemShop);
   const unlinkItemShop = useGroceryStore(s => s.unlinkItemShop);
+  const addShop = useGroceryStore(s => s.addShop);
 
   const [name, setName] = useState('');
   const [quantity, setQuantityText] = useState('');
@@ -69,6 +70,8 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const [nameError, setNameError] = useState<string | null>(null);
   const [newAisle, setNewAisle] = useState('');
   const [addingAisle, setAddingAisle] = useState(false);
+  const [newShop, setNewShop] = useState('');
+  const [addingShop, setAddingShop] = useState(false);
 
   useEffect(() => {
     if (visible && item) {
@@ -78,6 +81,8 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
       setNameError(null);
       setNewAisle('');
       setAddingAisle(false);
+      setNewShop('');
+      setAddingShop(false);
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -115,6 +120,28 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
     haptics.success();
     setNewAisle('');
     setAddingAisle(false);
+  };
+
+  /**
+   * Same reasoning as handleAddAisle: you're here to say where this item can
+   * be bought, so a store created from this sheet is linked to the item on
+   * the spot rather than left to be found again from the Stores tab.
+   * addShop, unlike addAisle, hands back null on a name collision rather than
+   * the existing store — a duplicate name just fails quietly here since a
+   * store's identity (not just its name) already exists elsewhere to pick.
+   */
+  const handleAddShop = () => {
+    const trimmed = newShop.trim();
+    if (!trimmed) return;
+    const created = addShop(trimmed);
+    if (!created) {
+      haptics.error();
+      return;
+    }
+    linkItemShop(item.id, created.id);
+    haptics.success();
+    setNewShop('');
+    setAddingShop(false);
   };
 
   const linkedCounts = new Map(
@@ -313,44 +340,83 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
             </View>
           )}
 
-          {shops.length > 0 && (
-            <>
-              <Text style={styles.label}>STORES</Text>
-              <Text style={styles.hint}>
-                Tap a store to say you can get this there. Finishing a shop marks it for you.
-              </Text>
-              <View style={styles.pills}>
-                {shops.map(shop => {
-                  const count = linkedCounts.get(shop.id);
-                  const active = count !== undefined;
-                  return (
-                    <TouchableOpacity
-                      key={shop.id}
-                      style={[styles.pill, active && styles.pillActive]}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => toggleShop(shop.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: active }}
-                      accessibilityLabel={
-                        active
-                          ? count === 0
-                            ? `${shop.name}, marked by you. Tap to remove.`
-                            : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
-                          : `${shop.name}. Tap to mark that you can get this here.`
-                      }
-                    >
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                        {shop.name}
-                        {/* Only an observed link shows a number. A count of 0
-                            on a hand-marked store reads as "never bought here",
-                            which is the opposite of what the tap meant. */}
-                        {!!count && ` · ${count}`}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </>
+          {/* Unconditional, unlike the pills-only version this replaced: the
+              "New store" affordance has to be reachable even before any store
+              exists, not just once the picker already has something to tap. */}
+          <Text style={styles.label}>STORES</Text>
+          <Text style={styles.hint}>
+            Tap a store to say you can get this there. Finishing a shop marks it for you.
+          </Text>
+          <View style={styles.pills}>
+            {shops.map(shop => {
+              const count = linkedCounts.get(shop.id);
+              const active = count !== undefined;
+              return (
+                <TouchableOpacity
+                  key={shop.id}
+                  style={[styles.pill, active && styles.pillActive]}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => toggleShop(shop.id)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={
+                    active
+                      ? count === 0
+                        ? `${shop.name}, marked by you. Tap to remove.`
+                        : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
+                      : `${shop.name}. Tap to mark that you can get this here.`
+                  }
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                    {shop.name}
+                    {/* Only an observed link shows a number. A count of 0
+                        on a hand-marked store reads as "never bought here",
+                        which is the opposite of what the tap meant. */}
+                    {!!count && ` · ${count}`}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+            {!addingShop && (
+              <InlineAction
+                label="New store"
+                icon="add"
+                variant="neutral"
+                haptic
+                onPress={() => setAddingShop(true)}
+                accessibilityLabel="Add a new store"
+                style={styles.addButton}
+              />
+            )}
+          </View>
+
+          {addingShop && (
+            <View style={styles.addWrap}>
+              <TextInput
+                style={styles.addInput}
+                value={newShop}
+                onChangeText={setNewShop}
+                placeholder="Store name"
+                placeholderTextColor={colors.textTertiary}
+                returnKeyType="done"
+                onSubmitEditing={handleAddShop}
+                onBlur={() => {
+                  if (!newShop.trim()) setAddingShop(false);
+                }}
+                autoFocus
+                autoCorrect={false}
+                maxLength={32}
+                accessibilityLabel="New store name"
+              />
+              <InlineAction
+                label="Add"
+                icon="add"
+                variant="neutral"
+                onPress={handleAddShop}
+                disabled={!newShop.trim()}
+                style={styles.addButton}
+              />
+            </View>
           )}
 
           <Text style={styles.label}>PANTRY</Text>
