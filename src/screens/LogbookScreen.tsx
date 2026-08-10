@@ -37,6 +37,7 @@ import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
+import { quotaFraction } from '../components/TaskItem';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -494,6 +495,9 @@ const LogbookRow = React.memo(function LogbookRow({
         <TouchableOpacity
           style={[
             styles.checkCircle,
+            // A miss still outranks a partial in the border, same as the glyph:
+            // no fill to show for zero progress.
+            !selectionMode && partial && !missed && styles.checkCircleQuota,
             selectionMode && styles.selectCircle,
             selectionMode && selected && styles.selectCircleOn,
           ]}
@@ -519,11 +523,18 @@ const LogbookRow = React.memo(function LogbookRow({
         >
           {selectionMode ? (
             selected && <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+          ) : partial && !missed ? (
+            // Same proportional fill Today's meter uses instead of a flat dash —
+            // "6/12" and "1/12" no longer render identically.
+            <View
+              style={[styles.quotaFill, { height: `${Math.round(quotaFraction(task) * 100)}%` }]}
+              pointerEvents="none"
+            />
           ) : (
             <Ionicons
-              name={missed ? 'close' : partial ? 'remove' : 'checkmark'}
+              name={missed ? 'close' : 'checkmark'}
               size={12}
-              color={missed ? colors.textSecondary : partial ? colors.textTertiary : colors.green}
+              color={missed ? colors.textSecondary : colors.green}
             />
           )}
         </TouchableOpacity>
@@ -718,6 +729,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // circleSelected so picking rows looks the same wherever you do it.
   selectCircle: { borderColor: colors.bgQuaternary },
   selectCircleOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  // A partial quota row's border and fill — matching TaskItem's circleQuota /
+  // quotaFill, just painted at rest instead of animated (this is history, not
+  // a live meter).
+  checkCircleQuota: {
+    borderColor: colors.accent,
+    overflow: 'hidden', // clips the fill to the circle
+  },
+  quotaFill: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.accent,
+    borderTopLeftRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
+    borderTopRightRadius: Math.max(0, checkboxRadius(CHECKBOX_SIZE) - border.md),
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
   // These rows are flat and separator-divided rather than cards, so a selected
   // one is marked by tinting the whole band instead of the card treatment
   // TaskItem uses.
