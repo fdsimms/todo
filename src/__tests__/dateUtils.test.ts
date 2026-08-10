@@ -13,6 +13,7 @@ import {
   getLogicalNow,
   dayKeyOf,
   dayKeyToDate,
+  getLogicalDayKey,
   isBeforeDayReset,
   getEffectiveTaskDate,
   formatTaskDate,
@@ -1061,6 +1062,23 @@ describe('dayKeyOf', () => {
     expect(dayKeyOf(new Date(2026, 7, 5, 0, 0, 0))).toBe('2026-08-05');
     expect(dayKeyOf(new Date(2026, 7, 5, 1, 30, 0))).toBe('2026-08-05');
     expect(dayKeyOf(new Date(2026, 7, 5, 23, 59, 59))).toBe('2026-08-05');
+  });
+});
+
+describe('getLogicalDayKey', () => {
+  it('keys a completion a few hours after midnight to the previous day when it precedes dayResetTime', () => {
+    const completedAt = new Date(2026, 7, 5, 1, 0, 0); // 1am
+    expect(getLogicalDayKey(completedAt, '04:00')).toBe('2026-08-04');
+  });
+
+  it('keys a completion after dayResetTime to that same calendar day', () => {
+    const completedAt = new Date(2026, 7, 5, 5, 0, 0); // 5am
+    expect(getLogicalDayKey(completedAt, '04:00')).toBe('2026-08-05');
+  });
+
+  it('matches the plain calendar day when dayResetTime is midnight', () => {
+    const completedAt = new Date(2026, 7, 5, 1, 0, 0);
+    expect(getLogicalDayKey(completedAt, '00:00')).toBe('2026-08-05');
   });
 });
 
