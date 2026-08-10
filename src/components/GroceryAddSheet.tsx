@@ -95,6 +95,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
   }, [visible]);
 
   const dismiss = () => {
+    fieldRef.current?.commitPending();
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
