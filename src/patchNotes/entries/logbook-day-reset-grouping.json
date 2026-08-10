@@ -1,0 +1,4 @@
+{
+  "message": "Logbook now groups completions by your logical day (respecting your day reset time) instead of the raw calendar date, so a task finished shortly after midnight lands under the right day",
+  "date": "2026-08-10"
+}

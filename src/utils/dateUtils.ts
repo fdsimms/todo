@@ -33,6 +33,18 @@ export function getCurrentDayStart(): Date {
 }
 
 /**
+ * The logical day (as a `YYYY-MM-DD` key) a real timestamp belongs to —
+ * e.g. a task completed at 1am with a 4am dayResetTime keys under
+ * yesterday's date, matching every other day-boundary computation in the
+ * app. Unlike `getTaskDayStart`, this is for an actual moment (a
+ * `completedAt`), not a stored anchor like `dueDate` — `getDayStart`'s
+ * early-morning rollback is exactly what a real timestamp wants.
+ */
+export function getLogicalDayKey(date: Date, dayResetTime?: string): string {
+  return dayKeyOf(getDayStart(date, dayResetTime));
+}
+
+/**
  * A date's calendar day as a `YYYY-MM-DD` string, in local time.
  *
  * Two jobs, which is why it's here rather than local to a component. It's the

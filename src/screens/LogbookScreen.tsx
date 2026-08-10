@@ -14,10 +14,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import { isToday } from 'date-fns/isToday';
-import { isYesterday } from 'date-fns/isYesterday';
+import { isSameDay } from 'date-fns/isSameDay';
+import { addDays } from 'date-fns/addDays';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { SearchField } from '../components/SearchField';
@@ -35,7 +36,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { fuzzySearch } from '../utils/fuzzySearch';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration } from '../utils/effort';
-import { formatTimeOfDay } from '../utils/dateUtils';
+import { formatTimeOfDay, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { isQuotaPartial, isMissed, displayTitleFor } from '../utils/visibilityUtils';
 import { quotaFraction } from '../components/TaskItem';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -74,10 +75,11 @@ const CHECKBOX_SIZE = 20;
 const ROW_HEIGHT = spacing.sm * 2 + lineHeight.md + 2 + lineHeight.xs; // 56
 const DAY_HEADER_HEIGHT = spacing.lg + lineHeight.xs + spacing.xs; // 44
 
-function formatDayHeader(iso: string): string {
-  const d = new Date(iso);
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
+function formatDayHeader(iso: string, dayResetTime?: string): string {
+  const d = getDayStart(new Date(iso), dayResetTime);
+  const today = getDayStart(new Date(), dayResetTime);
+  if (isSameDay(d, today)) return 'Today';
+  if (isSameDay(d, addDays(today, -1))) return 'Yesterday';
   return format(d, 'EEEE, MMMM d');
 }
 
@@ -95,6 +97,7 @@ export function LogbookScreen() {
   const updateTask = useTaskStore(s => s.updateTask);
   const clearLogbook = useTaskStore(s => s.clearLogbook);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -211,17 +214,17 @@ export function LogbookScreen() {
 
     const grouped = new Map<string, Task[]>();
     sorted.forEach(task => {
-      const key = format(new Date(task.completedAt!), 'yyyy-MM-dd');
+      const key = getLogicalDayKey(new Date(task.completedAt!), dayResetTime);
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key)!.push(task);
     });
 
     return Array.from(grouped.entries()).map(([dateKey, data]) => ({
-      title: formatDayHeader(data[0].completedAt!),
+      title: formatDayHeader(data[0].completedAt!, dayResetTime),
       dateKey,
       data,
     }));
-  }, [filteredTasks]);
+  }, [filteredTasks, dayResetTime]);
 
   const cellLayout = useMemo(
     () => sectionListCellLayout(sections.map(s => s.data.length), DAY_HEADER_HEIGHT, ROW_HEIGHT),
