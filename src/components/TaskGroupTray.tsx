@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, type Colors } from '../theme';
+import { SpotlightScrim } from './SpotlightOverlay';
 
 /** Inner padding of the tray, and so the inset of everything inside it. */
 export const TRAY_PAD = spacing.sm;
@@ -37,7 +38,19 @@ export function TaskGroupTray({ children }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  return <View style={styles.tray}>{children}</View>;
+  return (
+    <View style={styles.tray}>
+      {children}
+      {/* A separate clipped overlay rather than `overflow: hidden` on the tray
+          itself — the tray can't clip its own children, since TaskGroupBody's
+          drag-out lets a child's floating card cross the tray's edge on its
+          way out of the stack (see the `dragging` prop there). This layer only
+          rounds the scrim's own corners to match. */}
+      <View style={styles.scrimClip} pointerEvents="none">
+        <SpotlightScrim />
+      </View>
+    </View>
+  );
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
@@ -52,5 +65,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // tray under its header.
     borderRadius: radius.lg,
     backgroundColor: colors.bgSunken,
+  },
+  scrimClip: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
   },
 });
