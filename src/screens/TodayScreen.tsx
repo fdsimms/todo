@@ -174,12 +174,14 @@ function SectionHeader({
   colors,
   collapsed,
   onToggle,
+  count,
 }: {
   label: string;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
   collapsed?: boolean;
   onToggle?: () => void;
+  count?: number;
 }) {
   const scrim = <SpotlightScrim />;
 
@@ -200,7 +202,10 @@ function SectionHeader({
       accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
     >
       <View style={styles.categorySectionHeaderLeft}>
-        <Text style={styles.sectionHeaderText}>{label}</Text>
+        <Text style={styles.sectionHeaderText}>
+          {label}
+          {collapsed && count !== undefined ? ` (${count})` : ''}
+        </Text>
         <Ionicons name={collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
       </View>
       {scrim}
@@ -1616,14 +1621,16 @@ export function TodayScreen() {
       // (Tapping it while a task is expanded still collapses the spotlight,
       // via the list wrapper's onTouchEnd.)
       const isCategory = item.label !== LATER_TODAY_LABEL;
+      const sectionIds = sectionTaskIds.get(item.label) ?? NO_SECTION_TASKS;
       return (
-        <CompletionCollapse taskIds={sectionTaskIds.get(item.label) ?? NO_SECTION_TASKS}>
+        <CompletionCollapse taskIds={sectionIds}>
           <SectionHeader
             label={isCategory ? categoryLabel(item.label, categories) : item.label}
             styles={styles}
             colors={colors}
             collapsed={isCategory ? collapsedCategories.has(item.label) : undefined}
             onToggle={isCategory ? () => toggleCategoryCollapse(item.label) : undefined}
+            count={isCategory ? sectionIds.length : undefined}
           />
         </CompletionCollapse>
       );
