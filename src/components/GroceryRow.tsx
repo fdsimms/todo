@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -13,9 +13,14 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
-import type { GroceryItem } from '../types';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
 
 const CHECKBOX_SIZE = 24;
+// Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
+// checking things off quickly while shopping must not get harder now that
+// the checkbox is a smaller target than the whole row used to be.
+const CHECKBOX_HIT_SLOP = { top: 12, bottom: 12, left: 12, right: 12 };
 
 interface Props {
   item: GroceryItem;
@@ -62,6 +67,14 @@ export const GroceryRow = React.memo(function GroceryRow({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const renameItem = useGroceryStore(s => s.renameItem);
+
+  // Tapping the name/quantity/star area used to toggle checked, same as the
+  // rest of the row. Issue #1222: that's the only way in, so it now swaps the
+  // name into an inline TextInput instead — the checkbox (its own zone below)
+  // is what toggles checked now.
+  const [renaming, setRenaming] = useState(false);
+  const [draftName, setDraftName] = useState(item.name);
 
   const label = [
     item.name,
@@ -69,68 +82,124 @@ export const GroceryRow = React.memo(function GroceryRow({
     item.checked ? ', in cart' : '',
   ].join('');
 
+  const startRename = () => {
+    if (selectionMode) {
+      onSelect?.(item.id);
+      return;
+    }
+    setDraftName(item.name);
+    setRenaming(true);
+  };
+
+  const commitRename = () => {
+    // onSubmitEditing fires onBlur right behind it (submitting blurs the
+    // field), and unmounting the TextInput on the way out fires onBlur again
+    // — guard so a single edit only ever writes once.
+    if (!renaming) return;
+    setRenaming(false);
+    const trimmed = draftName.trim();
+    // Empty or unchanged is a no-op, not a rename — nothing to write, and
+    // reverting silently is friendlier than an error for "changed my mind".
+    if (!trimmed || trimmed === item.name) return;
+    renameItem(item.id, trimmed);
+  };
+
   return (
-    <TouchableOpacity
+    <View
       style={[
         styles.row,
         item.checked && styles.rowChecked,
         isActive && styles.rowActive,
         selectionMode && selected && styles.rowSelected,
       ]}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
-      onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
-      delayLongPress={interaction.delayLongPress}
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: selectionMode ? selected : item.checked }}
-      accessibilityLabel={label}
-      accessibilityHint={
-        selectionMode
-          ? selected ? 'Double tap to deselect' : 'Double tap to select'
-          : drag ? 'Long press to move to another aisle' : 'Long press to edit'
-      }
     >
-      <View
-        style={[
-          styles.checkbox,
-          selectionMode ? selected && styles.checkboxSelected : item.checked && styles.checkboxChecked,
-        ]}
+      <TouchableOpacity
+        onPress={() => (selectionMode ? onSelect?.(item.id) : onToggle(item.id))}
+        onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
+        delayLongPress={interaction.delayLongPress}
+        hitSlop={CHECKBOX_HIT_SLOP}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked: selectionMode ? selected : item.checked }}
+        accessibilityLabel={label}
+        accessibilityHint={
+          selectionMode
+            ? selected ? 'Double tap to deselect' : 'Double tap to select'
+            : drag ? 'Long press to move to another aisle' : 'Long press to edit'
+        }
       >
-        {(selectionMode ? selected : item.checked) && (
-          <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
-        )}
-      </View>
-
-      <View style={styles.body}>
-        <Text
-          style={[styles.name, item.checked && styles.nameChecked]}
-          numberOfLines={1}
+        <View
+          style={[
+            styles.checkbox,
+            selectionMode ? selected && styles.checkboxSelected : item.checked && styles.checkboxChecked,
+          ]}
         >
-          {item.name}
-        </Text>
-        {!!item.note && (
-          <Text style={styles.note} numberOfLines={1}>
-            {item.note}
-          </Text>
-        )}
-      </View>
-
-      {item.favorite && !item.checked && (
-        <Ionicons name="star" size={iconSize.xs} color={colors.warning} style={styles.star} />
-      )}
-
-      {!!item.quantity && (
-        <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
-          <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
-            {item.quantity}
-          </Text>
+          {(selectionMode ? selected : item.checked) && (
+            <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />
+          )}
         </View>
-      )}
+      </TouchableOpacity>
 
-      {/* Long-press opens the same sheet, but nothing on screen says so — and
-          quantity and a wrong aisle are things people genuinely fix. A quiet
-          trailing target is what makes that reachable without teaching a
-          gesture. Hidden while selecting: editing isn't on offer there. */}
+      <TouchableOpacity
+        style={styles.tapZone}
+        activeOpacity={interaction.activeOpacity}
+        onPress={startRename}
+        onLongPress={selectionMode ? undefined : drag ?? (() => onEdit(item.id))}
+        delayLongPress={interaction.delayLongPress}
+        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+        accessibilityState={selectionMode ? { checked: selected } : undefined}
+        accessibilityLabel={selectionMode ? label : `Rename ${item.name}`}
+        accessibilityHint={
+          selectionMode
+            ? selected ? 'Double tap to deselect' : 'Double tap to select'
+            : 'Double tap to rename'
+        }
+      >
+        <View style={styles.body}>
+          {renaming ? (
+            <TextInput
+              style={styles.nameInput}
+              value={draftName}
+              onChangeText={setDraftName}
+              onBlur={commitRename}
+              onSubmitEditing={commitRename}
+              autoFocus
+              selectTextOnFocus
+              maxLength={GROCERY_NAME_MAX_LENGTH}
+              returnKeyType="done"
+              accessibilityLabel="Item name"
+            />
+          ) : (
+            <Text
+              style={[styles.name, item.checked && styles.nameChecked]}
+              numberOfLines={1}
+            >
+              {item.name}
+            </Text>
+          )}
+          {!!item.note && (
+            <Text style={styles.note} numberOfLines={1}>
+              {item.note}
+            </Text>
+          )}
+        </View>
+
+        {item.favorite && !item.checked && (
+          <Ionicons name="star" size={iconSize.xs} color={colors.warning} style={styles.star} />
+        )}
+
+        {!!item.quantity && (
+          <View style={[styles.qtyPill, item.checked && styles.qtyPillChecked]}>
+            <Text style={[styles.qtyText, item.checked && styles.qtyTextChecked]} numberOfLines={1}>
+              {item.quantity}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {/* Long-press still opens the same sheet, but nothing on screen says so
+          — and quantity and a wrong aisle are things people genuinely fix. A
+          quiet trailing target is what makes that reachable without teaching
+          a gesture. Hidden while selecting: editing isn't on offer there. */}
       {!selectionMode && (
         <TouchableOpacity
           onPress={() => onEdit(item.id)}
@@ -142,7 +211,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           <Ionicons name="ellipsis-horizontal" size={iconSize.sm} color={colors.textTertiary} />
         </TouchableOpacity>
       )}
-    </TouchableOpacity>
+    </View>
   );
 });
 
@@ -195,6 +264,12 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.accent,
       borderColor: colors.accent,
     },
+    tapZone: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
     body: {
       flex: 1,
     },
@@ -206,6 +281,15 @@ function makeStyles(colors: Colors) {
     nameChecked: {
       textDecorationLine: 'line-through',
       color: colors.textSecondary,
+    },
+    nameInput: {
+      fontSize: font.lg,
+      fontWeight: fontWeight.medium,
+      color: colors.text,
+      padding: 0,
+      // Matches the Text row's box so swapping in the input doesn't nudge
+      // the row's height — see the "never lineHeight on TextInput" rule.
+      height: font.lg + 6,
     },
     note: {
       fontSize: font.sm,
