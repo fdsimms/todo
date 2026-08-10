@@ -262,6 +262,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [pickerDate, setPickerDate] = useState(new Date());
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [addingSubtask, setAddingSubtask] = useState(false);
+  const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+  const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
   // Where the add button was dropped, if it was dragged rather than tapped.
   // Null means the end of the list, which is what a tap and `addSubtask` both
   // mean anyway. Cleared whenever the field closes, or a later tap would
@@ -274,6 +276,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const [addingChainItem, setAddingChainItem] = useState(false);
+  const [editingChainItemId, setEditingChainItemId] = useState<string | null>(null);
+  const [chainItemTitleEdit, setChainItemTitleEdit] = useState('');
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const scheduleTooltipAnim = useRef(new Animated.Value(0)).current;
@@ -282,6 +286,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const titleRef = useRef<TextInput>(null);
   const chainInputRef = useRef<TextInput>(null);
   const chainItemSavedRef = useRef(false);
+  const chainItemTitleEditRef = useRef<TextInput>(null);
+  const subtaskTitleEditRef = useRef<TextInput>(null);
   const initialStateRef = useRef<string>('');
 
   useEffect(() => {
@@ -1123,6 +1129,34 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPendingSubtaskIndex(index + 1);
   };
 
+  const handleSubtaskTitleTap = (sub: Task) => {
+    setSubtaskTitleEdit(sub.title);
+    setEditingSubtaskId(sub.id);
+    setTimeout(() => subtaskTitleEditRef.current?.focus(), 50);
+  };
+
+  const saveSubtaskTitle = (sub: Task) => {
+    setEditingSubtaskId(null);
+    const trimmed = subtaskTitleEdit.trim();
+    if (trimmed && trimmed !== sub.title) {
+      updateTask(sub.id, { title: trimmed });
+    }
+  };
+
+  const handleChainItemTitleTap = (item: ChainItem) => {
+    setChainItemTitleEdit(item.title);
+    setEditingChainItemId(item.id);
+    setTimeout(() => chainItemTitleEditRef.current?.focus(), 50);
+  };
+
+  const saveChainItemTitle = (item: ChainItem) => {
+    setEditingChainItemId(null);
+    const trimmed = chainItemTitleEdit.trim();
+    if (trimmed && trimmed !== item.title) {
+      setChainItems(prev => prev.map(c => (c.id === item.id ? { ...c, title: trimmed } : c)));
+    }
+  };
+
   return (
     <EditorSheet
       visible={visible}
@@ -1813,9 +1847,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               </Text>
                             </View>
                           </TouchableOpacity>
-                          <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                            {item.title}
-                          </Text>
+                          {editingChainItemId === item.id ? (
+                            <TextInput
+                              ref={chainItemTitleEditRef}
+                              style={styles.chainItemTitleInput}
+                              value={chainItemTitleEdit}
+                              onChangeText={setChainItemTitleEdit}
+                              onBlur={() => saveChainItemTitle(item)}
+                              onSubmitEditing={() => saveChainItemTitle(item)}
+                              returnKeyType="done"
+                              maxLength={TITLE_MAX_LENGTH}
+                              blurOnSubmit
+                              autoFocus
+                            />
+                          ) : (
+                            <TouchableOpacity
+                              style={styles.chainItemTitleWrapper}
+                              onPress={() => handleChainItemTitleTap(item)}
+                              activeOpacity={interaction.activeOpacity}
+                              hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                            >
+                              <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
+                                {item.title}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                           <ChainStepMinutes
                             value={item.estimatedMinutes}
                             label={item.title}
@@ -2361,9 +2417,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         )}
                       </View>
                     </TouchableOpacity>
-                    <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
-                      {sub.title}
-                    </Text>
+                    {editingSubtaskId === sub.id ? (
+                      <TextInput
+                        ref={subtaskTitleEditRef}
+                        style={styles.subtaskTitleInput}
+                        value={subtaskTitleEdit}
+                        onChangeText={setSubtaskTitleEdit}
+                        onBlur={() => saveSubtaskTitle(sub)}
+                        onSubmitEditing={() => saveSubtaskTitle(sub)}
+                        returnKeyType="done"
+                        maxLength={TITLE_MAX_LENGTH}
+                        blurOnSubmit
+                        autoFocus
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.subtaskTitleWrapper}
+                        onPress={() => handleSubtaskTitleTap(sub)}
+                        activeOpacity={interaction.activeOpacity}
+                        hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
+                      >
+                        <Text style={[styles.subtaskTitle, sub.completed && styles.subtaskDone]}>
+                          {sub.title}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       onLongPress={drag}
                       delayLongPress={150}
@@ -3152,11 +3230,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
+  subtaskTitleWrapper: { flex: 1 },
   subtaskTitle: {
     flex: 1, color: colors.text, fontSize: font.md,
   },
   subtaskDone: {
     color: colors.textTertiary, textDecorationLine: 'line-through',
+  },
+  subtaskTitleInput: {
+    flex: 1, color: colors.text, fontSize: font.md,
+    padding: 0, margin: 0,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
   },
   subtaskDelete: { padding: 4 },
   dragHandle: { padding: 4 },
@@ -3203,10 +3287,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: 11, fontWeight: '700',
   },
   chainItemDotTextActive: { color: colors.bg },
+  chainItemTitleWrapper: { flex: 1 },
   chainItemTitle: {
     flex: 1, color: colors.text, fontSize: font.md,
   },
   chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
+  chainItemTitleInput: {
+    flex: 1, color: colors.text, fontSize: font.md,
+    padding: 0, margin: 0,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+  },
   chainItemDelete: { padding: 4 },
   chainInputRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
