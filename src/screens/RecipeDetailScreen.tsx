@@ -31,7 +31,7 @@ import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { PlanRecipeSheet } from '../components/PlanRecipeSheet';
+import { PlanMealSheet } from '../components/PlanMealSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
@@ -984,10 +984,10 @@ export function RecipeDetailScreen() {
         onClose={() => setEditingPrepTask(null)}
       />
 
-      <PlanRecipeSheet
+      <PlanMealSheet
         visible={planVisible}
-        recipe={recipe}
-        onPlan={planRecipe}
+        title={recipe.name}
+        onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot)}
         // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
         onPlanned={offerPrepTasks}
         onClose={() => setPlanVisible(false)}

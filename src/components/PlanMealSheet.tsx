@@ -14,7 +14,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isTomorrow } from 'date-fns/isTomorrow';
-import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
@@ -27,19 +27,28 @@ import { slotLabel, upcomingDays } from '../utils/mealPlan';
 /** Kept clear above the sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
 
-/** How far ahead a recipe can be planned from here — see upcomingDays. */
+/** How far ahead a meal can be planned from here — see upcomingDays. */
 const DAYS_OFFERED = 7;
 
 interface Props {
   visible: boolean;
-  /** Null closes the sheet; the recipe being planned otherwise. */
-  recipe: Recipe | null;
   /**
-   * Plans it, returning the row that was written — or null if the store
-   * refused it. Called while the sheet is still up, so the caller must not
-   * raise an alert from here; see `onPlanned` for where that belongs.
+   * What's being planned, as the name to put at the top — a recipe's, or a
+   * container's out of the fridge. Null closes the sheet.
+   *
+   * A name and a callback rather than the `Recipe` this took at first: the
+   * sheet's whole job is picking a night, and it never needed to know what
+   * kind of thing it was picking one for. Passing the subject through the
+   * caller's own `onPlan` is what lets the fridge card reuse it (#1370)
+   * without the sheet growing a union type it would have to switch on.
    */
-  onPlan: (recipe: Recipe, dateKey: string, slot: MealSlot) => MealPlanEntry | null;
+  title: string | null;
+  /**
+   * Plans it onto the chosen night, returning the row that was written — or
+   * null if the store refused it. Called while the sheet is still up, so the
+   * caller must not raise an alert from here; see `onPlanned`.
+   */
+  onPlan: (dateKey: string, slot: MealSlot) => MealPlanEntry | null;
   /**
    * Fires once, after the dismissal, carrying the last row planned. Where the
    * prep-task offer goes: an alert raised while this Modal is still up is the
@@ -50,10 +59,14 @@ interface Props {
 }
 
 /**
- * "Put this on a night" — the recipe half of planning a meal (#1360's audit,
- * MP-11). Until this existed, planning ran one way only: from the meal plan,
- * into the recipe box, via search. Reading a recipe and wanting it on Thursday
- * had no path at all.
+ * "Put this on a night" — for a recipe you're looking at (#1360's audit,
+ * MP-11) or a container in the fridge (#1370). Until this existed, planning ran
+ * one way only: from the meal plan, into the recipe box, via search. Reading a
+ * recipe and wanting it on Thursday had no path at all, and neither did seeing
+ * the chilli that needs eating.
+ *
+ * It knows nothing about *what* it is planning — only its name and a callback
+ * — which is what lets one sheet serve both.
  *
  * **Day and slot chips, not a calendar.** The same call MealEntrySheet's "Move
  * to" row makes, for the same reason: chips need no measurement, show the whole
@@ -71,7 +84,7 @@ interface Props {
  * is also how the same dish gets planned onto two nights without reopening
  * anything.
  */
-export function PlanRecipeSheet({ visible, recipe, onPlan, onPlanned, onClose }: Props) {
+export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -104,7 +117,7 @@ export function PlanRecipeSheet({ visible, recipe, onPlan, onPlanned, onClose }:
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
-  }, [visible, recipe?.id]);
+  }, [visible, title]);
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
@@ -146,8 +159,8 @@ export function PlanRecipeSheet({ visible, recipe, onPlan, onPlanned, onClose }:
   closeRef.current = close;
 
   const commit = () => {
-    if (!recipe) return;
-    const entry = onPlan(recipe, dayKey, slot);
+    if (!title) return;
+    const entry = onPlan(dayKey, slot);
     // A store that refused the write (a name that cleans to nothing) leaves the
     // button armed rather than claiming a night it didn't take.
     if (!entry) return;
@@ -190,7 +203,7 @@ export function PlanRecipeSheet({ visible, recipe, onPlan, onPlanned, onClose }:
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.headerRow}>
-            <Text style={styles.heading} numberOfLines={2}>{recipe?.name ?? ''}</Text>
+            <Text style={styles.heading} numberOfLines={2}>{title ?? ''}</Text>
             <SheetHeaderButton label="Done" onPress={close} accessibilityLabel="Done planning" />
           </View>
 
@@ -260,7 +273,7 @@ export function PlanRecipeSheet({ visible, recipe, onPlan, onPlanned, onClose }:
               onPress={commit}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={`Plan ${recipe?.name ?? 'this recipe'} for ${describeDay(dayKey)}, ${slotLabel(slot)}`}
+              accessibilityLabel={`Plan ${title ?? 'this'} for ${describeDay(dayKey)}, ${slotLabel(slot)}`}
             >
               <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.onAccent} />
               <Text style={styles.primaryText}>{`Plan for ${describeDay(dayKey)}`}</Text>

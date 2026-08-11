@@ -16,6 +16,8 @@ interface Props {
   /** Every leftover the store holds; the card takes the live ones itself. */
   leftovers: readonly Leftover[];
   onPress: (leftover: Leftover) => void;
+  /** Puts this container on a night — see the note on the row's two actions. */
+  onPlan: (leftover: Leftover) => void;
   onAdd: () => void;
   /** Opens FridgeHistorySheet. Offered only once something has been closed out. */
   onHistory: () => void;
@@ -36,6 +38,14 @@ interface Props {
  * meal plan for everyone who never uses the feature, and unlike a screen with
  * nothing on it, this one has a whole week underneath it that wants the space.
  *
+ * **Each row has two actions, and the card's whole point is the second one.**
+ * Tapping the row opens the editor — rename, put-away day, keep-for, delete —
+ * which is what it always did and is not what this card is shouting about. The
+ * card exists to say "eat this", so the row carries a calendar button that puts
+ * the container on a night (#1370). Without it the only route from "the chilli
+ * needs eating" to a plan was the add button, the picker, and the "In the
+ * fridge" section of it: three steps away from the row already naming the thing.
+ *
  * **It never takes more than three rows of the week.** A full fridge is five
  * or six containers, each a two-line row, which is most of a screen standing
  * between the header and Monday — and this card is the thing you read *before*
@@ -54,7 +64,7 @@ interface Props {
  * answer. With nothing live it shrinks to its caption and its two actions,
  * not to a full empty state.
  */
-export function LeftoversCard({ leftovers, onPress, onAdd, onHistory }: Props) {
+export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -101,6 +111,19 @@ export function LeftoversCard({ leftovers, onPress, onAdd, onHistory }: Props) {
                   {describeLeftover(leftover)}
                 </Text>
               </View>
+              {/* A bare glyph, not a tinted tile — the row's other controls
+                  (the dot, the chevron) are bare too, and a filled tile here
+                  would read as a second kind of row rather than an action on
+                  this one. Same call the recipe rows make. */}
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); onPlan(leftover); }}
+                activeOpacity={interaction.activeOpacity}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Plan ${leftover.title} onto a day`}
+              >
+                <Ionicons name="calendar-outline" size={iconSize.md} color={colors.accent} />
+              </TouchableOpacity>
               <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
           );
