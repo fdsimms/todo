@@ -36,7 +36,7 @@ import {
 } from '../utils/templateUtils';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { TITLE_MAX_LENGTH } from '../types';
-import { CalendarPicker } from './CalendarPicker';
+import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
 import type { TaskTemplate, TemplateContainer, TemplateItem } from '../types';
 
@@ -511,16 +511,20 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId }: Pr
         </TouchableOpacity>
       </Animated.View>
 
-      <CalendarPicker
+      <WhenPicker
         visible={calendarTarget !== null}
         value={calendarTarget === 'end' ? endAnchor : startAnchor}
-        mode="date"
-        title={calendarTarget === 'end' ? 'End Date' : 'Start Date'}
+        title={calendarTarget === 'end' ? 'End date' : 'Start date'}
+        showTimeOfDay={false}
+        showSuggest={false}
         onConfirm={date => {
-          const noon = new Date(date);
-          noon.setHours(12, 0, 0, 0);
-          if (calendarTarget === 'end') setEndAnchor(noon);
-          else setStartAnchor(noon);
+          if (calendarTarget === 'end') setEndAnchor(date);
+          else setStartAnchor(date);
+          restoreSheet();
+        }}
+        onClear={() => {
+          if (calendarTarget === 'end') setEndAnchor(null);
+          else setStartAnchor(null);
           restoreSheet();
         }}
         onCancel={restoreSheet}
