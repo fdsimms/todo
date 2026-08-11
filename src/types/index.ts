@@ -581,6 +581,12 @@ export interface Shop {
   nameKey: string;
   sortOrder: number;
   createdAt: string;
+  // "It has everything, but don't send me there" — Amazon is the canonical
+  // case. Keeps the store fully available for manual linking (the item
+  // sheet's picker, finishShopping's "which store") while pulling it out of
+  // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
+  // picker. Same naming convention as Category.excludeFromPinSuggestions.
+  excludeFromSuggestions: boolean;
 }
 
 // One (item, shop) pair — an aggregate, deliberately NOT a log of trips.

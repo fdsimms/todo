@@ -13,6 +13,7 @@ import {
   dbInsertGroceryShop,
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
+  dbSetShopExcludeFromSuggestions,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
@@ -202,6 +203,10 @@ interface GroceryStore {
   renameShop: (id: string, name: string) => boolean;
   reorderShops: (ids: string[]) => void;
   deleteShop: (id: string) => void;
+  /** "It has everything, but don't send me there" — pulls the store out of
+   * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
+   * while leaving manual linking and finishShopping untouched. */
+  setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
   /** Assert "this item is available here" without a purchase behind it. */
   linkItemShop: (itemId: string, shopId: string) => void;
   unlinkItemShop: (itemId: string, shopId: string) => void;
@@ -893,6 +898,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       nameKey: key,
       sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
       createdAt: new Date().toISOString(),
+      excludeFromSuggestions: false,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -947,6 +953,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
+    }));
+  },
+
+  setShopExcludedFromSuggestions(id, excluded) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    dbSetShopExcludeFromSuggestions(id, excluded);
+    set(s => ({
+      shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
   },
 

@@ -402,8 +402,12 @@ export function GroceryScreen() {
   );
 
   const handleCreateGroceryTask = useCallback(() => {
-    if (shops.length <= 1) {
-      createGroceryTask(shops[0] ?? null);
+    // A store flagged "don't suggest" (Amazon: "it has everything") stays out
+    // of this picker and out of the single-store default — it's still fully
+    // linkable by hand elsewhere, just never the thing this button offers.
+    const suggestable = shops.filter(shop => !shop.excludeFromSuggestions);
+    if (suggestable.length <= 1) {
+      createGroceryTask(suggestable[0] ?? null);
       return;
     }
     Alert.alert(
@@ -412,7 +416,7 @@ export function GroceryScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'No store', onPress: () => createGroceryTask(null) },
-        ...shops.map(shop => ({ text: shop.name, onPress: () => createGroceryTask(shop) })),
+        ...suggestable.map(shop => ({ text: shop.name, onPress: () => createGroceryTask(shop) })),
       ]
     );
   }, [shops, createGroceryTask]);
