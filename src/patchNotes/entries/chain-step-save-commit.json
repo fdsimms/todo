@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: tapping Save right after typing a new chain step (without hitting return first) could drop the step",
+  "date": "2026-08-11"
+}

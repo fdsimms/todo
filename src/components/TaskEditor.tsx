@@ -482,8 +482,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceFromCompletion(parsedSchedule.schedule.recurrenceFromCompletion ?? false);
   };
 
+  // A step or subtask typed into its "add new" field but never submitted
+  // (no return, no blur — e.g. tapping the editor's Save button while the
+  // field still has focus) would otherwise be silently dropped: save() reads
+  // `chainItems`/subtasks as closed over from the current render, and there's
+  // no guarantee the field's onBlur has fired — or its setState flushed —
+  // before save() runs. These mirror the onBlur commit logic so save() can
+  // run it explicitly instead of relying on blur ordering.
+  const commitPendingChainItem = (): ChainItem[] => {
+    const t = newChainItemTitle.trim();
+    if (!t) return chainItems;
+    const next = [...chainItems, { id: generateId(), title: t, estimatedMinutes: null }];
+    setChainItems(next);
+    setNewChainItemTitle('');
+    return next;
+  };
+
+  const commitPendingSubtask = () => {
+    if (!newSubtaskTitle.trim()) return;
+    commitSubtask(newSubtaskTitle);
+    setNewSubtaskTitle('');
+  };
+
   const save = () => {
     if (!title.trim()) return;
+
+    const effectiveChainItems = commitPendingChainItem();
+    commitPendingSubtask();
 
     if (!task) {
       const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
@@ -492,7 +517,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           'Resume archived task?',
           `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
-            { text: 'Create New', onPress: () => proceedWithSave() },
+            { text: 'Create New', onPress: () => proceedWithSave(effectiveChainItems) },
             {
               text: 'Resume',
               style: 'default',
@@ -507,10 +532,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         return;
       }
     }
-    proceedWithSave();
+    proceedWithSave(effectiveChainItems);
   };
 
-  const proceedWithSave = () => {
+  const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems) => {
     const data = {
       title: title.trim(), notes, category, projectId: project, tags,
       dueDate: dueDate?.toISOString() ?? null,
@@ -537,16 +562,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
-      // than persisting a meaningless one-step "chain".
-      chainEnabled: chainEnabled && chainItems.length >= 2,
-      chainItems,
+      // than persisting a meaningless one-step "chain". effectiveChainItems is
+      // the freshly-committed array (see commitPendingChainItem() above),
+      // since a still-typed-but-unsubmitted step wouldn't be in `chainItems`
+      // state yet if save() ran before its input blurred.
+      chainEnabled: chainEnabled && effectiveChainItems.length >= 2,
+      chainItems: effectiveChainItems,
       chainIndex,
       // Cleared whenever the control isn't on screen to set, same reasoning as
       // showStreak below: the mode only renders for a chain that has a repeat,
       // so a stale `true` left on a task whose chain or repeat was turned off
       // would quietly turn it into a rotation if either came back.
       chainStepOnSchedule:
-        chainEnabled && chainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
+        chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
@@ -1958,9 +1986,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         }}
                         onBlur={() => {
                           if (chainItemSavedRef.current) return;
-                          const t = newChainItemTitle.trim();
-                          if (t) setChainItems(prev => [...prev, { id: generateId(), title: t, estimatedMinutes: null }]);
-                          setNewChainItemTitle('');
+                          commitPendingChainItem();
                           setAddingChainItem(false);
                         }}
                       />
@@ -2507,8 +2533,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         setNewSubtaskTitle('');
                       }}
                       onBlur={() => {
-                        commitSubtask(newSubtaskTitle);
-                        setNewSubtaskTitle('');
+                        commitPendingSubtask();
                         setAddingSubtask(false);
                         setPendingSubtaskIndex(null);
                       }}
