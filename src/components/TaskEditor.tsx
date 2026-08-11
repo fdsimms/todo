@@ -44,7 +44,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule } from '../utils/parseTaskInput';
@@ -1543,7 +1543,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               hint={deadlineOffsetDays === null && deadlineMonthDay === null ? 'A target date to hit — separate from Date' : undefined}
               value={
                 deadlineOffsetDays !== null
-                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineOffsetDays === 1 ? '1 day' : `${deadlineOffsetDays} days`} before due)` : 'Set a Date first')
+                  ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${describeDeadlineOffset(deadlineOffsetDays)})` : 'Set a Date first')
                   : deadlineMonthDay !== null
                   ? (deadline ? `${formatDeadlineDate(deadline.toISOString())} (${deadlineMonthDay === -1 ? 'last day of the month' : `${ordinal(deadlineMonthDay)} of the month`})` : 'Set a Date first')
                   : (deadline ? formatDeadlineDate(deadline.toISOString()) : undefined)
@@ -1569,15 +1569,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       setDeadlineOffsetDays(prev => {
                         if (prev !== null) return prev;
                         if (deadline && dueDate) {
+                          // Either direction, so a fixed deadline already set
+                          // after the due date seeds "after" rather than
+                          // silently flipping to a day before it.
                           const diff = differenceInCalendarDays(dueDate, deadline);
-                          if (diff > 0) return diff;
+                          if (diff !== 0) return diff;
                         }
                         return 1;
                       });
                     }}
                   >
                     <Text style={[styles.schedulePillText, deadlineOffsetDays !== null && styles.schedulePillTextActive]}>
-                      Before due date
+                      Relative to due
                     </Text>
                   </TouchableOpacity>
                   {recurrenceType === 'monthly' && (
@@ -1592,28 +1595,60 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   )}
                 </View>
                 {deadlineOffsetDays !== null && (
-                  <View style={styles.intervalRow}>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setDeadlineOffsetDays(d => Math.max(1, (d ?? 1) - 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease deadline offset"
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{deadlineOffsetDays}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setDeadlineOffsetDays(d => (d ?? 0) + 1)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase deadline offset"
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalLabel}>
-                      {deadlineOffsetDays === 1 ? 'day before due, every occurrence' : 'days before due, every occurrence'}
-                    </Text>
-                  </View>
+                  <>
+                    {/* Direction is a sub-pill pair rather than letting the
+                        stepper run through zero into negatives: the stepper
+                        then shows a plain magnitude, and "3 days" can't sit
+                        under a label the user has to read to know which side
+                        of the due date it falls on. Same shape as Day of
+                        month's On a day / Last day pair below. */}
+                    <View style={styles.scheduleRow}>
+                      <TouchableOpacity
+                        style={[styles.schedulePill, deadlineOffsetDays > 0 && styles.schedulePillActive]}
+                        onPress={() => setDeadlineOffsetDays(d => Math.abs(d ?? 1) || 1)}
+                      >
+                        <Text style={[styles.schedulePillText, deadlineOffsetDays > 0 && styles.schedulePillTextActive]}>
+                          Before due
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.schedulePill, deadlineOffsetDays < 0 && styles.schedulePillActive]}
+                        onPress={() => setDeadlineOffsetDays(d => -(Math.abs(d ?? 1) || 1))}
+                      >
+                        <Text style={[styles.schedulePillText, deadlineOffsetDays < 0 && styles.schedulePillTextActive]}>
+                          After due
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.intervalRow}>
+                      <TouchableOpacity
+                        style={styles.intervalBtn}
+                        onPress={() => setDeadlineOffsetDays(d => {
+                          const next = Math.max(1, Math.abs(d ?? 1) - 1);
+                          return (d ?? 1) < 0 ? -next : next;
+                        })}
+                        accessibilityRole="button"
+                        accessibilityLabel="Decrease deadline offset"
+                      >
+                        <Ionicons name="remove" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <Text style={styles.intervalValue}>{Math.abs(deadlineOffsetDays)}</Text>
+                      <TouchableOpacity
+                        style={styles.intervalBtn}
+                        onPress={() => setDeadlineOffsetDays(d => {
+                          const next = Math.abs(d ?? 0) + 1;
+                          return (d ?? 1) < 0 ? -next : next;
+                        })}
+                        accessibilityRole="button"
+                        accessibilityLabel="Increase deadline offset"
+                      >
+                        <Ionicons name="add" size={16} color={colors.text} />
+                      </TouchableOpacity>
+                      <Text style={styles.intervalLabel}>
+                        {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every occurrence`}
+                      </Text>
+                    </View>
+                  </>
                 )}
                 {deadlineMonthDay !== null && (
                   <>

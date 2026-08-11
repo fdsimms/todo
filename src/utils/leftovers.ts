@@ -1,5 +1,8 @@
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
+import { format } from 'date-fns/format';
+import { isSameDay } from 'date-fns/isSameDay';
+import { isSameWeek } from 'date-fns/isSameWeek';
 import { subDays } from 'date-fns/subDays';
 import type { Leftover, LeftoverFreshness, Recipe } from '../types';
 import {
@@ -265,6 +268,73 @@ export function describeLeftover(leftover: Leftover, now: Date = new Date()): st
 export function describeOutcome(leftover: Leftover): string {
   if (!leftover.finishedAt) return '';
   return leftover.outcome === 'tossed' ? 'Thrown out' : 'Eaten';
+}
+
+/**
+ * How the closed-out rows split, for the history's summary line.
+ *
+ * Counted rather than derived at the call site so the two numbers can't drift
+ * apart — a row is exactly one of these, and a `finishedAt` with no `outcome`
+ * (a restored backup from before outcomes existed) counts as eaten, matching
+ * describeOutcome's own fallback rather than inventing a third bucket.
+ */
+export function outcomeCounts(
+  leftovers: readonly Leftover[]
+): { eaten: number; tossed: number } {
+  let eaten = 0;
+  let tossed = 0;
+  for (const leftover of leftovers) {
+    if (!leftover.finishedAt) continue;
+    if (leftover.outcome === 'tossed') tossed += 1;
+    else eaten += 1;
+  }
+  return { eaten, tossed };
+}
+
+/**
+ * The history's summary — "8 eaten · 1 thrown out", or just "8 eaten" when
+ * nothing was binned.
+ *
+ * **Counts, never a score.** No percentage, no "you wasted 11%", no
+ * encouragement — the same call describeOutcome makes in choosing "Thrown out"
+ * over "Wasted", and for the same reason: a list that grades the user's week is
+ * one they stop opening, and this one is trying to be worth opening. A number
+ * they can read either way is the most this should say.
+ *
+ * Empty for a fridge with no history at all, so the caller renders no line
+ * rather than "0 eaten".
+ */
+export function describeFridgeHistory(leftovers: readonly Leftover[]): string {
+  const { eaten, tossed } = outcomeCounts(leftovers);
+  if (eaten === 0 && tossed === 0) return '';
+  const parts: string[] = [];
+  if (eaten > 0) parts.push(`${eaten} eaten`);
+  if (tossed > 0) parts.push(`${tossed} thrown out`);
+  return parts.join(' · ');
+}
+
+/**
+ * When a container was closed out — "today", "yesterday", "on Tuesday",
+ * "on 3 Aug".
+ *
+ * Same ladder describeAddedToList uses, and forked from dateUtils for the same
+ * reason it is: `finishedAt` is a stamp about something that already happened,
+ * so a weekday name stays right all the way back through the week, where the
+ * task-facing formatters switch to "Nd ago" after one day. Beyond a week it
+ * falls to a date, and the year appears only when it isn't this one — a
+ * 60-day retention window can straddle a new year.
+ */
+export function describeFinishedWhen(
+  leftover: Leftover,
+  now: Date = new Date(),
+  weekStartsOn: 0 | 1 | 2 | 3 | 4 | 5 | 6 = 0
+): string {
+  if (!leftover.finishedAt) return '';
+  const at = new Date(leftover.finishedAt);
+  if (isSameDay(at, now)) return 'today';
+  if (isSameDay(at, subDays(now, 1))) return 'yesterday';
+  if (isSameWeek(at, now, { weekStartsOn })) return `on ${format(at, 'EEEE')}`;
+  return `on ${format(at, at.getFullYear() === now.getFullYear() ? 'd MMM' : 'd MMM yyyy')}`;
 }
 
 /**

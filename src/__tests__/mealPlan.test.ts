@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import {
   cleanMealTitle,
   dayKeyRange,
+  daysWithoutMeal,
   defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
@@ -80,6 +81,14 @@ function recipe(id: string, name: string): Recipe {
     lastCookMinutes: null,
     cookTimeCount: 0,
     totalCookMinutes: 0,
+    sourceType: null,
+    sourcePage: null,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
   };
 }
 
@@ -190,6 +199,47 @@ describe('nextSortOrder', () => {
   it('is scoped to the day, not to the whole plan', () => {
     const entries = [entry('2026-08-04', 'dinner', { sortOrder: 9 })];
     expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+});
+
+describe('daysWithoutMeal', () => {
+  // Local dates, not UTC parses — dayKeyOf reads the local calendar day.
+  const week = [
+    new Date(2026, 7, 3), new Date(2026, 7, 4), new Date(2026, 7, 5),
+    new Date(2026, 7, 6), new Date(2026, 7, 7),
+  ];
+
+  it('drops the days that already have that meal', () => {
+    const entries = [entry('2026-08-04', 'dinner'), entry('2026-08-06', 'dinner')];
+    expect(daysWithoutMeal(entries, week, 'dinner').map(d => d.getDate()))
+      .toEqual([3, 5, 7]);
+  });
+
+  it('is scoped to the slot — a planned breakfast leaves the dinner free', () => {
+    const entries = [entry('2026-08-04', 'breakfast')];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(5);
+  });
+
+  it('counts a day once however many things are on it', () => {
+    const entries = [
+      entry('2026-08-04', 'dinner'),
+      entry('2026-08-04', 'dinner', { sortOrder: 2 }),
+    ];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(4);
+  });
+
+  it('ignores entries outside the days it was given', () => {
+    const entries = [entry('2026-07-30', 'dinner')];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(5);
+  });
+
+  it('returns nothing once every night is taken', () => {
+    const entries = week.map((_, i) => entry(`2026-08-0${i + 3}`, 'dinner'));
+    expect(daysWithoutMeal(entries, week, 'dinner')).toEqual([]);
+  });
+
+  it('returns every day for an empty plan', () => {
+    expect(daysWithoutMeal([], week, 'dinner')).toHaveLength(5);
   });
 });
 
@@ -447,16 +497,16 @@ describe('describeAddedToList', () => {
 
   it('says today and yesterday', () => {
     expect(describeAddedToList(new Date(2026, 7, 12, 9).toISOString(), now))
-      .toBe('Added to list today');
+      .toBe('Added today');
     expect(describeAddedToList(new Date(2026, 7, 11, 9).toISOString(), now))
-      .toBe('Added to list yesterday');
+      .toBe('Added yesterday');
   });
 
   it('names the weekday for anything else in the same week, including its first day', () => {
     expect(describeAddedToList(new Date(2026, 7, 10).toISOString(), now, 0))
-      .toBe('Added to list on Monday');
+      .toBe('Added Monday');
     expect(describeAddedToList(new Date(2026, 7, 9).toISOString(), now, 0))
-      .toBe('Added to list on Sunday');
+      .toBe('Added Sunday');
   });
 
   it('respects weekStartsOn', () => {
@@ -465,14 +515,14 @@ describe('describeAddedToList', () => {
     // Mon-Sun week when they start Monday — so the same instant reads as a
     // weekday name under one flag and a calendar date under the other.
     const sun = new Date(2026, 7, 9);
-    expect(describeAddedToList(sun.toISOString(), now, 0)).toBe('Added to list on Sunday');
-    expect(describeAddedToList(sun.toISOString(), now, 1)).toBe('Added to list on Aug 9');
+    expect(describeAddedToList(sun.toISOString(), now, 0)).toBe('Added Sunday');
+    expect(describeAddedToList(sun.toISOString(), now, 1)).toBe('Added Aug 9');
   });
 
   it('falls back to a calendar date once it is out of the week, with a year suffix across one', () => {
     expect(describeAddedToList(new Date(2026, 7, 8).toISOString(), now, 0))
-      .toBe('Added to list on Aug 8');
+      .toBe('Added Aug 8');
     expect(describeAddedToList(new Date(2025, 11, 20).toISOString(), new Date(2026, 0, 5)))
-      .toBe('Added to list on Dec 20, 2025');
+      .toBe('Added Dec 20, 2025');
   });
 });

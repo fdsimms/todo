@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
+  ScrollView,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
@@ -88,7 +90,18 @@ interface Props {
  *
  * Every tap applies immediately and leaves the sheet open, so moving a dinner
  * to Thursday *and* making it lunch is two taps rather than two round trips.
+ *
+ * **Its height is data-driven, so it has to be bounded.** A composed recipe
+ * contributes a labelled chip row per choice group, and five of the actions
+ * below are conditional — a meal that has every one of them, on a recipe with
+ * two either/or groups, is taller than a phone. Same `maxHeight` + inner
+ * `ScrollView` + `flexShrink` shape RecipePickerSheet already uses; without it
+ * the card simply grows off the top of the screen with nothing to scroll, and
+ * the title is what goes first.
  */
+/** Kept clear above the sheet so its first row never slides under the status bar. */
+const TOP_INSET = 72;
+
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
@@ -97,6 +110,7 @@ export function MealEntrySheet({
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -158,12 +172,30 @@ export function MealEntrySheet({
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[
+          styles.sheetOuter,
+          { maxHeight: windowHeight - TOP_INSET },
+          { transform: [{ translateY }] },
+        ]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
 
-        <View style={styles.card}>
+        {/* The card is itself the scroller, so a tall meal scrolls rather than
+            growing off the top of the screen. The handle above and the Done
+            card below stay put — the drag-to-dismiss responder lives on the
+            handle, so scrolling in here never fights it. */}
+        <ScrollView
+          style={styles.card}
+          contentContainerStyle={styles.cardContent}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+          // The title can be mid-edit; a tap on a chip should move the meal
+          // rather than being spent dismissing the keyboard.
+          keyboardShouldPersistTaps="handled"
+        >
           {editingTitle ? (
             <TextInput
               style={styles.sheetTitleInput}
@@ -384,7 +416,7 @@ export function MealEntrySheet({
             </View>
             <Text style={[styles.actionText, { color: colors.red }]}>Remove from plan</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
           <Text style={styles.cancelLabel}>Done</Text>
@@ -420,6 +452,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    // Lets the card give way to the sheet's maxHeight instead of overflowing
+    // it — without this the ScrollView takes its content's full height and
+    // there is nothing to scroll.
+    flexShrink: 1,
+  },
+  // The card's own padding lives on the scroll content, not on its frame.
+  cardContent: {
     paddingBottom: spacing.sm,
   },
   sheetTitle: {

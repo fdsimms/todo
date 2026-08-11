@@ -8,6 +8,8 @@ import {
   getStreakOutcome,
   getDeadlineCountdown,
   getDeadlineFromMonthDay,
+  getDeadlineFromOffset,
+  describeDeadlineOffset,
   getLogicalToday,
   getLogicalTomorrow,
   getLogicalNow,
@@ -939,6 +941,51 @@ describe('getDeadlineCountdown', () => {
     // 1:30 AM on June 11 is still logical-day June 10 with a 2 AM reset.
     jest.setSystemTime(new Date(2025, 5, 11, 1, 30, 0));
     expect(getDeadlineCountdown(new Date(2025, 5, 11, 1, 0, 0).toISOString(), '02:00')).toBe(0);
+  });
+});
+
+// ─── getDeadlineFromOffset / describeDeadlineOffset ──────────────────────────
+
+describe('getDeadlineFromOffset', () => {
+  it('counts back from the due date for a positive offset', () => {
+    const result = getDeadlineFromOffset(new Date(2026, 0, 20), 3);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(17);
+  });
+
+  it('counts forward from the due date for a negative offset', () => {
+    const result = getDeadlineFromOffset(new Date(2026, 0, 20), -10);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(30);
+  });
+
+  it('crosses a month boundary going forward', () => {
+    const result = getDeadlineFromOffset(new Date(2026, 0, 25), -10);
+    expect(result.getMonth()).toBe(1);
+    expect(result.getDate()).toBe(4);
+  });
+});
+
+describe('describeDeadlineOffset', () => {
+  it('describes a positive offset as before the due date', () => {
+    expect(describeDeadlineOffset(3)).toBe('3 days before due');
+  });
+
+  it('describes a negative offset as after the due date', () => {
+    expect(describeDeadlineOffset(-10)).toBe('10 days after due');
+  });
+
+  it('singularises either direction', () => {
+    expect(describeDeadlineOffset(1)).toBe('1 day before due');
+    expect(describeDeadlineOffset(-1)).toBe('1 day after due');
+  });
+
+  it('never renders a negative sign in the day count', () => {
+    expect(describeDeadlineOffset(-4)).not.toContain('-');
+  });
+
+  it('describes a zero offset as the due date itself', () => {
+    expect(describeDeadlineOffset(0)).toBe('on the due date');
   });
 });
 

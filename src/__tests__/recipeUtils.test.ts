@@ -15,8 +15,15 @@ import {
   prepTaskDraftsForMeal,
   describeCookHistory,
   applyMeasuredCookTime,
+  applyMeasuredPrepTime,
   avgCookMinutes,
+  avgPrepMinutes,
   describeCookTime,
+  describePrepTime,
+  describeAttribution,
+  totalMinutes,
+  distinctRecipeValues,
+  filterRecipeSuggestions,
   sortRecipesForDisplay,
   groupRecipesByMealType,
   flattenRecipeMealTypeSections,
@@ -89,6 +96,14 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     lastCookMinutes: null,
     cookTimeCount: 0,
     totalCookMinutes: 0,
+    sourceType: null,
+    sourcePage: null,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
     ...overrides,
   };
 }
@@ -599,6 +614,13 @@ describe('describeRecipe', () => {
     }))).toBe('1 ingredient · serves 4 · 1.5h · NYT Cooking');
   });
 
+  it('adds prep + cook as one combined duration', () => {
+    expect(describeRecipe(recipe('I2', { ingredients: [ing('Salt')], prepMinutes: 10, estimatedMinutes: 25 })))
+      .toBe('1 ingredient · 35m');
+    expect(describeRecipe(recipe('I3', { ingredients: [ing('Salt')], prepMinutes: 10 })))
+      .toBe('1 ingredient · 10m');
+  });
+
   it('leads with the meal type when set, ahead of the ingredient count', () => {
     expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], mealType: 'breakfast' })))
       .toBe('Breakfast · 1 ingredient');
@@ -888,6 +910,127 @@ describe('describeCookTime', () => {
       totalCookMinutes: 132,
     });
     expect(describeCookTime(r)).toBe('Est. 25m · took 30m last time · avg 33m over 4 cooks');
+  });
+});
+
+describe('applyMeasuredPrepTime', () => {
+  it('mirrors applyMeasuredCookTime — rounds, floors at 1 minute, advances the counters', () => {
+    const r = recipe('Ragù', { prepMinutes: 10, prepTimeCount: 2, totalPrepMinutes: 20 });
+    expect(applyMeasuredPrepTime(12.6, r)).toEqual({
+      lastPrepMinutes: 13,
+      prepTimeCount: 3,
+      totalPrepMinutes: 33,
+    });
+    expect(applyMeasuredPrepTime(0.2, r).lastPrepMinutes).toBe(1);
+  });
+
+  it('backfills prepMinutes only the first time', () => {
+    const untimed = recipe('Ragù', { prepMinutes: null, prepTimeCount: 0, totalPrepMinutes: 0 });
+    expect(applyMeasuredPrepTime(8, untimed)).toEqual({
+      lastPrepMinutes: 8,
+      prepTimeCount: 1,
+      totalPrepMinutes: 8,
+      prepMinutes: 8,
+    });
+
+    const timed = recipe('Ragù', { prepMinutes: 10, prepTimeCount: 0, totalPrepMinutes: 0 });
+    const patch = applyMeasuredPrepTime(15, timed);
+    expect(patch).not.toHaveProperty('prepMinutes');
+    expect(patch.lastPrepMinutes).toBe(15);
+  });
+});
+
+describe('avgPrepMinutes', () => {
+  it('is null before anything has been logged, and rounds the mean otherwise', () => {
+    expect(avgPrepMinutes(recipe('Ragù', { prepTimeCount: 0, totalPrepMinutes: 0 }))).toBeNull();
+    expect(avgPrepMinutes(recipe('Ragù', { prepTimeCount: 3, totalPrepMinutes: 100 }))).toBe(33);
+  });
+});
+
+describe('describePrepTime', () => {
+  it('mirrors describeCookTime\'s phrasing, targeting the prep fields', () => {
+    expect(describePrepTime(recipe('Ragù'))).toBe('');
+    expect(describePrepTime(recipe('Ragù', { prepMinutes: 10 }))).toBe('Est. 10m');
+    expect(describePrepTime(recipe('Ragù', {
+      prepMinutes: 10,
+      lastPrepMinutes: 12,
+      prepTimeCount: 1,
+      totalPrepMinutes: 12,
+    }))).toBe('Est. 10m · took 12m');
+    expect(describePrepTime(recipe('Ragù', {
+      prepMinutes: 10,
+      lastPrepMinutes: 8,
+      prepTimeCount: 4,
+      totalPrepMinutes: 44,
+    }))).toBe('Est. 10m · took 8m last time · avg 11m over 4 preps');
+  });
+});
+
+describe('totalMinutes', () => {
+  it('is null when neither prep nor cook time is set', () => {
+    expect(totalMinutes(recipe('Ragù'))).toBeNull();
+  });
+
+  it('sums prep and cook when both are set', () => {
+    expect(totalMinutes(recipe('Ragù', { prepMinutes: 10, estimatedMinutes: 25 }))).toBe(35);
+  });
+
+  it('treats an unset half as 0 once the other is set', () => {
+    expect(totalMinutes(recipe('Ragù', { prepMinutes: 10, estimatedMinutes: null }))).toBe(10);
+    expect(totalMinutes(recipe('Ragù', { prepMinutes: null, estimatedMinutes: 25 }))).toBe(25);
+  });
+});
+
+describe('describeAttribution', () => {
+  it('prefers author + source, falling back through source, then legacy sourceName', () => {
+    expect(describeAttribution(recipe('R', { author: 'Alison Roman', source: 'Nothing Fancy' })))
+      .toBe('by Alison Roman — Nothing Fancy');
+    expect(describeAttribution(recipe('R', { author: 'Alison Roman' }))).toBe('by Alison Roman');
+    expect(describeAttribution(recipe('R', { source: 'NYT Cooking' }))).toBe('NYT Cooking');
+    expect(describeAttribution(recipe('R', { sourceName: 'Legacy Source' }))).toBe('Legacy Source');
+    expect(describeAttribution(recipe('R'))).toBeNull();
+  });
+
+  it('appends a cookbook page number to the source, only for a cookbook source type', () => {
+    expect(describeAttribution(recipe('R', {
+      source: 'Nothing Fancy',
+      sourceType: 'cookbook',
+      sourcePage: '142',
+    }))).toBe('Nothing Fancy, p. 142');
+    expect(describeAttribution(recipe('R', {
+      source: 'Nothing Fancy',
+      sourceType: 'website',
+      sourcePage: '142',
+    }))).toBe('Nothing Fancy');
+    expect(describeAttribution(recipe('R', {
+      source: 'Nothing Fancy',
+      sourceType: 'cookbook',
+      sourcePage: null,
+    }))).toBe('Nothing Fancy');
+  });
+});
+
+describe('distinctRecipeValues / filterRecipeSuggestions', () => {
+  it('collects distinct, alpha-sorted, trimmed values across other recipes, excluding one id', () => {
+    const a = recipe('A', { source: 'NYT Cooking' });
+    const b = recipe('B', { source: 'Bon Appétit' });
+    const c = recipe('C', { source: '  NYT Cooking  ' }); // dupe once trimmed
+    const d = recipe('D', { source: null });
+    const recipes = [a, b, c, d];
+    expect(distinctRecipeValues(recipes, undefined, r => r.source))
+      .toEqual(['Bon Appétit', 'NYT Cooking']);
+    expect(distinctRecipeValues(recipes, a.id, r => r.source))
+      .toEqual(['Bon Appétit', 'NYT Cooking']); // c still supplies it once a is excluded
+  });
+
+  it('filters to a substring match, excluding an exact match, capped at 8', () => {
+    const values = ['NYT Cooking', 'Bon Appétit', 'Nothing Fancy'];
+    expect(filterRecipeSuggestions(values, 'cook')).toEqual(['NYT Cooking']);
+    expect(filterRecipeSuggestions(values, 'NYT Cooking')).toEqual([]);
+    expect(filterRecipeSuggestions(values, '')).toEqual(values);
+
+    const many = Array.from({ length: 10 }, (_, i) => `Source ${i}`);
+    expect(filterRecipeSuggestions(many, '')).toHaveLength(8);
   });
 });
 

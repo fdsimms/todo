@@ -99,6 +99,30 @@ export function nextSortOrder(
     .reduce((max, e) => Math.max(max, e.sortOrder), 0) + 1;
 }
 
+/**
+ * The days out of `days` with nothing planned in `slot` yet.
+ *
+ * Two jobs, and they have to be the same answer or the second one goes wrong:
+ * it gates the "Suggest meals" shelf (a week with no free dinner has nothing
+ * to suggest *into*), and it is the set of days that shelf may actually plan
+ * onto. `SuggestMealsSheet` lands each acceptance on the next day it was
+ * given, in order, with no knowledge of the plan — so handing it the whole
+ * week would drop a second dinner onto a night that already had one.
+ *
+ * Scoped to a slot rather than to the day as a whole: a day holding only a
+ * planned breakfast still wants a dinner suggestion, and "two things on one
+ * dinner" being legal (see MealPlanEntry.sortOrder) is about the user saying
+ * so deliberately, not about a suggestion shelf filling a slot twice.
+ */
+export function daysWithoutMeal(
+  entries: readonly MealPlanEntry[],
+  days: readonly Date[],
+  slot: MealSlot
+): Date[] {
+  const taken = new Set(entries.filter(e => e.slot === slot).map(e => e.date));
+  return days.filter(d => !taken.has(dayKeyOf(d)));
+}
+
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
 export interface BulkMoveTarget {
   id: string;
@@ -269,8 +293,16 @@ export function mealPlanPurgeCutoffKey(
 }
 
 /**
- * "Added to list today", "Added to list yesterday", "Added to list on
- * Sunday", "Added to list on Aug 3" — the week header's stamp line.
+ * "Added today", "Added yesterday", "Added Sunday", "Added Aug 3" — the week
+ * header's stamp line.
+ *
+ * **"Added", not "Added to list".** It shares a one-line subtitle with the
+ * week's own count ("6 meals planned · Added yesterday"), and the longer
+ * wording is what pushed that line to two — on the one screen in the app whose
+ * header is already carrying the most controls. What was added, and to what,
+ * is not in doubt standing on the meal plan next to a button that says "Add
+ * week to list"; the day it happened is the only part that isn't already on
+ * screen.
  *
  * Deliberately its own ladder rather than a reuse of dateUtils'
  * formatScheduledDate/formatDeadlineDate family: those are written for a date
@@ -291,8 +323,8 @@ export function describeAddedToList(
   weekStartsOn: WeekStart = 0
 ): string {
   const d = new Date(addedAt);
-  if (isSameDay(d, now)) return 'Added to list today';
-  if (isSameDay(d, subDays(now, 1))) return 'Added to list yesterday';
-  if (isSameWeek(d, now, { weekStartsOn })) return `Added to list on ${format(d, 'EEEE')}`;
-  return `Added to list on ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
+  if (isSameDay(d, now)) return 'Added today';
+  if (isSameDay(d, subDays(now, 1))) return 'Added yesterday';
+  if (isSameWeek(d, now, { weekStartsOn })) return `Added ${format(d, 'EEEE')}`;
+  return `Added ${format(d, d.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
 }

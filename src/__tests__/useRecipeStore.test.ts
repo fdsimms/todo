@@ -45,6 +45,14 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     lastCookMinutes: null,
     cookTimeCount: 0,
     totalCookMinutes: 0,
+    sourceType: null,
+    sourcePage: null,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
     ...overrides,
   };
 }
@@ -998,6 +1006,147 @@ describe('cook timer', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
     useRecipeStore.getState().stopCookTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('setPrepMinutes', () => {
+  it('sets, rounds and floors at 1 minute, and clears with null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setPrepMinutes(r.id, 9.6);
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepMinutes).toBe(10);
+
+    useRecipeStore.getState().setPrepMinutes(r.id, 0.2);
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepMinutes).toBe(1);
+
+    useRecipeStore.getState().setPrepMinutes(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.prepMinutes).toBeNull();
+  });
+});
+
+describe('setSourceType / setSourcePage', () => {
+  it('sets a source type independent of the page', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setSourceType(r.id, 'website');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourceType).toBe('website');
+  });
+
+  it('clears the page the moment the type stops being a cookbook', () => {
+    const r = makeRecipe('Ragu', { sourceType: 'cookbook', sourcePage: '142' });
+    seed([r]);
+
+    useRecipeStore.getState().setSourceType(r.id, 'website');
+    const updated = useRecipeStore.getState().recipeById(r.id)!;
+    expect(updated.sourceType).toBe('website');
+    expect(updated.sourcePage).toBeNull();
+  });
+
+  it('keeps the page when the type stays cookbook', () => {
+    const r = makeRecipe('Ragu', { sourceType: 'cookbook', sourcePage: '142' });
+    seed([r]);
+
+    useRecipeStore.getState().setSourceType(r.id, 'cookbook');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourcePage).toBe('142');
+  });
+
+  it('trims and clears the page', () => {
+    const r = makeRecipe('Ragu', { sourceType: 'cookbook' });
+    seed([r]);
+
+    useRecipeStore.getState().setSourcePage(r.id, '  142  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourcePage).toBe('142');
+
+    useRecipeStore.getState().setSourcePage(r.id, '');
+    expect(useRecipeStore.getState().recipeById(r.id)!.sourcePage).toBeNull();
+  });
+});
+
+describe('prep timer', () => {
+  it('starts only when nothing is already running', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().startPrepTimer(r.id);
+    const started = useRecipeStore.getState().recipeById(r.id)!;
+    expect(started.prepTimerStartedAt).not.toBeNull();
+
+    (dbUpdateRecipe as jest.Mock).mockClear();
+    useRecipeStore.getState().startPrepTimer(r.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('pause banks the elapsed segment without touching the logged history', () => {
+    const startedAt = new Date(Date.now() - 90_000).toISOString();
+    const r = makeRecipe('Ragu', { prepTimerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().pausePrepTimer(r.id);
+
+    const paused = useRecipeStore.getState().recipeById(r.id)!;
+    expect(paused.prepTimerStartedAt).toBeNull();
+    expect(paused.prepTimerElapsedSeconds).toBeGreaterThanOrEqual(90);
+    expect(paused.lastPrepMinutes).toBeNull();
+    expect(paused.prepTimeCount).toBe(0);
+  });
+
+  it('reset abandons the current segment unlogged', () => {
+    const r = makeRecipe('Ragu', { prepTimerStartedAt: new Date().toISOString(), prepTimerElapsedSeconds: 60 });
+    seed([r]);
+
+    useRecipeStore.getState().resetPrepTimer(r.id);
+
+    const reset = useRecipeStore.getState().recipeById(r.id)!;
+    expect(reset.prepTimerStartedAt).toBeNull();
+    expect(reset.prepTimerElapsedSeconds).toBe(0);
+    expect(reset.prepTimeCount).toBe(0);
+  });
+
+  it('stop banks and logs the session, and backfills a never-set prep estimate', () => {
+    const startedAt = new Date(Date.now() - 8 * 60_000).toISOString();
+    const r = makeRecipe('Ragu', { prepMinutes: null, prepTimerStartedAt: startedAt });
+    seed([r]);
+
+    useRecipeStore.getState().stopPrepTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.prepTimerStartedAt).toBeNull();
+    expect(stopped.prepTimerElapsedSeconds).toBe(0);
+    expect(stopped.lastPrepMinutes).toBe(8);
+    expect(stopped.prepTimeCount).toBe(1);
+    expect(stopped.totalPrepMinutes).toBe(8);
+    expect(stopped.prepMinutes).toBe(8);
+  });
+
+  it('stop never overwrites a typed prep estimate, and is independent of the cook timer', () => {
+    const r = makeRecipe('Ragu', {
+      prepMinutes: 10,
+      prepTimerElapsedSeconds: 12 * 60,
+      prepTimeCount: 1,
+      totalPrepMinutes: 9,
+      estimatedMinutes: 25,
+      timerStartedAt: new Date().toISOString(),
+    });
+    seed([r]);
+
+    useRecipeStore.getState().stopPrepTimer(r.id);
+
+    const stopped = useRecipeStore.getState().recipeById(r.id)!;
+    expect(stopped.prepMinutes).toBe(10);
+    expect(stopped.lastPrepMinutes).toBe(12);
+    expect(stopped.prepTimeCount).toBe(2);
+    // Untouched by stopping the prep timer — the cook timer is a separate run.
+    expect(stopped.timerStartedAt).not.toBeNull();
+    expect(stopped.estimatedMinutes).toBe(25);
+  });
+
+  it('stop is a no-op with nothing running and nothing banked', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().stopPrepTimer(r.id);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });

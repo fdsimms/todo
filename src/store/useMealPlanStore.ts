@@ -149,7 +149,18 @@ interface MealPlanStore {
    * omission — worse than not offering an undo path at all.
    */
 
-  /** Deletes every named entry. Confirmation and copy live in the screen, same as removeEntry's single-row delete. */
+  /**
+   * Deletes every named entry. Confirmation and copy live in the screen, same
+   * as removeEntry's single-row delete.
+   *
+   * **Clears `lastAction` rather than merely declining to set one.** Not
+   * offering an undo only holds if there isn't one left lying around: the
+   * queue survives for UNDO_ACTION_MAX_AGE_MS, so a delete performed shortly
+   * after any other meal-plan action would leave *that* action armed, and a
+   * shake right after "This can't be undone" would offer to undo something
+   * else entirely — restoring a meal the user never asked about while every
+   * deletion stayed gone. Declining the slot means emptying it.
+   */
   bulkDeleteEntries: (ids: string[]) => void;
 
   /**
@@ -383,7 +394,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
-    set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)) }));
+    // lastAction: null — see the doc comment. The delete registers no undo of
+    // its own *and* takes the slot away from whatever was in it, so a shake
+    // after this can't offer an unrelated action the user has moved on from.
+    set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)), lastAction: null }));
   },
 
   bulkMoveEntries(ids, to) {

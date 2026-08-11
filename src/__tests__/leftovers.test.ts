@@ -5,7 +5,9 @@ import {
   daysInFridge,
   daysLeft,
   describeAge,
+  describeFinishedWhen,
   describeFridge,
+  describeFridgeHistory,
   describeKeepUntil,
   describeLeftover,
   describeOutcome,
@@ -19,6 +21,7 @@ import {
   leftoverPartsFor,
   mealTitleForLeftover,
   needsAttention,
+  outcomeCounts,
   sortLeftovers,
   WHOLE_PART_KEY,
 } from '../utils/leftovers';
@@ -84,6 +87,14 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     lastCookMinutes: null,
     cookTimeCount: 0,
     totalCookMinutes: 0,
+    sourceType: null,
+    sourcePage: null,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
     cookCount: 0,
     lastCookedAt: null,
     ...overrides,
@@ -320,6 +331,88 @@ describe('describeOutcome', () => {
       .toBe('Eaten');
     expect(describeOutcome(aged(1, 3, { finishedAt: NOW.toISOString(), outcome: 'tossed' })))
       .toBe('Thrown out');
+  });
+});
+
+describe('outcomeCounts', () => {
+  const eaten = (n: number) => Array.from({ length: n }, () =>
+    aged(4, 2, { finishedAt: NOW.toISOString(), outcome: 'eaten' as const }));
+  const tossed = (n: number) => Array.from({ length: n }, () =>
+    aged(4, 2, { finishedAt: NOW.toISOString(), outcome: 'tossed' as const }));
+
+  it('splits the closed-out rows', () => {
+    expect(outcomeCounts([...eaten(3), ...tossed(1)])).toEqual({ eaten: 3, tossed: 1 });
+  });
+
+  it('ignores anything still in the fridge', () => {
+    expect(outcomeCounts([aged(1, 3), ...eaten(2)])).toEqual({ eaten: 2, tossed: 0 });
+  });
+
+  // A restored backup from before outcomes existed carries finishedAt with no
+  // outcome; describeOutcome already reads that as "Eaten", so this must agree
+  // rather than inventing a third bucket the summary can't name.
+  it('counts a finished row with no outcome as eaten, like describeOutcome does', () => {
+    const legacy = aged(4, 2, { finishedAt: NOW.toISOString(), outcome: null });
+    expect(outcomeCounts([legacy])).toEqual({ eaten: 1, tossed: 0 });
+  });
+
+  it('is zeroes for an empty fridge', () => {
+    expect(outcomeCounts([])).toEqual({ eaten: 0, tossed: 0 });
+  });
+});
+
+describe('describeFridgeHistory', () => {
+  const done = (outcome: 'eaten' | 'tossed') =>
+    aged(4, 2, { finishedAt: NOW.toISOString(), outcome });
+
+  it('names both endings when both happened', () => {
+    expect(describeFridgeHistory([done('eaten'), done('eaten'), done('tossed')]))
+      .toBe('2 eaten · 1 thrown out');
+  });
+
+  it('drops the half that did not happen rather than saying "0 thrown out"', () => {
+    expect(describeFridgeHistory([done('eaten')])).toBe('1 eaten');
+    expect(describeFridgeHistory([done('tossed')])).toBe('1 thrown out');
+  });
+
+  it('is empty with no history, so the caller renders no line', () => {
+    expect(describeFridgeHistory([])).toBe('');
+    expect(describeFridgeHistory([aged(1, 3)])).toBe('');
+  });
+});
+
+describe('describeFinishedWhen', () => {
+  const at = (d: Date) => aged(6, 2, { finishedAt: d.toISOString(), outcome: 'eaten' as const });
+
+  it('says nothing for something still in the fridge', () => {
+    expect(describeFinishedWhen(aged(1, 3), NOW)).toBe('');
+  });
+
+  it('reads today and yesterday by name', () => {
+    expect(describeFinishedWhen(at(NOW), NOW)).toBe('today');
+    expect(describeFinishedWhen(at(new Date(2026, 7, 12, 9, 0)), NOW)).toBe('yesterday');
+  });
+
+  // NOW is a Thursday; Monday is the same week with a Sunday week start.
+  it('keeps a weekday name for the rest of this week', () => {
+    expect(describeFinishedWhen(at(new Date(2026, 7, 10, 9, 0)), NOW)).toBe('on Monday');
+  });
+
+  it('falls to a date once the week is behind it', () => {
+    expect(describeFinishedWhen(at(new Date(2026, 7, 3, 9, 0)), NOW)).toBe('on 3 Aug');
+  });
+
+  // The 60-day window can straddle a new year, and "on 20 Dec" would then be
+  // ambiguous by exactly the amount that matters.
+  it('adds the year only when it is not this one', () => {
+    expect(describeFinishedWhen(at(new Date(2025, 11, 20, 9, 0)), NOW)).toBe('on 20 Dec 2025');
+  });
+
+  it('respects a Monday week start', () => {
+    // The Sunday before NOW: same week counting from Sunday, last week from Monday.
+    const sunday = new Date(2026, 7, 9, 9, 0);
+    expect(describeFinishedWhen(at(sunday), NOW, 0)).toBe('on Sunday');
+    expect(describeFinishedWhen(at(sunday), NOW, 1)).toBe('on 9 Aug');
   });
 });
 

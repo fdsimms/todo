@@ -10,8 +10,17 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe, RecipeMealType } from '../types';
-import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS, RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, RECIPE_TAG_MAX_LENGTH } from '../types';
+import type { Recipe, RecipeMealType, RecipeSourceType } from '../types';
+import {
+  RECIPE_MEAL_TYPES,
+  RECIPE_MEAL_TYPE_LABELS,
+  RECIPE_NAME_MAX_LENGTH,
+  RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_SOURCE_TYPES,
+  RECIPE_SOURCE_TYPE_LABELS,
+  RECIPE_PAGE_MAX_LENGTH,
+  RECIPE_TAG_MAX_LENGTH,
+} from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsing } from '../utils/recipeComponents';
 import { allRecipeTags, cleanRecipeTag, toggleRecipeTag } from '../utils/recipeTags';
@@ -24,7 +33,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { formatDuration } from '../utils/effort';
 import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
-import { formatServingsRange } from '../utils/recipeUtils';
+import { distinctRecipeValues, filterRecipeSuggestions, formatServingsRange, totalMinutes } from '../utils/recipeUtils';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -37,12 +46,14 @@ interface Props {
   onDeleted: () => void;
 }
 
-// CountStepper steps by 1, so cook time is stepped in 5-minute units rather
-// than one minute at a time — a recipe's duration doesn't need minute
-// precision, and 1-minute steps would make a 45-minute braise a lot of
-// holding. Capped at 6 hours, well past anything this app times.
-const COOK_TIME_STEP_MINUTES = 5;
-const COOK_TIME_MAX_MINUTES = 360;
+// CountStepper steps by 1, so prep and cook time are each stepped in 5-minute
+// units rather than one minute at a time — a recipe's duration doesn't need
+// minute precision, and 1-minute steps would make a 45-minute braise a lot of
+// holding. Capped at 6 hours, well past anything this app times. Shared by
+// both rows below rather than one constant pair per row, since the
+// constraint is the same fact about durations, not about cooking specifically.
+const DURATION_STEP_MINUTES = 5;
+const DURATION_MAX_MINUTES = 360;
 
 /**
  * Everything about a recipe that isn't its ingredient list: the name, what it
@@ -59,9 +70,12 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSource = useRecipeStore(s => s.setSource);
+  const setSourceType = useRecipeStore(s => s.setSourceType);
+  const setSourcePage = useRecipeStore(s => s.setSourcePage);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
   const setTags = useRecipeStore(s => s.setTags);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
@@ -71,6 +85,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [url, setUrl] = useState('');
   const [author, setAuthorDraft] = useState('');
   const [source, setSourceDraft] = useState('');
+  const [sourceType, setSourceTypeDraft] = useState<RecipeSourceType | null>(null);
+  const [sourcePage, setSourcePageDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
   const [recipeYield, setRecipeYieldDraft] = useState('');
@@ -82,34 +98,35 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
+  const [prepMinutes, setPrepMinutesDraft] = useState<number | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
+  const [prepOpen, setPrepOpen] = useState(false);
   const [mealTypeOpen, setMealTypeOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
-  // Distinct sources already in use elsewhere, so a repeat ("NYT Cooking" on a
-  // fifth recipe) is one tap instead of retyping it — same idea as
-  // LogbookScreen's availableCategories/availableTags, computed from the data
-  // that's actually there rather than a fixed list.
+  // Distinct sources/authors already in use elsewhere, so a repeat ("NYT
+  // Cooking" or "Alison Roman" on a fifth recipe) is one tap instead of
+  // retyping it — same idea as LogbookScreen's availableCategories/
+  // availableTags, computed from the data that's actually there rather than
+  // a fixed list. Shared helper (distinctRecipeValues/filterRecipeSuggestions
+  // in recipeUtils) since Source and Author want the identical derivation.
   const existingSources = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          recipes
-            .filter(r => r.id !== recipe?.id)
-            .map(r => r.source?.trim())
-            .filter((s): s is string => !!s)
-        )
-      ).sort((a, b) => a.localeCompare(b)),
+    () => distinctRecipeValues(recipes, recipe?.id, r => r.source),
     [recipes, recipe?.id]
   );
-  const sourceSuggestions = useMemo(() => {
-    const query = source.trim().toLowerCase();
-    const matches = query
-      ? existingSources.filter(s => s.toLowerCase().includes(query) && s.toLowerCase() !== query)
-      : existingSources;
-    return matches.slice(0, 8);
-  }, [existingSources, source]);
+  const sourceSuggestions = useMemo(
+    () => filterRecipeSuggestions(existingSources, source),
+    [existingSources, source]
+  );
+  const existingAuthors = useMemo(
+    () => distinctRecipeValues(recipes, recipe?.id, r => r.author),
+    [recipes, recipe?.id]
+  );
+  const authorSuggestions = useMemo(
+    () => filterRecipeSuggestions(existingAuthors, author),
+    [existingAuthors, author]
+  );
   const [linkOpen, setLinkOpen] = useState(false);
 
   // The box's whole vocabulary, minus what this recipe already carries — the
@@ -137,6 +154,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setUrl(recipe.sourceUrl ?? '');
     setAuthorDraft(recipe.author ?? '');
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
+    setSourceTypeDraft(recipe.sourceType);
+    setSourcePageDraft(recipe.sourcePage ?? '');
     setServingsDraft(recipe.servings);
     setServingsMaxDraft(recipe.servingsMax);
     setRecipeYieldDraft(recipe.recipeYield ?? '');
@@ -148,7 +167,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setServingsOpen(false);
     setYieldOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
+    setPrepMinutesDraft(recipe.prepMinutes);
     setDurationOpen(false);
+    setPrepOpen(false);
     setMealTypeOpen(false);
     setAuthorOpen(false);
     setSourceOpen(false);
@@ -168,9 +189,12 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourceUrl(recipe.id, url);
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
+    setSourceType(recipe.id, sourceType);
+    setSourcePage(recipe.id, sourcePage);
     setServings(recipe.id, servings, servingsMax);
     setRecipeYield(recipe.id, recipeYield);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
+    setPrepMinutes(recipe.id, prepMinutes);
     setMealType(recipe.id, mealType);
     // A tag half-typed when Done was tapped still counts — the field commits on
     // blur, but tapping Done can beat the blur.
@@ -249,7 +273,11 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="people-outline"
           label="Serves"
-          value={formatServingsRange(servings, servingsMax) ?? undefined}
+          // Hidden while expanded — the stepper right below already shows the
+          // current value, and showing it in both places read as the same
+          // number appearing twice (same for every row below whose control
+          // unfolds in place rather than opening a picker).
+          value={servingsOpen ? undefined : (formatServingsRange(servings, servingsMax) ?? undefined)}
           hint="How many the quantities below are written for. Set an upper number too for a range, like a recipe that says “serves 4-6”."
           expanded={servingsOpen}
           onPress={() => { animateLayout(); setServingsOpen(v => !v); }}
@@ -300,7 +328,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="restaurant-outline"
           label="Yield"
-          value={recipeYield.trim() || undefined}
+          value={yieldOpen ? undefined : (recipeYield.trim() || undefined)}
           hint="What it makes, when a serving count isn't the right unit — “3 cups”, “2 dozen cookies”, “1 loaf”."
           expanded={yieldOpen}
           onPress={() => { animateLayout(); setYieldOpen(v => !v); }}
@@ -411,10 +439,34 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           )}
         </CollapsibleField>
         <EditorRow
+          icon="alarm-outline"
+          label="Prep time"
+          value={prepOpen ? undefined : (prepMinutes !== null ? formatDuration(prepMinutes) : undefined)}
+          hint="Chopping, marinating, mise en place — before the cook clock starts. Its own timer on the recipe page, independent of the cook timer."
+          expanded={prepOpen}
+          onPress={() => { animateLayout(); setPrepOpen(v => !v); }}
+          onClear={prepMinutes !== null ? () => { setPrepMinutesDraft(null); setPrepOpen(false); } : undefined}
+        />
+        {prepOpen && (
+          <View style={styles.stepperRow}>
+            <CountStepper
+              value={prepMinutes !== null ? Math.round(prepMinutes / DURATION_STEP_MINUTES) : null}
+              onChange={units => setPrepMinutesDraft(units === null ? null : units * DURATION_STEP_MINUTES)}
+              min={1}
+              max={DURATION_MAX_MINUTES / DURATION_STEP_MINUTES}
+              allowNull
+              emptyLabel="—"
+              label="Prep time"
+              format={units => formatDuration(units * DURATION_STEP_MINUTES)}
+              describeValue={units => (units === null ? 'not set' : formatDuration(units * DURATION_STEP_MINUTES))}
+            />
+          </View>
+        )}
+        <EditorRow
           icon="time-outline"
           label="Cook time"
-          value={estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined}
-          hint="How long this takes, start to finish — doubles as the cook timer's countdown on the recipe page."
+          value={durationOpen ? undefined : (estimatedMinutes !== null ? formatDuration(estimatedMinutes) : undefined)}
+          hint="How long this takes once the cook clock starts — doubles as the cook timer's countdown on the recipe page."
           expanded={durationOpen}
           onPress={() => { animateLayout(); setDurationOpen(v => !v); }}
           onClear={estimatedMinutes !== null ? () => { setEstimatedMinutesDraft(null); setDurationOpen(false); } : undefined}
@@ -422,22 +474,30 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         {durationOpen && (
           <View style={styles.stepperRow}>
             <CountStepper
-              value={estimatedMinutes !== null ? Math.round(estimatedMinutes / COOK_TIME_STEP_MINUTES) : null}
-              onChange={units => setEstimatedMinutesDraft(units === null ? null : units * COOK_TIME_STEP_MINUTES)}
+              value={estimatedMinutes !== null ? Math.round(estimatedMinutes / DURATION_STEP_MINUTES) : null}
+              onChange={units => setEstimatedMinutesDraft(units === null ? null : units * DURATION_STEP_MINUTES)}
               min={1}
-              max={COOK_TIME_MAX_MINUTES / COOK_TIME_STEP_MINUTES}
+              max={DURATION_MAX_MINUTES / DURATION_STEP_MINUTES}
               allowNull
               emptyLabel="—"
               label="Cook time"
-              format={units => formatDuration(units * COOK_TIME_STEP_MINUTES)}
-              describeValue={units => (units === null ? 'not set' : formatDuration(units * COOK_TIME_STEP_MINUTES))}
+              format={units => formatDuration(units * DURATION_STEP_MINUTES)}
+              describeValue={units => (units === null ? 'not set' : formatDuration(units * DURATION_STEP_MINUTES))}
             />
           </View>
+        )}
+        {(prepMinutes !== null || estimatedMinutes !== null) && (
+          <Text style={styles.totalTimeHint}>
+            Total {formatDuration(totalMinutes({ prepMinutes, estimatedMinutes })!)}
+            {prepMinutes !== null && estimatedMinutes !== null
+              ? ` (${formatDuration(prepMinutes)} prep + ${formatDuration(estimatedMinutes)} cook)`
+              : ''}
+          </Text>
         )}
         <EditorRow
           icon="person-outline"
           label="Author"
-          value={author.trim() || undefined}
+          value={authorOpen ? undefined : (author.trim() || undefined)}
           hint="Who it's from — a person, not a publication."
           expanded={authorOpen}
           onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
@@ -456,15 +516,53 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             accessibilityLabel="Recipe author"
           />
         )}
+        {authorOpen && authorSuggestions.length > 0 && (
+          <View style={styles.suggestionChips}>
+            {authorSuggestions.map(value => (
+              <TouchableOpacity
+                key={value}
+                style={styles.suggestionChip}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => setAuthorDraft(value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use author ${value}`}
+              >
+                <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <EditorRow
           icon="newspaper-outline"
           label="Source"
-          value={source.trim() || undefined}
+          value={sourceOpen ? undefined : (source.trim() || undefined)}
           hint="Where it's from — a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
           onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}
         />
+        {sourceOpen && (
+          <View style={styles.pillRow}>
+            {RECIPE_SOURCE_TYPES.map(type => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.pill, sourceType === type && styles.pillActiveNeutral]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  setSourceTypeDraft(sourceType === type ? null : type);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={RECIPE_SOURCE_TYPE_LABELS[type]}
+                accessibilityState={{ selected: sourceType === type }}
+              >
+                <Text style={[styles.pillText, sourceType === type && styles.pillTextActive]}>
+                  {RECIPE_SOURCE_TYPE_LABELS[type]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         {sourceOpen && (
           <TextInput
             style={styles.urlInput}
@@ -478,18 +576,34 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             accessibilityLabel="Recipe source"
           />
         )}
+        {sourceOpen && sourceType === 'cookbook' && (
+          <View style={styles.pageRow}>
+            <Text style={styles.pageLabel}>Page</Text>
+            <TextInput
+              style={styles.pageInput}
+              value={sourcePage}
+              onChangeText={setSourcePageDraft}
+              onSubmitEditing={() => Keyboard.dismiss()}
+              placeholder="142"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={RECIPE_PAGE_MAX_LENGTH}
+              returnKeyType="done"
+              accessibilityLabel="Cookbook page number"
+            />
+          </View>
+        )}
         {sourceOpen && sourceSuggestions.length > 0 && (
-          <View style={styles.sourceChips}>
+          <View style={styles.suggestionChips}>
             {sourceSuggestions.map(value => (
               <TouchableOpacity
                 key={value}
-                style={styles.sourceChip}
+                style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
                 onPress={() => setSourceDraft(value)}
                 accessibilityRole="button"
                 accessibilityLabel={`Use source ${value}`}
               >
-                <Text style={styles.sourceChipText} numberOfLines={1}>{value}</Text>
+                <Text style={styles.suggestionChipText} numberOfLines={1}>{value}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -497,7 +611,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="link-outline"
           label="Link"
-          value={url.trim() || undefined}
+          value={linkOpen ? undefined : (url.trim() || undefined)}
           expanded={linkOpen}
           onPress={() => { animateLayout(); setLinkOpen(v => !v); }}
           onClear={url.trim() ? () => { setUrl(''); setLinkOpen(false); } : undefined}
@@ -645,22 +759,48 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     minHeight: 96,
   },
-  sourceChips: {
+  // Shared by Source's and Author's suggestion rows — both are the identical
+  // "pick a value already used elsewhere" chip.
+  suggestionChips: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.xs,
     paddingBottom: spacing.sm,
   },
-  sourceChip: {
+  suggestionChip: {
     backgroundColor: colors.bgSunken,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     maxWidth: 220,
   },
-  sourceChipText: {
+  suggestionChipText: {
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
+  },
+  totalTimeHint: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    textAlign: 'right',
+    paddingBottom: spacing.sm,
+  },
+  pageRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.sm,
+  },
+  pageLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  pageInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.separator,
+    paddingVertical: 4,
   },
 });
