@@ -84,6 +84,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` |
@@ -768,4 +769,15 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
 - **Booleans in SQLite**: stored as `0`/`1` integers, converted in `rowToTask()`.
 - **JSON fields in SQLite**: `tags`, `recurrenceDays`, `chainItems` (stored in the `cycle_items` column — see Chains above), `timeSegments` are JSON-stringified arrays. `timeSegments` has a legacy code path in `parseTimeSegments()` that handles a plain string (old format).
 - **Subtasks**: tasks with `parentId !== null`. Most store selectors filter with `!t.parentId` to exclude them from top-level lists.
+- **Demo data**: when a change adds a user-facing capability, seed one instance of it in
+  `src/utils/demoSeed.ts` in the same PR, and assert it in `useDemoStore.test.ts`. Demo mode swaps
+  the whole database for a throwaway one (`useDemoStore`), so it's what someone handed the phone
+  actually sees — **a feature with no row in the seed reads as a feature the app doesn't have**,
+  not as one that happens to be unused. That's especially true of the capabilities that are
+  invisible until something uses them: a composed recipe, an either/or choice group, a per-store
+  link, a container in the fridge, a scaled meal. Everything goes through the normal store actions
+  rather than raw db inserts, so a seeded row can't drift from the type; the corollary is that a
+  field with no store action behind it (a recipe's logged cook minutes, a `lastPurchasedAt`) can't
+  be seeded, and that's the honest reason to leave one out — not "it seemed minor". Skip it for
+  changes with nothing to show (refactors, tests, tooling).
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
