@@ -1,5 +1,6 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
+  RECIPE_MEAL_TYPES,
   RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
@@ -306,6 +307,62 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
+}
+
+/**
+ * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * RecipesScreen has always applied to its flat list, pulled out so
+ * groupRecipesByMealType can give each of its sections the identical order
+ * instead of inventing a second one. A search ranking (rankRecipes) is a
+ * different question — "what matches this text" — so it's never routed
+ * through here.
+ */
+export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
+  return [...recipes].sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+  );
+}
+
+export interface RecipeMealTypeSection {
+  /** null is the trailing "Untagged" section — RecipeMealType has no null member of its own. */
+  mealType: RecipeMealType | null;
+  title: string;
+  data: Recipe[];
+}
+
+/**
+ * Groups recipes into sections by RecipeMealType, in RECIPE_MEAL_TYPES' fixed
+ * display order — mirroring how makeCategoryGroups orders Today's category
+ * sections by a fixed list rather than alphabetically or by section size.
+ * Untagged recipes (mealType: null) trail in their own section rather than
+ * leading like Today's header-less loose group, because here there's no drag
+ * to strand a recipe "above": a section list is read top to bottom, and most
+ * existing recipes predate this field, so leading with a wall of "Untagged"
+ * would bury the very grouping the user just asked for.
+ *
+ * A meal type with no recipes is omitted entirely rather than rendered empty,
+ * same as makeCategoryGroups omitting empty categories.
+ */
+export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTypeSection[] {
+  const byType = new Map<string, Recipe[]>();
+  recipes.forEach(recipe => {
+    const key = recipe.mealType ?? '';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key)!.push(recipe);
+  });
+
+  const sections: RecipeMealTypeSection[] = [];
+  RECIPE_MEAL_TYPES.forEach(mealType => {
+    const list = byType.get(mealType);
+    if (list && list.length > 0) {
+      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sortRecipesForDisplay(list) });
+    }
+  });
+  const untagged = byType.get('');
+  if (untagged && untagged.length > 0) {
+    sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
+  }
+  return sections;
 }
 
 /** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
