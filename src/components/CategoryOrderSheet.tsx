@@ -3,20 +3,21 @@ import {
   Modal,
   View,
   Text,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { moveCategory, alphabeticalCategories } from '../utils/categoryOrder';
+import { alphabeticalCategories } from '../utils/categoryOrder';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
+import { SortableList } from './SortableList';
 import { haptics } from '../utils/haptics';
 
 interface Props {
@@ -24,23 +25,35 @@ interface Props {
   onClose: () => void;
 }
 
+interface Row {
+  id: string; // the category name
+}
+
 /**
  * The order Today's category sections come in, reachable from the screen's "…"
  * menu.
  *
  * This replaces long-pressing a section header and dragging it up the task
- * list. That gesture is gone for good: the floating drag card never lined up
- * with the finger holding it, and the header it was dragging was one row of a
- * list whose other rows were collapsing out from under the measurement to make
- * room. Moving a category a step at a time needs no measurement at all, and it
- * shows the whole order at once — which the drag never could, since the
- * headers it reordered were scattered down a list of tasks.
+ * list. That gesture is gone for good and stays gone *there*: see CLAUDE.md's
+ * "Today's category headers are not draggable" note — the floating drag card
+ * never lined up with the finger, because the header it was dragging was one
+ * row of a list whose other rows were collapsing out from under the
+ * measurement to make room, scattered down a list of tasks.
  *
- * Every tap writes straight through to reorderCategories, so there's nothing to
- * save and a swipe-down keeps the order rather than discarding it. `order` is
- * still held locally, seeded on each open: it's what the rows render from, so
- * an arrow moves its row in the same commit as the tap instead of waiting for
- * the store round-trip.
+ * This sheet doesn't have that problem. It's a plain one-row-per-category list
+ * with nothing else on screen, so every row is already visible and there's
+ * nothing to auto-collapse or calibrate against — the exact conditions
+ * `SortableList` (a stack's children, subtasks, chain steps) already handles.
+ * Its rows sit inside this sheet's own `ScrollView`, so per `SortableList`'s
+ * `onDragStateChange` doc, that scroll view's `scrollEnabled` is switched off
+ * for the duration of a drag — otherwise the scroll gesture wins on the first
+ * finger move and the row never lifts.
+ *
+ * Every drop writes straight through to reorderCategories, so there's nothing
+ * to save and a swipe-down keeps the order rather than discarding it. `order`
+ * is still held locally, seeded on each open: it's what the rows render from,
+ * so a drop moves its row in the same commit as the release instead of waiting
+ * for the store round-trip.
  */
 export function CategoryOrderSheet({ visible, onClose }: Props) {
   const colors = useColors();
@@ -52,6 +65,11 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
   const reorderCategories = useCategoryStore(s => s.reorderCategories);
 
   const [order, setOrder] = useState<string[]>(allCategories);
+  // Set while a row is being dragged, purely to take this sheet's own
+  // ScrollView out of the running for the touch (see SortableList's
+  // onDragStateChange) — without it the scroll eats the gesture and the row
+  // never moves.
+  const [dragging, setDragging] = useState(false);
 
   // Seeded on open rather than kept in sync with the store: while the sheet is
   // up, this component is the only thing writing the order, and re-seeding on
@@ -66,14 +84,10 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
     reorderCategories(next);
   };
 
-  const move = (name: string, delta: number) => {
-    const next = moveCategory(order, name, delta);
-    // moveCategory hands back the same array when the move can't happen (a
-    // category already at the end it's being pushed towards), so an edge tap
-    // stays silent instead of buzzing and rewriting the same order.
-    if (next === order) return;
-    haptics.tap();
-    commit(next);
+  const rows: Row[] = order.map(name => ({ id: name }));
+
+  const handleReorder = (next: Row[]) => {
+    commit(next.map(r => r.id));
   };
 
   const sortAlphabetically = () => {
@@ -99,76 +113,66 @@ export function CategoryOrderSheet({ visible, onClose }: Props) {
             subtitle="Give a task a category and its section will show up here, ready to be moved."
           />
         ) : (
-          <FlatList
-            data={order}
-            keyExtractor={name => name}
+          <ScrollView
             contentContainerStyle={styles.list}
-            ListHeaderComponent={
-              <View style={styles.introWrap}>
-                <Text style={styles.intro}>
-                  Today’s sections follow this order. A category with nothing on it today is
-                  skipped, but keeps its place here.
-                </Text>
-                <View style={styles.introActions}>
-                  <InlineAction
-                    label="Sort A–Z"
-                    icon="swap-vertical"
-                    variant="neutral"
-                    onPress={sortAlphabetically}
-                    accessibilityLabel="Sort categories alphabetically"
-                    style={styles.sortButton}
-                  />
-                </View>
+            scrollEnabled={!dragging}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={styles.introWrap}>
+              <Text style={styles.intro}>
+                Today’s sections follow this order. A category with nothing on it today is
+                skipped, but keeps its place here.
+              </Text>
+              <View style={styles.introActions}>
+                <InlineAction
+                  label="Sort A–Z"
+                  icon="swap-vertical"
+                  variant="neutral"
+                  onPress={sortAlphabetically}
+                  accessibilityLabel="Sort categories alphabetically"
+                  style={styles.sortButton}
+                />
               </View>
-            }
-            renderItem={({ item: name, index }) => {
-              const count = tasksByCategory(name).length;
-              const emoji = emojiFor(name);
-              const isFirst = index === 0;
-              const isLast = index === order.length - 1;
-              return (
-                <View style={styles.row}>
-                  <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
-                    {emoji ? (
-                      <Text style={styles.rowIconEmoji}>{emoji}</Text>
-                    ) : (
-                      <Ionicons name="folder" size={16} color={colors.accent} />
-                    )}
+            </View>
+
+            <SortableList<Row>
+              data={rows}
+              onReorder={handleReorder}
+              onDragStateChange={setDragging}
+              renderItem={(row, _index, drag) => {
+                const name = row.id;
+                const count = tasksByCategory(name).length;
+                const emoji = emojiFor(name);
+                return (
+                  <View style={styles.row}>
+                    <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
+                      {emoji ? (
+                        <Text style={styles.rowIconEmoji}>{emoji}</Text>
+                      ) : (
+                        <Ionicons name="folder" size={16} color={colors.accent} />
+                      )}
+                    </View>
+                    <View style={styles.rowInfo}>
+                      <Text style={styles.rowLabel} numberOfLines={1}>{name}</Text>
+                      <Text style={styles.rowCount}>
+                        {count} {count === 1 ? 'task' : 'tasks'}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onLongPress={drag}
+                      delayLongPress={150}
+                      hitSlop={8}
+                      style={styles.dragHandle}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Reorder ${name}`}
+                    >
+                      <Ionicons name="reorder-three" size={20} color={colors.textTertiary} />
+                    </TouchableOpacity>
                   </View>
-                  <View style={styles.rowInfo}>
-                    <Text style={styles.rowLabel} numberOfLines={1}>{name}</Text>
-                    <Text style={styles.rowCount}>
-                      {count} {count === 1 ? 'task' : 'tasks'}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.moveButton, isFirst && styles.moveButtonDisabled]}
-                    onPress={() => move(name, -1)}
-                    disabled={isFirst}
-                    activeOpacity={interaction.activeOpacity}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Move ${name} up`}
-                    accessibilityState={{ disabled: isFirst }}
-                  >
-                    <Ionicons name="arrow-up" size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.moveButton, isLast && styles.moveButtonDisabled]}
-                    onPress={() => move(name, 1)}
-                    disabled={isLast}
-                    activeOpacity={interaction.activeOpacity}
-                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Move ${name} down`}
-                    accessibilityState={{ disabled: isLast }}
-                  >
-                    <Ionicons name="arrow-down" size={iconSize.md} color={colors.textSecondary} />
-                  </TouchableOpacity>
-                </View>
-              );
-            }}
-          />
+                );
+              }}
+            />
+          </ScrollView>
         )}
       </View>
     </Modal>
@@ -218,7 +222,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowInfo: { flex: 1, gap: 2 },
   rowLabel: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
   rowCount: { color: colors.textTertiary, fontSize: font.xs },
-  moveButton: {
+  dragHandle: {
     width: 36,
     height: 36,
     borderRadius: radius.sm,
@@ -226,5 +230,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  moveButtonDisabled: { opacity: 0.35 },
 });
