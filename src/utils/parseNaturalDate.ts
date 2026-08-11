@@ -81,6 +81,13 @@ const DAY_PARTS: Record<string, number> = {
 
 const DEFAULT_HOUR = 9; // applied to date-only input ("tomorrow", "next monday")
 
+// Spelled-out counts for "in <word> <unit>" ("in three months"). "one" isn't
+// included — "in one week" reads as "in a week", covered by the a/an branch.
+const NUMBER_WORDS: Record<string, number> = {
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10, eleven: 11, twelve: 12,
+};
+
 export interface ClockTime {
   h: number;
   m: number;
@@ -185,6 +192,12 @@ export function parseDatePart(input: string, now: Date): DatePart | null {
   // "in a week", "in an hour"
   if ((m = text.match(/^in\s+an?\s+(min(?:ute)?|hour|hr|day|week|wk|month|year|yr)$/))) {
     return relativeUnit(m[1], 1, now);
+  }
+  // "in three months", "in two weeks", "in twelve days" (spelled-out counts)
+  if ((m = text.match(new RegExp(
+    `^in\\s+(${Object.keys(NUMBER_WORDS).join('|')})\\s+(min(?:ute)?s?|hours?|hrs?|days?|weeks?|wks?|months?|years?|yrs?)$`
+  )))) {
+    return relativeUnit(m[2], NUMBER_WORDS[m[1]], now);
   }
 
   // Weekend

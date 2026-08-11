@@ -139,6 +139,44 @@ describe('parseNaturalDate', () => {
       expect(d.getMonth()).toBe(6); // July
       expect(d.getDate()).toBe(10);
     });
+
+    it('parses "in three months" (spelled-out count)', () => {
+      const d = parse('in three months')!;
+      expect(d.getMonth()).toBe(8); // September
+      expect(d.getDate()).toBe(10);
+    });
+
+    it('parses "in two weeks" (spelled-out count)', () => {
+      const d = parse('in two weeks')!;
+      expect(d.getDate()).toBe(24);
+    });
+
+    it('parses "in six months" (spelled-out count)', () => {
+      const d = parse('in six months')!;
+      expect(d.getMonth()).toBe(11); // December
+      expect(d.getDate()).toBe(10);
+    });
+
+    it('parses "in twelve days" (spelled-out count)', () => {
+      const d = parse('in twelve days')!;
+      expect(d.getMonth()).toBe(5); // June
+      expect(d.getDate()).toBe(22);
+    });
+
+    it('does not break "in 2 weeks" (digit path still works)', () => {
+      const d = parse('in 2 weeks')!;
+      expect(d.getDate()).toBe(24);
+    });
+
+    it('does not break "in a week" (a/an path still works)', () => {
+      const d = parse('in a week')!;
+      expect(d.getDate()).toBe(17);
+    });
+
+    it('returns null for an unsupported spelled-out count', () => {
+      expect(parse('in one month')).toBeNull();
+      expect(parse('in thirteen months')).toBeNull();
+    });
   });
 
   describe('next week/month/year', () => {
