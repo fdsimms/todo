@@ -26,6 +26,7 @@ import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groce
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
+import { PillGroup } from './PillGroup';
 
 interface Props {
   visible: boolean;
@@ -301,33 +302,30 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
       <View style={styles.sectionCard}>
         <Text style={styles.groupLabel}>Aisle</Text>
-        <View style={styles.pillRow}>
-          <TouchableOpacity
-            style={[styles.pill, aisle === null && styles.pillActive]}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); animateLayout(); setAisle(null); }}
-            accessibilityRole="button"
-            accessibilityState={{ selected: aisle === null }}
-            accessibilityLabel={`Wherever it usually goes, currently ${defaultAisle}`}
-          >
-            <Text style={[styles.pillText, aisle === null && styles.pillTextActive]}>
-              Usually {defaultAisle}
-            </Text>
-          </TouchableOpacity>
-          {aisleOrder.map(name => (
-            <TouchableOpacity
-              key={name}
-              style={[styles.pill, aisle === name && styles.pillActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={() => { haptics.tap(); setAisle(name); }}
-              accessibilityRole="button"
-              accessibilityState={{ selected: aisle === name }}
-              accessibilityLabel={name}
-            >
-              <Text style={[styles.pillText, aisle === name && styles.pillTextActive]}>{name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Sixteen aisles ship by default and the user can add more, so the
+            grid caps itself and grows a filter — see PillGroup. "Usually X" is
+            pinned: it's the option that means *no* choice, and burying the
+            default behind a disclosure makes it look unavailable. */}
+        <PillGroup
+          noun="aisle"
+          filterPlaceholder="Find an aisle…"
+          options={[
+            {
+              key: '__default__',
+              label: `Usually ${defaultAisle}`,
+              pinned: true,
+              selected: aisle === null,
+              accessibilityLabel: `Wherever it usually goes, currently ${defaultAisle}`,
+              onPress: () => { haptics.tap(); animateLayout(); setAisle(null); },
+            },
+            ...aisleOrder.map(name => ({
+              key: name,
+              label: name,
+              selected: aisle === name,
+              onPress: () => { haptics.tap(); setAisle(name); },
+            })),
+          ]}
+        />
         <Text style={styles.hint}>
           Leave it on “usually” unless this recipe needs it somewhere else — that way it
           follows wherever you file the item later.

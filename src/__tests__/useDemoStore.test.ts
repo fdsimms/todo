@@ -14,7 +14,13 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { isUsingDemoDatabase } from '../db/database';
+import { RECIPE_MEAL_TYPES } from '../types';
+import { freshnessOf, isLiveLeftover } from '../utils/leftovers';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockDbs: Map<string, any>;
@@ -217,5 +223,144 @@ describe('demo mode', () => {
     expect(s.tagRegistry.length).toBeGreaterThan(0);
 
     useDemoStore.getState().exitDemoMode();
+  });
+});
+
+/**
+ * The demo is what someone handed the phone actually sees, so a capability
+ * with no seeded row reads as one the app doesn't have. These pin the
+ * features that are otherwise invisible — a composed recipe, an either/or
+ * group, a per-store link, a container in the fridge — rather than re-testing
+ * the stores, which have their own suites.
+ */
+describe('demo seed — groceries, recipes, meals and the fridge', () => {
+  beforeEach(() => {
+    useDemoStore.getState().enterDemoMode();
+  });
+  afterEach(() => {
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
+    const { items } = useGroceryStore.getState();
+    const onList = items.filter(i => i.onList);
+
+    expect(onList.length).toBeGreaterThan(5);
+    // Bought before but not on the list right now — what Buy again reads.
+    expect(items.filter(i => !i.onList && i.inCatalog).length).toBeGreaterThan(0);
+    // Mid-trip: something already in the trolley, so the finish sheet has work.
+    expect(onList.some(i => i.checked)).toBe(true);
+    expect(items.some(i => i.favorite)).toBe(true);
+    expect(items.some(i => i.quantity)).toBe(true);
+    expect(items.some(i => i.note)).toBe(true);
+    // Spread purchase counts, not a flat list of ones — the ranking signal.
+    expect(Math.max(...items.map(i => i.purchaseCount))).toBeGreaterThan(1);
+    // Attributed to the recipe that put it there.
+    expect(items.some(i => i.sourceRecipeId)).toBe(true);
+    // The pantry override, both directions.
+    const now = Date.now();
+    expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) > now)).toBe(true);
+    expect(items.some(i => i.onHandUntil && Date.parse(i.onHandUntil) < now)).toBe(true);
+  });
+
+  it('seeds stores, per-store links and an edited walk order', () => {
+    const { shops, itemShops, aisleOrder, hiddenAisles, items } = useGroceryStore.getState();
+
+    expect(shops.length).toBeGreaterThanOrEqual(3);
+    // "It has everything, but don't send me there".
+    expect(shops.some(s => s.excludeFromSuggestions)).toBe(true);
+    // Both link kinds: observed on a trip, and asserted by hand.
+    expect(itemShops.some(l => l.purchaseCount > 0)).toBe(true);
+    expect(itemShops.some(l => l.purchaseCount === 0)).toBe(true);
+    // A section the user added, one they deleted, and a moved built-in.
+    expect(aisleOrder).toContain('Bulk bins');
+    expect(hiddenAisles).toContain('Personal Care');
+    expect(aisleOrder).not.toContain('Personal Care');
+    expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
+    expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+  });
+
+  it('seeds a recipe of every meal type, with the composed ones composed', () => {
+    const { recipes } = useRecipeStore.getState();
+
+    // The box groups by meal type, so a missing type reads as a missing section.
+    RECIPE_MEAL_TYPES.forEach(type => {
+      expect(recipes.some(r => r.mealType === type)).toBe(true);
+    });
+
+    // One recipe used inside two others — the whole point of a reference.
+    const componentCounts = new Map<string, number>();
+    recipes.forEach(r =>
+      r.components.forEach(c => componentCounts.set(c.recipeId, (componentCounts.get(c.recipeId) ?? 0) + 1))
+    );
+    expect(Math.max(0, ...componentCounts.values())).toBeGreaterThan(1);
+
+    // Either/or at both levels, and never as one line reading "a or b".
+    expect(recipes.some(r => r.components.filter(c => c.choiceGroup).length >= 2)).toBe(true);
+    expect(recipes.some(r => r.ingredients.filter(i => i.choiceGroup).length >= 2)).toBe(true);
+    expect(recipes.every(r => r.ingredients.every(i => !/\bor\b/.test(i.name)))).toBe(true);
+
+    // The ingredient-line detail the parser splits out, and the editor's labels.
+    expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);
+    expect(recipes.some(r => r.ingredients.some(i => i.prep))).toBe(true);
+    expect(recipes.some(r => r.ingredients.some(i => i.purpose))).toBe(true);
+  });
+
+  it('seeds recipe duration, cook history, attribution and a live timer', () => {
+    const { recipes } = useRecipeStore.getState();
+
+    expect(recipes.some(r => r.favorite)).toBe(true);
+    expect(recipes.some(r => r.tags.length > 1)).toBe(true);
+    expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
+    expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);
+    expect(recipes.some(r => r.recipeYield)).toBe(true);
+    expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
+    expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
+    expect(recipes.some(r => r.timerStartedAt)).toBe(true);
+    // All three attribution shapes — a URL, a byline, and a cookbook page.
+    expect(recipes.some(r => r.sourceUrl)).toBe(true);
+    expect(recipes.some(r => r.author && r.source)).toBe(true);
+    expect(recipes.some(r => r.sourceType === 'cookbook' && r.sourcePage)).toBe(true);
+  });
+
+  it('seeds a plan with history, a scaled meal, a picked side and a doubled-up night', () => {
+    const { entries } = useMealPlanStore.getState();
+
+    expect(entries.length).toBeGreaterThan(10);
+    expect(entries.some(e => e.cookedAt)).toBe(true);
+    expect(entries.some(e => !e.cookedAt)).toBe(true);
+    // Free text is a first-class answer, so is a recipe, so is a leftover.
+    expect(entries.some(e => e.recipeId)).toBe(true);
+    expect(entries.some(e => !e.recipeId && !e.leftoverId)).toBe(true);
+    expect(entries.some(e => e.leftoverId)).toBe(true);
+    expect(entries.some(e => e.recipeScale !== 1)).toBe(true);
+    expect(entries.some(e => e.recipeChoices.length > 0)).toBe(true);
+    // Every slot, and two things on one of them.
+    ['breakfast', 'lunch', 'dinner', 'snack'].forEach(slot => {
+      expect(entries.some(e => e.slot === slot)).toBe(true);
+    });
+    const perSlot = new Map<string, number>();
+    entries.forEach(e => {
+      const key = `${e.date}|${e.slot}`;
+      perSlot.set(key, (perSlot.get(key) ?? 0) + 1);
+    });
+    expect(Math.max(...perSlot.values())).toBeGreaterThan(1);
+    // "Added to list on X" on the week header.
+    expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a fridge covering every freshness state and both endings', () => {
+    const { leftovers } = useLeftoverStore.getState();
+    const live = leftovers.filter(isLiveLeftover);
+
+    expect(new Set(live.map(l => freshnessOf(l)))).toEqual(
+      new Set(['fresh', 'soon', 'due', 'over'])
+    );
+    // Logged off a cooked meal, and logged by hand with no recipe behind it.
+    expect(live.some(l => l.recipeId && l.sourceEntryId)).toBe(true);
+    expect(live.some(l => !l.recipeId)).toBe(true);
+    // "We ate it" and "it went off" are the two things the feature tells apart.
+    expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
+    expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
   });
 });

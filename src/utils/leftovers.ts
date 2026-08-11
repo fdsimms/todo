@@ -370,6 +370,26 @@ export function mealTitleForLeftover(leftover: Leftover, now: Date = new Date())
 }
 
 /**
+ * Whether putting this container on `dayKey` lands it after the day it should
+ * have been eaten by.
+ *
+ * A plain day-key comparison, which is all it can be: both sides are
+ * `YYYY-MM-DD` local day keys (see MealPlanEntry.date and Leftover.keepUntil),
+ * so they sort lexically, and no clock is read at all — the question is about
+ * two dates the user picked, not about now.
+ *
+ * **It informs, it never refuses.** Planning the chilli for Saturday when it's
+ * marked for Wednesday is a fair thing to want — it may be going in the
+ * freezer, or the keep-for was a guess — so this only ever changes what a drop
+ * *says* it will do (see LeftoverDragCard). Refusing it, or raising a confirm,
+ * would put a dialog between the fridge and the week for the one gesture that
+ * exists to remove the steps between them.
+ */
+export function isPlannedPastKeepUntil(leftover: Leftover, dayKey: string): boolean {
+  return dayKey > leftover.keepUntil;
+}
+
+/**
  * The instant before which a *closed-out* leftover is old enough to purge.
  *
  * An instant rather than a day key because `finishedAt` is one — the closing

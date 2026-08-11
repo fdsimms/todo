@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,10 +25,23 @@ import { MealReplaceItemSheet, type MealReplacement } from '../components/MealRe
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePlanMeal } from '../hooks/usePlanMeal';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { LeftoversCard } from '../components/LeftoversCard';
+import {
+  LeftoverDragCard,
+  LeftoversCard,
+  type LeftoverDragHandlers,
+} from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
@@ -37,7 +50,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
@@ -70,6 +83,68 @@ import {
 } from '../utils/mealPlan';
 
 /**
+ * Tints a day section while a drag is aimed at it — the same "arm on the way
+ * in, ease out on the way off" treatment `GroupDropTarget` gives a stack, but
+ * flush against this screen's own card rather than traced off
+ * `TaskGroupTray`'s margins, since a day section carries no tray of its own to
+ * match.
+ */
+function DayDropHighlight({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const colors = useColors();
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: active ? 1 : 0,
+      duration: active ? animation.duration.fast : animation.duration.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [active, progress]);
+
+  return (
+    <View style={dropHighlightStyles.wrap}>
+      {children}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          dropHighlightStyles.highlight,
+          { borderColor: colors.accent, backgroundColor: colors.accentSubtle, opacity: progress },
+        ]}
+      />
+    </View>
+  );
+}
+
+// Static — colors are applied inline above, since this wraps a section that
+// isn't itself theme-dependent in shape.
+const dropHighlightStyles = StyleSheet.create({
+  wrap: { position: 'relative' },
+  highlight: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.md,
+    borderWidth: border.md,
+  },
+});
+
+// A day section, lit up while a container dragged out of the fridge is over
+// it. Reads the drag intent through the channel (not screen state) for the
+// same reason TodayScreen's GroupDropTargetRow does — the target changes
+// several times a second while the finger moves, and re-rendering the whole
+// day list on every sample is what that channel exists to avoid.
+function DayDropTargetRow({
+  channel,
+  dayKey,
+  children,
+}: {
+  channel: FabIntentChannel;
+  dayKey: string;
+  children: React.ReactNode;
+}) {
+  const aimed = useFabIntentSelector(channel, intent => intent?.kind === 'day' && intent.dayKey === dayKey);
+  return <DayDropHighlight active={aimed}>{children}</DayDropHighlight>;
+}
+
+/**
  * The week plan.
  *
  * **Seven vertical day sections, not a horizontal week strip.** At 390pt a
@@ -80,14 +155,22 @@ import {
  *
  * **Each day has its own add button, and there is no floating one.** Planning
  * a meal for a specific day used to mean dragging the screen's FAB onto that
- * day's band (#1092 removed the per-day button in favour of it). That gesture
- * had no resting affordance at all — its only explanation was a `dragHint`
- * that appeared once a drag was already under way — so the one route into the
- * feature was invisible until you guessed it, and a plain tap on the button
- * could only ever plan today. The + now sits in each day's header, where it
- * costs no vertical space and is in the same place whether or not the day has
- * anything in it. The whole drag apparatus went with it: drop zones, the day
- * highlight, the autoscroll controller, the scroll-disable-while-dragging flag.
+ * day's band (#1092 removed the per-day button in favour of it, this reverses
+ * #1092). That gesture had no resting affordance at all — its only explanation
+ * was a `dragHint` that appeared once a drag was already under way — so the
+ * one route into the feature was invisible until you guessed it, and a plain
+ * tap on the button could only ever plan today. The + now sits in each day's
+ * header, where it costs no vertical space and is in the same place whether or
+ * not the day has anything in it.
+ *
+ * **The button's own drag is gone, but the day drop zones aren't.** Dragging a
+ * container out of the fridge onto a day (see the "Dragging a container..."
+ * block below) answers the same question the button's drag used to — which
+ * day — so it reuses that infrastructure wholesale: `FabDropZone` registers
+ * each day's band once in `renderDay`, `DayDropTargetRow`/`DayDropHighlight`
+ * above light one up, and the autoscroll controller still runs so a card
+ * lifted from above Monday can reach Sunday. Only the button-specific pieces
+ * left with the button: `fabDragging`, the cancel well, `dragHint`.
  *
  * **No drag *between* days either.** Moving a planned meal is a row action
  * opening a compact 7-day chip row plus an "Another date…" escape (see
@@ -106,6 +189,9 @@ import {
  * found would be too old to be "last week" in any useful sense.
  */
 const COPY_LOOKBACK_WEEKS = 4;
+
+/** How far a lifted fridge row swells. Deliberately SortableList's LIFT_SCALE. */
+const DRAG_LIFT_SCALE = 1.03;
 
 export function MealPlanScreen() {
   const insets = useSafeAreaInsets();
@@ -240,6 +326,151 @@ export function MealPlanScreen() {
   // button; null closes the sheet.
   const [planningLeftover, setPlanningLeftover] = useState<Leftover | null>(null);
   const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
+
+  // ——— Day drop zones ——————————————————————————————————————————————
+  //
+  // Registers each day's band as a drop target (see renderDay) and tracks
+  // which one a finger is currently over. Originally served the add button's
+  // own drag too; the button is gone (see the doc comment above), but a
+  // container dragged out of the fridge still needs to know which day it's
+  // over, so this stays as the one piece of hit-testing and the one set of
+  // highlights.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  // Lets a drag autoscroll the day list once the finger reaches either end —
+  // FlatList doesn't expose the DragScroller contract itself, so it's read off
+  // a plain scroll listener the same way ReorderableList's own does.
+  const scrollControl = useRef<DragScroller | null>(null);
+  const flatListRef = useRef<FlatList<Date>>(null);
+  const scrollOffsetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  useEffect(() => {
+    scrollControl.current = {
+      getOffset: () => scrollOffsetRef.current,
+      getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
+      scrollToOffset: (y: number) => {
+        scrollOffsetRef.current = y;
+        flatListRef.current?.scrollToOffset({ offset: y, animated: false });
+      },
+    };
+  }, []);
+
+  // ——— Dragging a container out of the fridge onto a day ————————————————
+  //
+  // The card's calendar button opens PlanMealSheet's day chips; this is the
+  // same question answered by pointing at the week that is already on screen
+  // underneath it. It reuses the add button's drop zones wholesale — the day
+  // bands are registered once (see renderDay) and answer both gestures, so
+  // there is one piece of hit-testing here and one set of highlights, and a
+  // container drop lands on exactly the day a new meal would.
+  //
+  // What it does NOT reuse is the button's cancel well: dropping a container
+  // anywhere that isn't a day already means "nothing happened" (there is no
+  // sheet it would otherwise open), so `plain` is the way out and the corner
+  // needs no second meaning.
+  const [fridgeDrag, setFridgeDrag] = useState<{ leftover: Leftover; top: number } | null>(null);
+  // Whether a finger is still on a container, which is *not* the same question
+  // as whether a card is on screen: the card outlives the gesture by the length
+  // of its spring home, and the week has to be scrollable again the moment the
+  // finger lifts rather than a third of a second later.
+  const [fridgeDragging, setFridgeDragging] = useState(false);
+  // The same container, for the handlers: `onEnd` fires from a responder that
+  // was created before this render, and the state above is what draws the card
+  // rather than what the drop reads.
+  const draggedLeftoverRef = useRef<Leftover | null>(null);
+  const ghostX = useRef(new Animated.Value(0)).current;
+  const ghostY = useRef(new Animated.Value(0)).current;
+  const ghostOpacity = useRef(new Animated.Value(1)).current;
+  // Bumped per drag, so a settle animation left over from the previous one
+  // can't clear the card of the drag that has already replaced it.
+  const ghostRunRef = useRef(0);
+  // The layer the floating card is positioned inside. Measured rather than
+  // assumed: it is a child of a container that carries the top safe-area
+  // inset as padding, and an absolutely-positioned child is laid out from the
+  // padding edge — so its own window origin is the only honest thing to
+  // subtract a row's measured band from.
+  const dragLayerRef = useRef<View | null>(null);
+  const dragLayerTopRef = useRef(0);
+
+  /**
+   * Puts the floating card back where it was lifted from and fades it out.
+   *
+   * The same ending whether the drop landed or not, and deliberately so: the
+   * container does not leave the fridge either way (see Leftover.finishedAt),
+   * so a card that flew off to Thursday would be describing a move that didn't
+   * happen. What says the drop landed is the meal row appearing on the day.
+   */
+  const settleFridgeDrag = () => {
+    const run = ghostRunRef.current;
+    Animated.parallel([
+      Animated.spring(ghostX, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(ghostY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.timing(ghostOpacity, {
+        toValue: 0, duration: animation.duration.normal, useNativeDriver: true,
+      }),
+    ]).start(() => {
+      if (ghostRunRef.current === run) setFridgeDrag(null);
+    });
+  };
+
+  /**
+   * What a release over the week means. Dinner, for the same reason the
+   * picker defaults to it — a week plan is mostly about dinners, and a drop is
+   * a one-gesture decision with nowhere to say otherwise. The row's calendar
+   * button still opens the sheet for anyone who wants lunch.
+   *
+   * `planMeal` registers its own undo, so a mis-drop is a shake away.
+   */
+  const planLeftoverOnDrop = (leftover: Leftover, intent: FabDropIntent) => {
+    // Released clear of every day: the drag is the whole of what happened, and
+    // the card springing home has already said so.
+    if (intent.kind !== 'day') return;
+    animateLayout();
+    planMeal({
+      date: intent.dayKey,
+      slot: 'dinner',
+      leftoverId: leftover.id,
+      title: mealTitleForLeftover(leftover),
+    });
+    haptics.success();
+  };
+
+  const fridgeDragHandlers: LeftoverDragHandlers = {
+    onStart: (leftover, frame) => {
+      ghostRunRef.current += 1;
+      ghostX.setValue(0);
+      ghostY.setValue(0);
+      ghostOpacity.setValue(1);
+      draggedLeftoverRef.current = leftover;
+      setFridgeDragging(true);
+      setFridgeDrag({ leftover, top: frame.top - dragLayerTopRef.current });
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, translation) => {
+      ghostX.setValue(translation.x);
+      ghostY.setValue(translation.y);
+      // No `home` argument: with no corner to come back to, every sample is
+      // "out over the list", which is also the only state that autoscrolls —
+      // and autoscroll is what puts Sunday within reach of a card lifted from
+      // above Monday.
+      dropZonesRef.current?.moveTo(pageY);
+    },
+    onEnd: pageY => {
+      const leftover = draggedLeftoverRef.current;
+      draggedLeftoverRef.current = null;
+      setFridgeDragging(false);
+      const intent = dropZonesRef.current?.end(pageY) ?? { kind: 'plain' as const };
+      settleFridgeDrag();
+      if (leftover) planLeftoverOnDrop(leftover, intent);
+    },
+    onCancel: () => {
+      draggedLeftoverRef.current = null;
+      setFridgeDragging(false);
+      dropZonesRef.current?.cancel();
+      settleFridgeDrag();
+    },
+  };
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -490,68 +721,75 @@ export function MealPlanScreen() {
     const collapsed = collapsedDays.has(key);
     const weekdayName = format(day, 'EEEE');
     const dayLabel = format(day, 'EEEE d MMMM');
+    // Whole-band target: any drop inside this day's zone means "plan a meal
+    // here", so there's no anchor/before split to carry, unlike a task row.
+    const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
     return (
-      <View style={styles.section}>
-        {/*
-          Every day carries its own add button, in its header rather than under
-          its meals. The header is a row that exists whether or not the day has
-          anything in it, so the button costs no vertical space and sits in the
-          same place on every day — which is what lets an empty day stay one
-          line tall (#1374) while still being directly plannable.
+      <FabDropZone zone={zone}>
+        <DayDropTargetRow channel={fabIntentChannel} dayKey={key}>
+          <View style={styles.section}>
+            {/*
+              Every day carries its own add button, in its header rather than
+              under its meals. The header is a row that exists whether or not
+              the day has anything in it, so the button costs no vertical
+              space and sits in the same place on every day — which is what
+              lets an empty day stay one line tall (#1374) while still being
+              directly plannable.
 
-          A sibling of the collapse toggle rather than a child of it: two nested
-          touchables resolve fine, but "the whole header collapses except this
-          corner of it" is a rule worth expressing in the tree rather than
-          relying on hit resolution.
-        */}
-        <View style={styles.dayHeaderRow}>
-          <TouchableOpacity
-            style={styles.dayHeader}
-            onPress={() => toggleDayCollapse(key)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
-            accessibilityState={{ expanded: !collapsed }}
-          >
-            <View style={styles.dayHeaderLeft}>
-              <Text style={[styles.dayName, today && styles.dayNameToday]}>
-                {weekdayName}
-              </Text>
-              {collapsed && dayEntries.length > 0 && (
-                <Text style={styles.dayCount}>({dayEntries.length})</Text>
+              A sibling of the collapse toggle rather than a child of it: two
+              nested touchables resolve fine, but "the whole header collapses
+              except this corner of it" is a rule worth expressing in the tree
+              rather than relying on hit resolution.
+            */}
+            <View style={styles.dayHeaderRow}>
+              <TouchableOpacity
+                style={styles.dayHeader}
+                onPress={() => toggleDayCollapse(key)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
+                accessibilityState={{ expanded: !collapsed }}
+              >
+                <View style={styles.dayHeaderLeft}>
+                  <Text style={[styles.dayName, today && styles.dayNameToday]}>
+                    {weekdayName}
+                  </Text>
+                  {collapsed && dayEntries.length > 0 && (
+                    <Text style={styles.dayCount}>({dayEntries.length})</Text>
+                  )}
+                  <Ionicons
+                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                    size={iconSize.xs}
+                    color={colors.textTertiary}
+                  />
+                </View>
+                <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+              </TouchableOpacity>
+              {!selectionMode && (
+                <TouchableOpacity
+                  style={styles.dayAdd}
+                  onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                >
+                  <Ionicons name="add" size={iconSize.md} color={colors.accent} />
+                </TouchableOpacity>
               )}
-              <Ionicons
-                name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                size={iconSize.xs}
-                color={colors.textTertiary}
-              />
             </View>
-            <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
-          </TouchableOpacity>
-          {!selectionMode && (
-            <TouchableOpacity
-              style={styles.dayAdd}
-              onPress={() => { haptics.tap(); setPlanningDay(key); }}
-              activeOpacity={interaction.activeOpacity}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              accessibilityRole="button"
-              accessibilityLabel={`Plan a meal on ${dayLabel}`}
-            >
-              <Ionicons name="add" size={iconSize.md} color={colors.accent} />
-            </TouchableOpacity>
-          )}
-        </View>
 
             {/*
               An empty day is its header and the band under it, and nothing
-              else. It used to carry "No meals planned yet" — plain status text
-              since #1092 took the per-day add button away — which cost about
-              22pt a day for a sentence repeated up to seven times down one
-              screen, and on a normal week (three or four dinners planned) that
-              was most of what pushed the weekend below the fold (#1374). The
-              band stays the size it is because it is also the drop target for
-              the add button, and the week-level hint above says the thing the
-              seven copies were each saying badly.
+              else. It used to carry "No meals planned yet" — plain status
+              text since #1092 took the per-day add button away — which cost
+              about 22pt a day for a sentence repeated up to seven times down
+              one screen, and on a normal week (three or four dinners planned)
+              that was most of what pushed the weekend below the fold (#1374).
+              The band stays the size it is because it is also the drop
+              target for a container dragged out of the fridge, and the
+              week-level hint above says the thing the seven copies were each
+              saying badly.
             */}
             {!collapsed && dayEntries.length > 0 && (
               (
@@ -579,7 +817,9 @@ export function MealPlanScreen() {
                 </View>
               )
             )}
-      </View>
+          </View>
+        </DayDropTargetRow>
+      </FabDropZone>
     );
     // `leftovers` is not referenced in the JSX above and still belongs here:
     // the row's cooked toggle calls setCooked, which reads the fridge to
@@ -587,7 +827,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, selectionMode, selectedIds, toggleSelection, leftovers, describeEntryChoices]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, leftovers, describeEntryChoices]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -734,101 +974,154 @@ export function MealPlanScreen() {
       />
       <GroceriesHubPills active="MealPlan" />
 
-  <FlatList
-      data={days}
-      keyExtractor={d => dayKeyOf(d)}
-      renderItem={renderDay}
-      contentContainerStyle={styles.list}
-      // Hidden while selecting: both are shortcuts off the week (into the
-      // leftover sheet, into the suggestion sheet) and opening one out
-      // from under an in-progress selection would lose it — same restraint
-      // RecipesScreen's own list header takes with its "Cook again" shelf.
-      ListHeaderComponent={
-        selectionMode ? null : (
-          <>
-            {/* Above the week rather than beside it: the fridge is what should
-                be eaten before anything new is planned, and it renders nothing
-                at all when empty (see LeftoversCard). */}
-            <LeftoversCard
-              leftovers={leftovers}
-              onPress={l => setEditingLeftoverId(l.id)}
-              onPlan={l => setPlanningLeftover(l)}
-              onAdd={() => setLoggingLeftover({})}
-              onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
-            />
-            {/*
-              The two things you do to a *week* rather than to a meal, in
-              one row above it. "Add week to list" used to live in the
-              header's `right` slot — the only use of it in the app — beside
-              four icon buttons and the longest subtitle in the app, which
-              is what made that header the most crowded one here (#1373).
-              It belongs next to "Suggest meals" anyway: same object, same
-              weight, and neither is a per-meal action.
-            */}
-            {/*
-              Said once for the week rather than once per day. A brand-new
-              user's first sight of this screen is otherwise seven bare day
-              headers, and this is also the only resting place anything
-              mentions the add button's drag (its own `dragHint` only
-              appears once a drag is already under way — #1369).
-            */}
-            {entries.length === 0 && (
-              <Text style={styles.emptyWeekHint}>
-                {copySourceKey
-                  ? 'Nothing planned this week. Copy the week below, or tap + on any day.'
-                  : 'Nothing planned this week. Tap + on any day to plan a meal.'}
-              </Text>
-            )}
-            {/* Reads as the answer to the hint directly above it, and
-                disappears the moment the week has anything — see
-                copySourceKey. */}
-            {!!copySourceKey && (
-              <View style={styles.weekActions}>
-                <InlineAction
-                  label={`Copy ${copySourceLabel}`}
-                  icon="copy-outline"
-                  onPress={handleCopyWeek}
-                  accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={days}
+          keyExtractor={d => dayKeyOf(d)}
+          renderItem={renderDay}
+          contentContainerStyle={styles.list}
+          // The user can't scroll during a fridge-row drag (its responder has
+          // the touch); the drag scrolls it instead, through the control
+          // wired up above — that responder is a *descendant* of this list,
+          // so the native scroll would otherwise take the touch on the first
+          // finger move (same reason SortableList's callers switch it off).
+          scrollEnabled={!fridgeDragging}
+          onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
+          onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
+          onContentSizeChange={(_w, h) => { contentHeightRef.current = h; }}
+          // Hidden while selecting: both are shortcuts off the week (into the
+          // leftover sheet, into the suggestion sheet) and opening one out
+          // from under an in-progress selection would lose it — same restraint
+          // RecipesScreen's own list header takes with its "Cook again" shelf.
+          ListHeaderComponent={
+            selectionMode ? null : (
+              <>
+                {/* Above the week rather than beside it: the fridge is what should
+                    be eaten before anything new is planned, and it renders nothing
+                    at all when empty (see LeftoversCard). */}
+                <LeftoversCard
+                  leftovers={leftovers}
+                  onPress={l => setEditingLeftoverId(l.id)}
+                  onPlan={l => setPlanningLeftover(l)}
+                  onAdd={() => setLoggingLeftover({})}
+                  onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
+                  drag={fridgeDragHandlers}
                 />
-              </View>
-            )}
-            {(hasPlannableEntries || canSuggestMeals) && (
-              <View style={styles.weekActions}>
-                {hasPlannableEntries && (
-                  <InlineAction
-                    label="Add week to list"
-                    icon="cart-outline"
-                    onPress={() => { haptics.tap(); setAddingToList(true); }}
-                    accessibilityLabel="Add this week's ingredients to the grocery list"
-                  />
+                {/*
+                  The two things you do to a *week* rather than to a meal, in
+                  one row above it. "Add week to list" used to live in the
+                  header's `right` slot — the only use of it in the app — beside
+                  four icon buttons and the longest subtitle in the app, which
+                  is what made that header the most crowded one here (#1373).
+                  It belongs next to "Suggest meals" anyway: same object, same
+                  weight, and neither is a per-meal action.
+                */}
+                {/*
+                  Said once for the week rather than once per day. A brand-new
+                  user's first sight of this screen is otherwise seven bare day
+                  headers.
+                */}
+                {entries.length === 0 && (
+                  <Text style={styles.emptyWeekHint}>
+                    {copySourceKey
+                      ? 'Nothing planned this week. Copy the week below, or tap + on any day.'
+                      : 'Nothing planned this week. Tap + on any day to plan a meal.'}
+                  </Text>
                 )}
-                {canSuggestMeals && (
-                  <InlineAction
-                    label="Suggest meals"
-                    icon="restaurant-outline"
-                    variant="neutral"
-                    onPress={() => {
-                      haptics.tap();
-                      setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
-                    }}
-                    accessibilityLabel="Suggest meals made from what's in your grocery catalog"
-                  />
+                {/* Reads as the answer to the hint directly above it, and
+                    disappears the moment the week has anything — see
+                    copySourceKey. */}
+                {!!copySourceKey && (
+                  <View style={styles.weekActions}>
+                    <InlineAction
+                      label={`Copy ${copySourceLabel}`}
+                      icon="copy-outline"
+                      onPress={handleCopyWeek}
+                      accessibilityLabel={`Copy the meals from ${copySourceLabel} onto this week`}
+                    />
+                  </View>
                 )}
-              </View>
-            )}
-          </>
-        )
-      }
-      ListFooterComponent={
-        <View
-          style={{
-            height: selectionMode
-              ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-              : tabBarHeight + spacing.xl,
-          }}
+                {(hasPlannableEntries || canSuggestMeals) && (
+                  <View style={styles.weekActions}>
+                    {hasPlannableEntries && (
+                      <InlineAction
+                        label="Add week to list"
+                        icon="cart-outline"
+                        onPress={() => { haptics.tap(); setAddingToList(true); }}
+                        accessibilityLabel="Add this week's ingredients to the grocery list"
+                      />
+                    )}
+                    {canSuggestMeals && (
+                      <InlineAction
+                        label="Suggest meals"
+                        icon="restaurant-outline"
+                        variant="neutral"
+                        onPress={() => {
+                          haptics.tap();
+                          setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
+                        }}
+                        accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                      />
+                    )}
+                  </View>
+                )}
+              </>
+            )
+          }
+          ListFooterComponent={
+            <View
+              style={{
+                height: selectionMode
+                  ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
+                  : tabBarHeight + spacing.xl,
+              }}
+            />
+          }
         />
-      }
-      />
+      </FabDropZoneProvider>
+
+      {/*
+        The container in flight, over everything else on the screen. Always
+        mounted so it can measure its own origin before a drag needs it (see
+        dragLayerTopRef), and inert: the finger is being tracked by the fridge
+        card's responder, and a layer that could take a touch would end the
+        drag it exists to draw.
+      */}
+      <View
+        ref={dragLayerRef}
+        style={styles.dragLayer}
+        pointerEvents="none"
+        onLayout={() => dragLayerRef.current?.measureInWindow?.((_x, y) => {
+          if (Number.isFinite(y)) dragLayerTopRef.current = y;
+        })}
+      >
+        {fridgeDrag && (
+          <Animated.View
+            style={[
+              styles.dragCard,
+              {
+                top: fridgeDrag.top,
+                opacity: ghostOpacity,
+                transform: [
+                  { translateX: ghostX },
+                  { translateY: ghostY },
+                  // The same lift the row drags elsewhere in the app use, so
+                  // one gesture doesn't pick things up further than another.
+                  { scale: DRAG_LIFT_SCALE },
+                ],
+              },
+            ]}
+          >
+            <LeftoverDragCard leftover={fridgeDrag.leftover} channel={fabIntentChannel} />
+          </Animated.View>
+        )}
+      </View>
 
       {selectionMode && (
         <ListBulkBar
@@ -1152,6 +1445,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
+  },
+  // Above the list and above the add button (zIndex 20), so nothing the
+  // dragged container passes over is drawn on top of it.
+  dragLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 30,
+  },
+  // Inset to match the fridge card's own margins, so the copy starts exactly
+  // over the row it was lifted from.
+  dragCard: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
   },
   weekActions: {
     flexDirection: 'row',

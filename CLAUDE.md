@@ -84,6 +84,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | what the widget shows | `src/utils/widgetSync.ts` → `modules/todo-widget-bridge` |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) |
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` |
@@ -719,6 +720,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
   `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
   purpose and stays Ionicons.
+- `PillGroup` (`src/components/PillGroup.tsx`) — a wrapping grid of pills for picking from an
+  open-ended set (aisles, stores). Past `DEFAULT_PILL_LIMIT` (8) it caps itself behind one
+  "N more" and grows a field that both filters the set and adds to it, the way `ListBulkBar`'s
+  category field does. Selected and `pinned` pills are exempt from the cap — the current value
+  and the option meaning *no choice* ("No store", "Usually Produce") are never buried — and
+  **order is never re-ranked**, since `aisleOrder` is the user's own walk round the shop.
+  Creation is one control in two states: below the cap a "+ New {noun}" opening an inline input,
+  above it the `Create "…"` the filter's own text implies. The rule and its tests are in
+  `src/utils/pillOverflow.ts`; the component owns only layout. Reach for it instead of mapping a
+  list straight into `<TouchableOpacity>` pills whenever the set has no ceiling — that's what
+  had the grocery item sheet rendering ~30 pills across two grids, pushing the name/quantity
+  fields it exists to edit off the first screen.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills. **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
@@ -798,4 +811,15 @@ inset is what just went away) — that asymmetry is the whole design, don't coll
 - **Booleans in SQLite**: stored as `0`/`1` integers, converted in `rowToTask()`.
 - **JSON fields in SQLite**: `tags`, `recurrenceDays`, `chainItems` (stored in the `cycle_items` column — see Chains above), `timeSegments` are JSON-stringified arrays. `timeSegments` has a legacy code path in `parseTimeSegments()` that handles a plain string (old format).
 - **Subtasks**: tasks with `parentId !== null`. Most store selectors filter with `!t.parentId` to exclude them from top-level lists.
+- **Demo data**: when a change adds a user-facing capability, seed one instance of it in
+  `src/utils/demoSeed.ts` in the same PR, and assert it in `useDemoStore.test.ts`. Demo mode swaps
+  the whole database for a throwaway one (`useDemoStore`), so it's what someone handed the phone
+  actually sees — **a feature with no row in the seed reads as a feature the app doesn't have**,
+  not as one that happens to be unused. That's especially true of the capabilities that are
+  invisible until something uses them: a composed recipe, an either/or choice group, a per-store
+  link, a container in the fridge, a scaled meal. Everything goes through the normal store actions
+  rather than raw db inserts, so a seeded row can't drift from the type; the corollary is that a
+  field with no store action behind it (a recipe's logged cook minutes, a `lastPurchasedAt`) can't
+  be seeded, and that's the honest reason to leave one out — not "it seemed minor". Skip it for
+  changes with nothing to show (refactors, tests, tooling).
 - **Patch notes**: when a change in this PR is user-facing, add a new fragment file to `src/patchNotes/entries/` before opening the PR — one JSON file per entry, `{ "message": "...", "date": "YYYY-MM-DD" }`, named after the change (e.g. `icon-action-buttons.json`). Keep the message short and written for someone who isn't reading the diff. Don't edit `src/utils/patchNotes.ts` or `src/utils/patchNotesData.ts` directly (generated, gitignored). Skip it for internal-only changes (refactors, tests, CI, tooling).
