@@ -25,7 +25,6 @@ import { MealReplaceItemSheet, type MealReplacement } from '../components/MealRe
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { usePlanMeal } from '../hooks/usePlanMeal';
-import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -75,7 +74,6 @@ import {
 import {
   dayKeyRange,
   daysWithoutMeal,
-  defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
@@ -85,11 +83,11 @@ import {
 } from '../utils/mealPlan';
 
 /**
- * Tints a day section while the add-button drag is aimed at it — the same
- * "arm on the way in, ease out on the way off" treatment `GroupDropTarget`
- * gives a stack, but flush against this screen's own card rather than traced
- * off `TaskGroupTray`'s margins, since a day section carries no tray of its
- * own to match.
+ * Tints a day section while a drag is aimed at it — the same "arm on the way
+ * in, ease out on the way off" treatment `GroupDropTarget` gives a stack, but
+ * flush against this screen's own card rather than traced off
+ * `TaskGroupTray`'s margins, since a day section carries no tray of its own to
+ * match.
  */
 function DayDropHighlight({ active, children }: { active: boolean; children: React.ReactNode }) {
   const colors = useColors();
@@ -128,11 +126,11 @@ const dropHighlightStyles = StyleSheet.create({
   },
 });
 
-// A day section, lit up while the add button is being dragged over it. Reads
-// the drag intent through the channel (not screen state) for the same reason
-// TodayScreen's GroupDropTargetRow does — the target changes several times a
-// second while the finger moves, and re-rendering the whole day list on every
-// sample is what that channel exists to avoid.
+// A day section, lit up while a container dragged out of the fridge is over
+// it. Reads the drag intent through the channel (not screen state) for the
+// same reason TodayScreen's GroupDropTargetRow does — the target changes
+// several times a second while the finger moves, and re-rendering the whole
+// day list on every sample is what that channel exists to avoid.
 function DayDropTargetRow({
   channel,
   dayKey,
@@ -146,21 +144,6 @@ function DayDropTargetRow({
   return <DayDropHighlight active={aimed}>{children}</DayDropHighlight>;
 }
 
-// The add button, naming what a release right now would do.
-function AddMealFabWithDropLabel({
-  channel,
-  ...props
-}: {
-  channel: FabIntentChannel;
-} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
-  const label = useFabIntentSelector(channel, intent => {
-    if (intent?.kind === 'cancel') return 'Cancel';
-    if (intent?.kind !== 'day') return null;
-    return `Plan a meal on ${intent.dayLabel}`;
-  });
-  return <Fab {...props} dragLabel={label} />;
-}
-
 /**
  * The week plan.
  *
@@ -170,14 +153,30 @@ function AddMealFabWithDropLabel({
  * carries content. Content under a day already has a settled treatment in this
  * app and it's vertical.
  *
- * **No drag *between* days in this increment.** Moving a planned meal is a row
- * action opening a compact 7-day chip row (see MealEntrySheet); cross-section
- * drag has needed bespoke math twice here and the one built for Today's
- * category headers never lined up with the finger and was deleted along with
- * its helpers. Dragging the add button *onto* a day to plan a new meal there
- * is a different gesture — the same one Projects/Templates/Grocery already
- * use to place a new row — and doesn't reopen that question: it never
- * reorders anything, it only names which day's `planningDay` opens.
+ * **Each day has its own add button, and there is no floating one.** Planning
+ * a meal for a specific day used to mean dragging the screen's FAB onto that
+ * day's band (#1092 removed the per-day button in favour of it, this reverses
+ * #1092). That gesture had no resting affordance at all — its only explanation
+ * was a `dragHint` that appeared once a drag was already under way — so the
+ * one route into the feature was invisible until you guessed it, and a plain
+ * tap on the button could only ever plan today. The + now sits in each day's
+ * header, where it costs no vertical space and is in the same place whether or
+ * not the day has anything in it.
+ *
+ * **The button's own drag is gone, but the day drop zones aren't.** Dragging a
+ * container out of the fridge onto a day (see the "Dragging a container..."
+ * block below) answers the same question the button's drag used to — which
+ * day — so it reuses that infrastructure wholesale: `FabDropZone` registers
+ * each day's band once in `renderDay`, `DayDropTargetRow`/`DayDropHighlight`
+ * above light one up, and the autoscroll controller still runs so a card
+ * lifted from above Monday can reach Sunday. Only the button-specific pieces
+ * left with the button: `fabDragging`, the cancel well, `dragHint`.
+ *
+ * **No drag *between* days either.** Moving a planned meal is a row action
+ * opening a compact 7-day chip row plus an "Another date…" escape (see
+ * MealEntrySheet); cross-section drag has needed bespoke math twice here and
+ * the one built for Today's category headers never lined up with the finger
+ * and was deleted along with its helpers.
  *
  * The store is loaded a week at a time rather than wholesale, and that matters
  * more here than it looks: `enableScreens(false)` makes `freezeOnBlur` inert
@@ -308,70 +307,6 @@ export function MealPlanScreen() {
     });
   };
 
-  // ——— Dragging the add button onto a day ————————————————————————————
-  //
-  // Same gesture as Projects'/Templates'/Grocery's add-button drag, over a
-  // much flatter shape than any of theirs: seven day bands, no ordering
-  // within one, no category grouping. Each day is a `day` zone (fabDrop.ts)
-  // and a drop anywhere in its band means "plan a meal on this day" — there's
-  // no midpoint to split, the same "whole band" rule a stack row already gets.
-  const dropZonesRef = useRef<FabDropZonesHandle>(null);
-  const [fabDragging, setFabDragging] = useState(false);
-  const fabIntentChannel = useFabIntentChannel();
-  // Lets the drag autoscroll the day list once the finger reaches either end —
-  // FlatList doesn't expose the DragScroller contract itself, so it's read off
-  // a plain scroll listener the same way ReorderableList's own does.
-  const scrollControl = useRef<DragScroller | null>(null);
-  const flatListRef = useRef<FlatList<Date>>(null);
-  const scrollOffsetRef = useRef(0);
-  const viewportHeightRef = useRef(0);
-  const contentHeightRef = useRef(0);
-  useEffect(() => {
-    scrollControl.current = {
-      getOffset: () => scrollOffsetRef.current,
-      getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
-      scrollToOffset: (y: number) => {
-        scrollOffsetRef.current = y;
-        flatListRef.current?.scrollToOffset({ offset: y, animated: false });
-      },
-    };
-  }, []);
-
-  const openPlanningForDrop = (intent: FabDropIntent) => {
-    // Dropped back on the button: the drag is the whole of what happened.
-    if (intent.kind === 'cancel') {
-      haptics.tap();
-      return;
-    }
-    const dayKey = intent.kind === 'day' ? intent.dayKey : defaultPlanningDay(days);
-    if (dayKey) setPlanningDay(dayKey);
-  };
-
-  const fabDrag: FabDragHandlers = {
-    onStart: () => {
-      setFabDragging(true);
-      dropZonesRef.current?.begin();
-    },
-    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
-    onEnd: (pageY, home) => {
-      setFabDragging(false);
-      // end()/cancel() publish a null intent themselves, which is what clears
-      // the button's drag label.
-      openPlanningForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
-    },
-    onCancel: () => {
-      setFabDragging(false);
-      dropZonesRef.current?.cancel();
-    },
-  };
-
-  // A plain tap carries no drop target, so it needs its own sane guess —
-  // today when the week on screen has it, otherwise the first day shown.
-  const openPlanningForTap = () => {
-    const dayKey = defaultPlanningDay(days);
-    if (dayKey) setPlanningDay(dayKey);
-  };
-
   // The recipe whose ingredients we're offering to re-add after mark-cooked —
   // null closes RecipeToListSheet, same on/off pattern as `addingToList`.
   // Carries the entry's picks alongside the recipe: you cooked the roast
@@ -391,6 +326,35 @@ export function MealPlanScreen() {
   // button; null closes the sheet.
   const [planningLeftover, setPlanningLeftover] = useState<Leftover | null>(null);
   const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
+
+  // ——— Day drop zones ——————————————————————————————————————————————
+  //
+  // Registers each day's band as a drop target (see renderDay) and tracks
+  // which one a finger is currently over. Originally served the add button's
+  // own drag too; the button is gone (see the doc comment above), but a
+  // container dragged out of the fridge still needs to know which day it's
+  // over, so this stays as the one piece of hit-testing and the one set of
+  // highlights.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const fabIntentChannel = useFabIntentChannel();
+  // Lets a drag autoscroll the day list once the finger reaches either end —
+  // FlatList doesn't expose the DragScroller contract itself, so it's read off
+  // a plain scroll listener the same way ReorderableList's own does.
+  const scrollControl = useRef<DragScroller | null>(null);
+  const flatListRef = useRef<FlatList<Date>>(null);
+  const scrollOffsetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  useEffect(() => {
+    scrollControl.current = {
+      getOffset: () => scrollOffsetRef.current,
+      getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
+      scrollToOffset: (y: number) => {
+        scrollOffsetRef.current = y;
+        flatListRef.current?.scrollToOffset({ offset: y, animated: false });
+      },
+    };
+  }, []);
 
   // ——— Dragging a container out of the fridge onto a day ————————————————
   //
@@ -760,45 +724,72 @@ export function MealPlanScreen() {
     // Whole-band target: any drop inside this day's zone means "plan a meal
     // here", so there's no anchor/before split to carry, unlike a task row.
     const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
-
     return (
       <FabDropZone zone={zone}>
         <DayDropTargetRow channel={fabIntentChannel} dayKey={key}>
           <View style={styles.section}>
-            <TouchableOpacity
-              style={styles.dayHeader}
-              onPress={() => toggleDayCollapse(key)}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
-              accessibilityState={{ expanded: !collapsed }}
-            >
-              <View style={styles.dayHeaderLeft}>
-                <Text style={[styles.dayName, today && styles.dayNameToday]}>
-                  {weekdayName}
-                </Text>
-                {collapsed && dayEntries.length > 0 && (
-                  <Text style={styles.dayCount}>({dayEntries.length})</Text>
-                )}
-                <Ionicons
-                  name={collapsed ? 'chevron-forward' : 'chevron-down'}
-                  size={iconSize.xs}
-                  color={colors.textTertiary}
-                />
-              </View>
-              <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
-            </TouchableOpacity>
+            {/*
+              Every day carries its own add button, in its header rather than
+              under its meals. The header is a row that exists whether or not
+              the day has anything in it, so the button costs no vertical
+              space and sits in the same place on every day — which is what
+              lets an empty day stay one line tall (#1374) while still being
+              directly plannable.
+
+              A sibling of the collapse toggle rather than a child of it: two
+              nested touchables resolve fine, but "the whole header collapses
+              except this corner of it" is a rule worth expressing in the tree
+              rather than relying on hit resolution.
+            */}
+            <View style={styles.dayHeaderRow}>
+              <TouchableOpacity
+                style={styles.dayHeader}
+                onPress={() => toggleDayCollapse(key)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
+                accessibilityState={{ expanded: !collapsed }}
+              >
+                <View style={styles.dayHeaderLeft}>
+                  <Text style={[styles.dayName, today && styles.dayNameToday]}>
+                    {weekdayName}
+                  </Text>
+                  {collapsed && dayEntries.length > 0 && (
+                    <Text style={styles.dayCount}>({dayEntries.length})</Text>
+                  )}
+                  <Ionicons
+                    name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                    size={iconSize.xs}
+                    color={colors.textTertiary}
+                  />
+                </View>
+                <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+              </TouchableOpacity>
+              {!selectionMode && (
+                <TouchableOpacity
+                  style={styles.dayAdd}
+                  onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                  activeOpacity={interaction.activeOpacity}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                >
+                  <Ionicons name="add" size={iconSize.md} color={colors.accent} />
+                </TouchableOpacity>
+              )}
+            </View>
 
             {/*
               An empty day is its header and the band under it, and nothing
-              else. It used to carry "No meals planned yet" — plain status text
-              since #1092 took the per-day add button away — which cost about
-              22pt a day for a sentence repeated up to seven times down one
-              screen, and on a normal week (three or four dinners planned) that
-              was most of what pushed the weekend below the fold (#1374). The
-              band stays the size it is because it is also the drop target for
-              the add button, and the week-level hint above says the thing the
-              seven copies were each saying badly.
+              else. It used to carry "No meals planned yet" — plain status
+              text since #1092 took the per-day add button away — which cost
+              about 22pt a day for a sentence repeated up to seven times down
+              one screen, and on a normal week (three or four dinners planned)
+              that was most of what pushed the weekend below the fold (#1374).
+              The band stays the size it is because it is also the drop
+              target for a container dragged out of the fridge, and the
+              week-level hint above says the thing the seven copies were each
+              saying badly.
             */}
             {!collapsed && dayEntries.length > 0 && (
               (
@@ -994,13 +985,12 @@ export function MealPlanScreen() {
           keyExtractor={d => dayKeyOf(d)}
           renderItem={renderDay}
           contentContainerStyle={styles.list}
-          // The user can't scroll during an add-button drag (the button's
-          // responder has the touch); the drag scrolls it instead, through the
-          // control wired up above. A fridge-row drag has to switch it off
-          // explicitly for the same reason SortableList's callers do — that
-          // responder is a *descendant* of this list, so the native scroll
-          // would otherwise take the touch on the first finger move.
-          scrollEnabled={!fabDragging && !fridgeDragging}
+          // The user can't scroll during a fridge-row drag (its responder has
+          // the touch); the drag scrolls it instead, through the control
+          // wired up above — that responder is a *descendant* of this list,
+          // so the native scroll would otherwise take the touch on the first
+          // finger move (same reason SortableList's callers switch it off).
+          scrollEnabled={!fridgeDragging}
           onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -1035,15 +1025,13 @@ export function MealPlanScreen() {
                 {/*
                   Said once for the week rather than once per day. A brand-new
                   user's first sight of this screen is otherwise seven bare day
-                  headers, and this is also the only resting place anything
-                  mentions the add button's drag (its own `dragHint` only
-                  appears once a drag is already under way — #1369).
+                  headers.
                 */}
                 {entries.length === 0 && (
                   <Text style={styles.emptyWeekHint}>
                     {copySourceKey
-                      ? 'Nothing planned this week. Copy the week below, tap + to plan today, or drag it onto a day.'
-                      : 'Nothing planned this week. Tap + to plan today, or drag it onto a day.'}
+                      ? 'Nothing planned this week. Copy the week below, or tap + on any day.'
+                      : 'Nothing planned this week. Tap + on any day to plan a meal.'}
                   </Text>
                 )}
                 {/* Reads as the answer to the hint directly above it, and
@@ -1091,7 +1079,7 @@ export function MealPlanScreen() {
               style={{
                 height: selectionMode
                   ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
-                  : tabBarHeight + FAB_SIZE + spacing.xl,
+                  : tabBarHeight + spacing.xl,
               }}
             />
           }
@@ -1099,34 +1087,11 @@ export function MealPlanScreen() {
       </FabDropZoneProvider>
 
       {/*
-        Hidden rather than merely disabled while selecting (#1110) — same
-        move RecipesScreen makes for its own add button. It settles the
-        selection-vs-drag conflict CLAUDE.md calls out for this change: with
-        no FAB mounted there's no drag responder to arm, so a selection can't
-        leave the drag armed and a drag can't be started out from under an
-        in-progress selection. The bulk bar takes the button's floating spot
-        instead, and planning a new meal isn't something you're doing
-        mid-selection anyway — same restraint the "Add" header button and the
-        leftovers/suggestions shelf above take.
-      */}
-      {!selectionMode && (
-        <AddMealFabWithDropLabel
-          channel={fabIntentChannel}
-          onPress={openPlanningForTap}
-          accessibilityLabel="Plan a meal"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
-          drag={fabDrag}
-          dragHint="Drag onto a day to plan a meal there, or back to the button to cancel"
-        />
-      )}
-
-      {/*
-        The container in flight, over everything else on the screen — the add
-        button included, since a drag can pass across the corner it sits in.
-        Always mounted so it can measure its own origin before a drag needs it
-        (see dragLayerTopRef), and inert: the finger is being tracked by the
-        fridge card's responder, and a layer that could take a touch would end
-        the drag it exists to draw.
+        The container in flight, over everything else on the screen. Always
+        mounted so it can measure its own origin before a drag needs it (see
+        dragLayerTopRef), and inert: the finger is being tracked by the fridge
+        card's responder, and a layer that could take a touch would end the
+        drag it exists to draw.
       */}
       <View
         ref={dragLayerRef}
@@ -1421,11 +1386,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },
+  dayHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingBottom: spacing.xs,
+  },
   dayHeader: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    paddingBottom: spacing.xs,
+  },
+  // Bare, like the other per-row controls this app added recently (the recipe
+  // rows', the fridge rows'): the day header is quiet type, and a filled pill
+  // here would outweigh the day it belongs to.
+  dayAdd: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   dayHeaderLeft: {
     flexDirection: 'row',

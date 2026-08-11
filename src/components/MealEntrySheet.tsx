@@ -247,7 +247,7 @@ export function MealEntrySheet({
               the meal sits. Only for a meal backed by a recipe — a night that
               just says "leftovers" has no quantities to multiply. */}
           {!!onScale && (
-            <View>
+            <View style={styles.scaleBlock}>
               <Text style={styles.label}>Batch</Text>
               <RecipeScaleChips
                 value={entry?.recipeScale ?? 1}
@@ -255,6 +255,11 @@ export function MealEntrySheet({
                 baseServings={baseServings}
                 baseServingsMax={baseServingsMax}
                 surface="card"
+                // The component carries no inset of its own (two of its three
+                // callers are full-bleed rows), so the card's own 16pt has to
+                // be handed to it — without this its chips and servings row sit
+                // flush to the card edge while every label above them is inset.
+                style={styles.scaleChips}
               />
             </View>
           )}
@@ -571,6 +576,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  scaleBlock: { paddingBottom: spacing.xs },
+  scaleChips: { paddingHorizontal: spacing.md },
   chips: {
     flexDirection: 'row',
     flexWrap: 'wrap',

@@ -445,15 +445,28 @@ export function splitAlternativeNames(name: string): string[] | null {
  * the prep clause: it re-runs the split against the *original* text, since a
  * trailing comma clause sits after where the quantity would have been either
  * way.
+ *
+ * Purpose ("limes for margs") is read last and **only when no comma clause was
+ * taken**, exactly the ordering makeIngredient uses for the same two splits: a
+ * prep clause can legitimately contain "for" ("cheese, plus more for topping"
+ * is one note, not a name plus a purpose), so the purpose split may only ever
+ * look at text no comma has already claimed. Both land in the row's note; the
+ * name is the shelf label, which is what the aisle lexicon and the catalog key
+ * are matched against, so a purpose left in it mints "limes for margs" as a
+ * catalog row nothing you ever buy can match.
  */
 export function resolveGroceryTokens(
   raw: string,
-  rejected: { quantity: string | null; prep: string | null },
+  rejected: { quantity: string | null; prep: string | null; purpose: string | null },
 ): {
   quantity: string | null;
   quantityAccepted: boolean;
   prep: string | null;
   prepAccepted: boolean;
+  purpose: string | null;
+  purposeAccepted: boolean;
+  /** What the split pieces amount to as a row note, or null for nothing to say. */
+  note: string | null;
   name: string;
 } {
   const trimmed = raw.trim();
@@ -463,13 +476,30 @@ export function resolveGroceryTokens(
   const base = quantityAccepted ? afterQty : trimmed;
   const { name: withoutPrep, prep } = splitPrep(base);
   const prepAccepted = !!prep && prep !== rejected.prep;
+  const afterPrep = prepAccepted ? withoutPrep : base;
+
+  const { name: withoutPurpose, purpose } = prepAccepted
+    ? { name: afterPrep, purpose: null }
+    : splitPurpose(afterPrep);
+  const purposeAccepted = !!purpose && purpose !== rejected.purpose;
+
+  const noteParts = [
+    prepAccepted ? prep : null,
+    // Kept with its "for", the way the user typed it and the way the recipe
+    // ingredient list reads it back ("for margs", not "margs") — the word is
+    // what makes the clause a purpose rather than a second name.
+    purposeAccepted ? `for ${purpose}` : null,
+  ].filter(Boolean);
 
   return {
     quantity,
     quantityAccepted,
     prep,
     prepAccepted,
-    name: prepAccepted ? withoutPrep : base,
+    purpose,
+    purposeAccepted,
+    note: noteParts.length > 0 ? noteParts.join(' · ') : null,
+    name: purposeAccepted ? withoutPurpose : afterPrep,
   };
 }
 

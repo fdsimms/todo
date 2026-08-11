@@ -26,6 +26,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { CollapsibleField } from './CollapsibleField';
+import { InlineAction } from './InlineAction';
 import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -37,6 +38,14 @@ interface Props {
   visible: boolean;
   itemId: string | null;
   onClose: () => void;
+  /** Closes the sheet and opens the recipe this item came from. */
+  onOpenRecipe?: (recipeId: string) => void;
+  /**
+   * Whether that recipe is still there. The pointer is a snapshot and doesn't
+   * cascade, so a row can outlive it — in which case the line stays as the
+   * plain caption it always was rather than becoming a button to nowhere.
+   */
+  recipeExists?: (recipeId: string) => boolean;
 }
 
 /**
@@ -45,11 +54,21 @@ interface Props {
  * anywhere in groceries, so deleting a catalog row is behind a confirm rather
  * than on a swipe.
  */
-export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
+export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recipeExists }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const item = useGroceryStore(s => (itemId ? s.items.find(i => i.id === itemId) ?? null : null));
+  const clearChoice = useGroceryStore(s => s.clearChoice);
+  // Named siblings, live ones only — the same read GroceryScreen does for the
+  // row caption, phrased as a sentence here because the sheet has the room.
+  const alternativeNames = useGroceryStore(s => {
+    if (!item?.choiceGroup) return null;
+    const names = s.items
+      .filter(i => i.id !== item.id && i.choiceGroup === item.choiceGroup && i.onList)
+      .map(i => i.name);
+    return names.length > 0 ? names.join(' or ') : null;
+  });
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const renameItem = useGroceryStore(s => s.renameItem);
   const setQuantity = useGroceryStore(s => s.setQuantity);
@@ -313,7 +332,46 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
               Renaming the item doesn't touch it, and there's nothing to
               reassign; it just says why this row exists. */}
           {!!item.sourceRecipeTitle && (
-            <Text style={styles.hint}>From: {item.sourceRecipeTitle}</Text>
+            item.sourceRecipeId && onOpenRecipe && recipeExists?.(item.sourceRecipeId) ? (
+              <TouchableOpacity
+                style={styles.recipeLink}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => onOpenRecipe(item.sourceRecipeId!)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open the recipe ${item.sourceRecipeTitle}`}
+                accessibilityHint="Closes this and opens the recipe"
+              >
+                <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.recipeLinkText} numberOfLines={1}>
+                  recipe: {item.sourceRecipeTitle}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.hint}>recipe: {item.sourceRecipeTitle}</Text>
+            )
+          )}
+          {/* The either/or this row is one option of, and the way out of it.
+              Unlinking is offered here rather than on the row because it's a
+              correction, not a shopping decision — at the shelf you resolve the
+              choice by ticking one (see resolveChoice), and that needs no
+              second control. */}
+          {!!alternativeNames && (
+            <View style={styles.choiceBlock}>
+              <Text style={styles.hint}>
+                Either/or with {alternativeNames}. Tick one at the shop and the
+                rest come off the list.
+              </Text>
+              <InlineAction
+                label="Not an either/or"
+                icon="unlink-outline"
+                variant="neutral"
+                onPress={() => {
+                  haptics.tap();
+                  clearChoice(item.id);
+                }}
+              />
+            </View>
           )}
 
           <Text style={styles.label}>QUANTITY</Text>
@@ -509,6 +567,17 @@ function makeStyles(colors: Colors) {
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
+    choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },
+    // A row rather than bare accent text: this leaves the sheet for another
+    // screen, and the chevron is what says so (same shape EditorRow uses).
+    recipeLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    recipeLinkText: { flex: 1, fontSize: font.sm, color: colors.accent },
     // The three pickers share one card, so they read as a list of settings
     // rather than three floating grids — matching the editors' CollapsibleField
     // cards, whose dividers run full-width for want of an icon column.

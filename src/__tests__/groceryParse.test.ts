@@ -384,7 +384,7 @@ describe('suggestShorterCatalogName', () => {
 // ─── resolveGroceryTokens ────────────────────────────────────────────────────
 
 describe('resolveGroceryTokens', () => {
-  const noneRejected = { quantity: null, prep: null };
+  const noneRejected = { quantity: null, prep: null, purpose: null };
 
   it('accepts both the quantity and the prep clause by default', () => {
     expect(resolveGroceryTokens('1 tsp ginger, minced', noneRejected)).toEqual({
@@ -392,12 +392,15 @@ describe('resolveGroceryTokens', () => {
       quantityAccepted: true,
       prep: 'minced',
       prepAccepted: true,
+      purpose: null,
+      purposeAccepted: false,
+      note: 'minced',
       name: 'ginger',
     });
   });
 
   it('keeps the quantity in the name once its exact value is rejected', () => {
-    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: '1 tsp', prep: null });
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: '1 tsp', prep: null, purpose: null });
     expect(result.quantityAccepted).toBe(false);
     expect(result.prepAccepted).toBe(true);
     expect(result.quantity).toBe('1 tsp');
@@ -405,7 +408,7 @@ describe('resolveGroceryTokens', () => {
   });
 
   it('keeps the prep clause in the name once its exact value is rejected', () => {
-    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: null, prep: 'minced' });
+    const result = resolveGroceryTokens('1 tsp ginger, minced', { quantity: null, prep: 'minced', purpose: null });
     expect(result.quantityAccepted).toBe(true);
     expect(result.prepAccepted).toBe(false);
     expect(result.name).toBe('ginger, minced');
@@ -413,7 +416,7 @@ describe('resolveGroceryTokens', () => {
 
   it('re-offers a token once continued typing changes its value', () => {
     // Rejected "1 tsp" specifically; typing on to "1 tbsp" is a new candidate.
-    const result = resolveGroceryTokens('1 tbsp ginger', { quantity: '1 tsp', prep: null });
+    const result = resolveGroceryTokens('1 tbsp ginger', { quantity: '1 tsp', prep: null, purpose: null });
     expect(result.quantityAccepted).toBe(true);
     expect(result.quantity).toBe('1 tbsp');
   });
@@ -424,8 +427,59 @@ describe('resolveGroceryTokens', () => {
       quantityAccepted: false,
       prep: null,
       prepAccepted: false,
+      purpose: null,
+      purposeAccepted: false,
+      note: null,
       name: 'ginger',
     });
+  });
+
+  it('takes a trailing "for" clause as the row\'s note, out of the shelf label', () => {
+    const result = resolveGroceryTokens('limes for margs', noneRejected);
+    expect(result.name).toBe('limes');
+    expect(result.purpose).toBe('margs');
+    expect(result.purposeAccepted).toBe(true);
+    // Kept with its "for" — the word is what makes it a purpose.
+    expect(result.note).toBe('for margs');
+  });
+
+  it('reads the purpose off what is left after the quantity', () => {
+    const result = resolveGroceryTokens('2 limes for margs', noneRejected);
+    expect(result.quantity).toBe('2');
+    expect(result.name).toBe('limes');
+    expect(result.note).toBe('for margs');
+  });
+
+  it('keeps the clause in the name once its exact value is rejected', () => {
+    const result = resolveGroceryTokens('limes for margs', {
+      quantity: null, prep: null, purpose: 'margs',
+    });
+    expect(result.purposeAccepted).toBe(false);
+    expect(result.name).toBe('limes for margs');
+    expect(result.note).toBeNull();
+  });
+
+  it('never reads a purpose out of a comma clause it already took', () => {
+    // "plus more for topping" is one prep note, not a name plus a purpose —
+    // same ordering makeIngredient uses.
+    const result = resolveGroceryTokens('cheese, plus more for topping', noneRejected);
+    expect(result.name).toBe('cheese');
+    expect(result.prep).toBe('plus more for topping');
+    expect(result.purposeAccepted).toBe(false);
+    expect(result.note).toBe('plus more for topping');
+  });
+
+  it('reads the purpose again once the comma clause is rejected', () => {
+    const result = resolveGroceryTokens('limes, halved for margs', {
+      quantity: null, prep: 'halved for margs', purpose: null,
+    });
+    expect(result.prepAccepted).toBe(false);
+    expect(result.name).toBe('limes, halved');
+    expect(result.note).toBe('for margs');
+  });
+
+  it('leaves a name that merely contains the letters "for" alone', () => {
+    expect(resolveGroceryTokens('comfort food', noneRejected).name).toBe('comfort food');
   });
 });
 

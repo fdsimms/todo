@@ -149,7 +149,10 @@ export function RecipeScaleChips({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  wrap: { gap: spacing.xs },
+  // sm, not xs: the chips and the servings stepper are two controls, not one
+  // wrapped row, and at 4pt the stepper's own 44pt keys sat hard against the
+  // chips above them.
+  wrap: { gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   chip: {
     borderRadius: radius.full,

@@ -93,6 +93,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see Grocery either/or below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 
@@ -339,6 +340,35 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   when you're deciding what to buy where. **There is deliberately no store chip on the shopping
   list rows** — the row is already dense, and while you're shopping you're standing in one store,
   so it's noise precisely when the list is in use.
+
+### Grocery either/or — two rows you pick between at the shelf
+
+Typing "apples or pears" into the add field offers to put **both on the list under
+one `GroceryItem.choiceGroup`**, and ticking either one at the shop takes the others
+off (`resolveChoice`). It used to add both plain, on the grounds that a shopping row
+has no dish decision to defer — but the loser then sat there looking outstanding, and
+`finishShopping` only clears what's checked, so it stayed on the list for ever.
+
+- **The group is an opaque id, where a recipe's is a label.** A recipe renders the
+  label as a heading over its options; a grocery list renders no heading at all — each
+  row just names its siblings — so a label would be a second thing to keep in step
+  with nothing to show for it, and two lines typed alike would silently merge.
+- **It resolves destructively, where a recipe's pick doesn't.** `MealPlanEntry.recipeChoices`
+  is somewhere to put "mash on Tuesday" without editing the dish; a shopping list has
+  nowhere to put "I chose apples". So the tick *is* the choice, and it's a real undo —
+  `resolveChoice` snapshots every row first and puts them back exactly, re-inserting the
+  provisional ones it deleted and taking the winner's tick off with them.
+- **Only rows still on the list are live options.** An off-list catalog row that once
+  shared a group is history, not something to take away; and since `alternativeCaptions`
+  drops a group that's down to one, a resolved pair stops captioning itself with no extra
+  bookkeeping. That shared helper (`recipeComponents.ts`) is the same one the recipe
+  screen's either/or ingredients use — same rule, and writing it twice is how they'd drift.
+- **`setCheckedMany` deliberately doesn't resolve.** A bulk tick is a sweep over rows the
+  user selected by hand; deleting rows they *didn't* select out from under it is not what
+  that gesture says.
+- **Unlinking lives in the item sheet, not on the row** ("Not an either/or", `clearChoice`,
+  which takes the label off every member — one remaining option is not a choice). It's a
+  correction, not a shopping decision: at the shelf you resolve a choice by ticking one.
 
 ### Composed recipes (`Recipe.components`) — one recipe used inside another
 

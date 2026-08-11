@@ -567,6 +567,32 @@ export function describeComponents(recipe: Recipe): string {
 }
 
 /**
+ * Row id → "or manchego", for every row that is one option of a real choice —
+ * the caption that stops a cook reading the list from buying both.
+ *
+ * Named siblings rather than a bare "or" badge, because a group's options need
+ * not be adjacent (see the choice-header note in RecipeDetailScreen): a marker
+ * that only says *that* a row is an alternative leaves you scanning the list for
+ * what it's an alternative to. Naming them answers it in place.
+ *
+ * A group with one surviving option is not a choice and gets no caption — the
+ * same rule splitIngredientAlternatives applies when it refuses to split.
+ */
+export function alternativeCaptions(
+  rows: readonly (Groupable & { name: string })[],
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const options of groupOptions(rows).values()) {
+    if (options.length < 2) continue;
+    for (const row of options) {
+      const others = options.filter(o => o.id !== row.id).map(o => o.name.trim() || 'unnamed');
+      out.set(row.id, `or ${others.join(' or ')}`);
+    }
+  }
+  return out;
+}
+
+/**
  * How many things a list actually amounts to for one meal: every ungrouped row,
  * plus one per choice group however many options it holds.
  *

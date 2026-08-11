@@ -25,6 +25,7 @@ import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryPar
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
+import { generateId } from '../utils/id';
 
 interface Props {
   /**
@@ -76,6 +77,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // continued typing without needing an effect to reconcile it.
   const [rejectedQuantity, setRejectedQuantity] = useState<string | null>(null);
   const [rejectedPrep, setRejectedPrep] = useState<string | null>(null);
+  const [rejectedPurpose, setRejectedPurpose] = useState<string | null>(null);
 
   const suggestions = useMemo(
     () => (focused ? rankGrocerySuggestions(text, items, new Date()) : []),
@@ -88,15 +90,20 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const tokens = useMemo(() => {
     const trimmed = text.trim();
     if (!trimmed) return null;
-    return resolveGroceryTokens(trimmed, { quantity: rejectedQuantity, prep: rejectedPrep });
-  }, [text, rejectedQuantity, rejectedPrep]);
+    return resolveGroceryTokens(trimmed, {
+      quantity: rejectedQuantity,
+      prep: rejectedPrep,
+      purpose: rejectedPurpose,
+    });
+  }, [text, rejectedQuantity, rejectedPrep, rejectedPurpose]);
 
   // "pepper or thyme" wants to be two rows on the list, not one catalog entry
-  // nothing can ever match — see splitAlternativeNames. Unlike the recipe
-  // ingredient sheet, a plain grocery item has no choiceGroup to hold "pick
-  // one when you shop": there's no dish decision to defer, so accepting the
-  // split just adds both. Offered, never applied on its own, for the same
-  // reason the recipe sheet holds off — the split is verbatim.
+  // nothing can ever match — see splitAlternativeNames. They go on as an
+  // either/or (GroceryItem.choiceGroup), so ticking one at the shelf takes the
+  // other off: "apples or pears, decide at the shop" is exactly what someone
+  // typing this line means, and adding both plain left the loser sitting there
+  // looking outstanding. Offered, never applied on its own, for the same reason
+  // the recipe sheet holds off — the split is verbatim.
   const alternatives = useMemo(
     () => (tokens ? splitAlternativeNames(tokens.name) : null),
     [tokens]
@@ -105,28 +112,41 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const acceptAlternatives = useCallback(() => {
     if (!alternatives) return;
     animateLayout();
+    // An opaque id, not the typed line — see GroceryItem.choiceGroup for why
+    // this half of the feature doesn't want a label.
+    const group = generateId();
     const addedItems = alternatives.map(part =>
-      addByName(part, { name: part, quantity: tokens?.quantityAccepted ? tokens.quantity : null }, undefined, {
-        registerUndo: false,
-      })
+      addByName(
+        part,
+        {
+          name: part,
+          quantity: tokens?.quantityAccepted ? tokens.quantity : null,
+          // "limes or lemons for margs" is one purpose over two rows.
+          note: tokens?.note ?? null,
+          choiceGroup: group,
+        },
+        undefined,
+        { registerUndo: false },
+      )
     );
     haptics.success();
     setText('');
     setStatus(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
+    setRejectedPurpose(null);
     // One combined undo, same reason addManyFromText combines its per-line
     // ones — otherwise only the last of the two rows would be undoable.
     const addedIds = addedItems.map(i => i.id);
     setLastAction({
-      label: `${addedItems.length} items added`,
+      label: `${addedItems.length} either/or items added`,
       undo: () => removeFromListMany(addedIds),
     });
     onAdded?.(addedItems);
   }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded]);
 
   const commit = useCallback(
-    (raw: string, override?: { name: string; quantity: string | null }) => {
+    (raw: string, override?: { name: string; quantity: string | null; note?: string | null }) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
@@ -136,6 +156,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       setStatus(null);
       setRejectedQuantity(null);
       setRejectedPrep(null);
+      setRejectedPurpose(null);
       onAdded?.([item]);
     },
     [addByName, onAdded]
@@ -143,7 +164,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
   const submit = useCallback(() => {
     if (!tokens) return;
-    commit(text, { name: tokens.name, quantity: tokens.quantity });
+    commit(text, { name: tokens.name, quantity: tokens.quantity, note: tokens.note });
   }, [tokens, text, commit]);
 
   useImperativeHandle(ref, () => ({
@@ -221,6 +242,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               setText('');
               setRejectedQuantity(null);
               setRejectedPrep(null);
+              setRejectedPurpose(null);
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -236,7 +258,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           decision rather than something the parser did silently. Each token
           it pulled out of the text gets its own chip; tapping × keeps that
           exact piece in the name instead — see resolveGroceryTokens. */}
-      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted) && (
+      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted) && (
         <View style={styles.tokenRow}>
           <View style={styles.tokenChips}>
             {tokens.quantityAccepted && (
@@ -265,6 +287,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                 </TouchableOpacity>
               </View>
             )}
+            {tokens.purposeAccepted && (
+              <View style={styles.tokenChip}>
+                <Text style={styles.tokenChipText}>for {tokens.purpose}</Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setRejectedPurpose(tokens.purpose); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Keep "for ${tokens.purpose}" in the name instead of making it a note`}
+                >
+                  <Ionicons name="close" size={11} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
           <Text style={styles.tokenPreview} numberOfLines={1}>
             Adding “{tokens.name}”
@@ -281,10 +316,16 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           activeOpacity={interaction.activeOpacity}
           onPress={acceptAlternatives}
           accessibilityRole="button"
-          accessibilityLabel={`Add ${alternatives.length} items instead: ${alternatives.join(', ')}`}
+          accessibilityLabel={
+            `Add as an either/or: ${alternatives.join(' or ')}. ` +
+            'Both go on the list and ticking one takes the others off.'
+          }
         >
           <Text style={styles.altSuggestionText}>
-            Add {alternatives.length} items — {alternatives.join(' · ')}?
+            Add as either/or — {alternatives.join(' or ')}?
+          </Text>
+          <Text style={styles.altSuggestionHint}>
+            Tick one at the shop and the rest come off.
           </Text>
         </TouchableOpacity>
       )}
@@ -365,6 +406,14 @@ function makeStyles(colors: Colors) {
       fontSize: font.sm,
       fontWeight: fontWeight.medium,
       color: colors.accent,
+    },
+    // What the offer actually does, in one line. Without it "either/or" is a
+    // word the user has to take on trust before tapping something that writes
+    // two rows.
+    altSuggestionHint: {
+      fontSize: font.xs,
+      color: colors.textTertiary,
+      marginTop: 2,
     },
     status: {
       fontSize: font.sm,

@@ -18,6 +18,7 @@ import {
   recipeChoiceGroups,
   applyChoice,
   parseRecipeChoices,
+  alternativeCaptions,
 } from '../utils/recipeComponents';
 import type { Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
 
@@ -656,5 +657,50 @@ describe('either/or ingredients', () => {
 
   it('counts a group once, so a meal reads as the one pepper it buys', () => {
     expect(countChoiceAware(salsa().ingredients)).toBe(2);
+  });
+});
+
+describe('alternativeCaptions', () => {
+  it('names the siblings on every option of a group, not just the first', () => {
+    const a = ing('Serrano', 'Pepper');
+    const b = ing('Jalapeño', 'Pepper');
+    const caps = alternativeCaptions([a, b]);
+    expect(caps.get(a.id)).toBe('or Jalapeño');
+    expect(caps.get(b.id)).toBe('or Serrano');
+  });
+
+  it('chains three options and reaches ones that are not adjacent', () => {
+    const a = ing('Cheddar', 'Cheese');
+    const plain = ing('Flour');
+    const b = ing('Manchego', 'Cheese');
+    const c = ing('Gruyère', 'Cheese');
+    const caps = alternativeCaptions([a, plain, b, c]);
+    expect(caps.get(a.id)).toBe('or Manchego or Gruyère');
+    expect(caps.get(b.id)).toBe('or Cheddar or Gruyère');
+    expect(caps.get(c.id)).toBe('or Cheddar or Manchego');
+    // An ordinary line is not an alternative to anything.
+    expect(caps.has(plain.id)).toBe(false);
+  });
+
+  it('says nothing about a group with one surviving option, or none at all', () => {
+    expect(alternativeCaptions([ing('Serrano', 'Pepper')]).size).toBe(0);
+    expect(alternativeCaptions([ing('Flour'), ing('Sugar')]).size).toBe(0);
+    expect(alternativeCaptions([]).size).toBe(0);
+  });
+
+  it('keeps groups apart', () => {
+    const a = ing('Butter', 'Fat');
+    const b = ing('Oil', 'Fat');
+    const c = ing('Serrano', 'Pepper');
+    const d = ing('Jalapeño', 'Pepper');
+    const caps = alternativeCaptions([a, c, b, d]);
+    expect(caps.get(a.id)).toBe('or Oil');
+    expect(caps.get(c.id)).toBe('or Jalapeño');
+  });
+
+  it('falls back for a blank name rather than rendering \'or \'', () => {
+    const a = ing('Serrano', 'Pepper');
+    const b = { ...ing('x', 'Pepper'), name: '  ' };
+    expect(alternativeCaptions([a, b]).get(a.id)).toBe('or unnamed');
   });
 });

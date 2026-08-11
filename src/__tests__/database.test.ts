@@ -1499,6 +1499,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     onHandUntil: null,
     sourceRecipeId: null,
     sourceRecipeTitle: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
