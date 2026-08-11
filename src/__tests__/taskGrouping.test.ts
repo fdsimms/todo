@@ -9,6 +9,7 @@ import {
   laterTodaySections,
   categorySpan,
   applyCategoryCollapse,
+  applyCategoryFocus,
   sectionTaskIds,
   findTaskJumpTarget,
   LATER_TODAY_LABEL,
@@ -589,6 +590,86 @@ describe('categorySpan / applyCategoryCollapse', () => {
     expect(collapsedTaskIds).toEqual(['a']);
     // The header itself stays, so it's still tappable to re-expand.
     expect(collapsed.some(i => i.type === 'header' && i.label === 'Work')).toBe(true);
+  });
+});
+
+describe('applyCategoryFocus', () => {
+  it('returns the list unchanged when nothing is focused', () => {
+    const items: TodayListItem[] = [
+      { type: 'task', task: makeTask({ id: 'a' }) },
+      { type: 'header', label: 'Work' },
+    ];
+    expect(applyCategoryFocus(items, null)).toBe(items);
+  });
+
+  it('keeps only the focused category header and its own rows', () => {
+    const loose = makeTask({ id: 'loose' });
+    const workTask = makeTask({ id: 'w', category: 'Work' });
+    const homeTask = makeTask({ id: 'h', category: 'Home' });
+    const items: TodayListItem[] = [
+      { type: 'task', task: loose },
+      { type: 'header', label: 'Home' },
+      { type: 'task', task: homeTask },
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: workTask },
+    ];
+
+    const focused = applyCategoryFocus(items, 'Work');
+    expect(focused).toEqual([
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: workTask },
+    ]);
+  });
+
+  it('keeps a group whose own category matches, and drops one that does not', () => {
+    const group = makeGroup({ id: 'g1', category: 'Work' });
+    const otherGroup = makeGroup({ id: 'g2', category: 'Home' });
+    const items: TodayListItem[] = [
+      { type: 'header', label: 'Work' },
+      { type: 'group', group, children: [] },
+      { type: 'header', label: 'Home' },
+      { type: 'group', group: otherGroup, children: [] },
+    ];
+
+    const focused = applyCategoryFocus(items, 'Work');
+    expect(focused).toEqual([
+      { type: 'header', label: 'Work' },
+      { type: 'group', group, children: [] },
+    ]);
+  });
+
+  // "Later Today" and "Pinned Tasks" aren't categories, so their header only
+  // survives when a row underneath it actually belongs to the focused
+  // category — otherwise it would sit on screen over nothing.
+  it('keeps Later Today and Pinned Tasks headers only when a row under them matches', () => {
+    const pinnedWork = makeTask({ id: 'p1', category: 'Work', pinned: true });
+    const pinnedHome = makeTask({ id: 'p2', category: 'Home', pinned: true });
+    const laterWork = makeTask({ id: 'l1', category: 'Work' });
+    const items: TodayListItem[] = [
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: pinnedWork },
+      { type: 'pinned-task', task: pinnedHome },
+      { type: 'rest-header' },
+      { type: 'header', label: LATER_TODAY_LABEL },
+      { type: 'task', task: laterWork },
+    ];
+
+    const focused = applyCategoryFocus(items, 'Work');
+    expect(focused).toEqual([
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: pinnedWork },
+      { type: 'header', label: LATER_TODAY_LABEL },
+      { type: 'task', task: laterWork },
+    ]);
+  });
+
+  it('drops the Pinned Tasks header entirely when no pinned row matches', () => {
+    const pinnedHome = makeTask({ id: 'p2', category: 'Home', pinned: true });
+    const items: TodayListItem[] = [
+      { type: 'pinned-header' },
+      { type: 'pinned-task', task: pinnedHome },
+    ];
+    expect(applyCategoryFocus(items, 'Work')).toEqual([]);
   });
 });
 

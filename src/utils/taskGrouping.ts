@@ -438,6 +438,47 @@ export function applyCategoryCollapse(
 }
 
 /**
+ * Narrow the list down to one category's rows — the opposite of
+ * applyCategoryCollapse: that hides a section's content and keeps its header,
+ * this hides every OTHER section entirely, header included. "Later Today" and
+ * "Pinned Tasks" are sections, not categories, so they're kept only when one
+ * of the rows under them belongs to the focused category — a single forward
+ * pass, since a header's fate depends on whether anything after it (before
+ * the next header) matches, and a header can't know that until it sees it.
+ */
+export function applyCategoryFocus(
+  items: TodayListItem[],
+  focusedCategory: string | null,
+): TodayListItem[] {
+  if (!focusedCategory) return items;
+  const matches = (item: TodayListItem): boolean => {
+    if (item.type === 'task' || item.type === 'pinned-task') {
+      return (item.task.category ?? UNCATEGORIZED) === focusedCategory;
+    }
+    if (item.type === 'group') return (item.group.category ?? UNCATEGORIZED) === focusedCategory;
+    return false;
+  };
+
+  const out: TodayListItem[] = [];
+  let pendingHeader: TodayListItem | null = null;
+  let headerEmitted = false;
+  for (const item of items) {
+    if (item.type === 'header' || item.type === 'pinned-header' || item.type === 'rest-header') {
+      pendingHeader = item;
+      headerEmitted = false;
+      continue;
+    }
+    if (!matches(item)) continue;
+    if (pendingHeader && !headerEmitted) {
+      out.push(pendingHeader);
+      headerEmitted = true;
+    }
+    out.push(item);
+  }
+  return out;
+}
+
+/**
  * The task ids under each section header, keyed by the header's label.
  *
  * Today's headers are rendered from the same list their rows are, but nothing
