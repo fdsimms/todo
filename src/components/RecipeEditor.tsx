@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Keyboard,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Recipe } from '../types';
@@ -178,9 +179,11 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={source}
             onChangeText={setSource}
+            onSubmitEditing={() => Keyboard.dismiss()}
             placeholder="NYT Cooking, Bon Appétit…"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            returnKeyType="done"
             accessibilityLabel="Recipe source"
           />
         )}
@@ -197,11 +200,13 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={url}
             onChangeText={setUrl}
+            onSubmitEditing={() => Keyboard.dismiss()}
             placeholder="Where it came from"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
             keyboardType="url"
+            returnKeyType="done"
             accessibilityLabel="Recipe link"
           />
         )}

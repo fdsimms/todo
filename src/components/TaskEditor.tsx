@@ -2721,12 +2721,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
                   placeholderTextColor={colors.textTertiary}
-                  // No return key on the iOS phone pad, so this commits on
-                  // blur — same as the editor's other number-pad fields.
+                  // No return key on the iOS phone pad, so blur is still the
+                  // path that saves — the checkmark below is what makes that
+                  // visible instead of implicit.
                   keyboardType="phone-pad"
                   autoCorrect={false}
                   autoFocus
                 />
+                <TouchableOpacity
+                  onPress={commitPhone}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm phone number"
+                >
+                  <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+                </TouchableOpacity>
               </View>
             )}
               </>
