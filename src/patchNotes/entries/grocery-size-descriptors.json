@@ -1,0 +1,4 @@
+{
+  "message": "Grocery quick-add now splits a size word like \"1 medium onion\" out of the item name, keeping it with the quantity instead.",
+  "date": "2026-08-11"
+}

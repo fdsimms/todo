@@ -42,13 +42,20 @@ import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useTaskStore } from '../store/useTaskStore';
 import { buildGrocerySections } from '../utils/grocerySuggest';
 import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../utils/groceryReorder';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { GroceryItem } from '../types';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
+import type { GroceryItem, Shop } from '../types';
+
+// The same scheme a recurring "Grocery run" task already carries in its
+// linkUrl — looked up by name rather than duplicated as a literal, so the two
+// stay in sync if the app's own entry ever moves.
+const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')!.scheme;
 
 /**
  * A flat stream of tagged rows rather than a SectionList — the same shape
@@ -96,6 +103,8 @@ export function GroceryScreen() {
   const finishShopping = useGroceryStore(s => s.finishShopping);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const addTask = useTaskStore(s => s.addTask);
 
   const [cartOpen, setCartOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -376,6 +385,42 @@ export function GroceryScreen() {
     );
   }, [clearList]);
 
+  // "Get groceries at X" — a real Task, so it can carry its own reminder and
+  // show up on Today, with linkUrl set to the same dundundun://groceries
+  // scheme a recurring "Grocery run" task already uses. No store configured
+  // yet (or exactly one) skips the picker; more than one asks which store
+  // this trip is for, same as Finish shopping does.
+  const createGroceryTask = useCallback(
+    (shop: Shop | null) => {
+      addTask({
+        title: shop ? `Get groceries at ${shop.name}` : 'Get groceries',
+        linkUrl: GROCERIES_LINK_URL,
+      });
+      haptics.success();
+    },
+    [addTask]
+  );
+
+  const handleCreateGroceryTask = useCallback(() => {
+    // A store flagged "don't suggest" (Amazon: "it has everything") stays out
+    // of this picker and out of the single-store default — it's still fully
+    // linkable by hand elsewhere, just never the thing this button offers.
+    const suggestable = shops.filter(shop => !shop.excludeFromSuggestions);
+    if (suggestable.length <= 1) {
+      createGroceryTask(suggestable[0] ?? null);
+      return;
+    }
+    Alert.alert(
+      'Get groceries at…',
+      'Which store is this trip for?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'No store', onPress: () => createGroceryTask(null) },
+        ...suggestable.map(shop => ({ text: shop.name, onPress: () => createGroceryTask(shop) })),
+      ]
+    );
+  }, [shops, createGroceryTask]);
+
   const actions = useMemo<ScreenHeaderAction[]>(() => {
     // Clear list is deliberately NOT here. It's destructive-looking, rarely
     // used, and the header is where you're tapping one-handed while walking —
@@ -397,6 +442,12 @@ export function GroceryScreen() {
       accessibilityLabel: 'Buy again',
     });
     list.push({
+      icon: 'walk-outline',
+      onPress: handleCreateGroceryTask,
+      disabled: selectionMode,
+      accessibilityLabel: 'Create a task to go shopping',
+    });
+    list.push({
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),
       disabled: selectionMode,
@@ -411,7 +462,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, listCount, selectionMode, enterSelectionMode, exitSelection]);
+  }, [checkedCount, listCount, selectionMode, enterSelectionMode, exitSelection, handleCreateGroceryTask]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // is gated on a key like every other AI affordance here, so a user without

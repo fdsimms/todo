@@ -18,6 +18,7 @@ function makeShop(name: string, sortOrder = 0): Shop {
     nameKey: groceryNameKey(name),
     sortOrder,
     createdAt: '2026-01-01T00:00:00.000Z',
+    excludeFromSuggestions: false,
   };
 }
 
@@ -39,6 +40,8 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }

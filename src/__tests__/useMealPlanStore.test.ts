@@ -268,6 +268,47 @@ describe('removeEntry', () => {
   });
 });
 
+describe('renameEntry', () => {
+  it('rewrites a free-text entry title and writes it back', () => {
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Eating out' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, '  Takeout night  ');
+
+    const updated = getEntries().find(e => e.id === dinner.id)!;
+    expect(updated.title).toBe('Takeout night');
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, title: 'Takeout night' })
+    );
+  });
+
+  it('refuses a blank title', () => {
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Eating out' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, '   ');
+
+    expect(getEntries()[0].title).toBe('Eating out');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op on a recipe-backed entry', () => {
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Sausage ragù', recipeId: 'r1' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().renameEntry(dinner.id, 'Something else');
+
+    expect(getEntries()[0].title).toBe('Sausage ragù');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an unknown id', () => {
+    loadWeek([]);
+    expect(() => useMealPlanStore.getState().renameEntry('gone', 'New title')).not.toThrow();
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
 describe('markCooked', () => {
   it('stamps cookedAt and writes it back', () => {
     const dinner = entry('2026-08-05', 'dinner');

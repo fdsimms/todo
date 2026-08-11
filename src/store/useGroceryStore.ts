@@ -13,6 +13,7 @@ import {
   dbInsertGroceryShop,
   dbUpdateGroceryShop,
   dbDeleteGroceryShop,
+  dbSetShopExcludeFromSuggestions,
   dbGetAllItemShopLinks,
   dbSetItemShopLink,
   dbDeleteItemShopLink,
@@ -123,7 +124,11 @@ interface GroceryStore {
    * as quantity versus name and re-parsing `raw` would just reproduce the
    * split they rejected.
    */
-  addByName: (raw: string, override?: { name: string; quantity: string | null }) => GroceryItem;
+  addByName: (
+    raw: string,
+    override?: { name: string; quantity: string | null },
+    source?: { recipeId: string; recipeTitle: string }
+  ) => GroceryItem;
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
   addExisting: (id: string) => void;
@@ -202,6 +207,10 @@ interface GroceryStore {
   renameShop: (id: string, name: string) => boolean;
   reorderShops: (ids: string[]) => void;
   deleteShop: (id: string) => void;
+  /** "It has everything, but don't send me there" — pulls the store out of
+   * primaryShopFor/exclusiveShopFor and the grocery-run task's store picker
+   * while leaving manual linking and finishShopping untouched. */
+  setShopExcludedFromSuggestions: (id: string, excluded: boolean) => void;
   /** Assert "this item is available here" without a purchase behind it. */
   linkItemShop: (itemId: string, shopId: string) => void;
   unlinkItemShop: (itemId: string, shopId: string) => void;
@@ -222,6 +231,14 @@ export interface PlannedRow {
   name: string;
   quantity: string | null;
   aisle: string | null;
+  /**
+   * The recipe this row came from, when unambiguous — null for a week-view
+   * row that merged ingredients from more than one recipe, since there's no
+   * single recipe left to credit. Only applied to a row addFromPlan actually
+   * creates; see GroceryItem.sourceRecipeId.
+   */
+  sourceRecipeId?: string | null;
+  sourceRecipeTitle?: string | null;
 }
 
 export interface PlanAddResult {
@@ -307,7 +324,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * there's never a duplicate, why autocomplete has history to rank, and why
    * next week's list starts from what you actually buy.
    */
-  addByName(raw, override) {
+  addByName(raw, override, source) {
     const { name, quantity } = override ?? parseGroceryInput(raw);
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
@@ -364,6 +381,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       lastPurchasedAt: null,
       createdAt: now,
       onHandUntil: null,
+      // Only a genuinely new row gets attributed — see the field's doc comment
+      // on GroceryItem. A row reused via the `existing` branch above never
+      // reaches here, so a recipe re-adding a known item can't relabel it.
+      sourceRecipeId: source?.recipeId ?? null,
+      sourceRecipeTitle: source?.recipeTitle ?? null,
     };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
@@ -440,7 +462,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // Passing the bare name, not "2 lb chicken thighs": the quantity is
         // already split out on the ingredient, and re-parsing it here would
         // run the guesswork twice.
-        const item = get().addByName(row.name);
+        const item = get().addByName(
+          row.name,
+          undefined,
+          row.sourceRecipeId ? { recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle ?? '' } : undefined
+        );
         if (row.aisle && !get().rememberedAisleFor(row.name)) get().setAisle(item.id, row.aisle);
         if (row.quantity) get().setQuantity(item.id, row.quantity);
         added.push(get().itemById(item.id) ?? item);
@@ -893,6 +919,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       nameKey: key,
       sortOrder: get().shops.reduce((m, s) => Math.max(m, s.sortOrder), 0) + 1,
       createdAt: new Date().toISOString(),
+      excludeFromSuggestions: false,
     };
     dbInsertGroceryShop(shop);
     set(s => ({ shops: [...s.shops, shop] }));
@@ -947,6 +974,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       shops: s.shops.filter(x => x.id !== id),
       itemShops: s.itemShops.filter(l => l.shopId !== id),
       lastShopId: wasLast ? null : s.lastShopId,
+    }));
+  },
+
+  setShopExcludedFromSuggestions(id, excluded) {
+    const shop = get().shops.find(s => s.id === id);
+    if (!shop) return;
+    dbSetShopExcludeFromSuggestions(id, excluded);
+    set(s => ({
+      shops: s.shops.map(x => (x.id === id ? { ...x, excludeFromSuggestions: excluded } : x)),
     }));
   },
 

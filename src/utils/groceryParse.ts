@@ -110,6 +110,37 @@ const CONTAINER_UNITS = new Set([
 // the gate fails and it falls through to LEADING_QTY untouched).
 const CONTAINER_QTY =
   /^(?:(\d+(?:\.\d+)?)\s+)?\(?(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\)?\s+([a-z]+)\s+(.+)$/i;
+// Size words, closed set. Unlike splitPrep's trailing clause (open-ended free
+// text, safe only because it's confirmed against a comma), a size adjective
+// right after the quantity is safe to split unconditionally, same reasoning
+// as UNIT_SET: it's a known word list, not a guess at arbitrary text, so it
+// can't eat the actual product name the way a leading-prep guess could
+// ("sliced almonds" is a real product; "medium onion" never has "medium" as
+// the product). Kept tight per the issue: small/medium/large plus the two
+// compound sizes groceries actually get called.
+const SIZE_WORDS = new Set(['small', 'medium', 'large', 'extra-large', 'jumbo']);
+
+// "1 medium onion", "2 large eggs" — a size descriptor glued to the front of
+// the name after the quantity/unit match has already run. Folded into the
+// quantity string ("2, large") rather than added as a third return field:
+// quantity is already rendered as opaque free text everywhere (GroceryRow,
+// the item sheet, the AI sheet), so "2, large" reads fine there and a new
+// field would mean touching every one of those call sites for one adjective.
+// Only the word right at the START of what's left is a size — "mix greens
+// with large tomatoes" has "large" mid-name and must be left alone, so this
+// only ever looks at the first word.
+const LEADING_SIZE = /^(small|medium|large|extra-large|jumbo)\s+(.+)$/i;
+
+function extractLeadingSize(name: string, quantity: string): { name: string; quantity: string } {
+  const match = LEADING_SIZE.exec(name);
+  if (!match) return { name, quantity };
+  const [, sizeWord, rest] = match;
+  if (!rest.trim()) return { name, quantity };
+  const size = sizeWord.toLowerCase();
+  if (!SIZE_WORDS.has(size)) return { name, quantity };
+  return { name: rest, quantity: `${quantity}, ${size}` };
+}
+
 // "milk x2", "eggs x 12"
 const TRAILING_X = /^(.*?)\s+x\s*(\d+)$/i;
 // "eggs (dozen)", "milk (2%)" — only when the parens close the string.
@@ -157,7 +188,8 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
     const containerWord = containerRaw.toLowerCase();
     if (SIZE_UNITS.has(sizeUnit) && CONTAINER_UNITS.has(containerWord) && rest.trim()) {
       const quantity = [count, sizeNum, sizeUnit, containerWord].filter(Boolean).join(' ');
-      return { name: clampName(rest), quantity: clampQuantity(quantity) };
+      const sized = extractLeadingSize(rest.trim(), quantity);
+      return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
     }
   }
 
@@ -174,16 +206,21 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
         // the name).
         const stripped = rest.replace(/^of\s+/i, '');
         const name = stripped.trim() ? stripped : rest;
-        return { name: clampName(name), quantity: clampQuantity(`${count} ${canonicalUnit}`) };
+        const sized = extractLeadingSize(name.trim(), `${count} ${canonicalUnit}`);
+        return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
       }
       if (!maybeUnit) {
         // Bare count: "3 avocados". The unit slot was whitespace, so `rest`
         // already holds the whole name.
-        return { name: clampName(rest), quantity: clampQuantity(count) };
+        const sized = extractLeadingSize(rest.trim(), count);
+        return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
       }
       // A number followed by a word we don't know as a unit — the word belongs
-      // to the name.
-      return { name: clampName(`${maybeUnit} ${rest}`), quantity: clampQuantity(count) };
+      // to the name, unless it's a size word, which is a known closed set
+      // rather than an unrecognised one.
+      const fullName = `${maybeUnit} ${rest}`;
+      const sized = extractLeadingSize(fullName.trim(), count);
+      return { name: clampName(sized.name), quantity: clampQuantity(sized.quantity) };
     }
   }
 
@@ -208,24 +245,56 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
 // unit whitelist is: it can't eat the name because the name is always
 // everything before the first comma.
 //
-// Deliberately doesn't also try to peel a *leading* prep word ("grated
-// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
+// Beyond the trailing clause, a small whitelist below (LEADING_PREP_WORDS)
+// also peels a *leading* prep word ("grated cheddar", "chopped onion") — but
+// only for words curated as unambiguous. In general a leading modifier is
 // sometimes the actual product ("sliced almonds" and "ground beef" are their
 // own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
 // there costs the first word of the name — the exact failure the unit
-// whitelist above is built to avoid. That case is left to the AI extractor.
+// whitelist above is built to avoid. Anything not on the whitelist is left to
+// the AI extractor.
 const PREP_SPLIT = /^(.*?),\s*(.+)$/;
+
+// A small, deliberately curated whitelist of leading prep words safe enough
+// to split unconditionally — unlike the general leading-word case above,
+// these essentially never have a standalone-product reading. Explicitly
+// excludes "sliced" and "ground" (per the issue this whitelist came from):
+// "sliced almonds" and "ground beef" are real shelf items, so guessing on
+// those costs the first word of the name, the exact failure this file is
+// built to avoid. Keep this list tight — scope creep here is worse than an
+// incomplete list.
+const LEADING_PREP_WORDS = ['minced', 'chopped', 'diced', 'crushed', 'grated'];
+const LEADING_PREP_SPLIT = new RegExp(
+  `^(${LEADING_PREP_WORDS.join('|')})\\s+(.+)$`,
+  'i',
+);
 
 export function splitPrep(name: string): { name: string; prep: string | null } {
   const trimmed = name.trim();
+
   const match = PREP_SPLIT.exec(trimmed);
-  if (!match) return { name: trimmed, prep: null };
-  const [, core, prep] = match;
-  if (!core.trim()) return { name: trimmed, prep: null };
-  return {
-    name: core.trim(),
-    prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
-  };
+  if (match) {
+    const [, core, prep] = match;
+    if (core.trim()) {
+      return {
+        name: core.trim(),
+        prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
+      };
+    }
+  }
+
+  const leading = LEADING_PREP_SPLIT.exec(trimmed);
+  if (leading) {
+    const [, prepWord, rest] = leading;
+    if (rest.trim()) {
+      return {
+        name: rest.trim(),
+        prep: prepWord.toLowerCase().slice(0, PREP_MAX_LENGTH),
+      };
+    }
+  }
+
+  return { name: trimmed, prep: null };
 }
 
 /**

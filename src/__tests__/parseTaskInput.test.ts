@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -25,10 +25,27 @@ describe('parseTaskInput — one-off dates', () => {
     expectDay(r.schedule.dueDate, 2025, 5, 11);
   });
 
-  it('parses "by <weekday>"', () => {
+  it('parses "by <weekday>", mirroring the date onto deadline too', () => {
     const r = parseTaskInput('finish report by friday', NOW)!;
     expect(r.cleanTitle).toBe('finish report');
     expectDay(r.schedule.dueDate, 2025, 5, 13);
+    expectDay(r.schedule.deadline!, 2025, 5, 13);
+  });
+
+  it('parses "due <weekday>" the same way as "by"', () => {
+    const r = parseTaskInput('finish report due friday', NOW)!;
+    expectDay(r.schedule.dueDate, 2025, 5, 13);
+    expectDay(r.schedule.deadline!, 2025, 5, 13);
+  });
+
+  it('does not set deadline for "on <weekday>"', () => {
+    const r = parseTaskInput('go for a run on tuesday', NOW)!;
+    expect(r.schedule.deadline).toBeUndefined();
+  });
+
+  it('does not set deadline for a bare date phrase with no connector', () => {
+    const r = parseTaskInput('call mom tomorrow', NOW)!;
+    expect(r.schedule.deadline).toBeUndefined();
   });
 
   it('parses an explicit month-day date', () => {
@@ -41,6 +58,18 @@ describe('parseTaskInput — one-off dates', () => {
     const r = parseTaskInput('dentist in 2 weeks', NOW)!;
     expect(r.cleanTitle).toBe('dentist');
     expectDay(r.schedule.dueDate, 2025, 5, 24);
+  });
+
+  it('parses "N units from now"', () => {
+    const r = parseTaskInput('return fiddle by 45 days from now', NOW)!;
+    expect(r.cleanTitle).toBe('return fiddle');
+    expectDay(r.schedule.dueDate, 2025, 6, 25); // July 25
+  });
+
+  it('parses spelled-out counts in "in N units"', () => {
+    const r = parseTaskInput('dentist in three months', NOW)!;
+    expect(r.cleanTitle).toBe('dentist');
+    expect(r.schedule.dueDate.getMonth()).toBe(8); // September
   });
 
   it('maps a clock time to a segment, due today', () => {
@@ -372,6 +401,10 @@ describe('describeSchedule', () => {
     expect(describeSchedule({ ...base, dueDate: new Date(2025, 5, 17) }, NOW)).toBe('Tue, Jun 17');
   });
 
+  it('flags a deadline-mirroring one-off date', () => {
+    expect(describeSchedule({ ...base, deadline: base.dueDate }, NOW)).toBe('Today · Deadline');
+  });
+
   it('labels recurrences', () => {
     expect(describeSchedule({ ...base, recurrenceType: 'daily' }, NOW)).toBe('Daily');
     expect(describeSchedule({ ...base, recurrenceType: 'daily', recurrenceInterval: 3 }, NOW)).toBe('Every 3 days');
@@ -537,6 +570,50 @@ describe('parseDurationInput', () => {
 
   it('is case insensitive', () => {
     expect(parseDurationInput('Meditate For 20 Minutes')?.minutes).toBe(20);
+  });
+});
+
+// ─── parseCategoryInput ───
+
+describe('parseCategoryInput', () => {
+  const categories = ['Home', 'Work', 'Errands'];
+
+  it('extracts the CLAUDE.md example', () => {
+    const result = parseCategoryInput('pay rent tmrw 5p #home', categories);
+    expect(result?.category).toBe('Home'); // canonical casing, not the typed token
+    expect(result?.cleanTitle).toBe('pay rent tmrw 5p');
+  });
+
+  it('matches case-insensitively', () => {
+    expect(parseCategoryInput('mow the lawn #WORK', categories)?.category).toBe('Work');
+  });
+
+  it('extracts a tag from the middle of the title', () => {
+    const result = parseCategoryInput('buy milk #errands on the way home', categories);
+    expect(result?.category).toBe('Errands');
+    expect(result?.cleanTitle).toBe('buy milk on the way home');
+  });
+
+  it('reports the matched span', () => {
+    const input = 'pay rent #home';
+    const result = parseCategoryInput(input, categories)!;
+    expect(input.slice(result.matchStart, result.matchEnd)).toBe('#home');
+  });
+
+  it('returns null when the tag names no known category', () => {
+    expect(parseCategoryInput('reply to #sarah about the trip', categories)).toBeNull();
+  });
+
+  it('returns null when there is no "#" at all', () => {
+    expect(parseCategoryInput('just a normal title', categories)).toBeNull();
+  });
+
+  it('returns null when the entire input is the tag', () => {
+    expect(parseCategoryInput('#home', categories)).toBeNull();
+  });
+
+  it('returns null when there are no categories registered', () => {
+    expect(parseCategoryInput('pay rent #home', [])).toBeNull();
   });
 });
 

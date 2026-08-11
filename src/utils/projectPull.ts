@@ -558,8 +558,18 @@ export function buildProjectPullPlan(
   projects: readonly Project[],
   allTasks: readonly Task[],
   todaysTasks: readonly Task[],
+  /**
+   * When set, restricts the plan to these projects only — used when the sheet
+   * is opened from the quiet-project nudge, which is already about a specific
+   * project (or handful of them), not the whole board.
+   */
+  scopeProjectIds?: readonly string[],
 ): ProjectPullPlan {
-  const stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
+  let stalls = findProjectStalls(projects, allTasks, 'ask').filter(s => !s.project.autoSchedule);
+  if (scopeProjectIds && scopeProjectIds.length > 0) {
+    const scope = new Set(scopeProjectIds);
+    stalls = stalls.filter(s => scope.has(s.project.id));
+  }
   const ctx = pullContext();
 
   const proposals = stalls.slice(0, MAX_PULLED_PROJECTS).map(stall => {

@@ -1461,6 +1461,8 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }
@@ -1481,10 +1483,19 @@ describe('grocery items', () => {
       purchaseCount: 12,
       lastAddedAt: '2026-08-01T00:00:00.000Z',
       lastPurchasedAt: '2026-07-25T00:00:00.000Z',
+      sourceRecipeId: 'recipe-1',
+      sourceRecipeTitle: 'Chili',
     });
     dbInsertGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
+  });
+
+  it('leaves sourceRecipeId/sourceRecipeTitle null when the item was never added from a recipe', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    const item = dbGetAllGroceryItems()[0];
+    expect(item.sourceRecipeId).toBeNull();
+    expect(item.sourceRecipeTitle).toBeNull();
   });
 
   it('keeps null quantity null rather than turning it into a string', () => {

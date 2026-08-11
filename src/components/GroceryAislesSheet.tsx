@@ -83,6 +83,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const renameShop = useGroceryStore(s => s.renameShop);
   const reorderShops = useGroceryStore(s => s.reorderShops);
   const deleteShop = useGroceryStore(s => s.deleteShop);
+  const setShopExcludedFromSuggestions = useGroceryStore(s => s.setShopExcludedFromSuggestions);
 
   const [tab, setTab] = useState<Tab>('aisles');
   const [newAisle, setNewAisle] = useState('');
@@ -251,6 +252,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
             onCommitRename={commitRename}
             onReorder={reorderShops}
             onDelete={confirmDeleteShop}
+            onToggleExcluded={(id, excluded) => {
+              haptics.tap();
+              setShopExcludedFromSuggestions(id, excluded);
+            }}
           />
         ) : (
         <>
@@ -383,6 +388,7 @@ interface StoresTabProps {
   onCommitRename: () => void;
   onReorder: (ids: string[]) => void;
   onDelete: (id: string, name: string) => void;
+  onToggleExcluded: (id: string, excluded: boolean) => void;
 }
 
 /**
@@ -408,6 +414,7 @@ function StoresTab({
   onCommitRename,
   onReorder,
   onDelete,
+  onToggleExcluded,
 }: StoresTabProps) {
   return (
     <>
@@ -460,6 +467,24 @@ function StoresTab({
               )}
 
               {count > 0 && !editing && <Text style={styles.rowCount}>{count}</Text>}
+
+              {!editing && (
+                <TouchableOpacity
+                  onPress={() => onToggleExcluded(shop.id, !shop.excludeFromSuggestions)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: shop.excludeFromSuggestions }}
+                  accessibilityLabel={`Don't suggest ${shop.name}`}
+                  accessibilityHint="Keeps this store out of suggestions, but it stays available to pick by hand"
+                >
+                  <Ionicons
+                    name={shop.excludeFromSuggestions ? 'eye-off' : 'eye-off-outline'}
+                    size={iconSize.md}
+                    color={shop.excludeFromSuggestions ? colors.accent : colors.textTertiary}
+                  />
+                </TouchableOpacity>
+              )}
 
               <TouchableOpacity
                 onPress={() => onDelete(shop.id, shop.name)}

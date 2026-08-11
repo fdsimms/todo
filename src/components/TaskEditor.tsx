@@ -466,6 +466,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     animateLayout();
     setTitle(parsedSchedule.cleanTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.deadline) {
+      setDeadline(parsedSchedule.schedule.deadline);
+      setDeadlineOffsetDays(null);
+      setDeadlineMonthDay(null);
+    }
     setTimeSegments(parsedSchedule.schedule.timeSegments);
     setRecurrenceType(parsedSchedule.schedule.recurrenceType);
     setRecurrenceInterval(parsedSchedule.schedule.recurrenceInterval);
@@ -1317,7 +1322,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         >
           <PressableScale style={styles.scheduleBannerBtn} onPress={applyParsedSchedule}>
             <Ionicons
-              name={parsedSchedule.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+              name={
+                parsedSchedule.schedule.recurrenceType !== 'none'
+                  ? 'repeat'
+                  : parsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+              }
               size={14}
               color={colors.onAccent}
             />
@@ -2721,12 +2730,21 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onBlur={commitPhone}
                   placeholder="(555) 123-4567"
                   placeholderTextColor={colors.textTertiary}
-                  // No return key on the iOS phone pad, so this commits on
-                  // blur — same as the editor's other number-pad fields.
+                  // No return key on the iOS phone pad, so blur is still the
+                  // path that saves — the checkmark below is what makes that
+                  // visible instead of implicit.
                   keyboardType="phone-pad"
                   autoCorrect={false}
                   autoFocus
                 />
+                <TouchableOpacity
+                  onPress={commitPhone}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Confirm phone number"
+                >
+                  <Ionicons name="checkmark-circle" size={22} color={colors.accent} />
+                </TouchableOpacity>
               </View>
             )}
               </>

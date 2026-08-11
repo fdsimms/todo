@@ -31,6 +31,12 @@ interface Props {
   visible: boolean;
   /** Today's visible list — decides whether a pull lands today or on a lighter day. */
   todaysTasks: readonly Task[];
+  /**
+   * Restricts the plan to these project ids — set when opened from the
+   * quiet-project nudge, which is already about a specific project or two,
+   * not an invitation to browse every stalled project on the board.
+   */
+  scopeProjectIds?: readonly string[];
   onClose: () => void;
 }
 
@@ -49,7 +55,7 @@ interface Props {
  * pick a different day. Cycling is the one thing this sheet does that that one
  * doesn't, so it gets its own visible affordance instead of a third gesture.
  */
-export function ProjectPullSheet({ visible, todaysTasks, onClose }: Props) {
+export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -72,7 +78,7 @@ export function ProjectPullSheet({ visible, todaysTasks, onClose }: Props) {
 
   useEffect(() => {
     if (!visible) return;
-    const next = buildProjectPullPlan(projects, allTasks, todaysTasks);
+    const next = buildProjectPullPlan(projects, allTasks, todaysTasks, scopeProjectIds);
     setPlan(next);
     setSelectedIds(new Set(next.proposals.filter(p => p.selected).map(p => p.project.id)));
     setCandidateIndex({});

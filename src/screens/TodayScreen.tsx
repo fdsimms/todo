@@ -475,6 +475,9 @@ export function TodayScreen() {
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
+  // undefined = unscoped (opened from the "…" menu's "Pull from projects");
+  // set = opened from the quiet-project nudge, restricted to those projects.
+  const [pullScopeProjectIds, setPullScopeProjectIds] = useState<string[] | undefined>(undefined);
   const [showUpcoming, setShowUpcoming] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const {
@@ -796,7 +799,20 @@ export function TodayScreen() {
    * immediately — remounting the list, losing its scroll offset — and then
    * reshuffled the rows when the grace expired, two jolts for one action.
    */
-  const pinnedViewActive = pinnedTasks.length > 0 && !pinViewGraceActive && !todayDragging;
+  // `pinViewGraceActive` itself lags one render behind a pin landing: the
+  // effect above that sets it can only run *after* the render where
+  // `pinnedTasks.length` first goes from 0 to 1, so that one render would
+  // otherwise see the grown count with the grace flag not yet true — a
+  // one-frame flash of the section before its own suppression catches up.
+  // `prevPinnedCount` is a ref, so reading it here (before the effect above
+  // has run for this render) reflects the *previous* committed count, and
+  // comparing against it synchronously closes that gap without waiting on
+  // the effect. `skipNextPinGrace` is mirrored so a bulk-pin path that means
+  // to skip the grace entirely doesn't get caught by this early check either.
+  const justGrewIntoGrace =
+    pinnedTasks.length > prevPinnedCount.current && !skipNextPinGrace.current;
+  const pinnedViewActive =
+    pinnedTasks.length > 0 && !pinViewGraceActive && !justGrewIntoGrace && !todayDragging;
 
   const handleSuggestedPins = (ids: string[]) => {
     // Suggested pins arrive in one shot rather than one tap at a time, so the
@@ -2148,7 +2164,10 @@ export function TodayScreen() {
         {viewMode === 'today' && projectStalls.length > 0 && !nudgeDismissed && (
           <ProjectNudgeBanner
             stalls={projectStalls}
-            onReview={() => setPullVisible(true)}
+            onReview={projectIds => {
+              setPullScopeProjectIds(projectIds);
+              setPullVisible(true);
+            }}
             onDismiss={dismissProjectNudge}
           />
         )}
@@ -2686,6 +2705,7 @@ export function TodayScreen() {
           plannedLabel={plannedLabel}
           onPullFromProjects={() => {
             setOptionsMenuVisible(false);
+            setPullScopeProjectIds(undefined);
             setPullVisible(true);
           }}
           quietProjectCount={projectStalls.length}
@@ -2718,7 +2738,11 @@ export function TodayScreen() {
         <ProjectPullSheet
           visible={pullVisible}
           todaysTasks={visibleTasks}
-          onClose={() => setPullVisible(false)}
+          scopeProjectIds={pullScopeProjectIds}
+          onClose={() => {
+            setPullVisible(false);
+            setPullScopeProjectIds(undefined);
+          }}
         />
 
         <TaskGroupEditor

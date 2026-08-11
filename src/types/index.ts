@@ -561,6 +561,15 @@ export interface GroceryItem {
   // Self-expiring: once a future date passes, this reads exactly as null
   // again, so "Got it" never needs a separate action to wear off.
   onHandUntil: string | null;
+  // The recipe this item was first added from, if any. Set only when
+  // addFromPlan creates a genuinely new catalog row — never on a row that
+  // already existed, so re-adding a known item (typed, imported, or from a
+  // different recipe) never overwrites where it originally came from. A
+  // snapshot pair rather than a live id lookup: sourceRecipeTitle is captured
+  // once at creation and never refreshed, resolve-or-shrug like every other
+  // cross-row pointer here — a later recipe rename or delete doesn't touch it.
+  sourceRecipeId: string | null;
+  sourceRecipeTitle: string | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
@@ -581,6 +590,12 @@ export interface Shop {
   nameKey: string;
   sortOrder: number;
   createdAt: string;
+  // "It has everything, but don't send me there" — Amazon is the canonical
+  // case. Keeps the store fully available for manual linking (the item
+  // sheet's picker, finishShopping's "which store") while pulling it out of
+  // primaryShopFor/exclusiveShopFor and the grocery-run task button's store
+  // picker. Same naming convention as Category.excludeFromPinSuggestions.
+  excludeFromSuggestions: boolean;
 }
 
 // One (item, shop) pair — an aggregate, deliberately NOT a log of trips.
