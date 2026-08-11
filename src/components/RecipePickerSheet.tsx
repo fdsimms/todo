@@ -189,18 +189,12 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
   // `slot` is read at tap time rather than captured, so the chips can be changed
   // after a search has been typed without the pick going to the old one.
   //
-  // A pick no longer closes the sheet — planning a day is a burst of several
-  // picks (breakfast, lunch, dinner), not one edit, same reasoning as the
-  // chain-step/subtask/ingredient inputs elsewhere in the app. It resets back
-  // to slot selection for the same day instead; "Done" (or the backdrop /
-  // swipe / hardware back, same as before) is the only thing that actually
-  // dismisses now.
+  // A pick closes the sheet — tapping a recipe/preset/free-text row with no
+  // other feedback than a haptic otherwise reads as if nothing happened.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
     onPick({ slot, recipeId, leftoverId: null, title });
-    setQuery('');
-    setSlot(defaultSlot);
-    setJustPicked(null);
+    dismiss();
   };
 
   /**
