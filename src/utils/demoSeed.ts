@@ -5,7 +5,10 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
-import { getCurrentDayStart } from './dateUtils';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generateId } from './id';
 
 // Seeds a whole plausible-looking task list into whatever database is
@@ -34,6 +37,16 @@ export function seedDemoData(): void {
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const { createProject } = useProjectStore.getState();
   const { createGroup } = useTaskGroupStore.getState();
+  const {
+    addByName: addGroceryItem,
+    toggleFavorite: toggleGroceryFavorite,
+    setCheckedMany,
+    finishShopping,
+    addShop,
+    linkItemShop,
+  } = useGroceryStore.getState();
+  const { addRecipe, addIngredientsFromText, setMealType, setSourceUrl } = useRecipeStore.getState();
+  const { planMeal } = useMealPlanStore.getState();
 
   const today = getCurrentDayStart();
 
@@ -245,4 +258,98 @@ export function seedDemoData(): void {
     const at = subDays(today, daysAgo);
     updateTask(t.id, { completedAt: setHours(at, 17).toISOString() });
   });
+
+  // --- Groceries -------------------------------------------------------------
+  // A mix of aisles by naming things the offline lexicon (groceryAisles.ts)
+  // already knows how to place — no need to create aisles by hand.
+  const GROCERY_ITEM_NAMES = [
+    'Milk',
+    'Eggs',
+    'Greek yogurt',
+    'Spinach',
+    'Bananas',
+    'Chicken breast',
+    'Pasta',
+    'Olive oil',
+    'Coffee',
+    'Paper towels',
+  ];
+  const groceryItems = GROCERY_ITEM_NAMES.map(name =>
+    addGroceryItem(name, undefined, undefined, { registerUndo: false })
+  );
+  const itemNamed = (name: string) => groceryItems.find(i => i.name === name)!;
+
+  // A starred item — kept around whether or not it's on the list right now.
+  toggleGroceryFavorite(itemNamed('Olive oil').id);
+
+  const traderJoes = addShop("Trader Joe's");
+  const costco = addShop('Costco');
+
+  // A completed trip: checking a few items off and finishing the shop bumps
+  // their purchase history, links them to the store, and takes them off the
+  // current list — exactly what "off-list, but bought before" looks like.
+  const boughtAtTraderJoes = ['Milk', 'Eggs', 'Olive oil', 'Paper towels'];
+  if (traderJoes) {
+    setCheckedMany(boughtAtTraderJoes.map(name => itemNamed(name).id), true);
+    finishShopping(traderJoes.id);
+  }
+
+  // "I can get this at Costco" without a trip behind it yet — an assertion,
+  // not an observation (see linkItemShop's doc comment) — so Buy again's
+  // store filter has a second shop with something in it.
+  if (costco) {
+    ['Coffee', 'Chicken breast'].forEach(name => linkItemShop(itemNamed(name).id, costco.id));
+  }
+
+  // --- Recipes -----------------------------------------------------------
+  const stirFry = addRecipe('Weeknight chicken stir-fry');
+  if (stirFry) {
+    addIngredientsFromText(
+      stirFry.id,
+      ['2 chicken breasts', '1 red bell pepper', '2 tbsp soy sauce', '1 clove garlic', '2 cups rice'].join('\n')
+    );
+    setMealType(stirFry.id, 'dinner');
+  }
+
+  const oats = addRecipe('Overnight oats');
+  if (oats) {
+    addIngredientsFromText(
+      oats.id,
+      ['1 cup rolled oats', '1 cup milk', '1 tbsp honey', '1/2 cup berries'].join('\n')
+    );
+    setMealType(oats.id, 'breakfast');
+  }
+
+  const salmon = addRecipe('Lemon garlic salmon');
+  if (salmon) {
+    addIngredientsFromText(
+      salmon.id,
+      ['2 salmon fillets', '1 lemon', '2 cloves garlic', '2 tbsp butter', '1 bunch asparagus'].join('\n')
+    );
+    setMealType(salmon.id, 'dinner');
+    setSourceUrl(salmon.id, 'https://www.example-recipes.com/lemon-garlic-salmon');
+  }
+
+  // --- Meal plan (spread across the current week) ------------------------
+  if (oats) {
+    planMeal({ date: dayKeyOf(today), slot: 'breakfast', recipeId: oats.id, title: oats.name });
+  }
+  if (stirFry) {
+    planMeal({
+      date: dayKeyOf(addDays(today, 1)),
+      slot: 'dinner',
+      recipeId: stirFry.id,
+      title: stirFry.name,
+    });
+  }
+  // Freeform, non-recipe entry — planning doesn't require a recipe.
+  planMeal({ date: dayKeyOf(addDays(today, 2)), slot: 'dinner', title: 'Eating out' });
+  if (salmon) {
+    planMeal({
+      date: dayKeyOf(addDays(today, 3)),
+      slot: 'dinner',
+      recipeId: salmon.id,
+      title: salmon.name,
+    });
+  }
 }
