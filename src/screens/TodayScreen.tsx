@@ -154,6 +154,11 @@ const NO_SUBTASKS: SubtaskEntry = { items: [], doneCount: 0 };
 // sectionTaskIds): one shared empty array rather than a fresh one per render.
 const NO_SECTION_TASKS: string[] = [];
 
+// Same idea again for a stack with no children (or none matching the current
+// filter/section) — TaskGroupHeader's `allChildren` prop, so a fresh `[]`
+// here would be exactly the identity churn NO_SUBTASKS above exists to avoid.
+const NO_GROUP_CHILDREN: Task[] = [];
+
 // Breathing room left above a row jumped to from the new-todos banner, so it
 // lands just inside the top of the list rather than flush against it. Matches
 // ReorderableList's own margin, since either list can be the one that scrolls.
@@ -1513,22 +1518,38 @@ export function TodayScreen() {
   // completion. groupRosterOf collapses those back to one entry per series
   // (see the Stacks note in CLAUDE.md). Live members only — selecting finished
   // history would put it in reach of the bulk bar's delete.
-  const selectGroupRoster = (groupId: string) => {
+  // Id-bound like handleRowPress/handleRowEdit above, and for the same
+  // reason: TaskGroupHeader takes the group's own id back rather than a
+  // closure capturing it, so this one useCallback serves every stack header
+  // instead of a fresh arrow per group per render.
+  const handleGroupSwipeSelect = useCallback((groupId: string) => {
     const ids = groupRosterOf(groupId).filter(t => !t.completed).map(t => t.id);
     if (ids.length === 0) return;
     setExpandedTaskId(null);
     enterSelectionMode(ids);
-  };
+  }, [groupRosterOf, enterSelectionMode]);
+
+  const handleGroupComplete = useCallback((groupId: string) => completeGroup(groupId), [completeGroup]);
+  const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
+  const handleGroupPressEdit = useCallback((groupId: string) => {
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    setEditingGroup(group);
+    setGroupEditorVisible(true);
+  }, []);
 
   // The TaskGroupHeader callbacks below are identical across every place a
   // stack header renders (main list, Later Today, Inbox) — only
-  // onToggleCollapse differs per site, so it stays out of this helper.
-  const groupHeaderProps = (group: TaskGroup) => ({
-    onComplete: () => completeGroup(group.id),
-    onDefer: (date: Date) => deferGroup(group.id, date),
-    onSwipeSelect: () => selectGroupRoster(group.id),
-    onPressEdit: () => { setEditingGroup(group); setGroupEditorVisible(true); },
-  });
+  // onToggleCollapse differs per site, so it stays out of this helper. Each
+  // is one of the stable, id-bound handlers above, so spreading this object
+  // (itself recreated every render) still hands TaskGroupHeader the same
+  // four function identities call to call.
+  const groupHeaderProps = {
+    onComplete: handleGroupComplete,
+    onDefer: handleGroupDefer,
+    onSwipeSelect: handleGroupSwipeSelect,
+    onPressEdit: handleGroupPressEdit,
+  };
 
   // Shared by the plain 'task' row case and a group's expanded children —
   // group children are full TaskItem rows with every normal capability
@@ -1652,7 +1673,7 @@ export function TodayScreen() {
       );
     }
     if (item.type === 'group') {
-      const allChildren = childrenByGroupId.get(item.group.id) ?? [];
+      const allChildren = childrenByGroupId.get(item.group.id) ?? NO_GROUP_CHILDREN;
       return (
         <GroupDropTargetRow
           channel={fabIntentChannel}
@@ -1682,7 +1703,7 @@ export function TodayScreen() {
                 setDraggingGroupId(null);
                 setGroupCollapsed(item.group.id, !item.group.collapsed);
               }}
-              {...groupHeaderProps(item.group)}
+              {...groupHeaderProps}
               onDrag={!selectionMode && drag ? () => startGroupDrag(item.group.id, drag) : undefined}
             />
             <TaskGroupBody
@@ -1767,7 +1788,7 @@ export function TodayScreen() {
   // TaskGroupHeader's default isRelevantToGroupToday filter, since those
   // children aren't currently visible yet and would otherwise never count.
   const renderLaterGroup = (group: TaskGroup, children: Task[]) => {
-    const allChildren = childrenByGroupId.get(group.id) ?? [];
+    const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
       <TaskGroupTray>
         <TaskGroupHeader
@@ -1781,7 +1802,7 @@ export function TodayScreen() {
             // this row's own transition already.
             setGroupCollapsed(group.id, !group.collapsed);
           }}
-          {...groupHeaderProps(group)}
+          {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
           {children.map(child => (
@@ -1828,7 +1849,7 @@ export function TodayScreen() {
   // the full roster — 0 for an all-Inbox stack, which hides the badge, and
   // the real count for a stack that also has members due today.
   const renderInboxGroup = (group: TaskGroup, children: Task[]) => {
-    const allChildren = childrenByGroupId.get(group.id) ?? [];
+    const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
     return (
       <TaskGroupTray>
         <TaskGroupHeader
@@ -1840,7 +1861,7 @@ export function TodayScreen() {
             animateLayout();
             setGroupCollapsed(group.id, !group.collapsed);
           }}
-          {...groupHeaderProps(group)}
+          {...groupHeaderProps}
         />
         <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
           {children.map(child => (
