@@ -793,13 +793,14 @@ function reconcileCookTask(entry: MealPlanEntry): void {
   if (entry.cookedAt) return;
 
   const { tasks, addTask, updateTask, deleteTask } = useTaskStore.getState();
+  const { mealCookTasks, mealCookTaskCategory } = useSettingsStore.getState();
   const existing = liveCookTaskFor(entry.id);
-  const wanted = wantsCookTask(entry, useSettingsStore.getState().mealCookTasks);
+  const wanted = wantsCookTask(entry, mealCookTasks);
 
   if (!wanted) {
     // Only the live one goes. A completed cook task is a record of a thing
     // that was done, and turning the option off is not a claim it wasn't.
-    if (existing) deleteTask(existing.id);
+    if (existing) deleteTaskQuietly(existing.id);
     return;
   }
 
@@ -809,7 +810,7 @@ function reconcileCookTask(entry: MealPlanEntry): void {
   }
 
   if (tasks.some(t => t.mealEntryId === entry.id)) return;
-  addTask(cookTaskDraft(entry));
+  addTask(cookTaskDraft(entry, mealCookTaskCategory));
 }
 
 /**
@@ -823,7 +824,25 @@ function reconcileCookTask(entry: MealPlanEntry): void {
  */
 function dropCookTask(entryId: string): void {
   const existing = liveCookTaskFor(entryId);
-  if (existing) useTaskStore.getState().deleteTask(existing.id);
+  if (existing) deleteTaskQuietly(existing.id);
+}
+
+/**
+ * Deletes a cook task without arming shake-to-undo.
+ *
+ * `deleteTask` registers a "Task deleted" undo, which is right when a user
+ * deletes a task and wrong for every delete in this file: these are
+ * consequences of a meal-plan action that registers its own undo, and that
+ * undo puts the task back by reconciling. Two competing entries for one
+ * gesture is the least of it — `bulkDeleteEntries` deliberately clears the
+ * queue because its confirm dialog says "This can't be undone", and a stray
+ * task-store entry surviving that would make the promise a lie, which is
+ * exactly the failure that store's own doc comment warns about.
+ */
+function deleteTaskQuietly(taskId: string): void {
+  const store = useTaskStore.getState();
+  store.deleteTask(taskId);
+  store.setLastAction(null);
 }
 
 /**

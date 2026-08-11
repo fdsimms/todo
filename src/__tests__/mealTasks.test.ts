@@ -121,3 +121,18 @@ describe('cookTaskNeedsUpdate', () => {
     expect(cookTaskNeedsUpdate({ ...current, timeSegments: [] }, meal)).toBe(true);
   });
 });
+
+describe('cookTaskDraft category', () => {
+  it('files the task where the setting says, and nowhere by default', () => {
+    expect(cookTaskDraft(entry()).category).toBeNull();
+    expect(cookTaskDraft(entry(), 'Kitchen').category).toBe('Kitchen');
+  });
+
+  // Category is applied on creation only — it isn't one of the three fields
+  // the meal owns, so a reconcile must never rewrite where the user filed it.
+  it('is not one of the fields a reconcile compares', () => {
+    const meal = entry();
+    const filed = { ...cookTaskFields(meal), category: 'Somewhere else' };
+    expect(cookTaskNeedsUpdate(filed, meal)).toBe(false);
+  });
+});

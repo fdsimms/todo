@@ -349,6 +349,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(Object.keys(useMealPlanStore.getState().addedToListAt).length).toBeGreaterThan(0);
   });
 
+  it('seeds cook tasks, and a meal that deliberately has none', () => {
+    const { entries } = useMealPlanStore.getState();
+    const { tasks } = useTaskStore.getState();
+
+    const cookTasks = tasks.filter(t => t.mealEntryId);
+    expect(cookTasks.length).toBeGreaterThan(0);
+    // Each points at a meal that really exists, and says what to cook.
+    cookTasks.forEach(task => {
+      const entry = entries.find(e => e.id === task.mealEntryId);
+      expect(entry).toBeDefined();
+      expect(task.title).toBe(`Cook ${entry!.title}`);
+    });
+    // Segmented to its slot — the mechanism that keeps dinner off the morning.
+    expect(cookTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
+
+    // The per-meal opt-out is invisible unless something uses it.
+    expect(entries.some(e => e.cookTask === false)).toBe(true);
+    expect(entries.some(e => e.cookTask === null)).toBe(true);
+
+    // Nothing spawned for free text or for a leftover night.
+    const freeOrLeftover = entries.filter(e => !e.recipeId || e.leftoverId).map(e => e.id);
+    expect(cookTasks.every(t => !freeOrLeftover.includes(t.mealEntryId!))).toBe(true);
+  });
+
   it('seeds a fridge covering every freshness state and both endings', () => {
     const { leftovers } = useLeftoverStore.getState();
     const live = leftovers.filter(isLiveLeftover);

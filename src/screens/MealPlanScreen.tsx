@@ -218,6 +218,7 @@ export function MealPlanScreen() {
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const setEntryCooked = useMealPlanStore(s => s.setCooked);
+  const setCookTask = useMealPlanStore(s => s.setCookTask);
   const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
@@ -851,6 +852,13 @@ export function MealPlanScreen() {
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
 
+  // Read from the task list rather than from `selected.cookTask`, because the
+  // flag's third state (null, "the setting decides") doesn't answer the
+  // question the row is asking — whether a task exists right now.
+  const selectedHasCookTask = useTaskStore(
+    s => !!selected && s.tasks.some(t => t.mealEntryId === selected.id && !t.completed && !t.archived)
+  );
+
   // The either/or slots this meal has to answer, read under its own current
   // answers — so a choice nested inside the chosen option appears and one
   // inside the option it replaced doesn't.
@@ -1306,6 +1314,14 @@ export function MealPlanScreen() {
             ? () => finishLeftover(selected.leftoverId!, 'eaten')
             : undefined
         }
+        // Absent once the meal is cooked: its task has already been ticked (or
+        // deliberately left), and either way scheduling the past is nonsense.
+        onSetCookTask={
+          selected && !selected.cookedAt
+            ? want => setCookTask(selected.id, want)
+            : undefined
+        }
+        hasCookTask={!!selected && selectedHasCookTask}
         onClose={() => setSelectedId(null)}
       />
 

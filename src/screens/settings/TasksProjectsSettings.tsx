@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useColors } from '../../theme/ThemeContext';
@@ -45,6 +45,13 @@ const NEW_TASK_DESTINATION_PILLS: PillOption<'today' | 'inbox' | 'unscheduled'>[
   { value: 'inbox', label: 'Inbox' },
   { value: 'unscheduled', label: 'Unscheduled' },
 ];
+// "Line" rather than "Strip": the user-facing word for what they'll see is the
+// shape of it, and the code's name for the component isn't their problem.
+const MEALS_ON_TODAY_PILLS: PillOption<MealsOnToday>[] = [
+  { value: 'strip', label: 'One line' },
+  { value: 'block', label: 'Full list' },
+  { value: 'off', label: 'Off' },
+];
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -58,6 +65,12 @@ export function TasksProjectsSettings() {
   const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
+  const mealCookTasks = useSettingsStore(s => s.mealCookTasks);
+  const setMealCookTasks = useSettingsStore(s => s.setMealCookTasks);
+  const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
+  const setMealCookTaskCategory = useSettingsStore(s => s.setMealCookTaskCategory);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -164,6 +177,63 @@ export function TasksProjectsSettings() {
           toggle={hideCategories}
           onPress={() => setHideCategories(!hideCategories)}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Meals on Today"
+        footer="Cook tasks appear on the day the meal is planned for, hidden until that part of the day — breakfast in the morning, dinner in the evening. Ticking one off marks the meal cooked, and vice versa. Only meals made from a recipe get one; delete a cook task and that meal won't get another."
+      >
+        <SettingsRow
+          icon="restaurant-outline"
+          label="Show the day's meals"
+          hint={
+            mealsOnToday === 'block'
+              ? 'A full list of today\'s meals above your tasks'
+              : mealsOnToday === 'strip'
+                ? 'One line of what\'s left to eat, which clears as you cook'
+                : 'Nothing — meals stay on the Meal plan tab'
+          }
+          tight
+        />
+        <SettingsPills
+          attached
+          options={MEALS_ON_TODAY_PILLS}
+          selected={mealsOnToday}
+          onSelect={mode => { haptics.tap(); setMealsOnToday(mode); }}
+          accessibilityLabelFor={o => `Meals on Today: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="checkbox-outline"
+          iconColor={mealCookTasks ? colors.accent : undefined}
+          label="Cook tasks"
+          hint={
+            mealCookTasks
+              ? 'Planning a recipe adds a task to cook it'
+              : 'Planning a recipe adds no task'
+          }
+          toggle={mealCookTasks}
+          onPress={() => setMealCookTasks(!mealCookTasks)}
+        />
+        {mealCookTasks && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="pricetag-outline"
+              label="File cook tasks under"
+              hint="With none, they sit loose at the top of Today above your categories"
+              value={newTaskCategoryPills.find(o => o.value === mealCookTaskCategory)?.label ?? 'None'}
+              tight
+            />
+            <SettingsPills
+              attached
+              options={newTaskCategoryPills}
+              selected={mealCookTaskCategory}
+              onSelect={category => { haptics.tap(); setMealCookTaskCategory(category); }}
+              accessibilityLabelFor={o => `Cook task category: ${o.label}`}
+            />
+          </>
+        )}
       </SettingsSection>
 
       <SettingsSection

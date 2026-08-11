@@ -113,9 +113,21 @@ export function cookTaskFields(entry: MealPlanEntry): {
   };
 }
 
-/** The full draft for a newly spawned cook task, back-pointer included. */
-export function cookTaskDraft(entry: MealPlanEntry): Partial<TaskDraft> {
-  return { ...cookTaskFields(entry), mealEntryId: entry.id };
+/**
+ * The full draft for a newly spawned cook task, back-pointer included.
+ *
+ * `category` is applied here and nowhere else — on creation only, never on a
+ * reconcile — because it isn't one of the three fields the meal owns. It
+ * matters mostly for where the task lands: makeCategoryGroups renders
+ * uncategorized tasks in a header-less block at the *top* of Today, so cook
+ * tasks left with no category would collect exactly where the meals block used
+ * to be. See the mealCookTaskCategory setting.
+ */
+export function cookTaskDraft(
+  entry: MealPlanEntry,
+  category: string | null = null
+): Partial<TaskDraft> {
+  return { ...cookTaskFields(entry), mealEntryId: entry.id, category };
 }
 
 /**

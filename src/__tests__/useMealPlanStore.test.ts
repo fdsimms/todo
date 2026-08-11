@@ -49,6 +49,7 @@ const mockTaskState = {
   deleteTask: jest.fn((id: string) => {
     mockTaskState.tasks = mockTaskState.tasks.filter(t => t.id !== id);
   }),
+  setLastAction: jest.fn(),
   completeTask: jest.fn((id: string) => {
     mockTaskState.tasks = mockTaskState.tasks.map(t => (t.id === id ? { ...t, completed: true } : t));
   }),
@@ -1198,5 +1199,35 @@ describe('cook tasks', () => {
 
     useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
     expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('cook tasks and the undo queue', () => {
+  it('arms no task-store undo when a meal delete takes its cook task', () => {
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+
+    useMealPlanStore.getState().removeEntry(meal.id);
+
+    // The meal's own "Removed …" undo owns this; a competing "Task deleted"
+    // would be a second offer for one gesture.
+    expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
+  });
+
+  it('leaves nothing armed after a bulk delete that promised it could not be undone', () => {
+    loadWeek();
+    const a = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    const b = useMealPlanStore.getState().planMeal({
+      date: '2026-08-06', slot: 'dinner', recipeId: 'r2', title: 'Salmon',
+    })!;
+
+    useMealPlanStore.getState().bulkDeleteEntries([a.id, b.id]);
+
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+    expect(mockTaskState.setLastAction).toHaveBeenCalledWith(null);
   });
 });

@@ -195,6 +195,21 @@ interface SettingsStore {
   // appear in a list it didn't ask to have changed. The per-meal override and
   // the rules for which meals qualify live in src/utils/mealTasks.ts.
   mealCookTasks: boolean;
+  // Which category a cook task files itself under, by name, or null for none.
+  //
+  // Worth a setting rather than a constant because of where an uncategorized
+  // task actually renders: makeCategoryGroups puts loose tasks in a
+  // header-less block at the *top* of Today, above every category section. For
+  // anyone who files their tasks, cook tasks left uncategorized would pile up
+  // exactly where the old meals block used to sit — which is the thing this
+  // whole change is undoing. Naming a category moves them into the day.
+  //
+  // Applied when the task is created and never re-applied: filing it somewhere
+  // else afterwards is the user's call, and reconciling only ever rewrites the
+  // three fields the meal owns. Stored by name, like Task.category and
+  // newTaskDefaults.category; a name that no longer exists resolves to no
+  // category, same as any other stale category reference here.
+  mealCookTaskCategory: string | null;
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
   // default and never inferred: importing *deletes* the reminder, so it only
@@ -284,6 +299,7 @@ interface SettingsStore {
   setShakeToUndoEnabled: (on: boolean) => void;
   setMealsOnToday: (mode: MealsOnToday) => void;
   setMealCookTasks: (on: boolean) => void;
+  setMealCookTaskCategory: (category: string | null) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
@@ -339,6 +355,7 @@ const DEFAULT_SETTINGS = {
   hideCategories: false,
   mealsOnToday: 'strip' as MealsOnToday,
   mealCookTasks: true,
+  mealCookTaskCategory: null,
   remindersImportEnabled: false,
   remindersImportDelete: true,
   groceryImportEnabled: false,
@@ -496,6 +513,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   hideCategories: false,
   mealsOnToday: 'strip',
   mealCookTasks: true,
+  mealCookTaskCategory: null,
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
@@ -563,6 +581,9 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     // exists for any meal already on the calendar, only for ones planned after
     // the update.
     const mealCookTasks = dbGetSetting('mealCookTasks') !== 'false';
+    // '' persists as "no category", matching how newTaskDefaults.category reads.
+    const storedCookCategory = dbGetSetting('mealCookTaskCategory');
+    const mealCookTaskCategory = storedCookCategory ? storedCookCategory : null;
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
     // install that predates the setting has no row, and the usual comparison
@@ -627,7 +648,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, mealsOnToday, mealCookTasks, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, mealsOnToday, mealCookTasks, mealCookTaskCategory, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -845,6 +866,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setMealCookTasks(on: boolean) {
     dbSetSetting('mealCookTasks', on ? 'true' : 'false');
     set({ mealCookTasks: on });
+  },
+
+  // Only ever read when a cook task is created, so changing it leaves the ones
+  // already filed where they are — same restraint every other default here
+  // keeps (newTaskDefaults.category doesn't re-file yesterday's tasks either).
+  setMealCookTaskCategory(category: string | null) {
+    dbSetSetting('mealCookTaskCategory', category ?? '');
+    set({ mealCookTaskCategory: category });
   },
 
   setRemindersImportEnabled(on: boolean) {

@@ -81,6 +81,15 @@ interface Props {
   /** Present only while the entry's recipe still resolves and has prep tasks. */
   onAddPrepTasks?: () => void;
   /**
+   * Says whether this meal gets a "Cook X" task on Today, overriding the
+   * `mealCookTasks` setting for this one meal (#1402). Absent on a meal that's
+   * already been cooked — the night has happened, and offering to schedule it
+   * then is offering to schedule the past.
+   */
+  onSetCookTask?: (want: boolean) => void;
+  /** Whether one exists right now — what the row's label and state read from. */
+  hasCookTask?: boolean;
+  /**
    * Present unless this entry is already eating a tracked leftover — logging a
    * leftover *of* a leftover is the one case where the offer is noise.
    */
@@ -121,7 +130,7 @@ const TOP_INSET = 72;
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onStartCooking, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
-  onFinishLeftover, onClose,
+  onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -418,6 +427,42 @@ export function MealEntrySheet({
                   <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
                 </View>
                 <Text style={[styles.actionText, { color: colors.accent }]}>Open recipe</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/*
+            The per-meal override for the cook task (#1402). Applies immediately
+            and leaves the sheet open — the same model the move chips and the
+            cooked toggle follow — because it's a property of this meal being
+            set, not an action being taken and left behind. It reads the entry
+            live rather than holding state, so the label follows what the
+            reconcile actually did.
+          */}
+          {!!onSetCookTask && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.tap(); onSetCookTask(!hasCookTask); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: hasCookTask }}
+                accessibilityLabel="Cook task on Today"
+                accessibilityHint={hasCookTask
+                  ? 'Removes the task to cook this meal'
+                  : 'Adds a task to cook this meal on the day it\'s planned for'}
+              >
+                <View style={styles.actionIcon}>
+                  <Ionicons
+                    name={hasCookTask ? 'checkbox' : 'square-outline'}
+                    size={16}
+                    color={colors.accent}
+                  />
+                </View>
+                <Text style={[styles.actionText, { color: colors.accent }]}>
+                  {hasCookTask ? 'Remove cook task' : 'Add cook task'}
+                </Text>
               </TouchableOpacity>
             </>
           )}
