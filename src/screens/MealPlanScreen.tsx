@@ -39,6 +39,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { LeftoversCard } from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
+import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
 import { isLiveLeftover, leftoverPartsFor } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -356,6 +357,7 @@ export function MealPlanScreen() {
   // just made — same discipline `selected` keeps above.
   const [editingLeftoverId, setEditingLeftoverId] = useState<string | null>(null);
   const [loggingLeftover, setLoggingLeftover] = useState<LeftoverSeed | null>(null);
+  const [historyVisible, setHistoryVisible] = useState(false);
   const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
 
   useEffect(() => {
@@ -839,6 +841,7 @@ export function MealPlanScreen() {
                   leftovers={leftovers}
                   onPress={l => setEditingLeftoverId(l.id)}
                   onAdd={() => setLoggingLeftover({})}
+                  onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
                 />
                 {canSuggestMeals && (
                   <InlineAction
@@ -1039,6 +1042,17 @@ export function MealPlanScreen() {
         resolution={{ chosen: reviewingEntry?.recipeChoices ?? [] }}
         onAdd={addChosenPrepTasks}
         onClose={() => setReviewingPrepTasksFor(null)}
+      />
+
+      {/* Closes itself before handing a row over, so the two sheets are never
+          up at once — the history's rows lead into LeftoverSheet, which is
+          where reopening and deleting already live. */}
+      <FridgeHistorySheet
+        visible={historyVisible}
+        leftovers={leftovers}
+        weekStartsOn={weekStartsOn}
+        onOpen={l => setEditingLeftoverId(l.id)}
+        onClose={() => setHistoryVisible(false)}
       />
 
       <LeftoverSheet
