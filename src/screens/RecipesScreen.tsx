@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
@@ -23,7 +24,7 @@ import { Fab, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { cleanRecipeName, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
+import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
@@ -44,6 +45,7 @@ export function RecipesScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
 
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
@@ -66,6 +68,19 @@ export function RecipesScreen() {
     () => query.trim() ? [] : rankRecipeSuggestions(recipes, new Date()),
     [query, recipes]
   );
+
+  // Computed once for the visible list rather than per row render — same
+  // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
+  // just reduced to a count per recipe.
+  const pantryCounts = useMemo(() => {
+    const now = new Date();
+    const map = new Map<string, number>();
+    for (const recipe of visible) {
+      const count = countLikelyInPantry(recipe, groceryItems, now);
+      if (count !== null) map.set(recipe.id, count);
+    }
+    return map;
+  }, [visible, groceryItems]);
 
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();
@@ -94,7 +109,7 @@ export function RecipesScreen() {
       onPress={() => openRecipe(recipe)}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole="button"
-      accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe)}`}
+      accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
       accessibilityHint="Double tap to open this recipe."
     >
       <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
@@ -103,7 +118,7 @@ export function RecipesScreen() {
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={1}>{recipe.name}</Text>
         <Text style={styles.meta} numberOfLines={1}>
-          {[describeRecipe(recipe), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
+          {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
         </Text>
       </View>
       {recipe.favorite && (
