@@ -58,6 +58,14 @@
           "faceIDPermission": "Lets dundundun ask for Face ID before it opens, so an unlocked phone doesn't hand over your task list."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Lets dundundun read a recipe out of a photo you've already taken, so a cookbook page you snapped becomes a recipe instead of something to retype.",
+          "cameraPermission": "Lets dundundun read a recipe straight off the page you point the camera at — a cookbook, a recipe card, a clipping.",
+          "microphonePermission": false
+        }
+      ],
       "expo-asset",
       "expo-font",
       [

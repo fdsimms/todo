@@ -3,15 +3,15 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
   StyleSheet,
 } from 'react-native';
-import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -24,10 +24,12 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { extractRecipe, describeAIError, type ExtractedRecipe } from '../services/aiSuggestions';
-import { normalizeIngredient } from '../utils/recipeUtils';
+import { normalizeIngredient, cleanRecipeName } from '../utils/recipeUtils';
+import { groceryNameKey } from '../utils/groceryParse';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -38,33 +40,41 @@ const CHECKBOX_SIZE = 22;
 
 interface Props {
   visible: boolean;
-  recipe: Recipe | null;
   onClose: () => void;
+  /** Handed the new (or matched existing) recipe id; the caller navigates. */
+  onCreated: (recipeId: string) => void;
 }
 
 /**
- * The counterpart to GroceryAISheet's "From a recipe" mode: that one turns a
- * paste into grocery items and throws the text away; this one keeps it,
- * filling in *this* recipe's servings and ingredients instead of just
- * shopping for it. Reuses extractRecipe — same prompt, same schema, same
- * validation — so a paste here and a paste there read the ingredients
- * identically.
+ * Builds a whole new recipe out of a photo or a paste — the Recipes screen's
+ * import entry, as opposed to `RecipeExtractSheet` which fills in a recipe that
+ * already exists.
  *
- * Never touches the recipe's name or notes: the recipe already exists (this
- * opens from RecipeDetailScreen), so overwriting what the user already typed
- * with whatever the model guessed would be a surprise, not a convenience.
+ * Deliberately a separate component rather than a `recipe === null` mode on that
+ * one: `RecipeExtractSheet` is documented as never touching a recipe's name, and
+ * producing a name is this sheet's entire job. What they genuinely share —
+ * `RecipeSourcePicker` and the extraction itself — is shared; the review list is
+ * a few lines and having its own copy is cheaper than a two-personality sheet.
+ *
+ * The name is editable before commit because it becomes an identity here
+ * (`nameKey` is UNIQUE), so a model's guess must be correctable — and having the
+ * field on screen is what makes the already-have-this case cheap: the duplicate
+ * check runs as you type and offers to open the recipe you meant.
  */
-export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
+export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const addRecipe = useRecipeStore(s => s.addRecipe);
   const setServings = useRecipeStore(s => s.setServings);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [extracted, setExtracted] = useState<ExtractedRecipe | null>(null);
+  const [name, setName] = useState('');
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyServings, setApplyServings] = useState(true);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
@@ -75,6 +85,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setLoading(false);
     setError(null);
     setExtracted(null);
+    setName('');
     setAccepted(new Set());
     setApplyServings(true);
     resetInput();
@@ -91,6 +102,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     try {
       const result = await extractRecipe(source, [...aisleOrder]);
       setExtracted(result);
+      setName(result.name);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
       setApplyServings(result.servings !== null);
     } catch (e) {
@@ -110,8 +122,25 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     });
   };
 
-  const handleApply = () => {
-    if (!recipe || !extracted) { onClose(); return; }
+  // Checked as they type rather than on tap, so the way out ("Open it", or just
+  // keep typing) is visible before the button they'd reach for is disabled.
+  const cleaned = cleanRecipeName(name);
+  const duplicate = useMemo(() => {
+    if (!cleaned) return null;
+    const key = groceryNameKey(cleaned);
+    return recipes.find(r => r.nameKey === key) ?? null;
+  }, [cleaned, recipes]);
+
+  const handleCreate = () => {
+    if (!extracted || !cleaned || duplicate) return;
+    const recipe = addRecipe(cleaned);
+    if (!recipe) {
+      // The store refused a name the live check said was free — the box changed
+      // under a sheet left open. Land them on the recipe they were after.
+      const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
+      if (existing) { onClose(); onCreated(existing.id); }
+      return;
+    }
     const chosen = extracted.ingredients
       .filter((_, i) => accepted.has(i))
       .map(item => normalizeIngredient(item))
@@ -119,10 +148,13 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     if (chosen.length > 0) addStructuredIngredients(recipe.id, chosen);
     if (applyServings && extracted.servings !== null) setServings(recipe.id, extracted.servings);
     haptics.success();
+    // Close first, then navigate: a navigate fired from under a live pageSheet
+    // renders the destination behind the sheet.
     onClose();
+    onCreated(recipe.id);
   };
 
-  const canApply = !loading && !!extracted && (accepted.size > 0 || (applyServings && extracted.servings !== null));
+  const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
   const renderBody = () => {
     if (loading) {
@@ -159,7 +191,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           {...keyboardScroll.props}
         >
           <RecipeSourcePicker
-            intro={`Paste a recipe or photograph the page. Its servings and shopping list get added to ${recipe?.name ?? 'this recipe'} instead of just going on the grocery list.`}
+            intro="Photograph a cookbook page or paste a recipe, and it’ll be added to your recipe box — name, servings and all."
             mode={input.mode}
             onChangeMode={input.setMode}
             text={input.text}
@@ -176,7 +208,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       );
     }
 
-    if (extracted.ingredients.length === 0 && extracted.servings === null) {
+    if (extracted.ingredients.length === 0 && !extracted.name) {
       return (
         <View style={styles.centered}>
           <EmptyState
@@ -184,7 +216,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
             title="Nothing found"
             subtitle={input.usingPhoto
               ? 'Nothing readable turned up in that photo. Try again in better light, or paste the text instead.'
-              : 'No servings or shopping items turned up in that text.'}
+              : 'No recipe turned up in that text.'}
             actionLabel={input.usingPhoto ? 'Try another photo' : undefined}
             onAction={input.usingPhoto ? () => { setExtracted(null); input.clearPhoto(); } : undefined}
           />
@@ -193,7 +225,40 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     }
 
     return (
-      <ScrollView contentContainerStyle={styles.list} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        ref={keyboardScroll.ref}
+        contentContainerStyle={styles.list}
+        keyboardShouldPersistTaps="handled"
+        {...keyboardScroll.props}
+      >
+        <View style={styles.nameCard}>
+          <Text style={styles.nameLabel}>NAME</Text>
+          <TextInput
+            style={styles.nameInput}
+            value={name}
+            onChangeText={setName}
+            placeholder="Recipe name"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_NAME_MAX_LENGTH}
+            accessibilityLabel="Recipe name"
+          />
+          {!!duplicate && (
+            <View style={styles.dupeRow}>
+              <Text style={styles.dupeText} numberOfLines={2}>
+                You already have a recipe called “{duplicate.name}”.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); onClose(); onCreated(duplicate.id); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${duplicate.name}`}
+              >
+                <Text style={styles.dupeAction}>Open it</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <Text style={styles.intro}>Untick anything you don't want added.</Text>
 
         {extracted.servings !== null && (
@@ -255,12 +320,12 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>From a recipe</Text>
+            <Text style={styles.headerTitle}>Import a recipe</Text>
           </View>
           <SheetHeaderButton
-            label="Add"
-            onPress={handleApply}
-            disabled={!canApply}
+            label="Create"
+            onPress={handleCreate}
+            disabled={!canCreate}
             minWidth={72}
           />
         </View>
@@ -295,6 +360,37 @@ function makeStyles(colors: Colors) {
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
     photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
+    nameCard: {
+      backgroundColor: colors.bgSecondary,
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.md,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    nameLabel: {
+      color: colors.textTertiary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.8,
+    },
+    nameInput: {
+      color: colors.text,
+      fontSize: font.lg,
+      fontWeight: fontWeight.semibold,
+      paddingVertical: spacing.xs,
+      minHeight: 36,
+    },
+    dupeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingTop: spacing.xs,
+      borderTopWidth: border.hairline,
+      borderTopColor: colors.separator,
+    },
+    dupeText: { flex: 1, color: colors.textSecondary, fontSize: font.xs },
+    dupeAction: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
     row: {
       flexDirection: 'row',
       alignItems: 'center',

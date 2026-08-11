@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,9 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
-import { Fab, FAB_SIZE } from '../components/Fab';
+import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
+import { Fab, FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -44,9 +46,23 @@ export function RecipesScreen() {
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
+  const [importVisible, setImportVisible] = useState(false);
+
+  // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
+  // still the one under your thumb.
+  const addMenuItems = useMemo<FabMenuItem[]>(() => ([
+    { key: 'import', label: 'From a photo', icon: 'camera-outline' },
+    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
+  ]), []);
+
+  const handleAddMenuSelect = useCallback((key: string) => {
+    if (key === 'import') setImportVisible(true);
+    else setAddVisible(true);
+  }, []);
 
   const visible = useMemo(() => {
     const matched = rankRecipes(query, recipes);
@@ -196,17 +212,34 @@ export function RecipesScreen() {
         </>
       )}
 
-      <Fab
-        onPress={() => { haptics.tap(); setAddVisible(true); }}
-        accessibilityLabel="Add recipe"
-        bottom={insets.bottom + tabBarHeight + spacing.md}
-      />
+      {/* Without a key there is only one way to add a recipe, and a one-item
+          menu is worse than the plain button it replaced. */}
+      {anthropicApiKey ? (
+        <FabMenu
+          items={addMenuItems}
+          onSelect={handleAddMenuSelect}
+          accessibilityLabel="Add recipe"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
+      ) : (
+        <Fab
+          onPress={() => { haptics.tap(); setAddVisible(true); }}
+          accessibilityLabel="Add recipe"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+        />
+      )}
 
       <QuickAddNameSheet
         visible={addVisible}
         placeholder="Recipe name"
         onSubmit={createRecipe}
         onClose={() => setAddVisible(false)}
+      />
+
+      <RecipeCreateSheet
+        visible={importVisible}
+        onClose={() => setImportVisible(false)}
+        onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
       />
     </View>
   );

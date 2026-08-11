@@ -3,7 +3,6 @@ import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
@@ -33,6 +32,8 @@ import {
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { RecipeSourcePicker } from './RecipeSourcePicker';
+import { useRecipePhotoSource } from '../hooks/useRecipePhotoSource';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
 
@@ -78,7 +79,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const [tidyRows, setTidyRows] = useState<TidyRow[]>([]);
   const [recipeRows, setRecipeRows] = useState<RecipeGroceryItem[]>([]);
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
-  const [recipeText, setRecipeText] = useState('');
+  const recipeInput = useRecipePhotoSource();
+  const { source: recipeSource, reset: resetRecipeInput } = recipeInput;
 
   // Anything currently sitting in the catch-all and on the list — the exact
   // gap the lexicon left.
@@ -93,8 +95,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     setTidyRows([]);
     setRecipeRows([]);
     setAccepted(new Set());
-    setRecipeText('');
-  }, []);
+    resetRecipeInput();
+  }, [resetRecipeInput]);
 
   useEffect(() => {
     if (!visible) reset();
@@ -122,11 +124,11 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   }, [unsorted, aisleOrder]);
 
   const runRecipe = useCallback(async () => {
-    if (!recipeText.trim()) return;
+    if (!recipeSource) return;
     setLoading(true);
     setError(null);
     try {
-      const rows = await suggestRecipeGroceries(recipeText, [...aisleOrder]);
+      const rows = await suggestRecipeGroceries(recipeSource, [...aisleOrder]);
       setRecipeRows(rows);
       setAccepted(new Set(rows.map((_, i) => i)));
     } catch (e) {
@@ -134,7 +136,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [recipeText, aisleOrder]);
+  }, [recipeSource, aisleOrder]);
 
   // Tidy has everything it needs the moment it opens; recipe needs text first.
   useEffect(() => {
@@ -186,7 +188,9 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         <View style={styles.centered}>
           <ActivityIndicator color={colors.purple} />
           <Text style={styles.loadingText}>
-            {mode === 'tidy' ? 'Working out where these live…' : 'Reading the recipe…'}
+            {mode === 'tidy'
+              ? 'Working out where these live…'
+              : recipeInput.usingPhoto ? 'Reading the photo…' : 'Reading the recipe…'}
           </Text>
         </View>
       );
@@ -209,31 +213,22 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
     if (mode === 'recipe' && recipeRows.length === 0) {
       return (
         <ScrollView contentContainerStyle={styles.pasteWrap} keyboardShouldPersistTaps="handled">
-          <Text style={styles.intro}>
-            Paste a recipe — ingredients, method and all. You’ll get back what to buy, named the way a
-            shop labels it rather than the way the recipe chops it.
-          </Text>
-          <TextInput
-            style={styles.pasteInput}
-            value={recipeText}
-            onChangeText={setRecipeText}
-            placeholder="Paste your recipe here…"
-            placeholderTextColor={colors.textTertiary}
-            multiline
-            textAlignVertical="top"
-            accessibilityLabel="Recipe text"
+          <RecipeSourcePicker
+            intro="Paste a recipe or photograph the page. You’ll get back what to buy, named the way a shop labels it rather than the way the recipe chops it."
+            mode={recipeInput.mode}
+            onChangeMode={recipeInput.setMode}
+            text={recipeInput.text}
+            onChangeText={recipeInput.setText}
+            photo={recipeInput.photo}
+            onPickPhoto={recipeInput.pick}
+            onClearPhoto={recipeInput.clearPhoto}
+            picking={recipeInput.picking}
+            ctaLabel="Find the items"
+            onRun={runRecipe}
           />
-          <TouchableOpacity
-            style={[styles.runBtn, !recipeText.trim() && styles.runBtnOff]}
-            activeOpacity={interaction.activeOpacity}
-            onPress={runRecipe}
-            disabled={!recipeText.trim()}
-            accessibilityRole="button"
-            accessibilityLabel="Find the items"
-          >
-            <Ionicons name="sparkles" size={iconSize.sm} color={colors.onAccent} />
-            <Text style={styles.runBtnText}>Find the items</Text>
-          </TouchableOpacity>
+          {!!recipeInput.photoError && (
+            <Text style={styles.photoError}>{recipeInput.photoError}</Text>
+          )}
         </ScrollView>
       );
     }
@@ -347,25 +342,7 @@ function makeStyles(colors: Colors) {
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     pasteWrap: { padding: spacing.md, gap: spacing.md },
-    pasteInput: {
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      padding: spacing.md,
-      fontSize: font.md,
-      color: colors.text,
-      minHeight: 220,
-    },
-    runBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      backgroundColor: colors.purple,
-      borderRadius: radius.md,
-      paddingVertical: 14,
-    },
-    runBtnOff: { opacity: 0.4 },
-    runBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+    photoError: { color: colors.red, fontSize: font.sm, textAlign: 'center' },
     row: {
       flexDirection: 'row',
       alignItems: 'center',
