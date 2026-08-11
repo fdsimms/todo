@@ -71,6 +71,11 @@ interface Props {
    * state and not back out of it (#1361).
    */
   onSetCooked?: (cooked: boolean) => void;
+  /**
+   * Opens the recipe with its cook timer already running — the handoff from
+   * the plan to the pan. Present only while the entry's recipe resolves.
+   */
+  onStartCooking?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /** Present only while the entry's recipe still resolves and has prep tasks. */
@@ -115,7 +120,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onScale, baseServings, baseServingsMax, onSetCooked, onStartCooking, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
   onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
@@ -368,6 +373,33 @@ export function MealEntrySheet({
                 <Text style={[styles.actionText, { color: colors.accent }]}>
                   {cooked ? 'Mark not cooked' : 'Mark cooked'}
                 </Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {/*
+            Above "Open recipe" because it's the more specific version of it,
+            and because it's the thing you want at the moment you're standing
+            in the kitchen: this sheet knows what tonight is, the recipe screen
+            has the timer, and until now nothing joined them (#1379). Starting
+            the timer here rather than passing a navigation param keeps the
+            state where it lives — on the recipe — so the screen simply opens
+            with it already running.
+          */}
+          {!!onStartCooking && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.impactMedium(); dismiss(onStartCooking); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Start cooking this meal, opening the recipe with its timer running"
+              >
+                <View style={styles.actionIcon}>
+                  <Ionicons name="flame-outline" size={16} color={colors.accent} />
+                </View>
+                <Text style={[styles.actionText, { color: colors.accent }]}>Start cooking</Text>
               </TouchableOpacity>
             </>
           )}

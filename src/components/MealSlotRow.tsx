@@ -1,9 +1,9 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useRef } from 'react';
+import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
@@ -64,6 +64,26 @@ export function MealSlotRow({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
+
+  /**
+   * The tick pops when it lands.
+   *
+   * This is the one moment in the whole feature where the user has actually
+   * done the thing it exists for — planned a meal and then cooked it — and it
+   * used to be a silent glyph swap while planning and removing both animated
+   * (#1379). Only on the way *in*: un-ticking is a correction, and a
+   * correction that celebrates is a correction that reads as a mistake being
+   * congratulated.
+   */
+  const pop = useRef(new Animated.Value(1)).current;
+  const wasCooked = useRef(cooked);
+  useEffect(() => {
+    if (cooked && !wasCooked.current) {
+      pop.setValue(0.7);
+      Animated.spring(pop, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
+    }
+    wasCooked.current = cooked;
+  }, [cooked, pop]);
   const fromFridge = !!entry.leftoverId;
   // "2×" on a meal being cooked at some multiple of its recipe, so the week
   // shows it without having to open each night's sheet.
@@ -135,11 +155,13 @@ export function MealSlotRow({
           accessibilityState={{ checked: cooked }}
           accessibilityLabel={cooked ? `Mark ${title} not cooked` : `Mark ${title} cooked`}
         >
-          <Ionicons
-            name={cooked ? 'checkmark-circle' : 'ellipse-outline'}
-            size={iconSize.lg}
-            color={cooked ? colors.green : colors.textTertiary}
-          />
+          <Animated.View style={{ transform: [{ scale: pop }] }}>
+            <Ionicons
+              name={cooked ? 'checkmark-circle' : 'ellipse-outline'}
+              size={iconSize.lg}
+              color={cooked ? colors.green : colors.textTertiary}
+            />
+          </Animated.View>
         </TouchableOpacity>
       )}
       {!selectionMode && (
