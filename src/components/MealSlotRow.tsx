@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
+import { formatScale, isUnscaled } from '../utils/recipeScale';
 
 interface Props {
   entry: MealPlanEntry;
@@ -61,6 +62,9 @@ export function MealSlotRow({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
   const fromFridge = !!entry.leftoverId;
+  // "2×" on a meal being cooked at some multiple of its recipe, so the week
+  // shows it without having to open each night's sheet.
+  const scaleLabel = isUnscaled(entry.recipeScale) ? null : formatScale(entry.recipeScale);
 
   return (
     <TouchableOpacity
@@ -69,7 +73,10 @@ export function MealSlotRow({
       activeOpacity={interaction.activeOpacity}
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
-      accessibilityLabel={[slotLabel(entry.slot), title, cooked ? 'cooked' : null].filter(Boolean).join(', ')}
+      accessibilityLabel={
+        [slotLabel(entry.slot), title, scaleLabel, cooked ? 'cooked' : null]
+          .filter(Boolean).join(', ')
+      }
       accessibilityHint={selectionMode ? 'Double tap to select this meal.' : 'Double tap to move or remove this meal.'}
     >
       {selectionMode ? (
@@ -123,7 +130,12 @@ export function MealSlotRow({
       )}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
-        <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>
+        {/* Appended to the caption rather than given a pill of its own: the row
+            is already dense, and how big a batch it is ranks with the slot it
+            sits in, not with the dish's name. */}
+        <Text style={styles.slot}>
+          {[slotLabel(entry.slot), scaleLabel].filter(Boolean).join(' · ')}
+        </Text>
       </View>
       {!selectionMode && (
         <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />

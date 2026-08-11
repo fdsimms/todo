@@ -20,6 +20,7 @@ import { SafeBlurView } from './SafeBlurView';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
+import { RecipeScaleChips } from './RecipeScaleChips';
 
 interface Props {
   visible: boolean;
@@ -44,6 +45,14 @@ interface Props {
   choiceGroups?: ChoiceGroup[];
   /** Records a pick. Absent alongside an empty `choiceGroups`. */
   onChoose?: (group: ChoiceGroup, componentId: string) => void;
+  /**
+   * Records how much of the recipe this meal makes — see
+   * MealPlanEntry.recipeScale. Absent for a meal with no recipe behind it,
+   * which is what hides the control entirely.
+   */
+  onScale?: (factor: number) => void;
+  /** "serves 8" under the batch chips, when the scaled recipe knows. */
+  scaledServingsLabel?: string | null;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -79,7 +88,8 @@ interface Props {
  */
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
-  onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers, onFinishLeftover, onClose,
+  onScale, scaledServingsLabel, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -180,9 +190,22 @@ export function MealEntrySheet({
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
           )}
 
-          {/* Above "Move to" because it's the only thing here that changes what
-              gets cooked and bought, rather than where the meal sits. A recipe
-              with no either/or components renders nothing at all. */}
+          {/* Alongside the choice chips, above "Move to", for the same reason
+              they are: both change what gets cooked and bought rather than where
+              the meal sits. Only for a meal backed by a recipe — a night that
+              just says "leftovers" has no quantities to multiply. */}
+          {!!onScale && (
+            <View>
+              <Text style={styles.label}>Batch</Text>
+              <RecipeScaleChips
+                value={entry?.recipeScale ?? 1}
+                onChange={onScale}
+                servingsLabel={scaledServingsLabel}
+                surface="card"
+              />
+            </View>
+          )}
+
           {choiceGroups.map(group => (
             <View key={`${group.recipe.id}:${group.label}`}>
               <Text style={styles.label}>{group.label}</Text>

@@ -40,7 +40,14 @@ import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
+import { describeCookTime, describeRecipe, formatServingsRange } from '../utils/recipeUtils';
+import {
+  describeUnscaled,
+  isUnscaled,
+  scaleQuantity,
+  scaleServings,
+} from '../utils/recipeScale';
+import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import {
@@ -105,6 +112,31 @@ export function RecipeDetailScreen() {
     () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
     [recipe, recipesById]
   );
+
+  // How much of the recipe you're reading it for. Screen state, deliberately
+  // written nowhere: halving a recipe to cook for one tonight is not an edit to
+  // the recipe, and the lasting form of the same fact lives on the meal that
+  // was planned (MealPlanEntry.recipeScale). It does travel into the add-to-list
+  // sheet, which is the one place the number turns into something bought.
+  const [scale, setScale] = useState(1);
+  // "serves 8" for a doubled 4, and nothing at all for a recipe that never said
+  // how many it serves — a scaled count must not invent one.
+  const scaledServingsLabel = useMemo(() => {
+    if (!recipe || isUnscaled(scale)) return null;
+    const scaled = scaleServings(recipe.servings, recipe.servingsMax, scale);
+    const range = formatServingsRange(scaled.servings, scaled.servingsMax);
+    return range ? `serves ${range}` : null;
+  }, [recipe, scale]);
+
+  // Only lines that *have* a quantity can fail to scale; a line with none was
+  // never going to say a number either way.
+  const unscaledNote = useMemo(() => {
+    if (!recipe) return null;
+    const count = recipe.ingredients.filter(
+      i => i.quantity.trim() && !scaleQuantity(i.quantity, scale).scaled
+    ).length;
+    return describeUnscaled(count, scale);
+  }, [recipe, scale]);
 
   const [draft, setDraft] = useState('');
   const [pickingImage, setPickingImage] = useState(false);
@@ -358,6 +390,12 @@ export function RecipeDetailScreen() {
     isDragging: boolean,
   ) => {
     const selected = selectedIds.has(ingredient.id);
+    // Tinted only where the number on screen is genuinely not what the recipe
+    // says, so the pills that did change are findable at a glance and the ones
+    // rule 3 passed through are visibly untouched.
+    const scaledResult = scaleQuantity(ingredient.quantity, scale);
+    const scaledQuantity = scaledResult.text;
+    const scaledHere = scaledResult.scaled;
     const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
     // A line can open both: the section it belongs to, then the either/or slot
     // it fills within that section.
@@ -387,7 +425,7 @@ export function RecipeDetailScreen() {
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
-            [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep,
+            [ingredient.section, ingredient.name, scaledQuantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
@@ -411,9 +449,14 @@ export function RecipeDetailScreen() {
               </Text>
             )}
           </View>
-          {!!ingredient.quantity && (
-            <View style={styles.qtyPill}>
-              <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
+          {!!scaledQuantity && (
+            <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
+              <Text
+                style={[styles.qtyText, scaledHere && styles.qtyTextScaled]}
+                numberOfLines={1}
+              >
+                {scaledQuantity}
+              </Text>
             </View>
           )}
           {!selectionMode && (
@@ -701,6 +744,18 @@ export function RecipeDetailScreen() {
 
         <Text style={styles.sectionLabel}>Ingredients</Text>
 
+        {/* Above the list rather than up by the summary: it's the quantities
+            below that visibly change, and a control that far from what it
+            changes reads as another fact about the recipe. */}
+        {recipe.ingredients.length > 0 && (
+          <RecipeScaleChips
+            value={scale}
+            onChange={setScale}
+            servingsLabel={scaledServingsLabel}
+            style={styles.scaleRow}
+          />
+        )}
+
         {recipe.ingredients.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
@@ -716,6 +771,11 @@ export function RecipeDetailScreen() {
             />
           </View>
         )}
+
+        {/* Rule 3 made visible: "a pinch" doubled is still "a pinch", and a cook
+            reading a doubled list deserves to know which lines the app didn't do
+            the arithmetic for rather than assuming it did. */}
+        {!!unscaledNote && <Text style={styles.scaleNote}>{unscaledNote}</Text>}
 
         <View style={styles.addRow}>
           <TextInput
@@ -874,6 +934,7 @@ export function RecipeDetailScreen() {
         visible={addToListVisible}
         recipe={recipe}
         recipesById={recipesById}
+        initialScale={scale}
         onClose={() => setAddToListVisible(false)}
       />
 
@@ -1098,9 +1159,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 2,
   },
+  // A tint rather than the filled accent the chips use: every quantity in the
+  // list is scaled at once, and a column of solid accent pills would read as a
+  // column of buttons.
+  qtyPillScaled: { backgroundColor: colors.accent + '26' },
   qtyText: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  qtyTextScaled: { color: colors.accent, fontWeight: fontWeight.medium },
+  scaleRow: { marginTop: spacing.xs, marginBottom: spacing.sm },
+  scaleNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.xs,
   },
   addRow: {
     flexDirection: 'row',

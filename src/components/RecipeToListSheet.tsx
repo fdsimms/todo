@@ -24,6 +24,8 @@ import {
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
 import { applyChoice, recipeChoiceGroups } from '../utils/recipeComponents';
+import { normalizeScale } from '../utils/recipeScale';
+import { RecipeScaleChips } from './RecipeScaleChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
@@ -47,6 +49,14 @@ interface Props {
    * header are the sheet's, and nothing here is written back.
    */
   initialChoices?: readonly string[];
+  /**
+   * How much of the recipe to shop for, to start on — the factor the recipe
+   * screen was being read at, or a planned meal's own `recipeScale` when the
+   * shop is a follow-up to cooking one. Like `initialChoices`, only ever a
+   * starting point: the chips below the header are the sheet's own and nothing
+   * here is written back.
+   */
+  initialScale?: number;
   onClose: () => void;
 }
 
@@ -72,7 +82,14 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
  * There's nothing to assert for a genuinely new ingredient — no catalog row
  * has it yet — so the action only appears once a row resolves to one.
  */
-export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices, onClose }: Props) {
+export function RecipeToListSheet({
+  visible,
+  recipe,
+  recipesById,
+  initialChoices,
+  initialScale,
+  onClose,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -90,6 +107,11 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
   const [choices, setChoices] = useState<string[]>([]);
   const choiceKey = choices.join('|');
 
+  // Same contract as `choices` above, and for the same reason: an ad-hoc shop
+  // isn't attached to a meal, so there's nothing for "I'm making a double batch"
+  // to be a lasting fact about.
+  const [scale, setScale] = useState(1);
+
   const choiceGroups = useMemo(
     () => (recipe && recipesById ? recipeChoiceGroups(recipe, recipesById, { chosen: choices }) : []),
     [recipe, recipesById, choiceKey]
@@ -98,11 +120,11 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
   const classified = useMemo(() => {
     if (!recipe) return [];
     return classifyPlanned(
-      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }),
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale),
       items,
       new Date()
     );
-  }, [recipe, recipesById, items, choiceKey]);
+  }, [recipe, recipesById, items, choiceKey, scale]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -120,12 +142,17 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
+    setScale(normalizeScale(initialScale));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Re-ticks on a swapped alternative as well as on open: changing the side
   // changes which rows exist, and a row that has just appeared has never been
   // unticked, so it belongs in the default selection.
+  //
+  // Not keyed on `scale`, deliberately: scaling changes the quantities on the
+  // rows, never which rows there are, so a line the user just unticked must
+  // stay unticked when they double the batch.
   useEffect(() => {
     if (!visible) return;
     setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
@@ -212,6 +239,15 @@ export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices
             minWidth={72}
           />
         </View>
+
+        {/* Above the choice chips: how much you're making applies to the whole
+            shop, while a choice applies to one group within it. */}
+        {!nothingToShow && (
+          <View style={styles.scaleRow}>
+            <Text style={styles.sectionLabel}>Batch</Text>
+            <RecipeScaleChips value={scale} onChange={setScale} />
+          </View>
+        )}
 
         {choiceGroups.length > 0 && (
           <View style={styles.choices}>
@@ -378,6 +414,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: border.hairline,
     borderBottomColor: colors.separator,
     paddingBottom: spacing.md,
+  },
+  scaleRow: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    gap: spacing.xs,
   },
   choiceGroup: { gap: spacing.xs },
   choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },

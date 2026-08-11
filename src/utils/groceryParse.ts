@@ -83,7 +83,11 @@ const LEADING_QTY = /^(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)\s*([a-z]+)?\.?\s+(
 // dozen aren't how a can or jar gets sized, and including them would just
 // make CONTAINER_QTY fire on more inputs without any of them being real
 // container-size phrasing.
-const SIZE_UNITS = new Set([
+// Exported for recipeScale, which has to recognise the same "N SIZE CONTAINER"
+// shape to know that the leading number of "14 oz can" is a size and not a
+// count. Two copies of these lists is how the parser and the scaler would come
+// to disagree about what a container line is.
+export const SIZE_UNITS = new Set([
   'lb', 'lbs', 'pound', 'pounds',
   'oz', 'ounce', 'ounces',
   'kg', 'g', 'gram', 'grams',
@@ -94,7 +98,7 @@ const SIZE_UNITS = new Set([
 // The container word — always the second unit in "N SIZE-UNIT CONTAINER"
 // ("2 14 oz cans"). Same words UNIT_SET already treats as a bare quantity on
 // their own ("2 cans"); this only adds a size in front of them.
-const CONTAINER_UNITS = new Set([
+export const CONTAINER_UNITS = new Set([
   'can', 'cans', 'jar', 'jars', 'box', 'boxes', 'bag', 'bags',
   'bottle', 'bottles', 'package', 'packages', 'pkg', 'pouch', 'pouches',
 ]);

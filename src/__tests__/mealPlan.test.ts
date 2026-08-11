@@ -45,6 +45,7 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    recipeScale: 1,
     ...overrides,
   };
 }

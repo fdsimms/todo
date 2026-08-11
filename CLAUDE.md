@@ -92,6 +92,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
+| halving or doubling a recipe | `src/utils/recipeScale.ts` — see Scaling below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -331,9 +332,10 @@ meal that uses it. The graph walk — flatten, cycle check, reverse lookup — l
   cross-row pointer here (`MealPlanEntry.recipeId`, `TemplateItem.refTemplateId`). Unfiling them
   would edit recipes the user didn't ask to touch, and a restored backup couldn't put them back.
   The delete confirm names the parents first, same as `TemplateEditor`'s does.
-- **Scaling is deliberately not in this.** `quantity` is free text everywhere in this app and
-  nothing does arithmetic on it (see the note at the top of `mealPlanGroceries.ts`); a component
-  contributes the quantities it's written with, whatever the parent's `servings` says.
+- **Scaling is not part of the component graph** — it rides on top of it. A factor applies to every
+  flattened line at once, components included (see Scaling below), so a component still contributes
+  the quantities it's written with and the parent's factor multiplies them on the way out. Nothing
+  about `servings` is consulted, and nothing is written back onto the recipe.
 
 **Alternatives are a label on a flat list**, not a fourth entity — and they exist at *both* levels:
 components sharing a `choiceGroup` ("mash *or* roast potatoes", #1252) and ingredients sharing one
@@ -389,6 +391,50 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   edit the recipe. `RecipeToListSheet.initialChoices` seeds them from the entry when the shop is a
   follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
+
+### Scaling (`recipeScale.ts`) — halving and doubling a recipe
+
+**This is the one place in the app that does arithmetic on a `quantity`**, and the only reason it's
+allowed to is that it's narrow by construction and always reached through a factor the user picked.
+Everything in `mealPlanGroceries.ts`'s header note still holds for every other reader.
+
+The four rules that make it safe, all enforced in `scaleQuantity`:
+
+1. **Only the leading amount is ever touched.** Unit, size clause and container word carry through
+   verbatim, apart from pluralising off a closed table.
+2. **No unit conversion, ever.** "500 g" doubled is "1000 g", not "1 kg". Knowing those measure the
+   same thing is knowledge this app doesn't claim — and "1000 g" is unidiomatic, never wrong.
+3. **A quantity whose amount doesn't parse passes through verbatim and flagged** (`scaled: false`).
+   "a pinch" doubled is "a pinch", and the UI says so (`describeUnscaled`) rather than inventing
+   "2 pinches". Coverage is ~95% of the quantity strings this app produces; the refusals are the
+   feature, not a gap to close by guessing.
+4. **Arithmetic is exact rational**, so "1/3 cup" tripled is exactly "1 cup" and halved is
+   "1/6 cup" — never "0.99" or "0.17".
+
+- **The sharp one: `14 oz can` doubled must become `2 14 oz cans`, not `28 oz can`.** That string is
+  one can of a given size, so its leading number is the *size*, not a count — scaling it changes
+  what you buy. Halving it refuses outright, having no expression in that notation. Both container
+  shapes are recognised off `SIZE_UNITS`/`CONTAINER_UNITS`, exported from `groceryParse` rather than
+  copied, so the parser and the scaler can't come to disagree about what a container line is.
+- **Plural is `> 1`, not `!= 1`** — "1/2 cup", "1 1/2 cups". A unit that isn't in `UNIT_PLURALS`
+  passes through uninflected ("2 bulb"), which is the same trade `groceryParse`'s unit whitelist
+  makes: slightly wrong grammar in the user's own word beats "2 pinchs".
+- **A factor is a fact about a cooking, not about the dish.** `MealPlanEntry.recipeScale` persists it
+  per planned meal (doubling Sunday's chili must not double the recipe, or every other meal that uses
+  it as a component); the recipe screen and the add-to-list sheets hold it in view/sheet state and
+  write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
+  resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
+  eight on Sunday" survives a swap of what's being cooked.
+- **Factor chips, not a target-servings stepper.** `Recipe.servings` is nullable and plenty of
+  recipes never had one, so a "cook for 6" control would be unavailable exactly where a factor still
+  makes sense. Scaled servings are shown *beside* the chips when the recipe happens to know them.
+- **This reopened `parseQuantityAmount`'s refusal of fractions**, which used to be a documented
+  decision. It had to: a halved recipe *produces* "1 1/2 cups", so every merged shopping row would
+  have degraded to `mergeQuantities`' rule-5 list. `mergeQuantities` now also compares units by
+  identity (`unitKey`) and agrees the summed unit with the total, because scaling generates both
+  "1/2 cup" and "2 cups" itself and a raw string comparison would list two measurements of one thing
+  side by side. It still never collapses units that merely measure alike — "g" and "kg" stay two
+  units, since merging those is rule 2 again.
 
 ### Chains
 
