@@ -83,6 +83,18 @@ interface MealPlanStore {
   renameEntry: (id: string, title: string) => void;
 
   /**
+   * Records which alternative this meal is having, as the whole list of chosen
+   * component link ids — see MealPlanEntry.componentChoices. Replaces rather
+   * than merges, because the caller builds the new list with
+   * applyComponentChoice, which is where the one-answer-per-group rule lives.
+   *
+   * Allowed on an already-cooked entry: the pick is a note about the meal, and
+   * correcting Tuesday to say it was actually roast potatoes is a fair edit —
+   * unlike markCooked, nothing downstream counts it.
+   */
+  setComponentChoices: (id: string, componentChoices: string[]) => void;
+
+  /**
    * Stamps cookedAt with now. Idempotent — a second tap on an already-cooked
    * entry is a no-op, since the recipe's cookCount (bumped separately by the
    * caller via useRecipeStore.markCooked) must only ever go up once per
@@ -162,6 +174,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // the "was that the last of it?" offer is the picker's, and it's an
       // offer.
       leftoverId: draft.leftoverId ?? null,
+      // Nothing picked yet, which resolves to every choice group's default —
+      // planning a meal must never be gated on answering "mash or roast?", the
+      // same call MealPlanEntry.recipeId makes about naming a recipe at all.
+      componentChoices: [],
     };
 
     dbInsertMealPlanEntry(entry);
@@ -203,6 +219,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const renamed: MealPlanEntry = { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
+  },
+
+  setComponentChoices(id, componentChoices) {
+    const entry = get().entries.find(e => e.id === id);
+    if (!entry) return;
+    const chosen: MealPlanEntry = { ...entry, componentChoices };
+    dbUpdateMealPlanEntry(chosen);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? chosen : e) }));
   },
 
   markCooked(id) {

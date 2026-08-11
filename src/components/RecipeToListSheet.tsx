@@ -23,6 +23,7 @@ import {
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
+import { applyComponentChoice, componentChoiceGroups } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
@@ -39,6 +40,13 @@ interface Props {
    * the behaviour it had before components existed.
    */
   recipesById?: ReadonlyMap<string, Recipe>;
+  /**
+   * Which alternatives to start on — a meal's own picks, when the shop is a
+   * follow-up to cooking one. Omitted (the recipe screen's own add) starts every
+   * choice group on its default. Only ever a starting point: the chips below the
+   * header are the sheet's, and nothing here is written back.
+   */
+  initialChoices?: readonly string[];
   onClose: () => void;
 }
 
@@ -64,7 +72,7 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
  * There's nothing to assert for a genuinely new ingredient — no catalog row
  * has it yet — so the action only appears once a row resolves to one.
  */
-export function RecipeToListSheet({ visible, recipe, recipesById, onClose }: Props) {
+export function RecipeToListSheet({ visible, recipe, recipesById, initialChoices, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -74,10 +82,27 @@ export function RecipeToListSheet({ visible, recipe, recipesById, onClose }: Pro
 
   const itemsByKey = useMemo(() => new Map(items.map(i => [i.nameKey, i])), [items]);
 
+  // Which alternative this *shop* is for, held only as long as the sheet is
+  // open. Deliberately not written anywhere: an add-to-list off the recipe
+  // screen isn't attached to a meal, so there is nothing for a pick to be a
+  // fact about — MealPlanEntry.componentChoices is where a lasting one lives.
+  // It starts empty, which is every group on its default.
+  const [choices, setChoices] = useState<string[]>([]);
+  const choiceKey = choices.join('|');
+
+  const choiceGroups = useMemo(
+    () => (recipe && recipesById ? componentChoiceGroups(recipe, recipesById, { chosen: choices }) : []),
+    [recipe, recipesById, choiceKey]
+  );
+
   const classified = useMemo(() => {
     if (!recipe) return [];
-    return classifyPlanned(plannedIngredientsForRecipe(recipe, recipesById), items, new Date());
-  }, [recipe, recipesById, items]);
+    return classifyPlanned(
+      plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }),
+      items,
+      new Date()
+    );
+  }, [recipe, recipesById, items, choiceKey]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -94,10 +119,19 @@ export function RecipeToListSheet({ visible, recipe, recipesById, onClose }: Pro
 
   useEffect(() => {
     if (!visible) return;
+    setChoices(initialChoices ? [...initialChoices] : []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
+
+  // Re-ticks on a swapped alternative as well as on open: changing the side
+  // changes which rows exist, and a row that has just appeared has never been
+  // unticked, so it belongs in the default selection.
+  useEffect(() => {
+    if (!visible) return;
     setTicked(new Set(byCategory.needToBuy.map(r => r.nameKey)));
     setExpandedSections(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, choiceKey]);
 
   const toggleSection = (category: PlanCategory) => {
     haptics.tap();
@@ -178,6 +212,38 @@ export function RecipeToListSheet({ visible, recipe, recipesById, onClose }: Pro
             minWidth={72}
           />
         </View>
+
+        {choiceGroups.length > 0 && (
+          <View style={styles.choices}>
+            {choiceGroups.map(group => (
+              <View key={`${group.recipe.id}:${group.label}`} style={styles.choiceGroup}>
+                <Text style={styles.sectionLabel}>{group.label}</Text>
+                <View style={styles.choiceChips}>
+                  {group.options.map(option => {
+                    const on = option.component.id === group.active.component.id;
+                    const name = option.name || 'Deleted recipe';
+                    return (
+                      <TouchableOpacity
+                        key={option.component.id}
+                        style={[styles.choiceChip, on && styles.choiceChipOn]}
+                        activeOpacity={interaction.activeOpacity}
+                        onPress={() => {
+                          haptics.tap();
+                          setChoices(prev => applyComponentChoice(prev, group, option.component.id));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: on }}
+                        accessibilityLabel={`${group.label}: ${name}`}
+                      >
+                        <Text style={[styles.choiceChipText, on && styles.choiceChipTextOn]}>{name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
 
         {nothingToShow ? (
           <View style={styles.centered}>
@@ -302,6 +368,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   list: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
+  // Above the list rather than in it: this decides what the list *is*, so it
+  // sits with the header it qualifies and doesn't scroll away from the rows it
+  // just changed.
+  choices: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    gap: spacing.sm,
+    borderBottomWidth: border.hairline,
+    borderBottomColor: colors.separator,
+    paddingBottom: spacing.md,
+  },
+  choiceGroup: { gap: spacing.xs },
+  choiceChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  choiceChip: {
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 6,
+  },
+  choiceChipOn: { backgroundColor: colors.accent },
+  choiceChipText: { color: colors.textSecondary, fontSize: font.sm },
+  choiceChipTextOn: { color: colors.onAccent, fontWeight: fontWeight.medium },
   section: { gap: spacing.xs },
   sectionHeaderRow: {
     flexDirection: 'row',

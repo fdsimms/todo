@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
+import type { ComponentChoiceGroup } from '../utils/recipeComponents';
 
 interface Props {
   visible: boolean;
@@ -34,6 +35,15 @@ interface Props {
    * title comes from the recipe and isn't independently editable here.
    */
   onRename?: (title: string) => void;
+  /**
+   * The either/or slots this meal's recipe poses — "Side: mash or roast" — with
+   * whichever option this entry is currently having marked active. Empty for
+   * every meal whose recipe offers no choice, which is most of them, and the
+   * section then renders nothing.
+   */
+  choiceGroups?: ComponentChoiceGroup[];
+  /** Records a pick. Absent alongside an empty `choiceGroups`. */
+  onChoose?: (group: ComponentChoiceGroup, componentId: string) => void;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -68,8 +78,8 @@ interface Props {
  * to Thursday *and* making it lunch is two taps rather than two round trips.
  */
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onRename, onMarkCooked, onOpenRecipe,
-  onAddPrepTasks, onLogLeftovers, onFinishLeftover, onClose,
+  visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
+  onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers, onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -169,6 +179,34 @@ export function MealEntrySheet({
           ) : (
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
           )}
+
+          {/* Above "Move to" because it's the only thing here that changes what
+              gets cooked and bought, rather than where the meal sits. A recipe
+              with no either/or components renders nothing at all. */}
+          {choiceGroups.map(group => (
+            <View key={`${group.recipe.id}:${group.label}`}>
+              <Text style={styles.label}>{group.label}</Text>
+              <View style={styles.chips}>
+                {group.options.map(option => {
+                  const on = option.component.id === group.active.component.id;
+                  const name = option.name || 'Deleted recipe';
+                  return (
+                    <TouchableOpacity
+                      key={option.component.id}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => { haptics.tap(); onChoose?.(group, option.component.id); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      accessibilityLabel={`${group.label}: ${name}`}
+                    >
+                      <Text style={[styles.chipText, on && styles.chipTextOn]}>{name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
 
           <Text style={styles.label}>Move to</Text>
           <View style={styles.chips}>

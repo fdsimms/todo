@@ -472,6 +472,80 @@ describe('addComponent / removeComponent', () => {
   });
 });
 
+describe('setComponentChoiceGroup / makeComponentDefault', () => {
+  // Steak, with mash and roast potatoes both linked — the state the user is in
+  // right before saying "these two are alternatives".
+  const seedSides = () => {
+    const steak = makeRecipe('Steak');
+    const mash = makeRecipe('Mash');
+    const roast = makeRecipe('Roast potatoes');
+    seed([steak, mash, roast]);
+    useRecipeStore.getState().addComponent(steak.id, mash.id);
+    useRecipeStore.getState().addComponent(steak.id, roast.id);
+    const components = useRecipeStore.getState().recipeById(steak.id)!.components;
+    return { steak, mash, roast, mashLink: components[0], roastLink: components[1] };
+  };
+
+  it('files a component under a label, and takes it back out with null', () => {
+    const { steak, mashLink } = seedSides();
+
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, mashLink.id, '  Side  ');
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].choiceGroup).toBe('Side');
+
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, mashLink.id, null);
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].choiceGroup).toBeNull();
+  });
+
+  it('treats a blank label as no group rather than a group called nothing', () => {
+    const { steak, mashLink } = seedSides();
+
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, mashLink.id, '   ');
+
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components[0].choiceGroup).toBeNull();
+  });
+
+  it('shrugs at an unknown recipe or component id', () => {
+    const { steak } = seedSides();
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, 'gone', 'Side');
+    useRecipeStore.getState().setComponentChoiceGroup('gone', 'gone', 'Side');
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('promotes a component to the front of its own group only', () => {
+    const rub = makeRecipe('Rub');
+    const { steak, mashLink, roastLink } = seedSides();
+    useRecipeStore.setState({ recipes: [...useRecipeStore.getState().recipes, rub] });
+    useRecipeStore.getState().addComponent(steak.id, rub.id);
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, mashLink.id, 'Side');
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, roastLink.id, 'Side');
+
+    useRecipeStore.getState().makeComponentDefault(steak.id, roastLink.id);
+
+    // The rub is ungrouped and keeps its place at the end; only the two options
+    // swap, so the group's first entry is now the roast.
+    expect(useRecipeStore.getState().recipeById(steak.id)!.components.map(c => c.name))
+      .toEqual(['Roast potatoes', 'Mash', 'Rub']);
+  });
+
+  it('does nothing for an ungrouped component, or one already first', () => {
+    const { steak, mashLink, roastLink } = seedSides();
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, mashLink.id, 'Side');
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, roastLink.id, 'Side');
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    useRecipeStore.getState().makeComponentDefault(steak.id, mashLink.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+
+    useRecipeStore.getState().setComponentChoiceGroup(steak.id, roastLink.id, null);
+    (dbUpdateRecipe as jest.Mock).mockClear();
+    useRecipeStore.getState().makeComponentDefault(steak.id, roastLink.id);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('deleteRecipe', () => {
   it('drops the row', () => {
     const r = makeRecipe('Ragu');

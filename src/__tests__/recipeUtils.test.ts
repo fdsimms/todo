@@ -41,8 +41,8 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
   };
 }
 
-function component(recipeId: string, name: string): RecipeComponent {
-  return { id: `c-${++seq}`, recipeId, name };
+function component(recipeId: string, name: string, choiceGroup: string | null = null): RecipeComponent {
+  return { id: `c-${++seq}`, recipeId, name, choiceGroup };
 }
 
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {

@@ -3,7 +3,7 @@ import type { GroceryItem, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
-import { flattenRecipeIngredients } from './recipeComponents';
+import { flattenRecipeIngredients, type ComponentResolution } from './recipeComponents';
 
 /**
  * Everything decidable about turning a week plan into a grocery add, kept
@@ -68,7 +68,10 @@ export function collectPlannedIngredients(
     const recipe = recipesById.get(entry.recipeId);
     if (!recipe) continue;
     const weekday = format(dayKeyToDate(entry.date), 'EEE');
-    for (const flat of flattenRecipeIngredients(recipe, recipesById)) {
+    // The entry's own picks, so a week holding steak-with-mash on Tuesday and
+    // steak-with-roast on Friday shops for one side each night rather than both
+    // twice. An entry that never answered resolves to the defaults.
+    for (const flat of flattenRecipeIngredients(recipe, recipesById, { chosen: entry.componentChoices })) {
       out.push({
         name: flat.ingredient.name,
         nameKey: flat.ingredient.nameKey,
@@ -93,12 +96,18 @@ export function collectPlannedIngredients(
  * along; without it (a caller that genuinely only has the one row, and the
  * older tests) the recipe stands for itself, which is exactly what an
  * uncomposed one does anyway.
+ *
+ * `resolution` carries the choices when there are any to carry — a meal being
+ * shopped for one night passes that entry's picks, while the recipe's own "Add
+ * ingredients to list" passes the picks made in the sheet, starting from the
+ * defaults.
  */
 export function plannedIngredientsForRecipe(
   recipe: Recipe,
   recipesById: ReadonlyMap<string, Recipe> = new Map([[recipe.id, recipe]]),
+  resolution?: ComponentResolution,
 ): PlannedIngredient[] {
-  return flattenRecipeIngredients(recipe, recipesById).map(flat => ({
+  return flattenRecipeIngredients(recipe, recipesById, resolution).map(flat => ({
     name: flat.ingredient.name,
     nameKey: flat.ingredient.nameKey,
     quantity: [flat.ingredient.quantity, flat.ingredient.prep].filter(Boolean).join(', '),

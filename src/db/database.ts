@@ -4,7 +4,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
-import { parseRecipeComponents } from '../utils/recipeComponents';
+import { parseComponentChoices, parseRecipeComponents } from '../utils/recipeComponents';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
 
@@ -460,6 +460,13 @@ export function initDatabase(): void {
     // table itself needs no migration: its CREATE TABLE IF NOT EXISTS above runs
     // on every launch, so an existing install gets it on the next open.)
     'ALTER TABLE meal_plan_entries ADD COLUMN leftover_id TEXT',
+    // Empty for every existing entry — a meal planned before a recipe could
+    // offer alternatives has nothing to have chosen, and an empty list is
+    // exactly "use the defaults". JSON in one column rather than a link table
+    // for the reason `components` is: the only question asked of it is "what
+    // did this meal pick", which is a read of this row. See
+    // MealPlanEntry.componentChoices.
+    "ALTER TABLE meal_plan_entries ADD COLUMN component_choices TEXT NOT NULL DEFAULT '[]'",
     // The list read is "what's still in the fridge", which scans the whole table
     // rather than a range the way the meal plan does — small, but it's also the
     // index the retention purge sweeps on.
@@ -1601,6 +1608,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     createdAt: row.created_at as string,
     cookedAt: (row.cooked_at as string) ?? null,
     leftoverId: (row.leftover_id as string) ?? null,
+    componentChoices: parseComponentChoices(row.component_choices),
   };
 }
 
@@ -1624,22 +1632,23 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id)
-     VALUES (?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, component_choices)
+     VALUES (?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
-      entry.leftoverId ?? null,
+      entry.leftoverId ?? null, JSON.stringify(entry.componentChoices ?? []),
     ]
   );
 }
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, component_choices=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
-      entry.cookedAt ?? null, entry.leftoverId ?? null, entry.id,
+      entry.cookedAt ?? null, entry.leftoverId ?? null,
+      JSON.stringify(entry.componentChoices ?? []), entry.id,
     ]
   );
 }

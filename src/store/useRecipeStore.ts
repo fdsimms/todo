@@ -10,6 +10,7 @@ import {
 import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
 import {
+  cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
   ingredientsFromText,
@@ -94,9 +95,29 @@ interface RecipeStore {
    * the user-facing explanation — the same division NestedTemplatePicker and
    * wouldCreateCycle already have.
    */
-  addComponent: (recipeId: string, componentRecipeId: string) => boolean;
+  addComponent: (recipeId: string, componentRecipeId: string, choiceGroup?: string | null) => boolean;
   /** Unlinks by the component's own id, so a broken link can be cleared too. */
   removeComponent: (recipeId: string, componentId: string) => void;
+
+  /**
+   * Files a component under an either/or label, or takes it back out of one
+   * with null — see RecipeComponent.choiceGroup. Trimmed and length-capped
+   * here, so a label arriving from a text field can't differ from the one the
+   * options it's meant to join are stored under.
+   */
+  setComponentChoiceGroup: (recipeId: string, componentId: string, choiceGroup: string | null) => void;
+
+  /**
+   * Makes a component the one its group falls back to, by moving it ahead of
+   * its fellow options — the default *is* first place (see
+   * RecipeComponent.choiceGroup), so this is a reorder rather than a flag.
+   *
+   * It moves the link to where the group's first option currently sits, leaving
+   * every ungrouped component and every other group exactly where they are: the
+   * list is what the recipe reads like, and promoting the roast potatoes should
+   * not shuffle the steak.
+   */
+  makeComponentDefault: (recipeId: string, componentId: string) => void;
 
   /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
   addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
@@ -291,14 +312,17 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, ingredients: [...ordered, ...rest] });
   },
 
-  addComponent(recipeId, componentRecipeId) {
+  addComponent(recipeId, componentRecipeId, choiceGroup = null) {
     const recipes = get().recipes;
     const recipe = recipes.find(r => r.id === recipeId);
     const target = recipes.find(r => r.id === componentRecipeId);
     if (!recipe || !target) return false;
     if (recipe.components.some(c => c.recipeId === componentRecipeId)) return false;
     if (wouldCreateRecipeCycle(recipeMap(recipes), recipeId, componentRecipeId)) return false;
-    save(set, { ...recipe, components: [...recipe.components, makeComponent(target)] });
+    save(set, {
+      ...recipe,
+      components: [...recipe.components, makeComponent(target, cleanChoiceGroup(choiceGroup))],
+    });
     return true;
   },
 
@@ -308,6 +332,28 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const components = recipe.components.filter(c => c.id !== componentId);
     if (components.length === recipe.components.length) return;
     save(set, { ...recipe, components });
+  },
+
+  setComponentChoiceGroup(recipeId, componentId, choiceGroup) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const clean = cleanChoiceGroup(choiceGroup);
+    if (!recipe.components.some(c => c.id === componentId)) return;
+    save(set, {
+      ...recipe,
+      components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
+    });
+  },
+
+  makeComponentDefault(recipeId, componentId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const target = recipe.components.find(c => c.id === componentId);
+    if (!target?.choiceGroup) return;
+    const firstIndex = recipe.components.findIndex(c => c.choiceGroup === target.choiceGroup);
+    if (firstIndex < 0 || recipe.components[firstIndex].id === componentId) return;
+    const rest = recipe.components.filter(c => c.id !== componentId);
+    save(set, { ...recipe, components: [...rest.slice(0, firstIndex), target, ...rest.slice(firstIndex)] });
   },
 
   addPrepTask(recipeId, title) {
