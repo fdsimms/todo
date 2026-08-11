@@ -5,7 +5,14 @@ import {
   cookTimerRemaining,
   cookTimerProgress,
   isCookTimerReady,
+  hasPrepTimer,
+  isPrepTimerRunning,
+  prepTimerElapsed,
+  prepTimerRemaining,
+  prepTimerProgress,
+  isPrepTimerReady,
   type CookTimerState,
+  type PrepTimerState,
 } from '../utils/recipeTimer';
 
 const NOW = new Date(2025, 5, 15, 12, 0, 0).getTime();
@@ -22,6 +29,20 @@ const running = (estimatedMinutes: number | null, secondsAgo: number, banked = 0
   estimatedMinutes,
   timerElapsedSeconds: banked,
   timerStartedAt: new Date(NOW - secondsAgo * 1000).toISOString(),
+});
+
+/** A recipe with nothing banked and nothing running on its prep timer. */
+const idlePrep = (prepMinutes: number | null = 15): PrepTimerState => ({
+  prepMinutes,
+  prepTimerElapsedSeconds: 0,
+  prepTimerStartedAt: null,
+});
+
+/** A recipe whose current prep timer run started `secondsAgo` before NOW. */
+const runningPrep = (prepMinutes: number | null, secondsAgo: number, banked = 0): PrepTimerState => ({
+  prepMinutes,
+  prepTimerElapsedSeconds: banked,
+  prepTimerStartedAt: new Date(NOW - secondsAgo * 1000).toISOString(),
 });
 
 // ─── hasCookTimer ───
@@ -160,5 +181,48 @@ describe('surviving backgrounding and restarts', () => {
     const resumed = running(25, 3 * 60, 5 * 60);
     expect(cookTimerElapsed(resumed, NOW)).toBe(8 * 60);
     expect(cookTimerRemaining(resumed, NOW)).toBe(17 * 60);
+  });
+});
+
+// ─── the prep timer — same math as the cook timer above, its own field pair ───
+
+describe('prep timer', () => {
+  it('hasPrepTimer mirrors hasCookTimer\'s rules', () => {
+    expect(hasPrepTimer(idlePrep(15))).toBe(true);
+    expect(hasPrepTimer(idlePrep(null))).toBe(false);
+    expect(hasPrepTimer(idlePrep(0))).toBe(false);
+  });
+
+  it('isPrepTimerRunning tracks whether a prep run segment is in flight', () => {
+    expect(isPrepTimerRunning(idlePrep())).toBe(false);
+    expect(isPrepTimerRunning(runningPrep(15, 30))).toBe(true);
+  });
+
+  it('prepTimerElapsed adds the live segment on top of banked time', () => {
+    expect(prepTimerElapsed(idlePrep(), NOW)).toBe(0);
+    expect(prepTimerElapsed(runningPrep(15, 30, 60), NOW)).toBe(90);
+  });
+
+  it('prepTimerRemaining counts down independently of the cook timer', () => {
+    expect(prepTimerRemaining(idlePrep(15), NOW)).toBe(15 * 60);
+    expect(prepTimerRemaining(runningPrep(15, 60), NOW)).toBe(14 * 60);
+    expect(prepTimerRemaining(idlePrep(null), NOW)).toBe(0);
+  });
+
+  it('prepTimerProgress reports the fraction of prep time consumed, clamped to 1', () => {
+    expect(prepTimerProgress(runningPrep(10, 300), NOW)).toBe(0.5);
+    expect(prepTimerProgress(runningPrep(1, 600), NOW)).toBe(1);
+  });
+
+  it('isPrepTimerReady flips at zero remaining and stays true afterwards', () => {
+    expect(isPrepTimerReady(runningPrep(15, 15 * 60 - 1), NOW)).toBe(false);
+    expect(isPrepTimerReady(runningPrep(15, 15 * 60), NOW)).toBe(true);
+    expect(isPrepTimerReady(runningPrep(15, 15 * 60 + 60), NOW)).toBe(true);
+  });
+
+  it('a running prep timer does not advance while paused', () => {
+    const paused: PrepTimerState = { ...idlePrep(15), prepTimerElapsedSeconds: 5 * 60 };
+    expect(prepTimerRemaining(paused, NOW + 60 * 60 * 1000)).toBe(10 * 60);
+    expect(isPrepTimerReady(paused, NOW + 60 * 60 * 1000)).toBe(false);
   });
 });

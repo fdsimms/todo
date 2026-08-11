@@ -801,6 +801,21 @@ export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
   beverage: 'Beverage',
 };
 
+// What kind of thing `Recipe.source` names — a website reads differently from
+// a cookbook (which is also the only one a page number means anything for).
+export type RecipeSourceType = 'website' | 'cookbook' | 'magazine' | 'homeRecipe' | 'other';
+
+export const RECIPE_SOURCE_TYPES: readonly RecipeSourceType[] =
+  ['website', 'cookbook', 'magazine', 'homeRecipe', 'other'];
+
+export const RECIPE_SOURCE_TYPE_LABELS: Record<RecipeSourceType, string> = {
+  website: 'Website',
+  cookbook: 'Cookbook',
+  magazine: 'Magazine',
+  homeRecipe: 'Home recipe',
+  other: 'Other',
+};
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -832,6 +847,16 @@ export interface Recipe {
   // The publication/cookbook/site it's from — "Nothing Fancy", "NYT Cooking".
   // Independent of `author` for the same reason.
   source: string | null;
+  // What kind of thing `source` names. Independent of `source` itself being
+  // set — a recipe can carry a source type before it's given a name, though
+  // in practice the editor asks for both together. Null means never
+  // classified, not "unknown"/"other".
+  sourceType: RecipeSourceType | null;
+  // A cookbook page number ("142", "112-115"). Only meaningful alongside
+  // `sourceType === 'cookbook'` — see useRecipeStore.setSourceType, which
+  // clears this the moment the type stops being a cookbook, the same rule
+  // `servingsMax` follows for `servings`.
+  sourcePage: string | null;
   // The low end of the servings count, or the whole count when the recipe
   // doesn't give a range ("serves 4"). null means no serving count at all.
   servings: number | null;
@@ -930,6 +955,24 @@ export interface Recipe {
   lastCookMinutes: number | null;
   cookTimeCount: number;
   totalCookMinutes: number;
+
+  /**
+   * How long prep (chopping, marinating, mise en place) takes before the
+   * cook clock starts, in minutes — independent of `estimatedMinutes`, which
+   * is cook time only now that this exists. `totalMinutes()` (recipeUtils)
+   * is prep + cook whenever either is set; neither field derives from it.
+   */
+  prepMinutes: number | null;
+  // The prep timer — its own banked-segment pair, so prep and cook can be
+  // timed independently (mise en place while something else already simmers)
+  // rather than sharing timerStartedAt/timerElapsedSeconds above.
+  prepTimerStartedAt: string | null;
+  prepTimerElapsedSeconds: number;
+  // Actual prep time logging, the same aggregate shape as
+  // lastCookMinutes/cookTimeCount/totalCookMinutes above.
+  lastPrepMinutes: number | null;
+  prepTimeCount: number;
+  totalPrepMinutes: number;
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model
@@ -951,6 +994,8 @@ export interface RecipePrepTask {
 export const RECIPE_NAME_MAX_LENGTH = 80;
 // A byline, not a title — "NYT Cooking" not a full citation.
 export const RECIPE_SOURCE_MAX_LENGTH = 60;
+// "142" or "112-115" — never a citation, so far shorter than the source name.
+export const RECIPE_PAGE_MAX_LENGTH = 12;
 
 // A tag is a chip in a filter row, so it has to stay readable at chip size —
 // "weeknight", "make ahead", not a sentence. Shorter than every other recipe

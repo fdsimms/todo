@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -12,6 +12,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
   applyMeasuredCookTime,
+  applyMeasuredPrepTime,
   cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
@@ -20,7 +21,7 @@ import {
   mergeIngredients,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
-import { cookTimerElapsed } from '../utils/recipeTimer';
+import { cookTimerElapsed, prepTimerElapsed } from '../utils/recipeTimer';
 import { normalizeRecipeTags } from '../utils/recipeTags';
 import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
@@ -54,6 +55,14 @@ interface RecipeStore {
   setSourceName: (id: string, source: string | null) => void;
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
+  /**
+   * Clears `sourcePage` the moment the type stops being 'cookbook' — the same
+   * rule `setServings` follows for a max that no longer beats its min: a page
+   * number only means anything alongside the book it's a page of.
+   */
+  setSourceType: (id: string, sourceType: RecipeSourceType | null) => void;
+  /** A cookbook page number ("142", "112-115"). Free text, not validated as numeric — some books print "xii". */
+  setSourcePage: (id: string, sourcePage: string | null) => void;
   /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
@@ -118,6 +127,22 @@ interface RecipeStore {
   pauseCookTimer: (id: string) => void;
   resetCookTimer: (id: string) => void;
   stopCookTimer: (id: string) => void;
+
+  /** null clears it. Rounded and floored at 1 minute, same clamp as setEstimatedMinutes. */
+  setPrepMinutes: (id: string, minutes: number | null) => void;
+
+  /**
+   * The prep timer — same shape as startCookTimer/pauseCookTimer/
+   * resetCookTimer/stopCookTimer above, targeting prepMinutes/
+   * prepTimerStartedAt/prepTimerElapsedSeconds and logging through
+   * applyMeasuredPrepTime instead. Independent of the cook timer: starting
+   * one never touches the other, so prep can run while a previous batch is
+   * still on the cook clock.
+   */
+  startPrepTimer: (id: string) => void;
+  pausePrepTimer: (id: string) => void;
+  resetPrepTimer: (id: string) => void;
+  stopPrepTimer: (id: string) => void;
 
   /** Appends one typed line. Null when it parses to nothing or is already there. */
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
@@ -231,6 +256,8 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       sourceName: null,
       author: null,
       source: null,
+      sourceType: null,
+      sourcePage: null,
       servings: null,
       servingsMax: null,
       recipeYield: null,
@@ -251,6 +278,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       lastCookMinutes: null,
       cookTimeCount: 0,
       totalCookMinutes: 0,
+      prepMinutes: null,
+      prepTimerStartedAt: null,
+      prepTimerElapsedSeconds: 0,
+      lastPrepMinutes: null,
+      prepTimeCount: 0,
+      totalPrepMinutes: 0,
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -302,6 +335,20 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     if (!recipe) return;
     const clean = cleanRecipeSource(source ?? '');
     save(set, { ...recipe, source: clean || null });
+  },
+
+  setSourceType(id, sourceType) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const sourcePage = sourceType === 'cookbook' ? recipe.sourcePage : null;
+    save(set, { ...recipe, sourceType, sourcePage });
+  },
+
+  setSourcePage(id, sourcePage) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(sourcePage ?? '', RECIPE_PAGE_MAX_LENGTH);
+    save(set, { ...recipe, sourcePage: clean || null });
   },
 
   setServings(id, servings, servingsMax) {
@@ -420,6 +467,44 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       timerStartedAt: null,
       timerElapsedSeconds: 0,
       ...applyMeasuredCookTime(minutes, recipe),
+    });
+  },
+
+  setPrepMinutes(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const next = minutes === null ? null : Math.max(1, Math.round(minutes));
+    save(set, { ...recipe, prepMinutes: next });
+  },
+
+  startPrepTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.prepTimerStartedAt !== null) return;
+    save(set, { ...recipe, prepTimerStartedAt: new Date().toISOString() });
+  },
+
+  pausePrepTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.prepTimerStartedAt === null) return;
+    save(set, { ...recipe, prepTimerStartedAt: null, prepTimerElapsedSeconds: prepTimerElapsed(recipe) });
+  },
+
+  resetPrepTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, prepTimerStartedAt: null, prepTimerElapsedSeconds: 0 });
+  },
+
+  stopPrepTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    // Nothing to log — no run in flight and nothing banked from an earlier pause.
+    if (!recipe || (recipe.prepTimerStartedAt === null && recipe.prepTimerElapsedSeconds <= 0)) return;
+    const minutes = prepTimerElapsed(recipe) / 60;
+    save(set, {
+      ...recipe,
+      prepTimerStartedAt: null,
+      prepTimerElapsedSeconds: 0,
+      ...applyMeasuredPrepTime(minutes, recipe),
     });
   },
 
