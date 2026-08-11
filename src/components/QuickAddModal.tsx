@@ -51,7 +51,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput, parseTagsInput } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -104,6 +104,16 @@ const TYPE_META: { key: QuickAddType; label: string; icon: React.ComponentProps<
 /** Known app name for a link scheme, else the raw URL. */
 function linkLabel(url: string): string {
   return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
+}
+
+/** Tooltip label for a "#word" match — category, tag count/name, or both joined. */
+function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
+  const parts: string[] = [];
+  if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
+  if (parsed.tags.length > 0) {
+    parts.push(parsed.tags.length > 1 ? `${parsed.tags.length} tags` : `#${parsed.tags[0]}`);
+  }
+  return parts.join(' + ');
 }
 
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
@@ -307,36 +317,29 @@ export function QuickAddModal({
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
   );
-  // "pay rent tmrw #home" — a "#tag" naming an existing category. Same single
-  // tooltip slot, checked right after the schedule phrase (and before
-  // link/phone/duration below) so a trailing tag that blocks the
-  // suffix-anchored schedule match — the phrase has to reach the true end of
-  // the title — doesn't leave both undetected: this fires instead, and once
-  // the tag is stripped the schedule phrase parses cleanly on the next
-  // keystroke or tap. Only matches a tag that names a real category, so a
-  // stray "#" elsewhere in the title never lights it up.
-  const categoryParsed = useMemo(
-    () => (!parsed && title.trim() ? parseCategoryInput(title, categories.map(c => c.name)) : null),
-    [title, parsed, categories]
-  );
-  // "pay rent tmrw @errand" — one or more "@tag" tokens naming existing tags.
-  // Same single tooltip slot as the category tag, checked right after it (and
-  // before link/phone/duration) for the same reason: a trailing token can
-  // block the suffix-anchored schedule match, so this fires instead once
-  // category doesn't match, and stripping it lets the schedule phrase parse
-  // cleanly next. Only matches tokens that name a real tag — see
-  // parseTagsInput.
-  const tagsParsed = useMemo(
-    () => (!parsed && !categoryParsed && title.trim() ? parseTagsInput(title, allTags) : null),
-    [title, parsed, categoryParsed, allTags]
+  // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
+  // naming a category and the rest naming tags (see
+  // parseCategoryAndTagsInput for the priority rule). Same single tooltip
+  // slot, checked right after the schedule phrase (and before link/phone/
+  // duration below) so a trailing token that blocks the suffix-anchored
+  // schedule match — the phrase has to reach the true end of the title —
+  // doesn't leave both undetected: this fires instead, and once the token is
+  // stripped the schedule phrase parses cleanly on the next keystroke or tap.
+  // Only matches tokens that name a real category/tag, so a stray "#"
+  // elsewhere in the title never lights it up.
+  const categoryTagsParsed = useMemo(
+    () => (!parsed && title.trim()
+      ? parseCategoryAndTagsInput(title, categories.map(c => c.name), allTags)
+      : null),
+    [title, parsed, categories, allTags]
   );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category tag or tag token matched, so the tooltips never compete
-  // for the same slot.
+  // phrase or category/tag token matched, so the tooltips never compete for
+  // the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryParsed && !tagsParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryParsed, tagsParsed]
+    () => (!parsed && !categoryTagsParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -344,43 +347,38 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryParsed && !tagsParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryParsed, tagsParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule, category tag, tag token, or
-  // link phrase always wins.
+  // tooltip slot, checked last, so a schedule, category/tag token, or link
+  // phrase always wins.
   //
   // Only offered from the plain type, because accepting it switches the sheet
   // into Timed: it's how someone who has never picked a type discovers there
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryParsed && !tagsParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryParsed, tagsParsed, linkParsed, phoneParsed, type]
+    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
-    : categoryParsed
+    : categoryTagsParsed
       ? {
-          matchStart: categoryParsed.matchStart,
-          matchedText: title.slice(categoryParsed.matchStart, categoryParsed.matchEnd),
+          matchStart: categoryTagsParsed.matchStart,
+          matchedText: title.slice(categoryTagsParsed.matchStart, categoryTagsParsed.matchEnd),
         }
-      : tagsParsed
-        ? {
-            matchStart: tagsParsed.matchStart,
-            matchedText: title.slice(tagsParsed.matchStart, tagsParsed.matchEnd),
-          }
-        : linkParsed
-          ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
-          : phoneParsed
-            ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
-            : durationParsed
-              ? {
-                  matchStart: durationParsed.matchStart,
-                  matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
-                }
-              : null;
+      : linkParsed
+        ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
+        : phoneParsed
+          ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
+          : durationParsed
+            ? {
+                matchStart: durationParsed.matchStart,
+                matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
+              }
+            : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -441,22 +439,16 @@ export function QuickAddModal({
     setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
   };
 
-  // Apply the detected "#category" tag and strip it from the title.
-  const applyCategory = () => {
-    if (!categoryParsed) return;
+  // Apply the detected "#category"/"#tag" tokens and strip them from the title.
+  const applyCategoryTags = () => {
+    if (!categoryTagsParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(categoryParsed.cleanTitle);
-    setCategory(categoryParsed.category);
-  };
-
-  // Apply every detected "@tag" token and strip them all from the title.
-  const applyTags = () => {
-    if (!tagsParsed) return;
-    haptics.success();
-    animateLayout();
-    setTitle(tagsParsed.cleanTitle);
-    setTags(prev => [...new Set([...prev, ...tagsParsed.tags])]);
+    setTitle(categoryTagsParsed.cleanTitle);
+    if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
+    if (categoryTagsParsed.tags.length > 0) {
+      setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
+    }
   };
 
   // Apply the detected link and strip it from the title.
@@ -940,7 +932,7 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryParsed ? applyCategory : tagsParsed ? applyTags : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
+                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
@@ -949,15 +941,13 @@ export function QuickAddModal({
                         ? (parsed.schedule.recurrenceType !== 'none'
                             ? 'repeat'
                             : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
-                        : categoryParsed
-                          ? 'pricetag-outline'
-                          : tagsParsed
-                            ? 'pricetags-outline'
-                            : linkParsed
-                              ? 'link-outline'
-                              : phoneParsed
-                                ? 'call-outline'
-                                : 'timer-outline'
+                        : categoryTagsParsed
+                          ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                          : linkParsed
+                            ? 'link-outline'
+                            : phoneParsed
+                              ? 'call-outline'
+                              : 'timer-outline'
                     }
                     size={14}
                     color={colors.onAccent}
@@ -965,15 +955,13 @@ export function QuickAddModal({
                   <Text style={styles.tooltipText}>
                     {parsed
                       ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                      : categoryParsed
-                        ? categoryLabel(categoryParsed.category, categories)
-                        : tagsParsed
-                          ? (tagsParsed.tags.length > 1 ? `${tagsParsed.tags.length} tags` : `@${tagsParsed.tags[0]}`)
-                          : linkParsed
-                            ? linkLabel(linkParsed.url)
-                            : phoneParsed
-                              ? `Call ${phoneParsed.number}`
-                              : `Timer · ${formatDuration(durationParsed!.minutes)}`}
+                      : categoryTagsParsed
+                        ? categoryTagsLabel(categoryTagsParsed, categories)
+                        : linkParsed
+                          ? linkLabel(linkParsed.url)
+                          : phoneParsed
+                            ? `Call ${phoneParsed.number}`
+                            : `Timer · ${formatDuration(durationParsed!.minutes)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>

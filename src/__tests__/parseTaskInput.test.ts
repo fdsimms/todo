@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput, parseTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryAndTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -573,101 +573,96 @@ describe('parseDurationInput', () => {
   });
 });
 
-// ─── parseCategoryInput ───
+// ─── parseCategoryAndTagsInput ───
 
-describe('parseCategoryInput', () => {
+describe('parseCategoryAndTagsInput', () => {
   const categories = ['Home', 'Work', 'Errands'];
+  const tags = ['errand', 'work', 'urgent'];
 
-  it('extracts the CLAUDE.md example', () => {
-    const result = parseCategoryInput('pay rent tmrw 5p #home', categories);
+  it('extracts the CLAUDE.md example as a category', () => {
+    const result = parseCategoryAndTagsInput('pay rent tmrw 5p #home', categories, tags);
     expect(result?.category).toBe('Home'); // canonical casing, not the typed token
+    expect(result?.tags).toEqual([]);
     expect(result?.cleanTitle).toBe('pay rent tmrw 5p');
   });
 
-  it('matches case-insensitively', () => {
-    expect(parseCategoryInput('mow the lawn #WORK', categories)?.category).toBe('Work');
+  it('matches category case-insensitively', () => {
+    expect(parseCategoryAndTagsInput('mow the lawn #WORK', categories, [])?.category).toBe('Work');
   });
 
-  it('extracts a tag from the middle of the title', () => {
-    const result = parseCategoryInput('buy milk #errands on the way home', categories);
+  it('extracts a category from the middle of the title', () => {
+    const result = parseCategoryAndTagsInput('buy milk #errands on the way home', categories, tags);
     expect(result?.category).toBe('Errands');
     expect(result?.cleanTitle).toBe('buy milk on the way home');
   });
 
-  it('reports the matched span', () => {
-    const input = 'pay rent #home';
-    const result = parseCategoryInput(input, categories)!;
-    expect(input.slice(result.matchStart, result.matchEnd)).toBe('#home');
-  });
-
-  it('returns null when the tag names no known category', () => {
-    expect(parseCategoryInput('reply to #sarah about the trip', categories)).toBeNull();
-  });
-
-  it('returns null when there is no "#" at all', () => {
-    expect(parseCategoryInput('just a normal title', categories)).toBeNull();
-  });
-
-  it('returns null when the entire input is the tag', () => {
-    expect(parseCategoryInput('#home', categories)).toBeNull();
-  });
-
-  it('returns null when there are no categories registered', () => {
-    expect(parseCategoryInput('pay rent #home', [])).toBeNull();
-  });
-});
-
-// ─── parseTagsInput ───
-
-describe('parseTagsInput', () => {
-  const tags = ['errand', 'work', 'urgent'];
-
-  it('extracts a single "@tag" naming a known tag', () => {
-    const result = parseTagsInput('buy milk @errand', tags);
+  it('extracts a single "#tag" naming a known tag when it is not a category', () => {
+    const result = parseCategoryAndTagsInput('buy milk #errand', categories, tags);
+    expect(result?.category).toBeNull();
     expect(result?.tags).toEqual(['errand']);
     expect(result?.cleanTitle).toBe('buy milk');
   });
 
-  it('matches case-insensitively, returning the canonical name', () => {
-    expect(parseTagsInput('mow the lawn @ERRAND', tags)?.tags).toEqual(['errand']);
+  it('matches tags case-insensitively, returning the canonical name', () => {
+    expect(parseCategoryAndTagsInput('mow the lawn #URGENT', [], tags)?.tags).toEqual(['urgent']);
   });
 
-  it('extracts multiple "@tag" tokens in one title', () => {
-    const result = parseTagsInput('finish report @work @urgent', tags);
+  it('the first token claims the category slot; every later token is only ever tried as a tag', () => {
+    const result = parseCategoryAndTagsInput('pay rent #home #urgent', categories, tags);
+    expect(result?.category).toBe('Home');
+    expect(result?.tags).toEqual(['urgent']);
+    expect(result?.cleanTitle).toBe('pay rent');
+  });
+
+  it('a token matching both a category and a tag name is read as the category, since that slot is checked first', () => {
+    // "work" is both a category and a tag in this fixture set.
+    const result = parseCategoryAndTagsInput('finish report #work', categories, tags);
+    expect(result?.category).toBe('Work');
+    expect(result?.tags).toEqual([]);
+  });
+
+  it('once the category slot is filled, a further token matching that same word is tried as a tag instead', () => {
+    const result = parseCategoryAndTagsInput('pay rent #home #work', categories, tags);
+    expect(result?.category).toBe('Home');
+    expect(result?.tags).toEqual(['work']);
+  });
+
+  it('extracts multiple "#tag" tokens once no category is pending', () => {
+    const result = parseCategoryAndTagsInput('finish report #work #urgent', [], tags);
     expect(result?.tags).toEqual(['work', 'urgent']);
     expect(result?.cleanTitle).toBe('finish report');
   });
 
-  it('reports the matched span of the first token', () => {
-    const input = 'buy milk @errand';
-    const result = parseTagsInput(input, tags)!;
-    expect(input.slice(result.matchStart, result.matchEnd)).toBe('@errand');
+  it('reports the matched span of the first consumed token', () => {
+    const input = 'pay rent #home';
+    const result = parseCategoryAndTagsInput(input, categories, tags)!;
+    expect(input.slice(result.matchStart, result.matchEnd)).toBe('#home');
   });
 
-  it('leaves an unmatched "@word" as plain text — "Reply to @sarah" is untouched', () => {
-    expect(parseTagsInput('Reply to @sarah', tags)).toBeNull();
+  it('leaves an unmatched "#word" as plain text — "Reply to #sarah" is untouched', () => {
+    expect(parseCategoryAndTagsInput('Reply to #sarah', categories, tags)).toBeNull();
   });
 
-  it('returns null when there is no "@" at all', () => {
-    expect(parseTagsInput('just a normal title', tags)).toBeNull();
+  it('returns null when there is no "#" at all', () => {
+    expect(parseCategoryAndTagsInput('just a normal title', categories, tags)).toBeNull();
   });
 
-  it('returns null when the entire input is the tag', () => {
-    expect(parseTagsInput('@errand', tags)).toBeNull();
+  it('returns null when the entire input is the token', () => {
+    expect(parseCategoryAndTagsInput('#home', categories, tags)).toBeNull();
   });
 
-  it('returns null when there are no tags registered', () => {
-    expect(parseTagsInput('buy milk @errand', [])).toBeNull();
+  it('returns null when there are no categories or tags registered', () => {
+    expect(parseCategoryAndTagsInput('pay rent #home', [], [])).toBeNull();
   });
 
   it('only strips the tokens that match, leaving unmatched ones as text', () => {
-    const result = parseTagsInput('buy milk @errand @sarah', tags);
+    const result = parseCategoryAndTagsInput('buy milk #errand #sarah', categories, tags);
     expect(result?.tags).toEqual(['errand']);
-    expect(result?.cleanTitle).toBe('buy milk @sarah');
+    expect(result?.cleanTitle).toBe('buy milk #sarah');
   });
 
-  it('does not mistake an email address for a tag token', () => {
-    expect(parseTagsInput('email me at foo@work.com', tags)).toBeNull();
+  it('does not match a "#" immediately preceded by a word character (e.g. "C#")', () => {
+    expect(parseCategoryAndTagsInput('learn C#work basics', categories, tags)).toBeNull();
   });
 });
 

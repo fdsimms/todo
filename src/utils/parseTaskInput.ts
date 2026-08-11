@@ -430,9 +430,10 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
       segments = [DAY_PART_SEGMENT[part.part]];
       rest = part.rest;
     }
-    // "@" is no longer generic noise here — it's the "@tag" marker (see
-    // parseTagsInput below) — so a leftover one is left in place and, same as
-    // any other stray character, correctly fails the anchored match below
+    // "@" is no longer stripped as generic noise here — it has no meaning in
+    // this file (see parseCategoryAndTagsInput below, which uses "#" for
+    // both category and tags) — so a leftover one is left in place and, same
+    // as any other stray character, correctly fails the anchored match below
     // rather than being silently swallowed.
     rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
     schedule = matchRecurrenceCore(rest, now, segments);
@@ -483,7 +484,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
       hasTime = true;
     }
   }
-  // Same as above — "@" is reserved for "@tag" and is no longer stripped as noise.
+  // Same as above — "@" has no meaning in this file and is no longer stripped as noise.
   t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
   const datePart = t ? parseDatePart(t, now) : null;
@@ -662,102 +663,89 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
 
-export interface ParsedCategory {
-  /** The matching category's canonical (registered) name, not the typed token. */
-  category: string;
-  /** Input minus the matched "#tag", whitespace collapsed and trimmed. */
-  cleanTitle: string;
-  matchStart: number;
-  matchEnd: number;
-}
-
-// A "#" immediately followed by a word — CLAUDE.md's own quick-add example
-// ("pay rent tmrw 5p #home") is a category tag. Matched anywhere in the text,
-// like parseLinkInput/parsePhoneInput, not suffix-anchored.
-const CATEGORY_TAG_PATTERN = /#([a-z][\w-]*)/i;
-
-/**
- * Finds a "#category" tag in a quick-add title and, if it names a category
- * that already exists, splits it out — mirroring parseLinkInput's shape.
- * `categories` is passed in rather than read from a store, keeping this
- * module free of any store dependency (see the header note); it's the
- * existing registered names, matched case-insensitively so "#Home" and
- * "#home" both resolve to the one category.
- *
- * Deliberately doesn't create a category from an unrecognized tag — a typo
- * or an unrelated "#" in the title (e.g. a hashtag someone's pasting) would
- * otherwise silently spawn a new one. Tags get their own marker
- * (parseTagsInput, "@tag") rather than sharing this one; project/stack are
- * deliberately left to the existing pill pickers — see #1258.
- */
-export function parseCategoryInput(input: string, categories: string[]): ParsedCategory | null {
-  const match = input.match(CATEGORY_TAG_PATTERN);
-  if (!match || match.index === undefined) return null;
-  const token = match[1].toLowerCase();
-  const category = categories.find(c => c.toLowerCase() === token);
-  if (!category) return null;
-
-  const matchStart = match.index;
-  const matchEnd = matchStart + match[0].length;
-  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a category tag
-
-  return { category, cleanTitle, matchStart, matchEnd };
-}
-
-export interface ParsedTags {
-  /** Matching tags' canonical (registered) names, in the order they appear, deduplicated. */
+export interface ParsedCategoryAndTags {
+  /** The first token's category, if any matched — a task has one. */
+  category: string | null;
+  /** Every other matching token's canonical tag name, in order, deduplicated. */
   tags: string[];
-  /** Input minus every matched "@tag" token, whitespace collapsed and trimmed. */
+  /** Input minus every matched "#word" token, whitespace collapsed and trimmed. */
   cleanTitle: string;
-  /** Start of the first matched token — drives the tooltip highlight, same as ParsedCategory. */
+  /** Start of the first matched token — drives the tooltip highlight. */
   matchStart: number;
   matchEnd: number;
 }
 
-// An "@" immediately followed by a word, not itself preceded by a word
-// character — the lookbehind keeps "foo@bar.com" from reading "@bar" as a tag
-// token. `#` maps to category (CLAUDE.md's documented example); `@` is the
-// second, distinct marker for tags — chosen because this exact file used to
-// strip it as noise (see the two `.replace(/@/g, ...)` removals above), so
-// repurposing it is a contained change rather than inventing a new symbol.
-const TAG_TOKEN_PATTERN = /(?<!\w)@([a-z][\w-]*)/gi;
+// A "#" immediately followed by a word, not itself preceded by a word
+// character (so "C#" doesn't false-positive) — CLAUDE.md's own quick-add
+// example ("pay rent tmrw 5p #home") is a category tag, and the same marker
+// doubles for tags rather than "@tag" getting a second one: "@" is a much
+// more natural fit for a future person-assignment feature, and "#" is
+// already the more universal tag/category marker. Matched anywhere in the
+// text, like parseLinkInput/parsePhoneInput, not suffix-anchored, and
+// globally rather than once, since more than one "#word" can appear.
+const CATEGORY_OR_TAG_TOKEN_PATTERN = /(?<!\w)#([a-z][\w-]*)/gi;
 
 /**
- * Finds every "@tag" token in a quick-add title that names an existing tag
- * and splits them all out — unlike parseCategoryInput (a task has one
- * category), a task can carry several tags, so every matching token is
- * collected rather than just the first. `tags` is the existing registered set
- * (store-free, like parseCategoryInput's `categories` param).
+ * Finds every "#word" token in a quick-add title and, for each one in turn,
+ * tries it against known categories first and known tags second — so
+ * "clean kitchen #home #chores" reads "home" as the category (the first
+ * token to claim that still-open slot) and "chores" as a tag. A task has one
+ * category, so once it's claimed, every further "#word" is only ever tried
+ * as a tag. `categories`/`tags` are passed in rather than read from a store,
+ * keeping this module free of any store dependency (see the header note);
+ * matching is case-insensitive so "#Home" and "#home" both resolve to the
+ * one category.
  *
- * Same "known matches only" rule as category: a token that doesn't name a
- * real tag is left in the title as plain text rather than silently minting a
- * new tag — so "Reply to @sarah" with no "sarah" tag registered is returned
- * unchanged (null), not stripped.
+ * Deliberately doesn't create a category or tag from an unrecognized token —
+ * a typo or an unrelated "#" in the title (e.g. a hashtag someone's pasting)
+ * is left as literal text rather than silently minting something new.
  */
-export function parseTagsInput(input: string, tags: string[]): ParsedTags | null {
-  const byLower = new Map(tags.map(t => [t.toLowerCase(), t]));
-  const matches: { start: number; end: number; canonical: string }[] = [];
-  for (const m of input.matchAll(TAG_TOKEN_PATTERN)) {
+export function parseCategoryAndTagsInput(
+  input: string,
+  categories: string[],
+  tags: string[]
+): ParsedCategoryAndTags | null {
+  const categoryByLower = new Map(categories.map(c => [c.toLowerCase(), c]));
+  const tagByLower = new Map(tags.map(t => [t.toLowerCase(), t]));
+
+  let category: string | null = null;
+  const matchedTags: string[] = [];
+  const consumed: { start: number; end: number }[] = [];
+
+  for (const m of input.matchAll(CATEGORY_OR_TAG_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
-    const canonical = byLower.get(m[1].toLowerCase());
-    if (!canonical) continue; // unrecognized "@word" — leave as literal text
-    matches.push({ start: m.index, end: m.index + m[0].length, canonical });
+    const token = m[1].toLowerCase();
+    const start = m.index;
+    const end = start + m[0].length;
+
+    if (category === null && categoryByLower.has(token)) {
+      category = categoryByLower.get(token)!;
+      consumed.push({ start, end });
+      continue;
+    }
+    const tagName = tagByLower.get(token);
+    if (tagName) {
+      matchedTags.push(tagName);
+      consumed.push({ start, end });
+    }
+    // else: unrecognized "#word" — leave as literal text
   }
-  if (matches.length === 0) return null;
+
+  if (category === null && matchedTags.length === 0) return null;
 
   let cleanTitle = input;
-  for (let i = matches.length - 1; i >= 0; i--) {
-    cleanTitle = cleanTitle.slice(0, matches[i].start) + cleanTitle.slice(matches[i].end);
+  for (let i = consumed.length - 1; i >= 0; i--) {
+    cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
   }
   cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare "@errand" alone is a literal title, not a tag
+  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a tag
 
   return {
-    tags: [...new Set(matches.map(m => m.canonical))],
+    category,
+    tags: [...new Set(matchedTags)],
     cleanTitle,
-    matchStart: matches[0].start,
-    matchEnd: matches[0].end,
+    matchStart: consumed[0].start,
+    matchEnd: consumed[0].end,
   };
 }
 
