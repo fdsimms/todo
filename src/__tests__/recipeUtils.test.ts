@@ -19,6 +19,9 @@ import {
   describeCookTime,
   sortRecipesForDisplay,
   groupRecipesByMealType,
+  flattenRecipeMealTypeSections,
+  recipeListItemKey,
+  resolveRecipeMealTypeDrop,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
@@ -668,6 +671,59 @@ describe('groupRecipesByMealType', () => {
 
   it('returns no sections for an empty recipe list', () => {
     expect(groupRecipesByMealType([])).toEqual([]);
+  });
+});
+
+describe('flattenRecipeMealTypeSections / recipeListItemKey', () => {
+  it('interleaves a header row before each section, keyed by mealType', () => {
+    const oatmeal = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const salad = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    const sections = groupRecipesByMealType([oatmeal, salad]);
+    const items = flattenRecipeMealTypeSections(sections);
+    expect(items.map(i => (i.type === 'header' ? `header:${i.title}` : `recipe:${i.recipe.name}`)))
+      .toEqual(['header:Breakfast', 'recipe:Oatmeal', 'header:Lunch', 'recipe:Salad']);
+    expect(items.map(recipeListItemKey)).toEqual(['h-breakfast', oatmeal.id, 'h-lunch', salad.id]);
+  });
+
+  it('keys the untagged header distinctly from a real mealType', () => {
+    const mystery = recipe('Mystery', { mealType: null, sortOrder: 0 });
+    const items = flattenRecipeMealTypeSections(groupRecipesByMealType([mystery]));
+    expect(items[0]).toEqual({ type: 'header', mealType: null, title: 'Untagged' });
+    expect(recipeListItemKey(items[0])).toBe('h-untagged');
+  });
+});
+
+describe('resolveRecipeMealTypeDrop', () => {
+  it('re-tags a recipe dropped under a different header', () => {
+    const oatmeal = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const salad = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    // Oatmeal dragged out of Breakfast and dropped into Lunch.
+    const reordered = flattenRecipeMealTypeSections([
+      { mealType: 'breakfast', title: 'Breakfast', data: [] },
+      { mealType: 'lunch', title: 'Lunch', data: [salad, oatmeal] },
+    ]);
+    const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
+    expect(mealTypeUpdates).toEqual([{ id: oatmeal.id, mealType: 'lunch' }]);
+    // Breakfast had nothing left, so groupRecipesByMealType drops the section
+    // entirely rather than settling on an empty header.
+    expect(settled.map(i => (i.type === 'header' ? i.title : i.recipe.name)))
+      .toEqual(['Lunch', 'Salad', 'Oatmeal']);
+  });
+
+  it('drops a recipe into Untagged when moved under the trailing null header', () => {
+    const salad = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    const reordered = flattenRecipeMealTypeSections([
+      { mealType: null, title: 'Untagged', data: [salad] },
+    ]);
+    const { mealTypeUpdates } = resolveRecipeMealTypeDrop(reordered);
+    expect(mealTypeUpdates).toEqual([{ id: salad.id, mealType: null }]);
+  });
+
+  it('reports no updates when the drop leaves every recipe under its own header', () => {
+    const oatmeal = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const reordered = flattenRecipeMealTypeSections(groupRecipesByMealType([oatmeal]));
+    const { mealTypeUpdates } = resolveRecipeMealTypeDrop(reordered);
+    expect(mealTypeUpdates).toEqual([]);
   });
 });
 

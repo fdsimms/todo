@@ -1,10 +1,9 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   View,
   Text,
   FlatList,
-  SectionList,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -28,12 +27,26 @@ import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { ListBulkBar } from '../components/ListBulkBar';
+import { ReorderableList } from '../components/ReorderableList';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, groupRecipesByMealType, rankRecipeSuggestions, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
+import {
+  cleanRecipeName,
+  countLikelyInPantry,
+  describeCookHistory,
+  describeRecipe,
+  flattenRecipeMealTypeSections,
+  groupRecipesByMealType,
+  rankRecipeSuggestions,
+  rankRecipes,
+  recipeListItemKey,
+  resolveRecipeMealTypeDrop,
+  sortRecipesForDisplay,
+  type RecipeListItem,
+} from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
 import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
@@ -50,12 +63,18 @@ import { groceryNameKey } from '../utils/groceryParse';
  * that earned a plain column instead: it's shown in each row's subtitle via
  * describeRecipe(), and the header's "Group" toggle switches the list between
  * that flat favorites-first order and RECIPE_MEAL_TYPE_LABELS sections
- * (groupRecipesByMealType, src/utils/recipeUtils.ts) — no drag-reorder across
- * sections, unlike Today's category groups, since a recipe's meal type is a
- * single-select field on the editor, not something to drag a row into.
- * Grouping only applies to the unfiltered box, same as the "Cook again" shelf
- * below: a search is already a specific question, and section headers over a
- * handful of matches would just be noise.
+ * (groupRecipesByMealType, src/utils/recipeUtils.ts). Grouping only applies to
+ * the unfiltered box, same as the "Cook again" shelf below: a search is
+ * already a specific question, and section headers over a handful of matches
+ * would just be noise.
+ *
+ * While grouped, a recipe row can be dragged into another section to
+ * re-tag its meal type — same ReorderableList + nearest-header-above rule
+ * Today uses for categories (resolveRecipeMealTypeDrop, recipeUtils.ts).
+ * Recipes have no manual order of their own within a section (the box stays
+ * favorites-first), so a drop that doesn't cross a header boundary is a
+ * no-op: the list re-settles to its favorites-first order instead of keeping
+ * wherever the row was released.
  */
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
@@ -68,6 +87,7 @@ export function RecipesScreen() {
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
   const bulkSetFavorite = useRecipeStore(s => s.bulkSetFavorite);
+  const setMealType = useRecipeStore(s => s.setMealType);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
@@ -183,6 +203,25 @@ export function RecipesScreen() {
     [groupByMealType, query, visible]
   );
 
+  // The row list ReorderableList drags. Kept as its own state (rather than
+  // deriving it inline from `grouped`) so a drop can show its settled layout
+  // immediately — see resolveRecipeMealTypeDrop — instead of flashing the raw
+  // drop order until the store write round-trips back through `grouped`.
+  const flatGrouped = useMemo(() => (grouped ? flattenRecipeMealTypeSections(grouped) : null), [grouped]);
+  const [draggableData, setDraggableData] = useState<RecipeListItem[]>(flatGrouped ?? []);
+  useEffect(() => {
+    if (flatGrouped) setDraggableData(flatGrouped);
+  }, [flatGrouped]);
+
+  // Section-header counts, read from `grouped` (the store-derived truth)
+  // rather than `draggableData` — a header's count needn't track a drag still
+  // in flight, only what's actually settled.
+  const sectionCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    grouped?.forEach(section => map.set(section.mealType ?? '', section.data.length));
+    return map;
+  }, [grouped]);
+
   // Only offered on the unfiltered list — a search or a tag filter is already a
   // specific question ("what has fennel", "what's vegetarian"), and a shelf of
   // suggestions above the results would answer a question nobody asked. It
@@ -270,12 +309,13 @@ export function RecipesScreen() {
     if (existing) openRecipe(existing);
   };
 
-  const renderRecipe = ({ item: recipe }: { item: Recipe }) => {
+  const renderRecipe = ({ item: recipe, drag, isActive }: { item: Recipe; drag?: () => void; isActive?: boolean }) => {
     const selected = selectedIds.has(recipe.id);
     return (
       <TouchableOpacity
-        style={[styles.row, selectionMode && selected && styles.rowSelected]}
+        style={[styles.row, selectionMode && selected && styles.rowSelected, isActive && styles.rowActive]}
         onPress={() => (selectionMode ? toggleSelection(recipe.id) : openRecipe(recipe))}
+        onLongPress={selectionMode ? undefined : drag}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
         accessibilityState={selectionMode ? { checked: selected } : undefined}
@@ -464,22 +504,38 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
-            <SectionList
-              sections={grouped}
-              keyExtractor={r => r.id}
-              renderItem={renderRecipe}
-              renderSectionHeader={({ section }) => (
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionHeaderText}>{section.title}</Text>
-                  <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
-                </View>
-              )}
-              keyboardShouldPersistTaps="handled"
-              contentContainerStyle={styles.list}
-              ListHeaderComponent={cookAgainShelf}
-              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
-              stickySectionHeadersEnabled={false}
-            />
+            <>
+              {!selectionMode && cookAgainShelf}
+              <ReorderableList
+                data={draggableData}
+                keyExtractor={recipeListItemKey}
+                renderItem={({ item, drag, isActive }) => {
+                  if (item.type === 'header') {
+                    return (
+                      <View style={styles.sectionHeader}>
+                        <Text style={styles.sectionHeaderText}>{item.title}</Text>
+                        <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
+                      </View>
+                    );
+                  }
+                  return renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
+                }}
+                onHoverChange={haptics.dragTick}
+                // Row 0 is always a header (groupRecipesByMealType never emits
+                // an empty section) — see the note on resolveRecipeMealTypeDrop.
+                // Keeping it off-limits means every recipe row always has a
+                // header above it to read a mealType from.
+                dragRange={(data, _activeIndex) => [1, data.length - 1]}
+                placeholderStyle={styles.dropSlot}
+                onReorder={reordered => {
+                  const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
+                  setDraggableData(settled);
+                  mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
+                }}
+                contentContainerStyle={styles.list}
+                ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+              />
+            </>
           ) : (
             <FlatList
               data={visible}
@@ -706,6 +762,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowSelected: {
     backgroundColor: colors.accent + '1A',
+  },
+  rowActive: {
+    backgroundColor: colors.bgSecondary,
+  },
+  // Subtle slot marking where a dragged recipe will land; mirrors the row's
+  // own footprint (margin + radius), same treatment as Today's dropSlot.
+  dropSlot: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgSecondary,
+    opacity: 0.55,
   },
   icon: {
     width: 36,

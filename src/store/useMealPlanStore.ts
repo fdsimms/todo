@@ -19,6 +19,19 @@ import {
   sortMealEntries,
 } from '../utils/mealPlan';
 
+/**
+ * Mirrors useTaskStore/useGroceryStore's UndoableAction — see
+ * useGroceryStore's doc comment. A third independent queue rather than
+ * folding into either of those: meal plan entries aren't tasks or catalog
+ * rows, and useShakeToUndo just adds a third candidate to the freshest-wins
+ * comparison it already does between the other two.
+ */
+interface UndoableAction {
+  label: string;
+  undo: () => void;
+  at?: number;
+}
+
 export interface MealPlanDraft {
   date: string;
   slot: MealSlot;
@@ -54,6 +67,11 @@ interface MealPlanStore {
   rangeStart: string | null;
   rangeEnd: string | null;
   initialized: boolean;
+
+  /** The most recent undoable meal-plan mutation — see useShakeToUndo. */
+  lastAction: UndoableAction | null;
+  setLastAction: (action: UndoableAction | null) => void;
+  undoLastAction: () => void;
 
   /**
    * Reloads whatever window is currently loaded. Rides useTaskStore.initialize's
@@ -111,12 +129,13 @@ interface MealPlanStore {
    * database lives in utils/mealPlan (resolveBulkMoveTargets), this just
    * writes it through.
    *
-   * None of the four set `lastAction`/wire into shake-to-undo — useMealPlanStore
-   * isn't one of the two stores useShakeToUndo polls (useTaskStore,
-   * useGroceryStore), and bolting a third queue on for this alone is a bigger
-   * change than one feature's bulk bar earns. Same call already made for
-   * useRecipeStore.bulkDeleteRecipes/bulkSetFavorite, whose confirm dialog
-   * says so outright ("This can't be undone") — bulkDeleteEntries' does too.
+   * `bulkMoveEntries`, `bulkReplaceItem` and `bulkSetCooked` now register
+   * `lastAction` and are offered by shake-to-undo, same as the single-entry
+   * actions above. `bulkDeleteEntries` deliberately does not: its confirm
+   * dialog tells the user outright "This can't be undone" (same call
+   * useRecipeStore.bulkDeleteRecipes makes), and shake-to-undo quietly
+   * reviving a delete the app just promised was permanent would be a lie by
+   * omission — worse than not offering an undo path at all.
    */
 
   /** Deletes every named entry. Confirmation and copy live in the screen, same as removeEntry's single-row delete. */
@@ -177,6 +196,22 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   rangeEnd: null,
   addedToListAt: {},
   initialized: false,
+  lastAction: null,
+
+  setLastAction(action) {
+    set({ lastAction: action ? { ...action, at: Date.now() } : null });
+  },
+
+  undoLastAction() {
+    const action = get().lastAction;
+    if (!action) return;
+    try {
+      action.undo();
+    } catch (e) {
+      console.error('undoLastAction failed', e);
+    }
+    set({ lastAction: null });
+  },
 
   initialize() {
     const addedToListAt = dbGetMealPlanAddedToList();
@@ -235,6 +270,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);
+    get().setLastAction({
+      label: `Planned "${entry.title}"`,
+      undo: () => {
+        dbDeleteMealPlanEntry(entry.id);
+        set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
+      },
+    });
     return entry;
   },
 
@@ -254,11 +296,29 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dbUpdateMealPlanEntry(moved);
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
     patchInRange(set, get, moved);
+    get().setLastAction({
+      label: `Moved "${entry.title}"`,
+      undo: () => {
+        dbUpdateMealPlanEntry(entry);
+        set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
+        patchInRange(set, get, entry);
+      },
+    });
   },
 
   removeEntry(id) {
+    const entry = get().entries.find(e => e.id === id);
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
+    if (entry) {
+      get().setLastAction({
+        label: `Removed "${entry.title}"`,
+        undo: () => {
+          dbInsertMealPlanEntry(entry);
+          patchInRange(set, get, entry);
+        },
+      });
+    }
   },
 
   renameEntry(id, title) {
@@ -301,6 +361,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const targets = resolveBulkMoveTargets(get().entries, ids, to);
     if (targets.length === 0) return;
     const byId = new Map(get().entries.map(e => [e.id, e]));
+    // Captured before any row is touched, so undo restores each entry's own
+    // original date/slot/sortOrder rather than one shared destination.
+    const originals = targets.map(({ id }) => byId.get(id)!);
 
     // Entries landing in the same (date, slot) this batch are numbered against
     // each other, not just against what's already on the table — read once per
@@ -321,6 +384,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const movedIds = new Set(moved.map(e => e.id));
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
     moved.forEach(entry => patchInRange(set, get, entry));
+
+    get().setLastAction({
+      label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved`,
+      undo: () => {
+        originals.forEach(dbUpdateMealPlanEntry);
+        set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
+        originals.forEach(entry => patchInRange(set, get, entry));
+      },
+    });
   },
 
   bulkReplaceItem(ids, replacement) {
@@ -340,6 +412,15 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+
+    get().setLastAction({
+      label: `${updated.length} meal${updated.length === 1 ? '' : 's'} replaced`,
+      undo: () => {
+        toUpdate.forEach(dbUpdateMealPlanEntry);
+        const originalById = new Map(toUpdate.map(e => [e.id, e]));
+        set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
+      },
+    });
   },
 
   bulkSetCooked(ids, cooked) {
@@ -355,6 +436,20 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+
+    // Restores each entry's own original cookedAt, not just the opposite of
+    // `cooked` — same reasoning as bulkMoveEntries' `originals`. Never touches
+    // recipe cookCount either direction, matching bulkSetCooked itself.
+    get().setLastAction({
+      label: cooked
+        ? `${toUpdate.length} meal${toUpdate.length === 1 ? '' : 's'} marked cooked`
+        : `${toUpdate.length} meal${toUpdate.length === 1 ? '' : 's'} marked not cooked`,
+      undo: () => {
+        toUpdate.forEach(dbUpdateMealPlanEntry);
+        const originalById = new Map(toUpdate.map(e => [e.id, e]));
+        set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
+      },
+    });
   },
 
   stampAddedToList(weekStartKey) {
