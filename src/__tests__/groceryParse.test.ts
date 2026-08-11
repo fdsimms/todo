@@ -197,6 +197,24 @@ describe('parseGroceryInput', () => {
     });
   });
 
+  it('extracts a leading size word into the quantity', () => {
+    expect(parseGroceryInput('1 medium onion')).toEqual({
+      name: 'onion',
+      quantity: '1, medium',
+    });
+    expect(parseGroceryInput('2 large eggs')).toEqual({
+      name: 'eggs',
+      quantity: '2, large',
+    });
+  });
+
+  it('leaves a size word alone when it is not right after the quantity', () => {
+    expect(parseGroceryInput('mixed greens with large tomatoes')).toEqual({
+      name: 'mixed greens with large tomatoes',
+      quantity: null,
+    });
+  });
+
   it('returns a bare name unchanged when there is no quantity', () => {
     expect(parseGroceryInput('sourdough bread')).toEqual({
       name: 'sourdough bread',
