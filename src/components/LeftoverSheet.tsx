@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -166,7 +167,7 @@ export function LeftoverSheet({
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
     // A fresh open always starts from the row (or the seed) rather than from
     // whatever the last one was left on.
@@ -182,8 +183,8 @@ export function LeftoverSheet({
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(600);
       onClose();
@@ -200,7 +201,7 @@ export function LeftoverSheet({
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
+        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -243,6 +244,26 @@ export function LeftoverSheet({
       return;
     }
     onRename(clean);
+  };
+
+  /**
+   * The one irreversible thing this sheet does, and the only one with no undo
+   * behind it — useLeftoverStore keeps no lastAction queue, unlike tasks,
+   * groceries and the meal plan. Finishing a container can be reopened and a
+   * rename can be retyped; a delete takes the row and its history with it. So
+   * it asks, the same way deleting a recipe does, rather than relying on a
+   * safety net that isn't there.
+   */
+  const confirmDelete = () => {
+    haptics.warning();
+    Alert.alert(
+      `Delete ${leftover?.title ?? 'this leftover'}?`,
+      'This takes it out of the fridge and out of the history. It can\'t be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => dismiss(onDelete) },
+      ],
+    );
   };
 
   const pickDaysAgo = (days: number) => {
@@ -460,7 +481,7 @@ export function LeftoverSheet({
               <View style={styles.sep} />
               <TouchableOpacity
                 style={styles.action}
-                onPress={() => { haptics.warning(); dismiss(onDelete); }}
+                onPress={confirmDelete}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel="Delete this leftover"

@@ -16,7 +16,6 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
-import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
@@ -161,15 +160,15 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
     setKeyboardHeight(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
   }, [visible, defaultSlot]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, damping: 28, stiffness: 320, useNativeDriver: true }),
-      Animated.timing(backdropOpacity, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
       translateY.setValue(600);
       onClose();
@@ -186,7 +185,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
       },
       onPanResponderRelease: (_, { dy, vy }) => {
         if (dy > 80 || vy > 1.2) dismiss();
-        else Animated.spring(translateY, { toValue: 0, damping: 22, stiffness: 300, useNativeDriver: true }).start();
+        else Animated.spring(translateY, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -258,15 +257,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
         </View>
 
         <View style={styles.card}>
+          {/* No "Done" beside the title any more. A pick closes the sheet by
+              itself, so that button and the Cancel card below it were two
+              labels for one identical dismissal — and "Done" was the misleading
+              half, since it reads as "commit what I typed" next to a text field
+              that it does nothing with (#1378). */}
           <View style={styles.sheetHeaderRow}>
             <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
-            <SheetHeaderButton
-              label="Done"
-              onPress={() => dismiss()}
-              role="confirm"
-              accessibilityLabel={`Done planning ${dayLabel}`}
-              style={styles.doneButton}
-            />
           </View>
           <Text style={styles.sheetHint}>
             Pick a recipe, or type whatever it is — “leftovers” is a plan too.
@@ -463,9 +460,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
-  },
-  doneButton: {
-    fontSize: font.md,
   },
   sheetHint: {
     color: colors.textTertiary,
