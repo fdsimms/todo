@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -9,7 +9,9 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { groceryNameKey } from '../utils/groceryParse';
+import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
+  applyMeasuredCookTime,
   cleanRecipeName,
   cleanRecipeSource,
   ingredientsFromText,
@@ -17,6 +19,8 @@ import {
   mergeIngredients,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
+import { cookTimerElapsed } from '../utils/recipeTimer';
+import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
 /**
  * The recipe library.
@@ -54,7 +58,23 @@ interface RecipeStore {
    * range, so it's dropped rather than stored as one.
    */
   setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
+  /**
+   * Sets or clears a recipe's attached photo — `uri` is a file already saved
+   * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
+   * it. Deletes the previous file, if any, once the new value is committed —
+   * an orphaned image is bytes nothing else will ever point at again.
+   */
+  setImage: (id: string, uri: string | null) => void;
+  setMealType: (id: string, mealType: RecipeMealType | null) => void;
   toggleFavorite: (id: string) => void;
+  /**
+   * Deliberately doesn't rewrite the recipes that used this one as a component
+   * — see RecipeComponent.recipeId. Unfiling the links would silently edit
+   * recipes the user didn't ask to touch, and re-adding a restored backup
+   * couldn't put them back; a link that stops resolving renders as a row saying
+   * so, which they can remove or replace. The editor's confirm names those
+   * parents first (see RecipeEditor.handleDelete).
+   */
   deleteRecipe: (id: string) => void;
 
   /**
@@ -64,6 +84,24 @@ interface RecipeStore {
    * the recipe and is never recomputed from entries (see Recipe.cookCount).
    */
   markCooked: (id: string) => void;
+
+  /** null clears it. Rounded and floored at 1 minute, same clamp as a task's estimate. */
+  setEstimatedMinutes: (id: string, minutes: number | null) => void;
+
+  /**
+   * The cook timer, mirroring useTaskStore's startTimer/pauseTimer/resetTimer/
+   * stopTimer for the plain stopwatch case (see src/utils/recipeTimer.ts).
+   * start/pause bank and resume a run segment without touching anything
+   * logged; reset abandons the current segment unlogged; stop banks the
+   * final segment and logs it via applyMeasuredCookTime, which is the one
+   * action that writes lastCookMinutes/cookTimeCount/totalCookMinutes (and
+   * backfills estimatedMinutes the first time, same as a task's stopTimer
+   * backfills estimatedMinutes/effort).
+   */
+  startCookTimer: (id: string) => void;
+  pauseCookTimer: (id: string) => void;
+  resetCookTimer: (id: string) => void;
+  stopCookTimer: (id: string) => void;
 
   /** Appends one typed line. Null when it parses to nothing or is already there. */
   addIngredient: (recipeId: string, line: string) => RecipeIngredient | null;
@@ -78,6 +116,21 @@ interface RecipeStore {
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
+
+  /**
+   * References `componentRecipeId` as a part of `recipeId` — the shared
+   * "mashed potatoes" inside two different dinners.
+   *
+   * False, and no write, for anything that isn't a usable link: an unknown
+   * recipe on either end, a recipe referencing itself, one already linked, or
+   * one that would close a loop. The picker disables those rows for the same
+   * reasons (see RecipeComponentPicker), so this is the backstop rather than
+   * the user-facing explanation — the same division NestedTemplatePicker and
+   * wouldCreateCycle already have.
+   */
+  addComponent: (recipeId: string, componentRecipeId: string) => boolean;
+  /** Unlinks by the component's own id, so a broken link can be cleared too. */
+  removeComponent: (recipeId: string, componentId: string) => void;
 
   /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
   addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
@@ -119,13 +172,22 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       source: null,
       servings: null,
       servingsMax: null,
+      imagePath: null,
+      mealType: null,
       ingredients: [],
+      components: [],
       prepTasks: [],
       favorite: false,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
       cookCount: 0,
       lastCookedAt: null,
+      estimatedMinutes: null,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      lastCookMinutes: null,
+      cookTimeCount: 0,
+      totalCookMinutes: 0,
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -192,6 +254,20 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, servings: next, servingsMax: nextMax });
   },
 
+  setImage(id, uri) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const previous = recipe.imagePath;
+    save(set, { ...recipe, imagePath: uri });
+    if (previous && previous !== uri) deleteRecipeImage(previous);
+  },
+
+  setMealType(id, mealType) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, mealType });
+  },
+
   toggleFavorite(id) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
@@ -199,14 +275,54 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   },
 
   deleteRecipe(id) {
+    const recipe = get().recipes.find(r => r.id === id);
     dbDeleteRecipe(id);
     set(s => ({ recipes: s.recipes.filter(r => r.id !== id) }));
+    if (recipe) deleteRecipeImage(recipe.imagePath);
   },
 
   markCooked(id) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     save(set, { ...recipe, cookCount: recipe.cookCount + 1, lastCookedAt: new Date().toISOString() });
+  },
+
+  setEstimatedMinutes(id, minutes) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const next = minutes === null ? null : Math.max(1, Math.round(minutes));
+    save(set, { ...recipe, estimatedMinutes: next });
+  },
+
+  startCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt !== null) return;
+    save(set, { ...recipe, timerStartedAt: new Date().toISOString() });
+  },
+
+  pauseCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe || recipe.timerStartedAt === null) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: cookTimerElapsed(recipe) });
+  },
+
+  resetCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, timerStartedAt: null, timerElapsedSeconds: 0 });
+  },
+
+  stopCookTimer(id) {
+    const recipe = get().recipes.find(r => r.id === id);
+    // Nothing to log — no run in flight and nothing banked from an earlier pause.
+    if (!recipe || (recipe.timerStartedAt === null && recipe.timerElapsedSeconds <= 0)) return;
+    const minutes = cookTimerElapsed(recipe) / 60;
+    save(set, {
+      ...recipe,
+      timerStartedAt: null,
+      timerElapsedSeconds: 0,
+      ...applyMeasuredCookTime(minutes, recipe),
+    });
   },
 
   addIngredient(recipeId, line) {
@@ -274,6 +390,25 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const named = new Set(ordered.map(i => i.id));
     const rest = recipe.ingredients.filter(i => !named.has(i.id));
     save(set, { ...recipe, ingredients: [...ordered, ...rest] });
+  },
+
+  addComponent(recipeId, componentRecipeId) {
+    const recipes = get().recipes;
+    const recipe = recipes.find(r => r.id === recipeId);
+    const target = recipes.find(r => r.id === componentRecipeId);
+    if (!recipe || !target) return false;
+    if (recipe.components.some(c => c.recipeId === componentRecipeId)) return false;
+    if (wouldCreateRecipeCycle(recipeMap(recipes), recipeId, componentRecipeId)) return false;
+    save(set, { ...recipe, components: [...recipe.components, makeComponent(target)] });
+    return true;
+  },
+
+  removeComponent(recipeId, componentId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const components = recipe.components.filter(c => c.id !== componentId);
+    if (components.length === recipe.components.length) return;
+    save(set, { ...recipe, components });
   },
 
   addPrepTask(recipeId, title) {

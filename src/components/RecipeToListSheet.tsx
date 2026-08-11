@@ -32,6 +32,13 @@ const CHECKBOX_SIZE = 22;
 interface Props {
   visible: boolean;
   recipe: Recipe | null;
+  /**
+   * The library, so a composed recipe's components contribute their
+   * ingredients too. Optional: a caller with only the one row in hand (the
+   * meal plan's "cooked, re-shop it" follow-up passes one) still gets exactly
+   * the behaviour it had before components existed.
+   */
+  recipesById?: ReadonlyMap<string, Recipe>;
   onClose: () => void;
 }
 
@@ -57,7 +64,7 @@ const SECTIONS: { category: PlanCategory; label: string; interactive: boolean; c
  * There's nothing to assert for a genuinely new ingredient — no catalog row
  * has it yet — so the action only appears once a row resolves to one.
  */
-export function RecipeToListSheet({ visible, recipe, onClose }: Props) {
+export function RecipeToListSheet({ visible, recipe, recipesById, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -69,8 +76,8 @@ export function RecipeToListSheet({ visible, recipe, onClose }: Props) {
 
   const classified = useMemo(() => {
     if (!recipe) return [];
-    return classifyPlanned(plannedIngredientsForRecipe(recipe), items, new Date());
-  }, [recipe, items]);
+    return classifyPlanned(plannedIngredientsForRecipe(recipe, recipesById), items, new Date());
+  }, [recipe, recipesById, items]);
 
   const byCategory = useMemo(() => {
     const out: Record<PlanCategory, ClassifiedIngredient[]> = {
@@ -132,8 +139,12 @@ export function RecipeToListSheet({ visible, recipe, onClose }: Props) {
         name: r.name,
         quantity: r.quantity || null,
         aisle: r.aisle,
-        sourceRecipeId: recipe.id,
-        sourceRecipeTitle: recipe.name,
+        // The component the line is written on gets the credit — that's where
+        // the user will go to change it. classifyPlanned leaves this null once
+        // a row merged across more than one of them, and the recipe they
+        // actually tapped is the honest answer for that case.
+        sourceRecipeId: r.sourceRecipeId ?? recipe.id,
+        sourceRecipeTitle: r.sourceRecipeTitle ?? recipe.name,
       }));
 
     if (rows.length === 0) { onClose(); return; }

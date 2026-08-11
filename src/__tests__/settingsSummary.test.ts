@@ -12,7 +12,7 @@ const defaults: SettingsSummaryInput = {
   remindersImportEnabled: false,
   groceryImportEnabled: false,
   vacationMode: false,
-  autoRemoveExpiredTasks: false,
+  autoRemoveExpiredTasks: null,
   autoArchiveProjectsOnComplete: false,
   appLockEnabled: false,
   hasApiKey: false,
@@ -81,8 +81,10 @@ describe('settingsSummaries', () => {
 
     it('switches to naming what is on', () => {
       expect(summarise({ vacationMode: true }).tasksProjects).toBe('Vacation on');
-      expect(summarise({ vacationMode: true, autoRemoveExpiredTasks: true }).tasksProjects)
-        .toBe('Vacation on · Expired tasks removed');
+      expect(summarise({ vacationMode: true, autoRemoveExpiredTasks: 0 }).tasksProjects)
+        .toBe('Vacation on · Expired tasks removed immediately');
+      expect(summarise({ vacationMode: true, autoRemoveExpiredTasks: 7 }).tasksProjects)
+        .toBe('Vacation on · Expired tasks removed after 7 days');
       expect(summarise({ appLockEnabled: true, hasApiKey: true }).privacyAi)
         .toBe('App lock on · API key set');
     });

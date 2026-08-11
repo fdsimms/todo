@@ -1,0 +1,302 @@
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import {
+  dbGetAllLeftovers,
+  dbInsertLeftover,
+  dbUpdateLeftover,
+  dbDeleteLeftover,
+  dbPurgeOldLeftovers,
+} from '../db/database';
+import type { Leftover } from '../types';
+
+jest.mock('../db/database', () => ({
+  dbGetAllLeftovers: jest.fn().mockReturnValue([]),
+  dbInsertLeftover: jest.fn(),
+  dbUpdateLeftover: jest.fn(),
+  dbDeleteLeftover: jest.fn(),
+  dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
+}));
+
+// The store reaches utils/leftovers → dateUtils → the settings store, for
+// dayResetTime a calendar day key doesn't use. Same stub the other meal-plan
+// suites take.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
+
+let seq = 0;
+function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
+  seq += 1;
+  return {
+    id: `lo-${seq}`,
+    title: 'Chilli',
+    recipeId: null,
+    sourceEntryId: null,
+    storedAt: '2026-08-10T09:00:00.000Z',
+    keepUntil: '2026-08-13',
+    finishedAt: null,
+    outcome: null,
+    createdAt: '2026-08-10T09:00:00.000Z',
+    ...overrides,
+  };
+}
+
+function seed(leftovers: Leftover[]) {
+  useLeftoverStore.setState({ leftovers, initialized: true });
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  (dbGetAllLeftovers as jest.Mock).mockReturnValue([]);
+  (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(0);
+  seed([]);
+});
+
+describe('initialize', () => {
+  it('loads what the db holds', () => {
+    const chilli = makeLeftover();
+    (dbGetAllLeftovers as jest.Mock).mockReturnValue([chilli]);
+
+    useLeftoverStore.getState().initialize();
+
+    expect(useLeftoverStore.getState().leftovers).toEqual([chilli]);
+    expect(useLeftoverStore.getState().initialized).toBe(true);
+  });
+
+  it('sorts by urgency rather than trusting the row order', () => {
+    const later = makeLeftover({ id: 'later', keepUntil: '2026-08-20' });
+    const sooner = makeLeftover({ id: 'sooner', keepUntil: '2026-08-14' });
+    (dbGetAllLeftovers as jest.Mock).mockReturnValue([later, sooner]);
+
+    useLeftoverStore.getState().initialize();
+
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['sooner', 'later']);
+  });
+});
+
+describe('logLeftover', () => {
+  it('logs a container starting today, live and with the default window', () => {
+    const logged = useLeftoverStore.getState().logLeftover({ title: '  Sausage   ragù ' })!;
+
+    expect(logged.title).toBe('Sausage ragù');
+    expect(logged.finishedAt).toBeNull();
+    expect(logged.outcome).toBeNull();
+    expect(logged.recipeId).toBeNull();
+    expect(logged.sourceEntryId).toBeNull();
+    expect(dbInsertLeftover).toHaveBeenCalledTimes(1);
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(1);
+  });
+
+  it('resolves the keep-for window against the stored instant, not against now', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Dal',
+      storedAt: new Date(2026, 7, 10, 18, 0).toISOString(),
+      keepDays: 4,
+    })!;
+
+    expect(logged.keepUntil).toBe('2026-08-14');
+  });
+
+  it('carries the recipe and the meal it came from', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Ragu',
+      recipeId: 'r-1',
+      sourceEntryId: 'e-1',
+    })!;
+
+    expect(logged.recipeId).toBe('r-1');
+    expect(logged.sourceEntryId).toBe('e-1');
+  });
+
+  it('refuses a blank title', () => {
+    expect(useLeftoverStore.getState().logLeftover({ title: '   ' })).toBeNull();
+    expect(dbInsertLeftover).not.toHaveBeenCalled();
+  });
+
+  it('allows a second container of the same dish — the name is not the identity', () => {
+    useLeftoverStore.getState().logLeftover({ title: 'Chilli' });
+    const second = useLeftoverStore.getState().logLeftover({ title: 'Chilli' });
+
+    expect(second).not.toBeNull();
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(2);
+  });
+});
+
+describe('renameLeftover', () => {
+  it('renames and persists', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    expect(useLeftoverStore.getState().renameLeftover('lo-a', '  Beef   chilli ')).toBe(true);
+    expect(useLeftoverStore.getState().leftovers[0].title).toBe('Beef chilli');
+    expect(dbUpdateLeftover).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a blank name and an id that is not there', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    expect(useLeftoverStore.getState().renameLeftover('lo-a', '   ')).toBe(false);
+    expect(useLeftoverStore.getState().renameLeftover('nope', 'Anything')).toBe(false);
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+
+  it('does not refuse a name another container already has', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Chilli' }), makeLeftover({ id: 'lo-b', title: 'Dal' })]);
+
+    expect(useLeftoverStore.getState().renameLeftover('lo-b', 'Chilli')).toBe(true);
+  });
+});
+
+describe('setStoredAt', () => {
+  it('carries the keep-for window with the corrected put-away day', () => {
+    // Made on the 10th, keep 3 days → the 13th. "Actually I made it on the 9th"
+    // has to mean the 12th, not a silently shortened 2-day window.
+    seed([makeLeftover({
+      id: 'lo-a',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepUntil: '2026-08-13',
+    })]);
+
+    useLeftoverStore.getState().setStoredAt('lo-a', new Date(2026, 7, 9, 9, 0).toISOString());
+
+    expect(useLeftoverStore.getState().leftovers[0].keepUntil).toBe('2026-08-12');
+  });
+
+  it('ignores an id that is not there', () => {
+    useLeftoverStore.getState().setStoredAt('nope', new Date().toISOString());
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+});
+
+describe('setKeepDays', () => {
+  it('re-resolves against the row\'s own stored instant', () => {
+    seed([makeLeftover({
+      id: 'lo-a',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepUntil: '2026-08-13',
+    })]);
+
+    useLeftoverStore.getState().setKeepDays('lo-a', 6);
+
+    expect(useLeftoverStore.getState().leftovers[0].keepUntil).toBe('2026-08-16');
+    expect(dbUpdateLeftover).toHaveBeenCalledTimes(1);
+  });
+
+  it('clamps a window a restored backup could carry', () => {
+    seed([makeLeftover({ id: 'lo-a', storedAt: new Date(2026, 7, 10, 9, 0).toISOString() })]);
+
+    useLeftoverStore.getState().setKeepDays('lo-a', -5);
+
+    expect(useLeftoverStore.getState().leftovers[0].keepUntil).toBe('2026-08-10');
+  });
+
+  it('re-sorts, so a shortened window moves to the top of the fridge', () => {
+    seed([
+      makeLeftover({ id: 'soon', storedAt: new Date(2026, 7, 10, 9, 0).toISOString(), keepUntil: '2026-08-13' }),
+      makeLeftover({ id: 'later', storedAt: new Date(2026, 7, 10, 9, 0).toISOString(), keepUntil: '2026-08-20' }),
+    ]);
+
+    useLeftoverStore.getState().setKeepDays('later', 1);
+
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['later', 'soon']);
+  });
+});
+
+describe('finishLeftover', () => {
+  it('stamps the instant and records which ending it got', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const stored = useLeftoverStore.getState().leftovers[0];
+    expect(stored.finishedAt).not.toBeNull();
+    expect(stored.outcome).toBe('eaten');
+    expect(dbUpdateLeftover).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a bin as a bin', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+    expect(useLeftoverStore.getState().leftovers[0].outcome).toBe('tossed');
+  });
+
+  it('is idempotent — a second call does not restamp', () => {
+    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBe('2026-08-11T18:00:00.000Z');
+    expect(useLeftoverStore.getState().leftovers[0].outcome).toBe('eaten');
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+
+  it('ignores an id that is not there', () => {
+    useLeftoverStore.getState().finishLeftover('nope', 'eaten');
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+});
+
+describe('reopenLeftover', () => {
+  it('puts a mis-tapped close-out back in the fridge, clearing both columns', () => {
+    seed([makeLeftover({ id: 'lo-a', finishedAt: '2026-08-11T18:00:00.000Z', outcome: 'eaten' })]);
+
+    useLeftoverStore.getState().reopenLeftover('lo-a');
+
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBeNull();
+    expect(useLeftoverStore.getState().leftovers[0].outcome).toBeNull();
+  });
+
+  it('no-ops on something already live', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+    useLeftoverStore.getState().reopenLeftover('lo-a');
+    expect(dbUpdateLeftover).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteLeftover', () => {
+  it('drops the row', () => {
+    seed([makeLeftover({ id: 'lo-a' }), makeLeftover({ id: 'lo-b' })]);
+
+    useLeftoverStore.getState().deleteLeftover('lo-a');
+
+    expect(dbDeleteLeftover).toHaveBeenCalledWith('lo-a');
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['lo-b']);
+  });
+});
+
+describe('purgeOldLeftovers', () => {
+  it('returns zero and touches nothing when the db took nothing', () => {
+    seed([makeLeftover({ id: 'lo-a' })]);
+
+    expect(useLeftoverStore.getState().purgeOldLeftovers()).toBe(0);
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(1);
+  });
+
+  it('drops the closed-out rows the db took, and keeps every live one however old', () => {
+    (dbPurgeOldLeftovers as jest.Mock).mockReturnValue(1);
+    const ancientButLive = makeLeftover({ id: 'live', storedAt: '2020-01-01T00:00:00.000Z' });
+    const longFinished = makeLeftover({
+      id: 'gone',
+      finishedAt: '2020-01-02T00:00:00.000Z',
+      outcome: 'eaten',
+    });
+    const justFinished = makeLeftover({
+      id: 'kept',
+      finishedAt: new Date().toISOString(),
+      outcome: 'eaten',
+    });
+    seed([ancientButLive, longFinished, justFinished]);
+
+    expect(useLeftoverStore.getState().purgeOldLeftovers()).toBe(1);
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id).sort())
+      .toEqual(['kept', 'live']);
+  });
+});
+
+describe('leftoverById', () => {
+  it('resolves, or shrugs', () => {
+    const chilli = makeLeftover({ id: 'lo-a' });
+    seed([chilli]);
+
+    expect(useLeftoverStore.getState().leftoverById('lo-a')).toEqual(chilli);
+    expect(useLeftoverStore.getState().leftoverById('nope')).toBeUndefined();
+  });
+});

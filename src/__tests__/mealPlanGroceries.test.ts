@@ -27,6 +27,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    section: null,
     ...overrides,
   };
 }
@@ -43,13 +44,22 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     source: null,
     servings: null,
     servingsMax: null,
+    imagePath: null,
+    mealType: null,
     ingredients,
+    components: [],
     prepTasks: [],
     favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
     lastCookedAt: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
   };
 }
 
@@ -63,6 +73,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     sortOrder: 1,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
+    leftoverId: null,
     ...overrides,
   };
 }
@@ -132,6 +143,21 @@ describe('collectPlannedIngredients', () => {
     const entries = [entry('2026-08-11', ragu.id)];
     expect(collectPlannedIngredients(entries, recipesById, RANGE)[0].aisle).toBe('Produce');
   });
+
+  it('brings a component\'s ingredients along, sourced to the part that wants them', () => {
+    const mash = recipe('Mash', [ing('Potatoes', { quantity: '1 kg' })]);
+    const steak = recipe('Steak with mash', [ing('Steak', { quantity: '2' })]);
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+    const recipesById = new Map([[steak.id, steak], [mash.id, mash]]);
+    const entries = [entry('2026-08-11', steak.id)]; // Tuesday
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(result.map(r => [r.name, r.source, r.recipeTitle])).toEqual([
+      ['Steak', 'Tue Steak with mash', 'Steak with mash'],
+      ['Potatoes', 'Tue Mash', 'Mash'],
+    ]);
+  });
 });
 
 describe('plannedIngredientsForRecipe', () => {
@@ -153,8 +179,43 @@ describe('plannedIngredientsForRecipe', () => {
     expect(plannedIngredientsForRecipe(ragu)[0].aisle).toBe('Produce');
   });
 
+  it('flattens a sectioned recipe — the section label does not carry over', () => {
+    const cake = recipe('Layer Cake', [
+      ing('Flour', { quantity: '2 cups', section: 'For the cake' }),
+      ing('Butter', { quantity: '1 cup', section: 'For the frosting' }),
+    ]);
+    const planned = plannedIngredientsForRecipe(cake);
+    expect(planned).toEqual([
+      { name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
+      { name: 'Butter', nameKey: 'butter', quantity: '1 cup', aisle: null, source: 'Layer Cake', recipeId: cake.id, recipeTitle: 'Layer Cake' },
+    ]);
+    expect(planned.some(p => 'section' in p)).toBe(false);
+  });
+
   it('is empty for a recipe with no ingredients', () => {
     expect(plannedIngredientsForRecipe(recipe('Toast', []))).toEqual([]);
+  });
+
+  it('includes a component\'s ingredients, each sourced to the recipe it\'s written on', () => {
+    const mash = recipe('Mash', [ing('Potatoes'), ing('Butter', { quantity: '50 g' })]);
+    const steak = recipe('Steak with mash', [ing('Steak')]);
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+
+    const result = plannedIngredientsForRecipe(steak, new Map([[steak.id, steak], [mash.id, mash]]));
+
+    expect(result.map(r => [r.name, r.source])).toEqual([
+      ['Steak', 'Steak with mash'],
+      ['Potatoes', 'Mash'],
+      ['Butter', 'Mash'],
+    ]);
+    expect(result[2].recipeId).toBe(mash.id);
+  });
+
+  it('stands for itself when the caller has no library to resolve against', () => {
+    const steak = recipe('Steak with mash', [ing('Steak')]);
+    steak.components = [{ id: 'c1', recipeId: 'r-mash', name: 'Mash' }];
+
+    expect(plannedIngredientsForRecipe(steak).map(r => r.name)).toEqual(['Steak']);
   });
 });
 

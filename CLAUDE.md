@@ -12,6 +12,36 @@ say why instead of opening one silently.
 Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
 the user explicitly asks for that. Just open the PR and stop.
 
+## GitHub issue labels
+
+When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
+invent new ones). Setting a label that doesn't exist yet auto-creates it, so there's no separate
+creation step.
+
+1. **Type** (pick one): `bug` (broken vs. intended behavior) · `enhancement` (new feature/capability)
+   · `chore` (refactor, upgrade, tooling, dev-only, tracking/meta issues) · `explore` (open-ended
+   research/spike, not yet committed to building — "Explore", "Think through", "Spike:",
+   "Investigated:", "Decided against:", "Decide whether", or a design question rather than a scoped
+   task)
+2. **Area** (pick one, whichever the issue is primarily about): `area:task-list` (core tasks,
+   categories, tags, projects, templates, chains, stacks, recurrence, notifications, search, editor,
+   navigation, drag/drop, widgets, app lock) · `area:groceries` (grocery list, catalog, aisles,
+   stores/shops, buy-again) · `area:meal-plan` (meal planning calendar/week view, leftovers
+   tracking) · `area:recipes` (recipes, ingredients, recipe import) · `area:app-wide` (settings,
+   theming, AI/Claude integration config, performance, accessibility, platform/build/native-target
+   work, or anything cutting across the areas above)
+3. **Model** — which Claude model is best suited to implement it: `model:haiku` (trivial,
+   mechanical, tightly-scoped — a copy fix, one-file bug) · `model:sonnet` (typical feature work or
+   bug fix, the default for most issues) · `model:opus` (architecturally significant, spans many
+   files/layers, ambiguous requirements, or needs real design tradeoffs)
+4. **Effort** — implementation/reasoning effort: `effort:low` (small, one file or one clear code
+   path) · `effort:medium` (a few files or some design thought — the default) · `effort:high`
+   (spans multiple layers, e.g. db/store/UI, or has real design ambiguity) · `effort:xhigh` (a major
+   feature/initiative)
+
+Judge model and effort together (a `bug` is rarely `xhigh`; a big new sync-engine spike is
+`model:opus` + `effort:xhigh`; a copy/UI tweak is `model:haiku` + `effort:low`).
+
 ## Commands
 
 ```bash
@@ -61,6 +91,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) |
 | grocery autocomplete, Buy again ranking | `src/utils/grocerySuggest.ts` |
 | which store an item comes from | `src/utils/groceryShops.ts` — see Grocery stores below |
+| one recipe used inside another | `src/utils/recipeComponents.ts` — see Composed recipes below |
 
 **Read narrowly.** Seven files are over 1,000 lines — `useTaskStore.test.ts` (2.6k),
 `TaskEditor.tsx` (2.3k), `TodayScreen.tsx` (2.1k), `QuickAddModal.tsx` (1.6k),
@@ -264,6 +295,45 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   when you're deciding what to buy where. **There is deliberately no store chip on the shopping
   list rows** — the row is already dense, and while you're shopping you're standing in one store,
   so it's noise precisely when the list is in use.
+
+### Composed recipes (`Recipe.components`) — one recipe used inside another
+
+"Steak with mashed potatoes" and "Salmon with mashed potatoes" are two recipes and one shared
+mash. A component is a **reference** (`RecipeComponent` = link id + `recipeId` + a captured name),
+held in a JSON column like `ingredients`; nothing is copied, so editing the mash reaches every
+meal that uses it. The graph walk — flatten, cycle check, reverse lookup — lives in
+`src/utils/recipeComponents.ts`, deliberately shaped like the nested-template helpers in
+`templateUtils.ts`, since it's the same problem and the app shouldn't grow two answers to it.
+
+- **It's its own list, not a `RecipeIngredient` with a `refRecipeId`.** `TemplateItem` does it the
+  other way round, and that works there because a template's items are already a pile of drafts.
+  An ingredient isn't: `nameKey` is the bridge to the grocery catalog, and every reader
+  (`mergeIngredients`' dedupe, `remapIngredientKeyIn`, `classifyPlanned`, the aisle lexicon) is
+  written assuming a line names something you can put in a trolley. A component names a dish.
+- **A recipe contributes its lines at most once per flatten** — the one deliberate divergence from
+  `expandTemplateItems`, whose visited set is per-branch. Two tasks are two things to do; two
+  copies of "1 lb potatoes" are not two purchases, and `mergeQuantities` would silently make it
+  "2 lb". A component graph is a set of parts, not a bill of materials with multiplicities.
+- **Every shopping read goes through `flattenRecipeIngredients`**, never `recipe.ingredients`:
+  `plannedIngredientsForRecipe`, `collectPlannedIngredients`, `countLikelyInPantry`,
+  `scoreRecipeAgainstCatalog`, `rankRecipes`' ingredient match, and both "is there anything to
+  shop for" gates. Read raw and a dish that's mostly its parts reads as having nothing to buy.
+  Prep steps flatten the same way (`flattenRecipePrepTasks`) — offsets are already relative to
+  the meal, so a component's step needs no re-anchoring.
+- **Each flattened line is attributed to the recipe it's written on**, not to the one the user
+  tapped: that's where they'd go to change it, and it's what makes a row wanted by two parts say
+  so in `ClassifiedIngredient.sources`. `RecipeToListSheet` falls back to the tapped recipe for a
+  row `classifyPlanned` merged across several.
+- **`describeRecipe` counts the recipe's own ingredients, plus a "· 1 component" clause.** The
+  count has to agree with the list rendered directly beneath it on the detail screen; the clause
+  is what stops "3 ingredients" reading as the whole shop.
+- **Deleting a component recipe leaves the links dangling**, resolve-or-shrug like every other
+  cross-row pointer here (`MealPlanEntry.recipeId`, `TemplateItem.refTemplateId`). Unfiling them
+  would edit recipes the user didn't ask to touch, and a restored backup couldn't put them back.
+  The delete confirm names the parents first, same as `TemplateEditor`'s does.
+- **Scaling is deliberately not in this.** `quantity` is free text everywhere in this app and
+  nothing does arithmetic on it (see the note at the top of `mealPlanGroceries.ts`); a component
+  contributes the quantities it's written with, whatever the parent's `servings` says.
 
 ### Chains
 

@@ -635,6 +635,10 @@ export const AISLE_NAME_MAX_LENGTH = 32;
 // too, not just recipe ingredient lines.
 export const PREP_MAX_LENGTH = 60;
 
+// An ingredient section label ("For the cake", "For the frosting") — a
+// component name, same order of magnitude as an aisle's.
+export const RECIPE_SECTION_MAX_LENGTH = 40;
+
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters that earned a place
 // in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
@@ -666,7 +670,74 @@ export interface RecipeIngredient {
   // a separate catalog row from plain "garlic" every time the wording of the
   // prep clause changed. null means the line didn't have one, same as aisle.
   prep: string | null;
+  // Which component of the recipe this belongs to — "For the cake", "For the
+  // frosting". null means the recipe wasn't authored with sections (the
+  // common case), and every existing reader that doesn't know about this
+  // field keeps working exactly as it did: it's a label on a flat list, not
+  // a nested groups type, so ingredients stay one array everywhere outside
+  // the editor and detail view — RecipeIngredientSheet, RecipeDetailScreen's
+  // grouping — and adding to the grocery list still flattens straight
+  // through (mealPlanGroceries' PlannedIngredient never carries it).
+  section: string | null;
 }
+
+// One recipe used as a part of another — "mashed potatoes" inside both "Steak
+// with mash" and "Salmon with mash".
+//
+// A *reference*, and the reference is the entire point: the alternative is
+// copying the component's ingredients into every parent, which is what the user
+// already has to do by hand and which stops being true the moment the component
+// is edited. Nothing here is a snapshot of the component's contents; flattening
+// happens at read time, in src/utils/recipeComponents.ts.
+//
+// **Deliberately its own list rather than a RecipeIngredient carrying a
+// refRecipeId.** TemplateItem does it the other way (a ref item sits among the
+// real ones), and that works there because a template's items are already a
+// heterogeneous pile of drafts. An ingredient is not: `nameKey` is THE bridge
+// to the grocery catalog, and every reader — mergeIngredients' dedupe,
+// remapIngredientKeyIn, classifyPlanned, the aisle lexicon — is written on the
+// assumption that a line names something you can put in a trolley. A component
+// names a dish. Mixing them makes every one of those readers ask "but is this
+// one real", which is the hidden-second-row-type shape this app has rejected
+// twice already (Series ghost rows, TaskGroup.completedAt).
+export interface RecipeComponent {
+  // The link's own id, not the target's — so a component can be removed by
+  // identity, exactly like an ingredient row.
+  id: string;
+  // The referenced recipe. **Deliberately no cascade when it's deleted**, same
+  // as MealPlanEntry.recipeId and TemplateItem.refTemplateId: foreign keys are
+  // off, and resolve-or-shrug is the house rule for every cross-row pointer
+  // here. A component that no longer resolves contributes zero ingredients and
+  // renders as a broken row the user can remove.
+  recipeId: string;
+  // Captured at link time and never refreshed, so a dangling link still has
+  // something to name. Only ever rendered when recipeId stops resolving — a
+  // live component shows the referenced recipe's current name, so a rename
+  // propagates the way the whole feature promises.
+  name: string;
+}
+
+// Which meal of the day a recipe is *for* — a browsing/filtering tag, not a
+// schedule. Deliberately not MealSlot (above, used by MealPlanEntry.slot):
+// that type is a calendar slot for one planned day and has no 'dessert',
+// where this is an intrinsic property of the dish itself — a recipe is
+// breakfast food regardless of which day, if any, it ever gets planned onto.
+// A closed set for the same reason MealSlot is one: a user-defined string
+// list can't be grouped/sorted without a second ordering table (see #1086,
+// which builds that grouping on top of this field).
+export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'dessert';
+
+// Display order — also the sort key #1086 groups by.
+export const RECIPE_MEAL_TYPES: readonly RecipeMealType[] =
+  ['breakfast', 'lunch', 'dinner', 'snack', 'dessert'];
+
+export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+  dessert: 'Dessert',
+};
 
 // A dish you cook, with what it takes to shop for it.
 //
@@ -706,7 +777,20 @@ export interface Recipe {
   // servingsMax: 6). null means the recipe isn't a range — just `servings`.
   // Never set without `servings` also set.
   servingsMax: number | null;
+  // The user-attached photo — a file:// URI under the document directory
+  // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
+  // Deliberately not base64-in-the-row: a recipe photo is a picture the card
+  // and detail screen render, not a payload the Messages API reads, so there
+  // is no reason to pay SQLite (or every future row read) for the bytes.
+  imagePath: string | null;
+  // Null means untagged, not "none of these" — most existing recipes predate
+  // this field and nothing should guess for them. See RecipeMealType above.
+  mealType: RecipeMealType | null;
   ingredients: RecipeIngredient[];
+  // The recipes this one is partly made of — see RecipeComponent. Empty for
+  // every recipe that isn't composed, which is most of them; the ingredient
+  // list is still where a plain recipe lives.
+  components: RecipeComponent[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
   // tasks" on a planned meal walks this list, not a meal-specific reminder
   // path. src/utils/notifications.ts is Task-typed end to end
@@ -726,6 +810,45 @@ export interface Recipe {
   cookCount: number;
   /** When this recipe was last marked cooked; null if never. */
   lastCookedAt: string | null;
+
+  // Duration + cook timer + actual-time logging (#1091).
+
+  /**
+   * How long this recipe is expected to take, in minutes. Shown next to
+   * ingredient count/servings (see describeRecipe) and doubles as the cook
+   * timer's countdown target below — a recipe's duration and "how long to
+   * time it for" are the same number, unlike a Task where estimatedMinutes
+   * (workload) and timedMinutes (an explicit countdown target) are allowed to
+   * differ.
+   */
+  estimatedMinutes: number | null;
+  // The cook timer itself — the same banked-segment design as
+  // Task.timerStartedAt/timerElapsedSeconds (see src/utils/timer.ts and its
+  // recipe counterpart src/utils/recipeTimer.ts): only these two raw fields
+  // are ever stored, and how much time has elapsed or remains is always
+  // derived against the current clock, so a phone that was backgrounded or
+  // killed mid-cook comes back with the right answer for free.
+  timerStartedAt: string | null; // ISO timestamp while a live cook timer runs; null when stopped
+  timerElapsedSeconds: number;   // banked from finished run segments; 0 when never run or reset
+
+  /**
+   * Actual cook time, logged when a timer session finishes — an aggregate,
+   * deliberately not a row-per-session log. A row per cook would grow
+   * without bound, which is the exact disease grocery_item_shops was
+   * designed around (see the note on ItemShopLink): the fix there was
+   * counters bounded by (items × stores), not a trip log, and cookCount/
+   * lastCookedAt above already made the same call for "was this cooked" one
+   * level up. So a logged session only ever touches three counters:
+   * lastCookMinutes (the most recent one, for "took 32m last time"),
+   * cookTimeCount and totalCookMinutes (paired, so an average — "usually
+   * about 30m across 4 cooks" — is `totalCookMinutes / cookTimeCount` at
+   * read time, never re-derived by scanning anything). This is what lets the
+   * recorded time diverge from `estimatedMinutes` and be compared against it
+   * over repeated cooks, without a table that grows with every meal made.
+   */
+  lastCookMinutes: number | null;
+  cookTimeCount: number;
+  totalCookMinutes: number;
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model
@@ -816,7 +939,124 @@ export interface MealPlanEntry {
    * Recipe.cookCount), so a purged entry never un-counts a cooking.
    */
   cookedAt: string | null;
+  /**
+   * The tracked leftover this meal is eating, if the user picked one instead of
+   * a recipe or free text. Mutually exclusive with `recipeId` in practice —
+   * both pickers commit through the same MealPick — but not enforced in the
+   * schema, because a row that somehow carried both should still render rather
+   * than be rejected.
+   *
+   * Same resolve-or-shrug, no-cascade contract as `recipeId`: finishing or
+   * deleting a leftover must not blank last Tuesday, and `title` is the
+   * captured fallback. **Pointing at a leftover is not eating all of it** — see
+   * Leftover.finishedAt for why the two states are separate.
+   */
+  leftoverId: string | null;
 }
+
+/**
+ * Something cooked that's now sitting in the fridge, with a clock on it.
+ *
+ * Its own row rather than a GroceryItem or a Recipe, because it is neither: a
+ * grocery item is a forever-row with a purchase count, an aisle and a shop, all
+ * meaningless here, and its identity is a `nameKey` — but "leftover chilli" made
+ * twice in one week is two containers with two different clocks, so the name
+ * can't be the identity. A recipe is a reusable document; this is one perishable
+ * instance of having cooked one. And it is deliberately not a field on the
+ * MealPlanEntry it came from either: a leftover outlives the meal that made it,
+ * gets eaten across several later meals, and can be logged with no planned meal
+ * behind it at all.
+ *
+ * **It is also not a Task**, for the reasons MealPlanEntry gives — and one more:
+ * a reminder *Task* for "use up the chilli" is #1106's job (expiry-driven tasks
+ * for perishable groceries), which doesn't exist yet. This row carries the dates
+ * that mechanism would need, and the nudge here stays in-app, so that when #1106
+ * ships there is one reminder-task path to join rather than a second to unpick.
+ */
+export interface Leftover {
+  id: string;
+  /** What's in the container. Captured, not derived — see recipeId. */
+  title: string;
+  /**
+   * The recipe it was made from, when it was logged off a cooked meal. Null for
+   * anything logged by hand, which is a first-class answer: half a takeaway is a
+   * leftover and has no recipe. Resolve-or-shrug with no cascade, exactly like
+   * MealPlanEntry.recipeId — `title` is what actually renders.
+   */
+  recipeId: string | null;
+  /** The planned meal it was logged from, if any. Same no-cascade contract. */
+  sourceEntryId: string | null;
+  /** ISO instant it went in the fridge. Age is counted in *calendar* days off this. */
+  storedAt: string;
+  /**
+   * A `YYYY-MM-DD` local day key — the day it should be eaten or thrown out by.
+   *
+   * Stored as the resolved day rather than as a "keep for 4 days" number, for
+   * the reason #1106 gives for preferring a real expiry date to a perishable
+   * flag: an absolute day can drive *when* to nudge, and editing the stored-on
+   * date later doesn't silently drag the deadline with it. The editor still
+   * talks in days and converts (see keepUntilKeyFor / keepDaysBetween).
+   */
+  keepUntil: string;
+  /**
+   * ISO instant the container was emptied or binned; null while it's still in
+   * the fridge. **This is not set by planning a meal against it** — a pot of
+   * soup feeds two dinners, so "used for a meal" and "no longer tracked" are
+   * separate states and only an explicit action closes this one out.
+   */
+  finishedAt: string | null;
+  /** Which ending it got. Null exactly while `finishedAt` is null. */
+  outcome: LeftoverOutcome | null;
+  createdAt: string;
+}
+
+/**
+ * How a leftover ended. Recorded because "we ate it" and "it went off" are the
+ * two things the whole feature is trying to tell apart, and a single
+ * finished-flag would throw that away at the moment it's cheapest to capture.
+ */
+export type LeftoverOutcome = 'eaten' | 'tossed';
+
+/**
+ * How close to its keep-until day a leftover is. Four states rather than a
+ * boolean because the nudge has to arrive *before* the waste, and "one day
+ * left" and "three days past" are not the same message.
+ */
+export type LeftoverFreshness = 'fresh' | 'soon' | 'due' | 'over';
+
+// A container label, not a title — same reasoning as RECIPE_NAME_MAX_LENGTH,
+// and the same number, since a leftover's name usually *is* a recipe's.
+export const LEFTOVER_NAME_MAX_LENGTH = RECIPE_NAME_MAX_LENGTH;
+
+/**
+ * The keep-for window a freshly logged leftover starts with.
+ *
+ * Three or four days is the usual food-safety advice for cooked leftovers, and
+ * this app rounds toward the cautious end. It's a starting point the stepper
+ * moves, never a rule — see LEFTOVER_KEEP_DAYS_MAX.
+ */
+export const LEFTOVER_KEEP_DAYS_DEFAULT = 3;
+/** Same day it was made — for something that genuinely won't last the night. */
+export const LEFTOVER_KEEP_DAYS_MIN = 0;
+/**
+ * The ceiling on the keep-for stepper. Generous on purpose: a frozen portion is
+ * a real leftover, and CountStepper exists precisely so a ceiling nobody asked
+ * for doesn't make a legitimate answer unsayable.
+ */
+export const LEFTOVER_KEEP_DAYS_MAX = 90;
+
+/**
+ * How long a *closed-out* leftover is kept, in days.
+ *
+ * Same disease the meal plan prune exists for — one row per container forever —
+ * and deliberately a much shorter window, because a finished leftover has no
+ * Logbook, no stats and nothing pointing at it once its meal entries have aged
+ * out. A leftover that is still *live* is never purged however old it is: an
+ * eight-week-old container nobody closed out is exactly what this feature is
+ * for, and quietly deleting it would be the app taking the user's side of the
+ * conversation.
+ */
+export const LEFTOVER_RETENTION_DAYS = 60;
 
 /**
  * How long a planned meal is kept, in days.

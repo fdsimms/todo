@@ -1,10 +1,14 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
   TextInput,
   TouchableOpacity,
   ScrollView,
+  Image,
+  ActivityIndicator,
+  Alert,
+  Linking,
   StyleSheet,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,11 +29,29 @@ import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
+import { ProgressBar } from '../components/ProgressBar';
+import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { describeRecipe } from '../utils/recipeUtils';
+import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
+import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
+import { formatDuration, formatStopwatch } from '../utils/effort';
+import {
+  cookTimerElapsed,
+  cookTimerProgress,
+  cookTimerRemaining,
+  hasCookTimer,
+  isCookTimerReady,
+  isCookTimerRunning,
+} from '../utils/recipeTimer';
+import {
+  flattenRecipeIngredients,
+  recipeMap,
+  resolveComponents,
+  type ResolvedComponent,
+} from '../utils/recipeComponents';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitGroceryLines } from '../utils/groceryParse';
 
@@ -45,7 +67,8 @@ export function RecipeDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const recipe = useRecipeStore(useShallow(s => s.recipes.find(r => r.id === recipeId)));
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const recipe = recipes.find(r => r.id === recipeId);
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
@@ -53,9 +76,29 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const setImage = useRecipeStore(s => s.setImage);
+  const startCookTimer = useRecipeStore(s => s.startCookTimer);
+  const pauseCookTimer = useRecipeStore(s => s.pauseCookTimer);
+  const resetCookTimer = useRecipeStore(s => s.resetCookTimer);
+  const stopCookTimer = useRecipeStore(s => s.stopCookTimer);
+  const addComponent = useRecipeStore(s => s.addComponent);
+  const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
+  const recipesById = useMemo(() => recipeMap(recipes), [recipes]);
+  const components = useMemo(
+    () => (recipe ? resolveComponents(recipe, recipesById) : []),
+    [recipe, recipesById]
+  );
+  // What the grocery add is actually going to offer — the recipe's own lines
+  // plus every component's, which is the number the footer button gates on.
+  const shoppableCount = useMemo(
+    () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
+    [recipe, recipesById]
+  );
+
   const [draft, setDraft] = useState('');
+  const [pickingImage, setPickingImage] = useState(false);
   const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
@@ -63,10 +106,24 @@ export function RecipeDetailScreen() {
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
   const [extractVisible, setExtractVisible] = useState(false);
+  const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+
+  // Tick once a second only while the cook timer runs, mirroring TaskItem's
+  // own timer clock — everything else is recomputed from the stored fields
+  // against nowTick rather than counted down in state, so this reads right
+  // even after the app was backgrounded or killed mid-cook.
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  const cookRunning = recipe ? isCookTimerRunning(recipe) : false;
+  useEffect(() => {
+    if (!cookRunning) return;
+    setNowTick(Date.now());
+    const interval = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, [cookRunning, recipe?.timerStartedAt]);
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -82,6 +139,35 @@ export function RecipeDetailScreen() {
       </View>
     );
   }
+
+  const cookHasTarget = hasCookTimer(recipe);
+  const cookElapsedSeconds = cookTimerElapsed(recipe, nowTick);
+  const cookRemainingSeconds = cookHasTarget ? cookTimerRemaining(recipe, nowTick) : 0;
+  const cookProgress = cookHasTarget ? cookTimerProgress(recipe, nowTick) : 0;
+  const cookReady = cookHasTarget && isCookTimerReady(recipe, nowTick);
+  const cookPaused = !cookRunning && recipe.timerElapsedSeconds > 0;
+  const cookInProgress = cookRunning || recipe.timerElapsedSeconds > 0;
+  const cookTimeSummary = describeCookTime(recipe);
+
+  const handleCookTimerToggle = async () => {
+    if (cookRunning) {
+      await haptics.success();
+      pauseCookTimer(recipe.id);
+    } else {
+      await haptics.impactMedium();
+      startCookTimer(recipe.id);
+    }
+  };
+
+  const handleLogCookTime = async () => {
+    await haptics.success();
+    stopCookTimer(recipe.id);
+  };
+
+  const handleResetCookTimer = async () => {
+    await haptics.warning();
+    resetCookTimer(recipe.id);
+  };
 
   const submitDraft = () => {
     const text = draft;
@@ -105,9 +191,15 @@ export function RecipeDetailScreen() {
   };
 
   const addToList = () => {
-    if (recipe.ingredients.length === 0) return;
+    if (shoppableCount === 0) return;
     haptics.tap();
     setAddToListVisible(true);
+  };
+
+  const confirmRemoveComponent = (resolved: ResolvedComponent) => {
+    animateLayout();
+    removeComponent(recipe.id, resolved.component.id);
+    haptics.tap();
   };
 
   const confirmRemove = (ingredient: RecipeIngredient) => {
@@ -131,43 +223,158 @@ export function RecipeDetailScreen() {
     haptics.tap();
   };
 
+  // Same denial copy as useRecipePhotoSource's — iOS only prompts once, so a
+  // second tap on either button needs an alert naming the permission or does
+  // nothing visible.
+  const pickImage = async (source: RecipePhotoSource) => {
+    setPickingImage(true);
+    try {
+      const result = await pickRecipeImage(source);
+      if (result.status === 'ok') {
+        haptics.success();
+        setImage(recipe.id, result.image.uri);
+      } else if (result.status === 'denied') {
+        const what = source === 'camera' ? 'the camera' : 'your photos';
+        Alert.alert(
+          `dundundun can't reach ${what}`,
+          result.canAskAgain
+            ? `Allow access to ${what} to attach a photo to this recipe.`
+            : `Turn on access to ${what} in Settings to attach a photo to this recipe.`,
+          result.canAskAgain
+            ? [{ text: 'OK' }]
+            : [
+                { text: 'Not now', style: 'cancel' },
+                { text: 'Open Settings', onPress: () => Linking.openSettings() },
+              ],
+        );
+      } else if (result.status === 'failed') {
+        Alert.alert('Could not attach photo', result.message);
+      }
+      // 'canceled' is a deliberate no-op — they changed their mind.
+    } finally {
+      setPickingImage(false);
+    }
+  };
+
+  const openImagePicker = () => {
+    if (pickingImage) return;
+    haptics.tap();
+    const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
+      { text: 'Take Photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from Library', onPress: () => pickImage('library') },
+    ];
+    if (recipe.imagePath) {
+      options.push({ text: 'Remove Photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
+    }
+    options.push({ text: 'Cancel', style: 'cancel' });
+    Alert.alert('Recipe Photo', undefined, options);
+  };
+  // Which ingredients open a new section heading — the first row (in stored
+  // order) whose section differs from the row right before it. A label on a
+  // flat list rather than a nested groups type, so this is display-only: the
+  // underlying array (and every non-UI reader of it) stays exactly what it
+  // was. Keyed off recipe.ingredients rather than SortableList's mid-drag
+  // order, so a header doesn't flicker as a row is dragged past it — it only
+  // moves once the drop actually commits.
+  const ingredientSectionHeaders = useMemo(() => {
+    const headers = new Map<string, string>();
+    let prevSection: string | null = null;
+    for (const ing of recipe.ingredients) {
+      if (ing.section && ing.section !== prevSection) headers.set(ing.id, ing.section);
+      prevSection = ing.section;
+    }
+    return headers;
+  }, [recipe.ingredients]);
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
     drag: () => void,
     isDragging: boolean,
-  ) => (
-    <TouchableOpacity
-      style={[styles.ingredient, isDragging && styles.ingredientDragging]}
-      activeOpacity={interaction.activeOpacity}
-      onPress={() => { haptics.tap(); setEditingIngredient(ingredient); }}
-      onLongPress={drag}
-      delayLongPress={interaction.delayLongPress}
-      accessibilityRole="button"
-      accessibilityLabel={
-        [ingredient.name, ingredient.quantity, ingredient.prep].filter(Boolean).join(', ')
-      }
-      accessibilityHint="Double tap to edit. Long press to reorder."
-    >
-      <View style={styles.ingredientText}>
-        <Text style={styles.ingredientName}>{ingredient.name}</Text>
-        {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+  ) => {
+    const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
+    return (
+      <View>
+        {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
+        <TouchableOpacity
+          style={[styles.ingredient, isDragging && styles.ingredientDragging]}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setEditingIngredient(ingredient); }}
+          onLongPress={drag}
+          delayLongPress={interaction.delayLongPress}
+          accessibilityRole="button"
+          accessibilityLabel={
+            [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep]
+              .filter(Boolean).join(', ')
+          }
+          accessibilityHint="Double tap to edit. Long press to reorder."
+        >
+          <View style={styles.ingredientText}>
+            <Text style={styles.ingredientName}>{ingredient.name}</Text>
+            {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+          </View>
+          {!!ingredient.quantity && (
+            <View style={styles.qtyPill}>
+              <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
+            </View>
+          )}
+          <TouchableOpacity
+            onPress={() => confirmRemove(ingredient)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${ingredient.name}`}
+          >
+            <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </TouchableOpacity>
       </View>
-      {!!ingredient.quantity && (
-        <View style={styles.qtyPill}>
-          <Text style={styles.qtyText} numberOfLines={1}>{ingredient.quantity}</Text>
-        </View>
-      )}
+    );
+  };
+
+  // A component row opens the recipe it points at, so the shared part is one
+  // tap from the dish that uses it — editing it there is the whole feature.
+  // A link whose recipe is gone can't be opened, only removed.
+  const renderComponent = (resolved: ResolvedComponent) => {
+    const target = resolved.recipe;
+    const label = resolved.name || 'Deleted recipe';
+    return (
       <TouchableOpacity
-        onPress={() => confirmRemove(ingredient)}
-        hitSlop={10}
+        key={resolved.component.id}
+        style={styles.ingredient}
+        activeOpacity={target ? interaction.activeOpacity : 1}
+        disabled={!target}
+        onPress={() => {
+          if (!target) return;
+          haptics.tap();
+          // Same-route navigate, exactly as TemplateDetailScreen opens a nested
+          // template: it swaps this screen's params rather than stacking a
+          // second copy, so Back still means "back to the library".
+          (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
+        }}
         accessibilityRole="button"
-        accessibilityLabel={`Remove ${ingredient.name}`}
+        accessibilityLabel={target ? `${label}. ${describeRecipe(target)}` : `${label}, no longer in your recipes`}
+        accessibilityHint={target ? 'Double tap to open this recipe.' : undefined}
       >
-        <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+        <View style={styles.ingredientText}>
+          <Text style={[styles.ingredientName, !target && styles.componentBrokenName]} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.componentMeta} numberOfLines={1}>
+            {target ? describeRecipe(target) : 'No longer in your recipes'}
+          </Text>
+        </View>
+        {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+        <TouchableOpacity
+          onPress={() => confirmRemoveComponent(resolved)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${label} from this recipe`}
+        >
+          <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   // No drag-to-reorder here — unlike ingredients, prep tasks don't read as a
   // list with a meaningful order (each just names its own day).
@@ -246,8 +453,98 @@ export function RecipeDetailScreen() {
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
       >
+        <TouchableOpacity
+          style={styles.hero}
+          activeOpacity={interaction.activeOpacity}
+          onPress={openImagePicker}
+          disabled={pickingImage}
+          accessibilityRole="button"
+          accessibilityLabel={recipe.imagePath ? 'Change recipe photo' : 'Add a recipe photo'}
+        >
+          {recipe.imagePath ? (
+            <Image
+              source={{ uri: recipe.imagePath }}
+              style={styles.heroImage}
+              resizeMode="cover"
+              accessibilityIgnoresInvertColors
+            />
+          ) : pickingImage ? (
+            <View style={styles.heroPlaceholder}>
+              <ActivityIndicator color={colors.accent} />
+            </View>
+          ) : (
+            <View style={styles.heroPlaceholder}>
+              <Ionicons name="camera-outline" size={iconSize.lg} color={colors.textTertiary} />
+              <Text style={styles.heroPlaceholderText}>Add a photo</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
         {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
+
+        <View style={styles.timerCard}>
+          <View style={styles.timerHeader}>
+            <Ionicons
+              name={cookReady ? 'checkmark-circle' : 'timer-outline'}
+              size={16}
+              color={cookReady ? colors.green : colors.accent}
+            />
+            <Text style={styles.timerHeaderText} numberOfLines={1}>
+              {cookHasTarget
+                ? cookReady
+                  ? `Ready · ${formatDuration(recipe.estimatedMinutes!)} done`
+                  : cookRunning
+                    ? `${formatStopwatch(Math.max(0, cookRemainingSeconds))} left`
+                    : cookPaused
+                      ? `Paused · ${formatStopwatch(Math.max(0, cookRemainingSeconds))} left`
+                      : `Cook for ${formatDuration(recipe.estimatedMinutes!)}`
+                : cookRunning
+                  ? `${formatStopwatch(cookElapsedSeconds)} elapsed`
+                  : cookPaused
+                    ? `Paused · ${formatStopwatch(cookElapsedSeconds)}`
+                    : 'Time this cook'}
+            </Text>
+          </View>
+          {cookHasTarget && <ProgressBar progress={cookProgress} height={4} />}
+          <View style={styles.timerActions}>
+            <TouchableOpacity
+              style={[styles.timerBtn, cookRunning && styles.timerBtnRunning]}
+              activeOpacity={interaction.activeOpacity}
+              onPress={handleCookTimerToggle}
+              accessibilityRole="button"
+              accessibilityLabel={
+                cookRunning ? 'Pause cook timer' : cookPaused ? 'Resume cook timer' : 'Start cook timer'
+              }
+            >
+              <Ionicons name={cookRunning ? 'pause' : 'play'} size={12} color={colors.onAccent} />
+              <Text style={styles.timerBtnText}>{cookRunning ? 'Pause' : cookPaused ? 'Resume' : 'Start'}</Text>
+            </TouchableOpacity>
+            {cookInProgress && (
+              <>
+                <TouchableOpacity
+                  onPress={handleLogCookTime}
+                  hitSlop={8}
+                  style={styles.timerSecondaryBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Done cooking — log this time"
+                >
+                  <Ionicons name="checkmark" size={iconSize.sm} color={colors.textSecondary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleResetCookTimer}
+                  hitSlop={8}
+                  style={styles.timerSecondaryBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reset cook timer"
+                >
+                  <Ionicons name="refresh" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+          {!!cookTimeSummary && <Text style={styles.timerSummary}>{cookTimeSummary}</Text>}
+        </View>
 
         <Text style={styles.sectionLabel}>Ingredients</Text>
 
@@ -294,6 +591,28 @@ export function RecipeDetailScreen() {
           “garlic, minced”
         </Text>
 
+        <Text style={styles.sectionLabel}>Components</Text>
+
+        {components.length === 0 ? (
+          <Text style={styles.hint}>
+            Use another recipe as part of this one — the mash that goes with both the steak
+            and the salmon. Its ingredients and prep tasks come along, and editing it once
+            updates every meal that uses it.
+          </Text>
+        ) : (
+          <View style={styles.card}>
+            {components.map(renderComponent)}
+          </View>
+        )}
+
+        <View style={styles.addRow}>
+          <InlineAction
+            label="Add a component"
+            icon="add"
+            onPress={() => { haptics.tap(); setComponentPickerVisible(true); }}
+          />
+        </View>
+
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
         {recipe.prepTasks.length === 0 ? (
@@ -332,10 +651,10 @@ export function RecipeDetailScreen() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
         <TouchableOpacity
-          style={[styles.primary, recipe.ingredients.length === 0 && styles.primaryOff]}
+          style={[styles.primary, shoppableCount === 0 && styles.primaryOff]}
           activeOpacity={interaction.activeOpacity}
           onPress={addToList}
-          disabled={recipe.ingredients.length === 0}
+          disabled={shoppableCount === 0}
           accessibilityRole="button"
           accessibilityLabel="Add ingredients to the grocery list"
         >
@@ -368,6 +687,7 @@ export function RecipeDetailScreen() {
       <RecipeToListSheet
         visible={addToListVisible}
         recipe={recipe}
+        recipesById={recipesById}
         onClose={() => setAddToListVisible(false)}
       />
 
@@ -375,6 +695,19 @@ export function RecipeDetailScreen() {
         visible={extractVisible}
         recipe={recipe}
         onClose={() => setExtractVisible(false)}
+      />
+
+      <RecipeComponentPicker
+        visible={componentPickerVisible}
+        recipe={recipe}
+        onClose={() => setComponentPickerVisible(false)}
+        onSelect={component => {
+          animateLayout();
+          // The picker already disabled everything addComponent would refuse,
+          // so a false here means the library moved under the sheet — nothing
+          // to explain, and nothing added.
+          addComponent(recipe.id, component.id);
+        }}
       />
     </View>
   );
@@ -394,6 +727,26 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     gap: spacing.sm,
   },
+  hero: {
+    height: 180,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+    backgroundColor: colors.bgSecondary,
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  heroPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+  },
+  heroPlaceholderText: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
+  },
   summary: {
     color: colors.textSecondary,
     fontSize: font.sm,
@@ -402,6 +755,58 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     lineHeight: font.md * 1.4,
+  },
+  timerCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  timerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  timerHeaderText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+    fontVariant: ['tabular-nums'],
+  },
+  timerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  timerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: colors.accent,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+  },
+  timerBtnRunning: {
+    backgroundColor: colors.orange,
+  },
+  timerBtnText: {
+    color: colors.onAccent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+  },
+  timerSecondaryBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timerSummary: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   sectionLabel: {
     color: colors.textTertiary,
@@ -420,6 +825,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
     overflow: 'hidden',
+  },
+  // A component heading ("For the cake") inside the ingredients card — same
+  // uppercase treatment as sectionLabel, just scoped to sit above a run of
+  // rows rather than the whole list.
+  ingredientSectionHeader: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   ingredient: {
     flexDirection: 'row',
@@ -446,6 +864,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontStyle: 'italic',
+  },
+  componentBrokenName: {
+    color: colors.textTertiary,
+  },
+  // ingredientPrep's twin without the italic: a component's subtitle is a
+  // summary of another recipe, not a prep clause on this one.
+  componentMeta: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   qtyPill: {
     backgroundColor: colors.bgTertiary,

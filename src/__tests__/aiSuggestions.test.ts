@@ -588,8 +588,8 @@ describe('suggestRecipeGroceries', () => {
       })
     );
     await expect(suggestRecipeGroceries('some recipe', AISLES)).resolves.toEqual([
-      { name: 'garlic', quantity: '1 bulb', aisle: 'Produce' },
-      { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs' },
+      { name: 'garlic', quantity: '1 bulb', aisle: 'Produce', section: null },
+      { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs', section: null },
     ]);
   });
 
@@ -670,8 +670,25 @@ describe('extractRecipe', () => {
       servings: 4,
       servingsMax: null,
       prepMinutes: 45,
-      ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+      ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
     });
+  });
+
+  it('reads the model\'s component field into section', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Layer Cake',
+        items: [
+          { name: 'flour', quantity: '2 cups', aisle: 'Pantry', component: 'For the cake' },
+          { name: 'butter', quantity: '1 cup', aisle: 'Dairy & Eggs', component: '  ' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'flour', quantity: '2 cups', aisle: 'Pantry', section: 'For the cake' },
+      { name: 'butter', quantity: '1 cup', aisle: 'Dairy & Eggs', section: null },
+    ]);
   });
 
   it('is null for servings and prep time the text did not state', async () => {
@@ -792,7 +809,7 @@ describe('extractRecipe', () => {
         servings: 4,
         servingsMax: null,
         prepMinutes: 45,
-        ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+        ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
       });
     });
 
@@ -858,7 +875,7 @@ describe('extractRecipe', () => {
         })
       );
       await expect(suggestRecipeGroceries(PHOTO, AISLES)).resolves.toEqual([
-        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' },
+        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null },
       ]);
     });
   });
