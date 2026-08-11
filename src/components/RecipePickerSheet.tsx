@@ -16,6 +16,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetHeaderButton } from './SheetHeaderButton';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -149,10 +150,18 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
 
   // `slot` is read at tap time rather than captured, so the chips can be changed
   // after a search has been typed without the pick going to the old one.
+  //
+  // A pick no longer closes the sheet — planning a day is a burst of several
+  // picks (breakfast, lunch, dinner), not one edit, same reasoning as the
+  // chain-step/subtask/ingredient inputs elsewhere in the app. It resets back
+  // to slot selection for the same day instead; "Done" (or the backdrop /
+  // swipe / hardware back, same as before) is the only thing that actually
+  // dismisses now.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
-    const chosen = slot;
-    dismiss(() => onPick({ slot: chosen, recipeId, title }));
+    onPick({ slot, recipeId, title });
+    setQuery('');
+    setSlot(defaultSlot);
   };
 
   return (
@@ -175,7 +184,16 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
+          <View style={styles.sheetHeaderRow}>
+            <Text style={styles.sheetTitle}>Plan {dayLabel}</Text>
+            <SheetHeaderButton
+              label="Done"
+              onPress={() => dismiss()}
+              role="confirm"
+              accessibilityLabel={`Done planning ${dayLabel}`}
+              style={styles.doneButton}
+            />
+          </View>
           <Text style={styles.sheetHint}>
             Pick a recipe, or type whatever it is — “leftovers” is a plan too.
           </Text>
@@ -324,12 +342,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginBottom: spacing.sm,
     flexShrink: 1,
   },
+  sheetHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
   sheetTitle: {
     color: colors.text,
     fontSize: font.lg,
     fontWeight: fontWeight.semibold,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
+  },
+  doneButton: {
+    fontSize: font.md,
   },
   sheetHint: {
     color: colors.textTertiary,
