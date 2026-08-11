@@ -16,7 +16,7 @@ export type QuickAddType = 'task' | 'timed' | 'target' | 'chain';
 
 /** Every attribute chip the quick-add toolbar can offer. */
 export type QuickAddChip =
-  | 'date' | 'repeat' | 'segment' | 'priority' | 'effort' | 'tags' | 'category' | 'link' | 'phone';
+  | 'date' | 'repeat' | 'segment' | 'priority' | 'effort' | 'tags' | 'category' | 'link' | 'phone' | 'email';
 
 export const QUICK_ADD_TYPES: readonly QuickAddType[] = ['task', 'timed', 'target', 'chain'];
 
