@@ -221,12 +221,20 @@ function FabButton({
       onPanResponderRelease: (e, g) => {
         const x = grantOffsetRef.current.x + g.dx;
         const y = grantOffsetRef.current.y + g.dy;
-        dragRef.current?.onEnd(e.nativeEvent.pageY, readHome(x, y));
+        const home = readHome(x, y);
+        // Settle — and so start the well's fade-out — before handing off to the
+        // caller's onEnd, whose side effects (closing a menu, opening a sheet,
+        // disabling the button) can re-render this component. Once the fade is
+        // already running on the native driver a JS re-render can't interrupt
+        // it; starting it *after* onEnd risked the re-render landing between
+        // the animation being requested and it actually kicking off, which
+        // left the well's ring stuck at whatever opacity it had.
         settle();
+        dragRef.current?.onEnd(e.nativeEvent.pageY, home);
       },
       onPanResponderTerminate: () => {
-        dragRef.current?.onCancel();
         settle();
+        dragRef.current?.onCancel();
       },
     });
   }, [dragX, dragY, wellOpacity]);
