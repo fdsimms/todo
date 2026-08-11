@@ -25,8 +25,10 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import { InlineAction } from './InlineAction';
+import { CollapsibleField } from './CollapsibleField';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { describeShops, shopsForItem } from '../utils/groceryShops';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
@@ -68,10 +70,9 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
   const [quantity, setQuantityText] = useState('');
   const [note, setNoteText] = useState('');
   const [nameError, setNameError] = useState<string | null>(null);
-  const [newAisle, setNewAisle] = useState('');
-  const [addingAisle, setAddingAisle] = useState(false);
-  const [newShop, setNewShop] = useState('');
-  const [addingShop, setAddingShop] = useState(false);
+  // One picker open at a time, like every other editor in the app — see the
+  // progressive-disclosure note in CLAUDE.md.
+  const [openField, setOpenField] = useState<'aisle' | 'stores' | 'pantry' | null>(null);
 
   useEffect(() => {
     if (visible && item) {
@@ -79,12 +80,16 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
       setQuantityText(item.quantity ?? '');
       setNoteText(item.note);
       setNameError(null);
-      setNewAisle('');
-      setAddingAisle(false);
-      setNewShop('');
-      setAddingShop(false);
+      setOpenField(null);
     }
   }, [visible, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleField = (field: 'aisle' | 'stores' | 'pantry') =>
+    setOpenField(current => (current === field ? null : field));
+  const closeField = () => {
+    animateLayout();
+    setOpenField(null);
+  };
 
   if (!item) {
     return <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} />;
@@ -113,35 +118,30 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
    * step that looks like it did nothing. addAisle hands back the existing name
    * on a collision, so typing one that's already there just selects it.
    */
-  const handleAddAisle = () => {
-    const created = addAisle(newAisle);
-    if (!created) return;
+  const handleCreateAisle = (aisleName: string) => {
+    const created = addAisle(aisleName);
+    if (!created) return 'That isn’t a usable aisle name.';
     setAisle(item.id, created);
     haptics.success();
-    setNewAisle('');
-    setAddingAisle(false);
+    // Collapses like any other single-choice pick — the field's summary is
+    // already showing the new aisle, which is the confirmation.
+    closeField();
   };
 
   /**
-   * Same reasoning as handleAddAisle: you're here to say where this item can
-   * be bought, so a store created from this sheet is linked to the item on
-   * the spot rather than left to be found again from the Stores tab.
-   * addShop, unlike addAisle, hands back null on a name collision rather than
-   * the existing store — a duplicate name just fails quietly here since a
-   * store's identity (not just its name) already exists elsewhere to pick.
+   * Same reasoning as handleCreateAisle: you're here to say where this item can
+   * be bought, so a store created from this sheet is linked to the item on the
+   * spot rather than left to be found again from the Stores tab. addShop,
+   * unlike addAisle, hands back null on a name collision rather than the
+   * existing store — a store's identity is its id, not its name, so there's no
+   * "you meant this one" to fall back to and the name has to be rejected.
    */
-  const handleAddShop = () => {
-    const trimmed = newShop.trim();
-    if (!trimmed) return;
-    const created = addShop(trimmed);
-    if (!created) {
-      haptics.error();
-      return;
-    }
+  const handleCreateShop = (shopName: string) => {
+    const created = addShop(shopName);
+    if (!created) return 'There’s already a store with that name.';
     linkItemShop(item.id, created.id);
     haptics.success();
-    setNewShop('');
-    setAddingShop(false);
+    // No closeField: stores are multi-select, so you're probably not done.
   };
 
   const linkedCounts = new Map(
@@ -223,6 +223,67 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
     );
   };
 
+  const aisleOptions: PillGroupOption[] = aisleOrder.map(aisle => ({
+    key: aisle,
+    label: aisle,
+    selected: aisle === item.aisle,
+    onPress: () => {
+      haptics.tap();
+      setAisle(item.id, aisle);
+      closeField();
+    },
+  }));
+
+  const shopOptions: PillGroupOption[] = shops.map(shop => {
+    const count = linkedCounts.get(shop.id);
+    const active = count !== undefined;
+    return {
+      key: shop.id,
+      label: shop.name,
+      // Only an observed link shows a number. A count of 0 on a hand-marked
+      // store reads as "never bought here", the opposite of what the tap meant.
+      suffix: count ? ` · ${count}` : undefined,
+      selected: active,
+      accessibilityLabel: active
+        ? count === 0
+          ? `${shop.name}, marked by you. Tap to remove.`
+          : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
+        : `${shop.name}. Tap to mark that you can get this here.`,
+      onPress: () => toggleShop(shop.id),
+    };
+  });
+
+  const pantryOptions: PillGroupOption[] = [
+    {
+      key: 'got',
+      label: 'Got it',
+      selected: onHandFuture,
+      accessibilityLabel: onHandFuture
+        ? 'Got it, marked on hand. Tap to clear.'
+        : 'Got it — mark as on hand',
+      onPress: onHandFuture ? clearOnHand : markGotIt,
+    },
+    {
+      key: 'out',
+      label: 'Out of it',
+      selected: onHandPast,
+      accessibilityLabel: onHandPast
+        ? 'Out of it, marked not on hand. Tap to clear.'
+        : 'Out of it — mark as not on hand',
+      onPress: onHandPast ? clearOnHand : markOutOfIt,
+    },
+  ];
+
+  const linkedNames = shops.filter(s => linkedCounts.has(s.id)).map(s => s.name);
+  // Names, not a bare count: which shops is the fact, and the first one plus
+  // "+3" fits the one line a collapsed field gets. Counting *stores* rather
+  // than purchases, so this can't be read as a trip total — see describeShops.
+  const storesSummary = linkedNames.length
+    ? linkedNames.length === 1
+      ? linkedNames[0]
+      : `${linkedNames[0]} +${linkedNames.length - 1}`
+    : undefined;
+
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.root}>
@@ -278,182 +339,61 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
             accessibilityLabel="Note"
           />
 
-          <Text style={styles.label}>AISLE</Text>
-          <View style={styles.pills}>
-            {aisleOrder.map(aisle => {
-              const active = aisle === item.aisle;
-              return (
-                <TouchableOpacity
-                  key={aisle}
-                  style={[styles.pill, active && styles.pillActive]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => {
-                    haptics.tap();
-                    setAisle(item.id, aisle);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={aisle}
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>{aisle}</Text>
-                </TouchableOpacity>
-              );
-            })}
-            {/* Neutral, not accent: accent is what marks the *selected* aisle in
-                this grid, so a tinted add button would read as one more aisle —
-                the same reason the add button beside tag chips is neutral. */}
-            {!addingAisle && (
-              <InlineAction
-                label="New aisle"
-                icon="add"
-                variant="neutral"
-                haptic
-                onPress={() => setAddingAisle(true)}
-                accessibilityLabel="Add a new aisle"
-                style={styles.addButton}
-              />
-            )}
-          </View>
-
-          {addingAisle && (
-            <View style={styles.addWrap}>
-              <TextInput
-                style={styles.addInput}
-                value={newAisle}
-                onChangeText={setNewAisle}
-                placeholder="Aisle name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                onSubmitEditing={handleAddAisle}
-                // An empty field is someone who changed their mind, so tapping
-                // away closes it rather than leaving a dead row behind.
-                onBlur={() => {
-                  if (!newAisle.trim()) setAddingAisle(false);
-                }}
-                autoFocus
-                autoCorrect={false}
-                maxLength={32}
-                accessibilityLabel="New aisle name"
-              />
-              <InlineAction
-                label="Add"
-                icon="add"
-                variant="neutral"
-                onPress={handleAddAisle}
-                disabled={!newAisle.trim()}
-                style={styles.addButton}
-              />
-            </View>
-          )}
-
-          {/* Unconditional, unlike the pills-only version this replaced: the
-              "New store" affordance has to be reachable even before any store
-              exists, not just once the picker already has something to tap. */}
-          <Text style={styles.label}>STORES</Text>
-          <Text style={styles.hint}>
-            Tap a store to say you can get this there. Finishing a shop marks it for you.
-          </Text>
-          <View style={styles.pills}>
-            {shops.map(shop => {
-              const count = linkedCounts.get(shop.id);
-              const active = count !== undefined;
-              return (
-                <TouchableOpacity
-                  key={shop.id}
-                  style={[styles.pill, active && styles.pillActive]}
-                  activeOpacity={interaction.activeOpacity}
-                  onPress={() => toggleShop(shop.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  accessibilityLabel={
-                    active
-                      ? count === 0
-                        ? `${shop.name}, marked by you. Tap to remove.`
-                        : `${shop.name}, bought here ${count} ${count === 1 ? 'time' : 'times'}. Tap to remove.`
-                      : `${shop.name}. Tap to mark that you can get this here.`
-                  }
-                >
-                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                    {shop.name}
-                    {/* Only an observed link shows a number. A count of 0
-                        on a hand-marked store reads as "never bought here",
-                        which is the opposite of what the tap meant. */}
-                    {!!count && ` · ${count}`}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-            {!addingShop && (
-              <InlineAction
-                label="New store"
-                icon="add"
-                variant="neutral"
-                haptic
-                onPress={() => setAddingShop(true)}
-                accessibilityLabel="Add a new store"
-                style={styles.addButton}
-              />
-            )}
-          </View>
-
-          {addingShop && (
-            <View style={styles.addWrap}>
-              <TextInput
-                style={styles.addInput}
-                value={newShop}
-                onChangeText={setNewShop}
-                placeholder="Store name"
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                onSubmitEditing={handleAddShop}
-                onBlur={() => {
-                  if (!newShop.trim()) setAddingShop(false);
-                }}
-                autoFocus
-                autoCorrect={false}
-                maxLength={32}
-                accessibilityLabel="New store name"
-              />
-              <InlineAction
-                label="Add"
-                icon="add"
-                variant="neutral"
-                onPress={handleAddShop}
-                disabled={!newShop.trim()}
-                style={styles.addButton}
-              />
-            </View>
-          )}
-
-          <Text style={styles.label}>PANTRY</Text>
-          <Text style={styles.hint}>
-            {onHandFuture
-              ? `Marked on hand until ${format(new Date(item.onHandUntil!), 'd MMM')}.`
-              : onHandPast
-                ? 'Marked out of it — won’t show as probably-have until you buy it again.'
-                : 'Decided automatically from purchase history when this comes up in a week plan.'}
-          </Text>
-          <View style={styles.pills}>
-            <TouchableOpacity
-              style={[styles.pill, onHandFuture && styles.pillActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={onHandFuture ? clearOnHand : markGotIt}
-              accessibilityRole="button"
-              accessibilityState={{ selected: onHandFuture }}
-              accessibilityLabel={onHandFuture ? 'Got it, marked on hand. Tap to clear.' : 'Got it — mark as on hand'}
+          {/* Collapsed by default, like every other editor in the app. These
+              three grids used to render in full — sixteen aisles and one pill
+              per store — which pushed the name/quantity/note fields this sheet
+              exists to edit off the first screen. */}
+          <View style={styles.card}>
+            <CollapsibleField
+              label="Aisle"
+              summary={item.aisle}
+              hint="Groups this item on your list, in the order you walk the shop."
+              expanded={openField === 'aisle'}
+              onToggle={() => toggleField('aisle')}
             >
-              <Text style={[styles.pillText, onHandFuture && styles.pillTextActive]}>Got it</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.pill, onHandPast && styles.pillActive]}
-              activeOpacity={interaction.activeOpacity}
-              onPress={onHandPast ? clearOnHand : markOutOfIt}
-              accessibilityRole="button"
-              accessibilityState={{ selected: onHandPast }}
-              accessibilityLabel={onHandPast ? 'Out of it, marked not on hand. Tap to clear.' : 'Out of it — mark as not on hand'}
+              <PillGroup
+                options={aisleOptions}
+                noun="aisle"
+                onCreate={handleCreateAisle}
+                filterPlaceholder="Find or add an aisle…"
+              />
+            </CollapsibleField>
+
+            <View style={styles.separator} />
+
+            <CollapsibleField
+              label="Stores"
+              summary={storesSummary}
+              emptySummary="Any"
+              hint="Tap a store to say you can get this there. Finishing a shop marks it for you."
+              expanded={openField === 'stores'}
+              onToggle={() => toggleField('stores')}
             >
-              <Text style={[styles.pillText, onHandPast && styles.pillTextActive]}>Out of it</Text>
-            </TouchableOpacity>
+              <PillGroup options={shopOptions} noun="store" onCreate={handleCreateShop} />
+            </CollapsibleField>
+
+            <View style={styles.separator} />
+
+            <CollapsibleField
+              label="Pantry"
+              summary={
+                onHandFuture
+                  ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                  : onHandPast
+                    ? 'Out of it'
+                    : undefined
+              }
+              emptySummary="Automatic"
+              hint={
+                onHandPast
+                  ? 'Marked out of it — won’t show as probably-have until you buy it again.'
+                  : 'Decided automatically from purchase history when this comes up in a week plan.'
+              }
+              expanded={openField === 'pantry'}
+              onToggle={() => toggleField('pantry')}
+            >
+              <PillGroup options={pantryOptions} noun="state" />
+            </CollapsibleField>
           </View>
 
           <TouchableOpacity
@@ -569,36 +509,16 @@ function makeStyles(colors: Colors) {
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
-    pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-    addWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      marginTop: spacing.sm,
-    },
-    addInput: {
-      flex: 1,
+    // The three pickers share one card, so they read as a list of settings
+    // rather than three floating grids — matching the editors' CollapsibleField
+    // cards, whose dividers run full-width for want of an icon column.
+    card: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,
-      paddingHorizontal: spacing.md,
-      fontSize: font.md,
-      color: colors.text,
-      // A height rather than a lineHeight — see the note on `input` above.
-      height: 44,
+      marginTop: spacing.md,
+      overflow: 'hidden',
     },
-    pill: {
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-    },
-    // Both "New aisle" and "Add" sit directly on the sheet's root colors.bg,
-    // where the default neutral tint (bgTertiary) is nearly indistinguishable
-    // from it.
-    addButton: { backgroundColor: colors.bgSecondary },
-    pillActive: { backgroundColor: colors.accent },
-    pillText: { fontSize: font.sm, color: colors.textSecondary },
-    pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    separator: { height: border.hairline, backgroundColor: colors.separator },
     actionRow: {
       flexDirection: 'row',
       alignItems: 'center',
