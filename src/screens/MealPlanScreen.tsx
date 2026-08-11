@@ -24,7 +24,6 @@ import { CalendarPicker } from '../components/CalendarPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
-import { usePlanMeal } from '../hooks/usePlanMeal';
 import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
 import {
   FabDropZone,
@@ -51,10 +50,12 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
+  prepTaskDraftsForMeal,
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
   pantryCoverageForRecipe,
   type PantryCoverage,
+  type PrepTaskDraft,
 } from '../utils/recipeUtils';
 import { recentlyCookedTitles } from '../utils/mealIdeas';
 import {
@@ -221,11 +222,6 @@ export function MealPlanScreen() {
   const reopenLeftover = useLeftoverStore(s => s.reopenLeftover);
   const deleteLeftover = useLeftoverStore(s => s.deleteLeftover);
   const addTask = useTaskStore(s => s.addTask);
-  // The prep-task offer lives in the hook now that four surfaces make it —
-  // this screen, the recipe detail screen, a recipe row and the Cook again
-  // shelf. `planRecipe` is unused here: this screen plans free text and
-  // leftovers too, so it calls planMeal directly and only shares the offer.
-  const { offerPrepTasks } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
   // The day being planned; null when the picker is closed.
@@ -396,6 +392,11 @@ export function MealPlanScreen() {
     if (entry) offerPrepTasks(entry);
   };
 
+  const addPrepTaskDrafts = (drafts: PrepTaskDraft[]) => {
+    drafts.forEach(({ title, dueDate, reminderTime }) => addTask({ title, dueDate, reminderTime }));
+    haptics.success();
+  };
+
   // Components' prep steps come along with their ingredients — "boil the
   // potatoes the night before" is a fact about the mash, and the night before
   // is the same night whichever dinner the mash is part of.
@@ -416,6 +417,41 @@ export function MealPlanScreen() {
     });
     haptics.success();
     Alert.alert('Prep tasks added', `Added ${chosen.length} to your tasks.`);
+  };
+
+  /**
+   * The ask at plan time. Prep steps are the part of a recipe that has to
+   * happen before the day it's cooked — "get the beef out of the freezer" is
+   * no use once you're at the hob — so the moment the meal lands on a date is
+   * both the first moment those days can be worked out and the last one where
+   * they're all still ahead of you. Leaving it to the entry sheet's action
+   * means the dish is remembered but the defrosting isn't.
+   *
+   * An offer, not something planning does by itself — the same restraint
+   * mark-cooked keeps about leftovers, and for the same reason: plenty of
+   * prep steps are ones the user does from memory and doesn't want a task for.
+   * A meal with no prep steps (and a leftover or a typed-in title, which have
+   * no recipe to have any) asks nothing at all, so most picks are unchanged.
+   */
+  const offerPrepTasks = (entry: MealPlanEntry) => {
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+    if (!recipe) return;
+    // A freshly planned entry has never had a choice made against it (see
+    // planMeal), so this always resolves to the defaults — same as leaving
+    // `resolution` off.
+    const drafts = prepTaskDraftsForMeal(
+      recipe, recipesById, dayKeyToDate(entry.date), { chosen: entry.recipeChoices }
+    );
+    if (drafts.length === 0) return;
+    const one = drafts.length === 1;
+    Alert.alert(
+      'Add prep tasks?',
+      `${recipe.name} has ${drafts.length} prep step${one ? '' : 's'}. Add ${one ? 'it' : 'them'} to your tasks?`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Add', onPress: () => addPrepTaskDrafts(drafts) },
+      ]
+    );
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
