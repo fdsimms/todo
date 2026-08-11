@@ -191,6 +191,23 @@ export function MealPlanScreen() {
     if (recipe) markRecipeCooked(recipe.id);
     haptics.success();
 
+    // The "was that the last of it?" ask belongs here, not at plan time —
+    // the meal has actually been eaten now. Only asked once: a leftover
+    // that's already finished (or was never live) has nothing to ask about.
+    if (entry.leftoverId) {
+      const leftover = leftovers.find(l => l.id === entry.leftoverId);
+      if (leftover && isLiveLeftover(leftover)) {
+        Alert.alert(
+          'Finished the leftovers?',
+          `Was that the last of the ${leftover.title}?`,
+          [
+            { text: 'Still some left', style: 'cancel' },
+            { text: 'Finished it', onPress: () => finishLeftover(leftover.id, 'eaten') },
+          ]
+        );
+      }
+    }
+
     // A recipe with nothing to re-shop offers nothing — same restraint
     // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
     // counted the same way: a dish whose ingredients all live on its

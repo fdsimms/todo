@@ -1,4 +1,4 @@
 {
-  "message": "Picking a recipe or preset in the meal plan sheet now closes it right away, instead of leaving it open with only a haptic to show it worked",
+  "message": "Picking a recipe, leftover, or preset in the meal plan sheet now closes it right away, instead of leaving it open with only a haptic to show it worked. \"Was that the last of it?\" is now asked when you mark the meal cooked, since that's when you've actually eaten it",
   "date": "2026-08-11"
 }
