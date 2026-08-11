@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput, parseTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -614,6 +614,60 @@ describe('parseCategoryInput', () => {
 
   it('returns null when there are no categories registered', () => {
     expect(parseCategoryInput('pay rent #home', [])).toBeNull();
+  });
+});
+
+// ─── parseTagsInput ───
+
+describe('parseTagsInput', () => {
+  const tags = ['errand', 'work', 'urgent'];
+
+  it('extracts a single "@tag" naming a known tag', () => {
+    const result = parseTagsInput('buy milk @errand', tags);
+    expect(result?.tags).toEqual(['errand']);
+    expect(result?.cleanTitle).toBe('buy milk');
+  });
+
+  it('matches case-insensitively, returning the canonical name', () => {
+    expect(parseTagsInput('mow the lawn @ERRAND', tags)?.tags).toEqual(['errand']);
+  });
+
+  it('extracts multiple "@tag" tokens in one title', () => {
+    const result = parseTagsInput('finish report @work @urgent', tags);
+    expect(result?.tags).toEqual(['work', 'urgent']);
+    expect(result?.cleanTitle).toBe('finish report');
+  });
+
+  it('reports the matched span of the first token', () => {
+    const input = 'buy milk @errand';
+    const result = parseTagsInput(input, tags)!;
+    expect(input.slice(result.matchStart, result.matchEnd)).toBe('@errand');
+  });
+
+  it('leaves an unmatched "@word" as plain text — "Reply to @sarah" is untouched', () => {
+    expect(parseTagsInput('Reply to @sarah', tags)).toBeNull();
+  });
+
+  it('returns null when there is no "@" at all', () => {
+    expect(parseTagsInput('just a normal title', tags)).toBeNull();
+  });
+
+  it('returns null when the entire input is the tag', () => {
+    expect(parseTagsInput('@errand', tags)).toBeNull();
+  });
+
+  it('returns null when there are no tags registered', () => {
+    expect(parseTagsInput('buy milk @errand', [])).toBeNull();
+  });
+
+  it('only strips the tokens that match, leaving unmatched ones as text', () => {
+    const result = parseTagsInput('buy milk @errand @sarah', tags);
+    expect(result?.tags).toEqual(['errand']);
+    expect(result?.cleanTitle).toBe('buy milk @sarah');
+  });
+
+  it('does not mistake an email address for a tag token', () => {
+    expect(parseTagsInput('email me at foo@work.com', tags)).toBeNull();
   });
 });
 

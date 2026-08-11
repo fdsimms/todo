@@ -430,7 +430,11 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
       segments = [DAY_PART_SEGMENT[part.part]];
       rest = part.rest;
     }
-    rest = rest.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+    // "@" is no longer generic noise here — it's the "@tag" marker (see
+    // parseTagsInput below) — so a leftover one is left in place and, same as
+    // any other stray character, correctly fails the anchored match below
+    // rather than being silently swallowed.
+    rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
     schedule = matchRecurrenceCore(rest, now, segments);
   }
   if (!schedule) return null;
@@ -479,7 +483,8 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
       hasTime = true;
     }
   }
-  t = t.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  // Same as above — "@" is reserved for "@tag" and is no longer stripped as noise.
+  t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
   const datePart = t ? parseDatePart(t, now) : null;
   // Leftover words that aren't a date phrase → this suffix isn't a schedule.
@@ -681,8 +686,9 @@ const CATEGORY_TAG_PATTERN = /#([a-z][\w-]*)/i;
  *
  * Deliberately doesn't create a category from an unrecognized tag — a typo
  * or an unrelated "#" in the title (e.g. a hashtag someone's pasting) would
- * otherwise silently spawn a new one. Tags/project/stack aren't covered by
- * this symbol; see #1258 for the open question on whether they should be.
+ * otherwise silently spawn a new one. Tags get their own marker
+ * (parseTagsInput, "@tag") rather than sharing this one; project/stack are
+ * deliberately left to the existing pill pickers — see #1258.
  */
 export function parseCategoryInput(input: string, categories: string[]): ParsedCategory | null {
   const match = input.match(CATEGORY_TAG_PATTERN);
@@ -697,6 +703,62 @@ export function parseCategoryInput(input: string, categories: string[]): ParsedC
   if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a category tag
 
   return { category, cleanTitle, matchStart, matchEnd };
+}
+
+export interface ParsedTags {
+  /** Matching tags' canonical (registered) names, in the order they appear, deduplicated. */
+  tags: string[];
+  /** Input minus every matched "@tag" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  /** Start of the first matched token — drives the tooltip highlight, same as ParsedCategory. */
+  matchStart: number;
+  matchEnd: number;
+}
+
+// An "@" immediately followed by a word, not itself preceded by a word
+// character — the lookbehind keeps "foo@bar.com" from reading "@bar" as a tag
+// token. `#` maps to category (CLAUDE.md's documented example); `@` is the
+// second, distinct marker for tags — chosen because this exact file used to
+// strip it as noise (see the two `.replace(/@/g, ...)` removals above), so
+// repurposing it is a contained change rather than inventing a new symbol.
+const TAG_TOKEN_PATTERN = /(?<!\w)@([a-z][\w-]*)/gi;
+
+/**
+ * Finds every "@tag" token in a quick-add title that names an existing tag
+ * and splits them all out — unlike parseCategoryInput (a task has one
+ * category), a task can carry several tags, so every matching token is
+ * collected rather than just the first. `tags` is the existing registered set
+ * (store-free, like parseCategoryInput's `categories` param).
+ *
+ * Same "known matches only" rule as category: a token that doesn't name a
+ * real tag is left in the title as plain text rather than silently minting a
+ * new tag — so "Reply to @sarah" with no "sarah" tag registered is returned
+ * unchanged (null), not stripped.
+ */
+export function parseTagsInput(input: string, tags: string[]): ParsedTags | null {
+  const byLower = new Map(tags.map(t => [t.toLowerCase(), t]));
+  const matches: { start: number; end: number; canonical: string }[] = [];
+  for (const m of input.matchAll(TAG_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const canonical = byLower.get(m[1].toLowerCase());
+    if (!canonical) continue; // unrecognized "@word" — leave as literal text
+    matches.push({ start: m.index, end: m.index + m[0].length, canonical });
+  }
+  if (matches.length === 0) return null;
+
+  let cleanTitle = input;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    cleanTitle = cleanTitle.slice(0, matches[i].start) + cleanTitle.slice(matches[i].end);
+  }
+  cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null; // a bare "@errand" alone is a literal title, not a tag
+
+  return {
+    tags: [...new Set(matches.map(m => m.canonical))],
+    cleanTitle,
+    matchStart: matches[0].start,
+    matchEnd: matches[0].end,
+  };
 }
 
 function joinDayNames(days: number[]): string {
