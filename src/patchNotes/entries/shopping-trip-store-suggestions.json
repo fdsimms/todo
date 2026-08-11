@@ -1,0 +1,4 @@
+{
+  "message": "The grocery-run button now opens a proper Shopping trip sheet instead of a list of store names: stores are ranked by how much of your list each one carries, the best is picked for you, and when one store can't cover everything it names the second stop and what it adds. Picking several stores makes one task each.",
+  "date": "2026-08-11"
+}
