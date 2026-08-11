@@ -23,6 +23,7 @@ import {
   dbBulkAddTags,
   dbMarkTaskSeen,
   dbTransaction,
+  dbGetMealPlanEntries,
 } from '../db/database';
 import {
   scheduleTaskReminder,
@@ -88,6 +89,8 @@ jest.mock('../db/database', () => ({
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   // useTaskStore.initialize() fans out to the meal plan store too.
   dbGetMealPlanAddedToList: jest.fn().mockReturnValue({}),
+  // Read directly by checkMealPlanNudge, not through useMealPlanStore.
+  dbGetMealPlanEntries: jest.fn().mockReturnValue([]),
   // …and to the leftover store.
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
 }));
@@ -1919,6 +1922,137 @@ describe('dripStalledProjects', () => {
     ]);
 
     expect(useTaskStore.getState().tasks[0].autoScheduledAt).toBeNull();
+  });
+});
+
+// ─── checkMealPlanNudge ─────────────────────────────────────────────────────
+
+describe('checkMealPlanNudge', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  // Sun Aug 3 2025 – Sat Aug 9 2025 is a real calendar week (see
+  // mealPlanNudge.test.ts), so weekday 0 / time 09:00 fires right at the top
+  // of it and asks about Sun Aug 10 – Sat Aug 16.
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    weekStartsOn: 0,
+    vacationMode: false,
+    mealPlanNudgeEnabled: true,
+    mealPlanNudgeWeekday: 0,
+    mealPlanNudgeTime: '09:00',
+    mealPlanNudgeLastFiredWeekKey: null as string | null,
+    setMealPlanNudgeLastFiredWeekKey: jest.fn(),
+    // addTask -> newTaskFromDraft reads this unconditionally.
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    ...overrides,
+  });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is a no-op while the setting is off', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings({ mealPlanNudgeEnabled: false }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('is a no-op during vacation mode, and does not record the week as fired', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ vacationMode: true });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(s.setMealPlanNudgeLastFiredWeekKey).not.toHaveBeenCalled();
+  });
+
+  it('does nothing before the configured day/time arrives', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 8, 59, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('creates a task linking to the meal plan once the trigger arrives', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings();
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.title).toBe('Plan meals for 10 – 16 Aug');
+    expect(task.linkUrl).toBe('dundundun://mealplan');
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2025-08-10', '2025-08-16');
+    expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
+  });
+
+  it('does not create a second task on a later call the same week', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(
+      settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' })
+    );
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('fires again once the next week starts', () => {
+    jest.setSystemTime(new Date(2025, 7, 10, 9, 0, 0));
+    const s = settings({ mealPlanNudgeLastFiredWeekKey: '2025-08-03' });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+    expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-10');
+  });
+
+  it('is suppressed — no task, but the week still counts as handled — when the coming week is already planned', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings();
+    useSettingsStore.getState.mockReturnValue(s);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      { id: 'm1', date: '2025-08-12', slot: 'dinner', recipeId: null, title: 'Tacos', sortOrder: 1, createdAt: '2025-08-01T00:00:00.000Z', cookedAt: null, leftoverId: null, recipeChoices: [] },
+    ]);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(s.setMealPlanNudgeLastFiredWeekKey).toHaveBeenCalledWith('2025-08-03');
+  });
+
+  it('leaves the undo slot alone, like the other unattended background writes', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [], lastAction: null });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
 

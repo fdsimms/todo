@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Alert, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
-import { useSettingsStore, DEFAULT_REMINDER_LEAD_OPTIONS } from '../../store/useSettingsStore';
+import { useSettingsStore, DEFAULT_REMINDER_LEAD_OPTIONS, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import {
   getNotificationPermission,
@@ -24,6 +24,20 @@ import { makeSettingsStyles } from './settingsStyles';
 const REMINDER_LEAD_PILLS: PillOption<number | null>[] =
   DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
+// Full names for the hint sentence and screen reader labels; single letters
+// on the pills themselves, same compression buildWeekDays'/weekdayHeaders'
+// calendar headers already use to fit all seven across 390pt.
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+/** Weekday pills rotated to start at weekStartsOn, matching the calendar's own header order. */
+function weekdayPills(weekStartsOn: WeekStart): PillOption<number>[] {
+  return Array.from({ length: 7 }, (_, i) => {
+    const value = (weekStartsOn + i) % 7;
+    return { value, label: WEEKDAY_LETTERS[value] };
+  });
+}
+
 export function NotificationSettings() {
   const dailyAgendaEnabled = useSettingsStore(s => s.dailyAgendaEnabled);
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
@@ -31,6 +45,14 @@ export function NotificationSettings() {
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
   const setDefaultReminderLeadMinutes = useSettingsStore(s => s.setDefaultReminderLeadMinutes);
+
+  const mealPlanNudgeEnabled = useSettingsStore(s => s.mealPlanNudgeEnabled);
+  const setMealPlanNudgeEnabled = useSettingsStore(s => s.setMealPlanNudgeEnabled);
+  const mealPlanNudgeWeekday = useSettingsStore(s => s.mealPlanNudgeWeekday);
+  const setMealPlanNudgeWeekday = useSettingsStore(s => s.setMealPlanNudgeWeekday);
+  const mealPlanNudgeTime = useSettingsStore(s => s.mealPlanNudgeTime);
+  const setMealPlanNudgeTime = useSettingsStore(s => s.setMealPlanNudgeTime);
+  const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
 
   const quietHoursStart = useSettingsStore(s => s.quietHoursStart);
   const quietHoursEnd = useSettingsStore(s => s.quietHoursEnd);
@@ -66,6 +88,10 @@ export function NotificationSettings() {
 
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(new Date());
+
+  const [mealPlanPickerOpen, setMealPlanPickerOpen] = useState(false);
+  const [mealPlanPickerDate, setMealPlanPickerDate] = useState<Date>(new Date());
+  const weekdayPillOptions = useMemo(() => weekdayPills(weekStartsOn), [weekStartsOn]);
 
   const [quietPickerKey, setQuietPickerKey] = useState<'start' | 'end' | null>(null);
   const [quietPickerDate, setQuietPickerDate] = useState<Date>(new Date());
@@ -133,6 +159,11 @@ export function NotificationSettings() {
     // The pending agenda was scheduled against the old time.
     scheduleDailyAgenda(useTaskStore.getState().tasks);
     setPickerOpen(false);
+  };
+
+  const confirmMealPlanPicker = () => {
+    setMealPlanNudgeTime(dateToHHMM(mealPlanPickerDate));
+    setMealPlanPickerOpen(false);
   };
 
   return (
@@ -281,6 +312,61 @@ export function NotificationSettings() {
             value="Use"
             onPress={matchAwakeHours}
           />
+        </>
+      )}
+    </SettingsSection>
+
+    <SettingsSection
+      label="Meal planning"
+      footer="Creates one task a week reminding you to plan meals — it opens straight to the Meal Plan screen. Skipped entirely for a week that already has something planned there, so it only ever nudges when it'd actually help."
+    >
+      <SettingsRow
+        icon="restaurant-outline"
+        iconColor={mealPlanNudgeEnabled ? colors.accent : undefined}
+        label="Plan meals for the week"
+        hint={mealPlanNudgeEnabled
+          ? `A task appears ${WEEKDAY_NAMES[mealPlanNudgeWeekday]} at ${formatHHMM(mealPlanNudgeTime)} to plan the coming week`
+          : 'Off — nothing reminds you to plan meals'}
+        toggle={mealPlanNudgeEnabled}
+        onPress={() => setMealPlanNudgeEnabled(!mealPlanNudgeEnabled)}
+      />
+
+      {mealPlanNudgeEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            iconColor={colors.accent}
+            label="Nudge me on"
+            tight
+          />
+          <SettingsPills
+            attached
+            options={weekdayPillOptions}
+            selected={mealPlanNudgeWeekday}
+            onSelect={setMealPlanNudgeWeekday}
+            accessibilityLabelFor={o => WEEKDAY_NAMES[o.value]}
+          />
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="alarm-outline"
+            iconColor={colors.accent}
+            label="At"
+            value={formatHHMM(mealPlanNudgeTime)}
+            onPress={() => {
+              if (mealPlanPickerOpen) { setMealPlanPickerOpen(false); return; }
+              setMealPlanPickerDate(hhmmToDate(mealPlanNudgeTime));
+              setMealPlanPickerOpen(true);
+            }}
+          />
+          {mealPlanPickerOpen && (
+            <InlineTimePicker
+              value={mealPlanPickerDate}
+              onChange={setMealPlanPickerDate}
+              onCancel={() => setMealPlanPickerOpen(false)}
+              onConfirm={confirmMealPlanPicker}
+            />
+          )}
         </>
       )}
     </SettingsSection>

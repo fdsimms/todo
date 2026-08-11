@@ -104,6 +104,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['morning summary', 'digest', 'notification'] },
   { id: 'dailyAgendaTime', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
+  { id: 'mealPlanNudge', groupId: 'notifications', label: 'Plan meals for the week', section: 'Meal planning',
+    keywords: ['meal plan', 'recipes', 'dinner', 'nudge', 'reminder', 'weekly', 'grocery'] },
+  { id: 'mealPlanNudgeTime', groupId: 'notifications', label: 'Nudge me on', section: 'Meal planning',
+    keywords: ['weekday', 'meal plan time', 'day'] },
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
