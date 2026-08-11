@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, Priority, Effort } from '../types';
+import type { SortOption, Priority, Effort, TimeOfDay } from '../types';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
@@ -32,6 +32,44 @@ export type WeekStart = 0 | 1;
  * parks itself in whichever corner the button isn't using.
  */
 export type FabHand = 'right' | 'left';
+
+/**
+ * What a *new* task starts with, applied by `newTaskFromDraft`
+ * (`src/store/useTaskStore.ts`) — the one place a Task's defaults are
+ * spelled out — so `addTask` and the dated-series builder (`addTaskSeries`/
+ * `applyTaskDates`) both pick these up automatically rather than needing
+ * their own copy. Every field here is a *fallback*: it only fills in a draft
+ * that left the field unspecified (`null`/`undefined`), never one that named
+ * a value explicitly — so typing "tmrw" in quick-add still wins over
+ * `destination`, and an explicit priority pick still wins over `priority`.
+ *
+ * `destination` is the one field with no `Task` column behind it — it only
+ * decides what quick-add pre-fills its due date to before the user types
+ * anything (see QuickAddModal's `visible` effect), which is what actually
+ * files the task into Today, Inbox, or Unscheduled.
+ */
+export interface NewTaskDefaults {
+  category: string | null;
+  priority: Priority | null;
+  effort: Effort | null;
+  timeSegment: TimeOfDay | null;
+  destination: 'today' | 'inbox' | 'unscheduled';
+  openEditorAfterQuickAdd: boolean;
+}
+
+// Preserves today's actual behavior exactly: newTaskFromDraft already
+// defaulted category/priority/effort/timeSegments to null/0/0/[] on its own,
+// and quick-add already pre-filled Today's due date and just filed the task
+// without opening the editor. A fresh install must see no change until it
+// opts into something different.
+const DEFAULT_NEW_TASK_DEFAULTS: NewTaskDefaults = {
+  category: null,
+  priority: null,
+  effort: null,
+  timeSegment: null,
+  destination: 'today',
+  openEditorAfterQuickAdd: false,
+};
 
 interface SettingsStore {
   dayResetTime: string;   // "HH:MM" — when the logical day flips (default midnight "00:00")
@@ -171,6 +209,12 @@ interface SettingsStore {
   // Changing it only affects projects created after the change — existing
   // projects keep whatever cadence they were given.
   defaultProjectNudgeCadenceDays: number;
+  // What a new task starts with (category/priority/effort/time segment, which
+  // list quick-add files it into, whether the editor opens after) — see
+  // NewTaskDefaults above. Kept out of DEFAULT_SETTINGS/resetToDefaults for
+  // the same mechanical reason as aiFeatureConfig: it's an object, and
+  // String(value) doesn't round-trip one.
+  newTaskDefaults: NewTaskDefaults;
   initialized: boolean;
   initialize: () => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
@@ -219,6 +263,7 @@ interface SettingsStore {
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
+  setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   resetToDefaults: () => void;
 }
 
@@ -319,6 +364,46 @@ function parseFilterArray<T extends number>(raw: string | null, max: number): T[
   }
 }
 
+const NEW_TASK_DESTINATIONS: NewTaskDefaults['destination'][] = ['today', 'inbox', 'unscheduled'];
+const NEW_TASK_TIME_SEGMENTS: TimeOfDay[] = ['morning', 'afternoon', 'evening', 'night'];
+
+/**
+ * Reads back the JSON object written by setNewTaskDefaults, merged
+ * field-by-field against DEFAULT_NEW_TASK_DEFAULTS rather than trusted
+ * wholesale — same reasoning as aiFeatureConfig's parse below: a field added
+ * after this setting first shipped, or a value a hand-edited database left in
+ * a bad shape, falls back to the safe default instead of taking down the
+ * whole object.
+ */
+function parseNewTaskDefaults(raw: string | null): NewTaskDefaults {
+  const result = { ...DEFAULT_NEW_TASK_DEFAULTS };
+  if (!raw) return result;
+  try {
+    const parsed = JSON.parse(raw) as Partial<Record<keyof NewTaskDefaults, unknown>>;
+    if (typeof parsed.category === 'string' || parsed.category === null) {
+      result.category = parsed.category as string | null;
+    }
+    if (parsed.priority === null || (typeof parsed.priority === 'number' && parsed.priority >= 0 && parsed.priority <= 4)) {
+      result.priority = parsed.priority as Priority | null;
+    }
+    if (parsed.effort === null || (typeof parsed.effort === 'number' && parsed.effort >= 0 && parsed.effort <= 6)) {
+      result.effort = parsed.effort as Effort | null;
+    }
+    if (parsed.timeSegment === null || NEW_TASK_TIME_SEGMENTS.includes(parsed.timeSegment as TimeOfDay)) {
+      result.timeSegment = parsed.timeSegment as TimeOfDay | null;
+    }
+    if (NEW_TASK_DESTINATIONS.includes(parsed.destination as NewTaskDefaults['destination'])) {
+      result.destination = parsed.destination as NewTaskDefaults['destination'];
+    }
+    if (typeof parsed.openEditorAfterQuickAdd === 'boolean') {
+      result.openEditorAfterQuickAdd = parsed.openEditorAfterQuickAdd;
+    }
+  } catch {
+    // keep defaults
+  }
+  return result;
+}
+
 export const useSettingsStore = create<SettingsStore>(set => ({
   dayResetTime: '00:00',
   morningStart: '06:00',
@@ -365,6 +450,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
+  newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   initialized: false,
 
   initialize() {
@@ -461,7 +547,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         // keep defaults
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
+    const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -727,6 +814,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setDefaultProjectNudgeCadenceDays(days: number) {
     dbSetSetting('defaultProjectNudgeCadenceDays', String(days));
     set({ defaultProjectNudgeCadenceDays: days });
+  },
+
+  setNewTaskDefaults(patch: Partial<NewTaskDefaults>) {
+    set(state => {
+      const next = { ...state.newTaskDefaults, ...patch };
+      dbSetSetting('newTaskDefaults', JSON.stringify(next));
+      return { newTaskDefaults: next };
+    });
   },
 
   resetToDefaults() {

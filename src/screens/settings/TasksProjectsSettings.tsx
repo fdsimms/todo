@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useCategoryStore } from '../../store/useCategoryStore';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { CalendarPicker } from '../../components/CalendarPicker';
@@ -14,6 +15,8 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
+import { categoryLabel } from '../../utils/categoryLabel';
+import { PRIORITY_LABELS, EFFORT_LABELS, type Priority, type Effort, type TimeOfDay } from '../../types';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, cadenceUnitLabel,
   describeCadence, fromCadenceParts, toCadenceParts, withCadenceUnit,
@@ -21,6 +24,27 @@ import {
 
 const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
+
+// 0 already means "None"/"—" everywhere else a priority or effort is picked
+// (TaskEditor, QuickAdd), so there's no separate null option here — leaving a
+// new task's priority/effort default at 0 behaves identically to not
+// configuring a default at all (newTaskFromDraft falls back to 0 either way).
+const NEW_TASK_PRIORITY_PILLS: PillOption<Priority>[] =
+  PRIORITY_LABELS.map((label, value) => ({ value: value as Priority, label }));
+const NEW_TASK_EFFORT_PILLS: PillOption<Effort>[] =
+  EFFORT_LABELS.map((label, value) => ({ value: value as Effort, label: value === 0 ? 'None' : label }));
+const NEW_TASK_TIME_SEGMENT_PILLS: PillOption<TimeOfDay | null>[] = [
+  { value: null, label: 'None' },
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'night', label: 'Night' },
+];
+const NEW_TASK_DESTINATION_PILLS: PillOption<'today' | 'inbox' | 'unscheduled'>[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'inbox', label: 'Inbox' },
+  { value: 'unscheduled', label: 'Unscheduled' },
+];
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -36,12 +60,20 @@ export function TasksProjectsSettings() {
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
+  const categories = useCategoryStore(s => s.categories);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
+
+  const newTaskCategoryPills: PillOption<string | null>[] = useMemo(() => [
+    { value: null, label: 'None' },
+    ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
+  ], [categories]);
 
   // The cadence is stored in days; the picker shows it as a count and a unit —
   // same conversion the per-project field in ProjectEditor uses.
@@ -131,6 +163,67 @@ export function TasksProjectsSettings() {
           hint={hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
           toggle={hideCategories}
           onPress={() => setHideCategories(!hideCategories)}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="New tasks"
+        footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick — typing a date in quick-add still wins over the destination below."
+      >
+        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryPills.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
+        <SettingsPills
+          attached
+          options={newTaskCategoryPills}
+          selected={newTaskDefaults.category}
+          onSelect={category => { haptics.tap(); setNewTaskDefaults({ category }); }}
+          accessibilityLabelFor={o => `Default category: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow icon="flag-outline" label="Priority" tight />
+        <SettingsPills
+          attached
+          options={NEW_TASK_PRIORITY_PILLS}
+          selected={newTaskDefaults.priority ?? 0}
+          onSelect={priority => { haptics.tap(); setNewTaskDefaults({ priority }); }}
+          accessibilityLabelFor={o => `Default priority: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow icon="speedometer-outline" label="Effort" tight />
+        <SettingsPills
+          attached
+          options={NEW_TASK_EFFORT_PILLS}
+          selected={newTaskDefaults.effort ?? 0}
+          onSelect={effort => { haptics.tap(); setNewTaskDefaults({ effort }); }}
+          accessibilityLabelFor={o => `Default effort: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow icon="partly-sunny-outline" label="Time of day" tight />
+        <SettingsPills
+          attached
+          options={NEW_TASK_TIME_SEGMENT_PILLS}
+          selected={newTaskDefaults.timeSegment}
+          onSelect={timeSegment => { haptics.tap(); setNewTaskDefaults({ timeSegment }); }}
+          accessibilityLabelFor={o => `Default time of day: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date" tight />
+        <SettingsPills
+          attached
+          options={NEW_TASK_DESTINATION_PILLS}
+          selected={newTaskDefaults.destination}
+          onSelect={destination => { haptics.tap(); setNewTaskDefaults({ destination }); }}
+          accessibilityLabelFor={o => `Quick-add destination: ${o.label}`}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          icon="create-outline"
+          iconColor={newTaskDefaults.openEditorAfterQuickAdd ? colors.accent : undefined}
+          label="Open editor after quick add"
+          hint={newTaskDefaults.openEditorAfterQuickAdd
+            ? 'The full editor opens on a task right after you create it'
+            : 'A quick-added task just files itself and the sheet closes'}
+          toggle={newTaskDefaults.openEditorAfterQuickAdd}
+          onPress={() => setNewTaskDefaults({ openEditorAfterQuickAdd: !newTaskDefaults.openEditorAfterQuickAdd })}
         />
       </SettingsSection>
 

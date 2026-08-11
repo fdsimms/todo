@@ -112,7 +112,10 @@ jest.mock('../store/useCategoryStore', () => ({
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: jest.fn(() => ({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' })),
+    getState: jest.fn(() => ({
+      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    })),
   },
 }));
 
@@ -258,7 +261,10 @@ beforeEach(() => {
   useProjectStore.setState({ projects: [], initialized: false });
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
-  useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' });
+  useSettingsStore.getState.mockReturnValue({
+    dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+  });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -341,6 +347,76 @@ describe('addTask', () => {
     const task = useTaskStore.getState().addTask({ title: 'Reminder' });
     expect(dbInsertTask).toHaveBeenCalledWith(task);
     expect(scheduleTaskReminder).toHaveBeenCalledWith(task);
+  });
+});
+
+// ─── newTaskFromDraft: Settings' newTaskDefaults ────────────────────────────
+//
+// newTaskFromDraft (addTask's builder, shared with the series builder) is
+// "the one place a Task's defaults are spelled out" — see its comment. These
+// exercise the settings.newTaskDefaults fallback layer it reads: a draft that
+// leaves a field unspecified picks up the setting, one that names a value
+// explicitly is never overridden, and — with no newTaskDefaults configured —
+// today's actual behavior (before this setting existed) is unchanged.
+describe('newTaskFromDraft: newTaskDefaults', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+
+  const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      newTaskDefaults,
+    });
+  };
+
+  it('with no newTaskDefaults configured, an omitted field defaults exactly as before this setting existed', () => {
+    withDefaults({ category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'Plain' });
+    expect(task.category).toBeNull();
+    expect(task.priority).toBe(0);
+    expect(task.effort).toBe(0);
+    expect(task.timeSegments).toEqual([]);
+  });
+
+  it('fills an unspecified field from newTaskDefaults', () => {
+    withDefaults({ category: 'Home', priority: 3, effort: 2, timeSegment: 'evening', destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'Defaulted' });
+    expect(task.category).toBe('Home');
+    expect(task.priority).toBe(3);
+    expect(task.effort).toBe(2);
+    expect(task.timeSegments).toEqual(['evening']);
+  });
+
+  it('never overrides a field the draft already named, even when it is a falsy/zero value', () => {
+    withDefaults({ category: 'Home', priority: 3, effort: 2, timeSegment: 'evening', destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({
+      title: 'Explicit',
+      category: 'Work',
+      priority: 0,
+      effort: 0,
+      timeSegments: ['morning'],
+    });
+    expect(task.category).toBe('Work');
+    expect(task.priority).toBe(0);
+    expect(task.effort).toBe(0);
+    expect(task.timeSegments).toEqual(['morning']);
+  });
+
+  it('an explicit category still wins over the default', () => {
+    withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'x', category: 'Work' });
+    expect(task.category).toBe('Work');
+  });
+
+  it('the series builder (addTaskSeries) picks up the same defaults', () => {
+    withDefaults({ category: 'Errands', priority: 1, effort: 4, timeSegment: 'morning', destination: 'today', openEditorAfterQuickAdd: false });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    expect(rows.every(r => r.category === 'Errands')).toBe(true);
+    expect(rows.every(r => r.priority === 1)).toBe(true);
+    expect(rows.every(r => r.effort === 4)).toBe(true);
+    expect(rows.every(r => r.timeSegments && r.timeSegments[0] === 'morning')).toBe(true);
   });
 });
 

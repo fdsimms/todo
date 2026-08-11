@@ -60,14 +60,18 @@ import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestion
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import { type TaskDraft } from './TaskEditor';
+import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onOpenFull: (draft: TaskDraft) => void;
-  /** Which list this was opened from — determines the default due date. Defaults to 'today'. */
+  /**
+   * Which list this was opened from — determines the default due date.
+   * Omit to fall back to Settings' newTaskDefaults.destination (Today/Inbox/
+   * Unscheduled) — see the `visible` effect below.
+   */
   context?: 'today' | 'later' | 'inbox' | 'unscheduled';
   /**
    * Called right after a new task is created (not on the "resume archived"
@@ -133,7 +137,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 
 
 export function QuickAddModal({
-  visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, seed, seedLabel,
+  visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
   initialType = 'task', initialTitle,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
@@ -145,6 +149,14 @@ export function QuickAddModal({
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  // Which list this actually lands in: the caller's explicit choice (a
+  // screen's current sub-view, a project's "unscheduled" drop) if it named
+  // one, else Settings' destination default.
+  const effectiveContext = context ?? newTaskDefaults.destination;
+  // Holds the task created by this sheet while its editor is open — only used
+  // when newTaskDefaults.openEditorAfterQuickAdd is on (see createTask below).
+  const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -246,21 +258,21 @@ export function QuickAddModal({
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle ?? '');
-      setPriority(0);
-      setEffort(0);
+      setPriority(newTaskDefaults.priority ?? 0);
+      setEffort(newTaskDefaults.effort ?? 0);
       setEstimatedMinutes(null);
       setCustomEffortText('');
       setEffortNote(null);
       setDueDate(
-        context === 'later' ? getLogicalTomorrow(dayResetTime)
-        : context === 'inbox' || context === 'unscheduled' ? null
+        effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+        : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
         : getLogicalToday(dayResetTime)
       );
-      setTimeSegments([]);
+      setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
       setTags([]);
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
-      setCategory(seedRef.current?.category ?? null);
+      setCategory(seedRef.current?.category ?? newTaskDefaults.category);
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
       setPhoneNumber(null);
@@ -292,6 +304,7 @@ export function QuickAddModal({
       setWhenPickerVisible(false);
       setAiLoading(false);
       setPendingCategory(null);
+      setPostCreateTask(null);
       scaleAnim.setValue(0.95);
       translateYAnim.setValue(16);
       sheetOpacity.setValue(0);
@@ -307,7 +320,7 @@ export function QuickAddModal({
       // animation rather than after it, so the keyboard is up sooner.
       inputRef.current?.focus();
     }
-  }, [visible, context, initialType, initialTitle]);
+  }, [visible, effectiveContext, initialType, initialTitle]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -596,6 +609,12 @@ export function QuickAddModal({
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
     });
     onCreated?.(task, seedActive);
+    // Files the task exactly as before either way; the setting only decides
+    // whether the sheet hands off straight into the full editor for it
+    // (postCreateTask, rendered below) instead of just closing.
+    if (newTaskDefaults.openEditorAfterQuickAdd) {
+      setPostCreateTask(task);
+    }
     dismiss();
   };
 
@@ -767,6 +786,7 @@ export function QuickAddModal({
   const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="none"
@@ -1835,7 +1855,15 @@ export function QuickAddModal({
       />
       <NumberPadAccessory />
     </Modal>
-
+    {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
+        sibling of the sheet above rather than something rendered inside it,
+        so it stays mounted (and visible) once the sheet has closed. */}
+    <TaskEditor
+      visible={postCreateTask !== null}
+      task={postCreateTask}
+      onClose={() => setPostCreateTask(null)}
+    />
+    </>
   );
 }
 

@@ -82,7 +82,8 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 }
 
 // The time-of-day a brand-new task starts with: its own if the draft named
-// one, else its category's default (Category.defaultTimeSegments).
+// one, else its category's default (Category.defaultTimeSegments), else
+// Settings' newTaskDefaults.timeSegment.
 //
 // An empty draft array counts as "didn't name one" rather than as an explicit
 // "no segment", because every editor sends timeSegments unconditionally from
@@ -93,28 +94,38 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 // Creation only, and the resolved value is written onto the row like any
 // other: after this the task's own timeSegments are what everything reads, so
 // clearing the category's default never moves a task that already exists.
-function resolveTimeSegments(draft: Partial<TaskDraft>): TimeOfDay[] {
+function resolveTimeSegments(draft: Partial<TaskDraft>, defaultSegment: TimeOfDay | null): TimeOfDay[] {
   if (draft.timeSegments && draft.timeSegments.length > 0) return draft.timeSegments;
-  if (!draft.category) return draft.timeSegments ?? [];
-  const cat = useCategoryStore.getState().getCategoryByName(draft.category);
-  return cat?.defaultTimeSegments.length ? [...cat.defaultTimeSegments] : (draft.timeSegments ?? []);
+  if (draft.category) {
+    const cat = useCategoryStore.getState().getCategoryByName(draft.category);
+    if (cat?.defaultTimeSegments.length) return [...cat.defaultTimeSegments];
+  }
+  if (defaultSegment) return [defaultSegment];
+  return draft.timeSegments ?? [];
 }
 
 // The one place a Task's defaults are spelled out. Shared by addTask and the
 // dated-series builder below so a new field can't end up defaulted in one
-// path and undefined in the other.
+// path and undefined in the other. Settings' newTaskDefaults (category,
+// priority, effort, timeSegment) is read here for the same reason — a
+// fallback under whatever the draft already named, never an override of it.
 //
 // `seedFromCategory` is off by default because this is also the *clone*
 // builder: buildSeriesRow feeds it an existing row when a series is
 // reconciled or rolls over, and there an empty timeSegments is the source
 // row's deliberate answer, not an unanswered question. Only the two paths
-// where a person is creating a task from scratch turn it on.
+// where a person is creating a task from scratch turn it on. The category
+// and priority/effort defaults below apply regardless of seedFromCategory —
+// unlike timeSegments, a cloned series row already carries its own category/
+// priority/effort explicitly (spread from the source row), so the ?? never
+// fires on a clone; it's only ever a fallback for an unanswered field.
 function newTaskFromDraft(
   draft: Partial<TaskDraft>,
   now: string,
   sortOrder: number,
   seedFromCategory = false,
 ): Task {
+  const defaults = useSettingsStore.getState().newTaskDefaults;
   return {
     id: generateId(),
     title: draft.title ?? '',
@@ -130,7 +141,7 @@ function newTaskFromDraft(
     deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
     deadlineMonthDay: draft.deadlineMonthDay ?? null,
     deferUntil: draft.deferUntil ?? null,
-    timeSegments: seedFromCategory ? resolveTimeSegments(draft) : (draft.timeSegments ?? []),
+    timeSegments: seedFromCategory ? resolveTimeSegments(draft, defaults.timeSegment) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,
     windowEnd: draft.windowEnd ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
@@ -146,11 +157,11 @@ function newTaskFromDraft(
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
     tags: draft.tags ?? [],
-    category: draft.category ?? null,
+    category: draft.category ?? defaults.category,
     sortOrder,
     pinned: draft.pinned ?? false,
-    priority: draft.priority ?? 0,
-    effort: draft.effort ?? 0,
+    priority: draft.priority ?? defaults.priority ?? 0,
+    effort: draft.effort ?? defaults.effort ?? 0,
     estimatedMinutes: draft.estimatedMinutes ?? null,
     streakCount: 0,
     streakDate: null,
