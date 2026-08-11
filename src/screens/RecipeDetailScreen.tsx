@@ -145,13 +145,19 @@ export function RecipeDetailScreen() {
       delayLongPress={interaction.delayLongPress}
       accessibilityRole="button"
       accessibilityLabel={
-        [ingredient.name, ingredient.quantity, ingredient.prep].filter(Boolean).join(', ')
+        [ingredient.name, ingredient.quantity, ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`]
+          .filter(Boolean)
+          .join(', ')
       }
       accessibilityHint="Double tap to edit. Long press to reorder."
     >
       <View style={styles.ingredientText}>
         <Text style={styles.ingredientName}>{ingredient.name}</Text>
-        {!!ingredient.prep && <Text style={styles.ingredientPrep}>{ingredient.prep}</Text>}
+        {(!!ingredient.prep || !!ingredient.purpose) && (
+          <Text style={styles.ingredientPrep}>
+            {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`].filter(Boolean).join(' · ')}
+          </Text>
+        )}
       </View>
       {!!ingredient.quantity && (
         <View style={styles.qtyPill}>

@@ -52,6 +52,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
+  const [purpose, setPurpose] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setName(ingredient.name);
     setQuantity(ingredient.quantity);
     setPrep(ingredient.prep ?? '');
+    setPurpose(ingredient.purpose ?? '');
     setAisle(ingredient.aisle);
   }, [ingredient]);
 
@@ -71,6 +73,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       name: trimmed || ingredient.name,
       quantity: quantity.trim(),
       prep: prep.trim() || null,
+      purpose: purpose.trim() || null,
       aisle,
     });
     onClose();
@@ -155,6 +158,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           placeholderTextColor={colors.textTertiary}
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Prep instructions"
+        />
+      </View>
+
+      <View style={styles.sectionCard}>
+        <Text style={styles.groupLabel}>For</Text>
+        <TextInput
+          style={styles.input}
+          value={purpose}
+          onChangeText={setPurpose}
+          placeholder="margaritas, dusting…"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={PREP_MAX_LENGTH}
+          accessibilityLabel="Purpose"
         />
       </View>
 

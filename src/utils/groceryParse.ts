@@ -297,6 +297,46 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
   return { name: trimmed, prep: null };
 }
 
+// Recipe sites also write *why* an ingredient is on the list as a trailing
+// "for " clause — "Limes for margaritas", "flour for dusting", "cheese for
+// topping" — rather than a comma. Same convention-match discipline as
+// PREP_SPLIT: it's safe to split unconditionally not because "for" is an
+// unambiguous word (it isn't — "before", "fortune", "comfort" all contain
+// it), but because the match requires a *standalone* " for " — whitespace on
+// both sides — which only ever appears as the connective word, never glued
+// inside a product name. Greedy on the core so "chicken stock for soup for
+// tonight" (two "for"s) splits at the *last* one, which reads as the more
+// specific purpose.
+//
+// Deliberately does NOT run when splitPrep already found a comma clause: a
+// prep clause can itself legitimately contain "for" ("cheese, plus more for
+// topping" is one prep note, not a name plus a purpose), so this only ever
+// looks at text that had no comma to begin with. That ordering is the
+// caller's job (see makeIngredient), not this function's — splitPurpose only
+// knows about the string it's given.
+//
+// Known false positive, accepted rather than guarded against: a product
+// whose real name ends in " for " something ("Room For Cream", a real
+// off-brand energy drink) reads identically to a purpose clause and would be
+// split. There's no whitelist of real product names to check against — the
+// same asymmetry LEADING_PREP_WORDS is curated for the *other* direction
+// isn't available here, since "for" isn't a closed set of prep verbs, it's
+// the connective word itself. Left editable in the item sheet, same as the
+// "7 Up" miss in parseGroceryInput.
+const PURPOSE_SPLIT = /^(.*\S)\s+for\s+(\S.*)$/i;
+
+export function splitPurpose(name: string): { name: string; purpose: string | null } {
+  const trimmed = name.trim();
+  const match = PURPOSE_SPLIT.exec(trimmed);
+  if (!match) return { name: trimmed, purpose: null };
+  const [, core, purpose] = match;
+  if (!core.trim()) return { name: trimmed, purpose: null };
+  return {
+    name: core.trim(),
+    purpose: purpose.trim().slice(0, PREP_MAX_LENGTH) || null,
+  };
+}
+
 /**
  * "cloves garlic" → "garlic", when "garlic" (and not "cloves garlic") is
  * already a name in the catalog — a one-tap correction for exactly the

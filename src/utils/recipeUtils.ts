@@ -8,7 +8,7 @@ import {
   TITLE_MAX_LENGTH,
 } from '../types';
 import { format } from 'date-fns/format';
-import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep } from './groceryParse';
+import { groceryNameKey, parseGroceryInput, splitGroceryLines, splitPrep, splitPurpose } from './groceryParse';
 import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
@@ -64,6 +64,9 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     prep: typeof r.prep === 'string' && r.prep.trim()
       ? r.prep.trim().slice(0, PREP_MAX_LENGTH)
       : null,
+    purpose: typeof r.purpose === 'string' && r.purpose.trim()
+      ? r.purpose.trim().slice(0, PREP_MAX_LENGTH)
+      : null,
   };
 }
 
@@ -79,7 +82,16 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
 export function makeIngredient(line: string): RecipeIngredient | null {
   const { name: rawName, quantity } = parseGroceryInput(line);
   if (!rawName.trim()) return null;
-  const { name, prep } = splitPrep(rawName);
+  const { name: afterPrep, prep } = splitPrep(rawName);
+  if (!afterPrep.trim()) return null;
+  // splitPurpose only runs when splitPrep didn't already take a comma clause
+  // — a comma-based prep clause can legitimately contain "for" on its own
+  // ("cheese, plus more for topping" is one prep note), so a raw line with a
+  // comma has already had its trailing text claimed. `rawName` (not
+  // `afterPrep`) is what's checked, since the comma sits before the prep
+  // split either way.
+  const purposeSplit = rawName.includes(',') ? null : splitPurpose(afterPrep);
+  const name = purposeSplit ? purposeSplit.name : afterPrep;
   if (!name.trim()) return null;
   return {
     id: generateId(),
@@ -88,6 +100,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     quantity: quantity ?? '',
     aisle: null,
     prep,
+    purpose: purposeSplit?.purpose ?? null,
   };
 }
 

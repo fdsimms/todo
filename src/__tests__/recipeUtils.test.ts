@@ -36,6 +36,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     quantity: '',
     aisle: null,
     prep: null,
+    purpose: null,
     ...overrides,
   };
 }
@@ -68,14 +69,23 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null },
     ]);
   });
 
-  it('defaults prep to null for a blob written before the field existed', () => {
+  it('defaults prep and purpose to null for a blob written before the fields existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null },
+    ]);
+  });
+
+  it('reads a stored purpose clause', () => {
+    const stored = JSON.stringify([
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
+    ]);
+    expect(parseRecipeIngredients(stored)).toEqual([
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
     ]);
   });
 
@@ -116,6 +126,15 @@ describe('normalizeIngredient', () => {
 
   it('keeps a stored prep clause', () => {
     expect(normalizeIngredient({ name: 'Garlic', prep: 'minced' })!.prep).toBe('minced');
+  });
+
+  it('treats an empty or blank purpose string as no opinion', () => {
+    expect(normalizeIngredient({ name: 'Salt', purpose: '' })!.purpose).toBeNull();
+    expect(normalizeIngredient({ name: 'Salt', purpose: '   ' })!.purpose).toBeNull();
+  });
+
+  it('keeps a stored purpose clause', () => {
+    expect(normalizeIngredient({ name: 'Limes', purpose: 'margaritas' })!.purpose).toBe('margaritas');
   });
 });
 
@@ -193,6 +212,31 @@ describe('makeIngredient', () => {
 
   it('leaves prep null when there is no comma clause', () => {
     expect(makeIngredient('2 lb chicken thighs')!.prep).toBeNull();
+  });
+
+  it('splits a trailing "for" purpose clause out of the name', () => {
+    const result = makeIngredient('Limes for margaritas')!;
+    expect(result.name).toBe('Limes');
+    expect(result.purpose).toBe('margaritas');
+    expect(result.nameKey).toBe('limes');
+  });
+
+  it('splits purpose after the quantity is peeled off', () => {
+    const result = makeIngredient('2 cups flour for dusting')!;
+    expect(result.name).toBe('flour');
+    expect(result.quantity).toBe('2 cups');
+    expect(result.purpose).toBe('dusting');
+  });
+
+  it('does not split a purpose clause out of a comma-based prep clause', () => {
+    const result = makeIngredient('cheese, plus more for topping')!;
+    expect(result.name).toBe('cheese');
+    expect(result.prep).toBe('plus more for topping');
+    expect(result.purpose).toBeNull();
+  });
+
+  it('leaves purpose null when there is no "for" clause', () => {
+    expect(makeIngredient('2 lb chicken thighs')!.purpose).toBeNull();
   });
 
   it('returns null for a line that parses to nothing', () => {

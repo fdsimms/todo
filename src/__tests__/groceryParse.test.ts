@@ -2,6 +2,7 @@ import {
   groceryNameKey,
   parseGroceryInput,
   splitPrep,
+  splitPurpose,
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
@@ -274,6 +275,76 @@ describe('splitPrep', () => {
 
   it('does not split a whitelisted word with nothing following it', () => {
     expect(splitPrep('Minced')).toEqual({ name: 'Minced', prep: null });
+  });
+});
+
+// ─── splitPurpose ────────────────────────────────────────────────────────────
+
+describe('splitPurpose', () => {
+  it('splits a trailing "for" clause into purpose', () => {
+    expect(splitPurpose('Limes for margaritas')).toEqual({
+      name: 'Limes',
+      purpose: 'margaritas',
+    });
+  });
+
+  it('splits "flour for dusting" — a real purpose clause even though it names a use, not a prep', () => {
+    expect(splitPurpose('flour for dusting')).toEqual({
+      name: 'flour',
+      purpose: 'dusting',
+    });
+  });
+
+  it('splits a multi-word purpose', () => {
+    expect(splitPurpose('cheddar for the kids lunches')).toEqual({
+      name: 'cheddar',
+      purpose: 'the kids lunches',
+    });
+  });
+
+  it('leaves a name with no "for" untouched', () => {
+    expect(splitPurpose('garlic')).toEqual({ name: 'garlic', purpose: null });
+  });
+
+  it('does not split "for" glued inside a word — only a standalone word counts', () => {
+    expect(splitPurpose('before dinner mints')).toEqual({ name: 'before dinner mints', purpose: null });
+    expect(splitPurpose('comfort food')).toEqual({ name: 'comfort food', purpose: null });
+    expect(splitPurpose('fortune cookies')).toEqual({ name: 'fortune cookies', purpose: null });
+  });
+
+  it('splits at the last "for" when there are two, reading as the more specific purpose', () => {
+    expect(splitPurpose('chicken stock for soup for tonight')).toEqual({
+      name: 'chicken stock for soup',
+      purpose: 'tonight',
+    });
+  });
+
+  it('refuses to empty the name out — "for" right at the start is not a split point', () => {
+    expect(splitPurpose('for margaritas')).toEqual({ name: 'for margaritas', purpose: null });
+  });
+
+  it('does not split when nothing follows "for"', () => {
+    expect(splitPurpose('limes for')).toEqual({ name: 'limes for', purpose: null });
+    expect(splitPurpose('limes for  ')).toEqual({ name: 'limes for', purpose: null });
+  });
+
+  it('is case-insensitive on the connective word', () => {
+    expect(splitPurpose('Limes For Margaritas')).toEqual({ name: 'Limes', purpose: 'Margaritas' });
+  });
+
+  it('trims surrounding whitespace before matching', () => {
+    expect(splitPurpose('  Limes for margaritas  ')).toEqual({ name: 'Limes', purpose: 'margaritas' });
+  });
+
+  it('clamps a very long purpose clause to PREP_MAX_LENGTH', () => {
+    const longPurpose = 'a'.repeat(120);
+    const result = splitPurpose(`salt for ${longPurpose}`);
+    expect(result.name).toBe('salt');
+    expect(result.purpose!.length).toBe(60);
+  });
+
+  it('leaves an empty string untouched', () => {
+    expect(splitPurpose('')).toEqual({ name: '', purpose: null });
   });
 });
 

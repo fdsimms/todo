@@ -234,7 +234,7 @@ describe('ingredients', () => {
 
 describe('addStructuredIngredients', () => {
   const struct = (name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient => ({
-    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, ...overrides,
+    id: `s-${name}`, name, nameKey: name.toLowerCase(), quantity: '', aisle: null, prep: null, purpose: null, ...overrides,
   });
 
   it('merges already-parsed ingredients, reporting how many were new', () => {
@@ -255,7 +255,7 @@ describe('addStructuredIngredients', () => {
 
   it('keeps the existing row on a key collision rather than overwriting it', () => {
     const r = makeRecipe('Ragu', {
-      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null }],
+      ingredients: [{ id: 'i1', name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, prep: null, purpose: null }],
     });
     seed([r]);
 
@@ -380,12 +380,12 @@ describe('remapIngredientKey', () => {
   it('rewrites every recipe that referenced the old key, and only those', () => {
     const ragu = makeRecipe('Ragu', {
       ingredients: [
-        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null },
+        { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '', aisle: null, prep: null, purpose: null },
       ],
     });
     const soup = makeRecipe('Soup', {
       ingredients: [
-        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null },
+        { id: 'i2', name: 'Carrots', nameKey: 'carrots', quantity: '', aisle: null, prep: null, purpose: null },
       ],
     });
     seed([ragu, soup]);

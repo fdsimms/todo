@@ -666,6 +666,13 @@ export interface RecipeIngredient {
   // a separate catalog row from plain "garlic" every time the wording of the
   // prep clause changed. null means the line didn't have one, same as aisle.
   prep: string | null;
+  // Why it's on the list, not what to do to it — "margaritas" from "Limes for
+  // margaritas", "dusting" from "flour for dusting". Split out by
+  // splitPurpose() for the same reason prep is: nameKey is the catalog
+  // bridge, so a purpose clause staying in `name` would mint a separate
+  // catalog row every time the dish it's for changed. null means the line
+  // didn't have one, same as prep/aisle.
+  purpose: string | null;
 }
 
 // A dish you cook, with what it takes to shop for it.

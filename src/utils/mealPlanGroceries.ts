@@ -85,7 +85,9 @@ export function plannedIngredientsForRecipe(recipe: Recipe): PlannedIngredient[]
   return recipe.ingredients.map(ingredient => ({
     name: ingredient.name,
     nameKey: ingredient.nameKey,
-    quantity: [ingredient.quantity, ingredient.prep].filter(Boolean).join(', '),
+    quantity: [ingredient.quantity, ingredient.prep, ingredient.purpose ? `for ${ingredient.purpose}` : null]
+      .filter(Boolean)
+      .join(', '),
     aisle: ingredient.aisle,
     source: recipe.name,
     recipeId: recipe.id,
