@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Alert, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
-import { useSettingsStore } from '../../store/useSettingsStore';
+import { useSettingsStore, DEFAULT_REMINDER_LEAD_OPTIONS } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import {
   getNotificationPermission,
@@ -17,14 +17,20 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsPills, type PillOption } from './SettingsPills';
 import { InlineTimePicker } from './InlineTimePicker';
 import { makeSettingsStyles } from './settingsStyles';
+
+const REMINDER_LEAD_PILLS: PillOption<number | null>[] =
+  DEFAULT_REMINDER_LEAD_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function NotificationSettings() {
   const dailyAgendaEnabled = useSettingsStore(s => s.dailyAgendaEnabled);
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
+  const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
+  const setDefaultReminderLeadMinutes = useSettingsStore(s => s.setDefaultReminderLeadMinutes);
 
   const quietHoursStart = useSettingsStore(s => s.quietHoursStart);
   const quietHoursEnd = useSettingsStore(s => s.quietHoursEnd);
@@ -130,6 +136,7 @@ export function NotificationSettings() {
   };
 
   return (
+    <>
     <SettingsSection
       label="Notifications"
       footer="Reminders and the agenda are delivered by the system, so they need its permission. The agenda counts what's due, carried over from earlier days, and deadlined for that day. Nothing is sent on a day with none of those — an empty summary isn't worth a notification. It's rebuilt each time you open the app, so leaving the app closed for days pauses it rather than sending a stale count."
@@ -277,5 +284,28 @@ export function NotificationSettings() {
         </>
       )}
     </SettingsSection>
+
+    <SettingsSection
+        label="Default reminder"
+        footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot — a reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
+      >
+        <SettingsRow
+          icon="alarm-outline"
+          iconColor={defaultReminderLeadMinutes === null ? undefined : colors.accent}
+          label="Remind me before"
+          hint={defaultReminderLeadMinutes === null
+            ? 'Off — set Remind Me by hand on each task'
+            : `New start times get a reminder ${DEFAULT_REMINDER_LEAD_OPTIONS.find(o => o.value === defaultReminderLeadMinutes)?.label.toLowerCase() ?? ''} early`}
+          tight
+        />
+        <SettingsPills
+          attached
+          options={REMINDER_LEAD_PILLS}
+          selected={defaultReminderLeadMinutes}
+          onSelect={setDefaultReminderLeadMinutes}
+          accessibilityLabelFor={o => `Default reminder lead time ${o.label}`}
+        />
+      </SettingsSection>
+    </>
   );
 }

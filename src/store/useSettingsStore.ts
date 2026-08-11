@@ -111,6 +111,13 @@ interface SettingsStore {
   // install changes until the user picks a window in Settings. See
   // src/utils/retention.ts for what a purge may take.
   completedRetentionDays: RetentionDays;
+  // Pre-fills the Remind Me field when a task is given a specific clock time
+  // (its `windowStart`) — see TaskEditor's `applyDefaultReminderLead`. null =
+  // off, the default, so an existing install gets no reminders it didn't ask
+  // for. Deliberately doesn't engage for a bare due date or a time-of-day
+  // segment (morning/afternoon/evening): neither pins down an actual clock
+  // time, and "30 minutes before the day reset" is not a useful reminder.
+  defaultReminderLeadMinutes: number | null;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
@@ -191,6 +198,7 @@ interface SettingsStore {
   setAutoRemoveExpiredTasks: (on: boolean) => void;
   setAutoArchiveProjectsOnComplete: (on: boolean) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
+  setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
   setRemindersImportEnabled: (on: boolean) => void;
   setRemindersImportListId: (id: string | null) => void;
@@ -259,6 +267,25 @@ const DEFAULT_SETTINGS = {
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 
+/** The Settings row's preset pills for defaultReminderLeadMinutes. */
+export const DEFAULT_REMINDER_LEAD_OPTIONS: { value: number | null; label: string }[] = [
+  { value: null, label: 'Off' },
+  { value: 15, label: '15 min' },
+  { value: 30, label: '30 min' },
+  { value: 60, label: '1 hour' },
+];
+
+/**
+ * Parses the stored settings value. Anything unrecognised reads as off, the
+ * same failure mode as parseRetentionDays: a garbled value must not start
+ * silently attaching reminders to tasks that never asked for one.
+ */
+function parseDefaultReminderLeadMinutes(raw: string | null): number | null {
+  if (!raw) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 /**
  * Reads back a JSON number array written by one of the filter setters,
  * dropping anything outside `max`. These come out of a TEXT column that a
@@ -311,6 +338,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   autoRemoveExpiredTasks: false,
   autoArchiveProjectsOnComplete: false,
   completedRetentionDays: null,
+  defaultReminderLeadMinutes: null,
   hideCategories: false,
   remindersImportEnabled: false,
   remindersImportListId: null,
@@ -363,6 +391,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const autoRemoveExpiredTasks = dbGetSetting('autoRemoveExpiredTasks') === 'true';
     const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
+    const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
@@ -419,7 +448,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         // keep defaults
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
   },
 
   /**
@@ -610,6 +639,13 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setCompletedRetentionDays(days: RetentionDays) {
     dbSetSetting('completedRetentionDays', days === null ? '' : String(days));
     set({ completedRetentionDays: days });
+  },
+
+  // Stored as '' for off, matching completedRetentionDays — an unrecognised
+  // value reads back as off, never as some inherited lead time.
+  setDefaultReminderLeadMinutes(minutes: number | null) {
+    dbSetSetting('defaultReminderLeadMinutes', minutes === null ? '' : String(minutes));
+    set({ defaultReminderLeadMinutes: minutes });
   },
 
   setHideCategories(on: boolean) {
