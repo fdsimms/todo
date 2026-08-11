@@ -12,6 +12,36 @@ say why instead of opening one silently.
 Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
 the user explicitly asks for that. Just open the PR and stop.
 
+## GitHub issue labels
+
+When creating an issue, apply exactly four labels from these fixed sets (verbatim strings — don't
+invent new ones). Setting a label that doesn't exist yet auto-creates it, so there's no separate
+creation step.
+
+1. **Type** (pick one): `bug` (broken vs. intended behavior) · `enhancement` (new feature/capability)
+   · `chore` (refactor, upgrade, tooling, dev-only, tracking/meta issues) · `explore` (open-ended
+   research/spike, not yet committed to building — "Explore", "Think through", "Spike:",
+   "Investigated:", "Decided against:", "Decide whether", or a design question rather than a scoped
+   task)
+2. **Area** (pick one, whichever the issue is primarily about): `area:task-list` (core tasks,
+   categories, tags, projects, templates, chains, stacks, recurrence, notifications, search, editor,
+   navigation, drag/drop, widgets, app lock) · `area:groceries` (grocery list, catalog, aisles,
+   stores/shops, buy-again) · `area:meal-plan` (meal planning calendar/week view, leftovers
+   tracking) · `area:recipes` (recipes, ingredients, recipe import) · `area:app-wide` (settings,
+   theming, AI/Claude integration config, performance, accessibility, platform/build/native-target
+   work, or anything cutting across the areas above)
+3. **Model** — which Claude model is best suited to implement it: `model:haiku` (trivial,
+   mechanical, tightly-scoped — a copy fix, one-file bug) · `model:sonnet` (typical feature work or
+   bug fix, the default for most issues) · `model:opus` (architecturally significant, spans many
+   files/layers, ambiguous requirements, or needs real design tradeoffs)
+4. **Effort** — implementation/reasoning effort: `effort:low` (small, one file or one clear code
+   path) · `effort:medium` (a few files or some design thought — the default) · `effort:high`
+   (spans multiple layers, e.g. db/store/UI, or has real design ambiguity) · `effort:xhigh` (a major
+   feature/initiative)
+
+Judge model and effort together (a `bug` is rarely `xhigh`; a big new sync-engine spike is
+`model:opus` + `effort:xhigh`; a copy/UI tweak is `model:haiku` + `effort:low`).
+
 ## Commands
 
 ```bash
