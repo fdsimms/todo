@@ -2,7 +2,10 @@
  * Pure geometry for dropping the add button into a list — which row it landed
  * on, and what creating something there should mean. Today uses every kind
  * below; Projects, whose list is the same category-sectioned shape minus stacks
- * and pinning, uses `header` and `task`.
+ * and pinning, uses `header` and `task`. Meal plan uses `day` alone — one
+ * whole-band target per day, the same "anywhere in the band" rule `group`
+ * already has, since there's no ordering within a day to split at a midpoint,
+ * just "plan a meal here".
  *
  * Kept out of the component (like reorder.ts and paintSelect.ts) so the
  * hit-testing can be tested without a running gesture. Coordinates are
@@ -36,6 +39,8 @@ export type DropZone =
   | { kind: 'group'; key: string; groupId: string; groupTitle: string; category: string | null }
   /** A row of the pinned run at the top of Today, when anything is pinned. */
   | { kind: 'pinned'; key: string }
+  /** A day section on the meal plan — the whole band means "plan a meal on this day". */
+  | { kind: 'day'; key: string; dayKey: string; dayLabel: string }
   /**
    * A row that can be landed on but has nothing to say about placement — the
    * "Everything else" divider, the Later Today time section. Registered rather
@@ -64,6 +69,8 @@ export type FabDropIntent =
   | { kind: 'insert'; anchorKey: string; before: boolean; category: string | null }
   | { kind: 'joinGroup'; groupId: string; groupTitle: string; category: string | null }
   | { kind: 'pin' }
+  /** Released over a meal-plan day band — plan a meal on `dayKey`. */
+  | { kind: 'day'; dayKey: string; dayLabel: string }
   /**
    * Released back on the corner the button came from — create nothing at all.
    * Distinct from `plain`: that one still opens the sheet, this one is the way
@@ -162,6 +169,8 @@ export function resolveFabDrop(
       return { kind: 'pin' };
     case 'rest':
       return { kind: 'plain' };
+    case 'day':
+      return { kind: 'day', dayKey: zone.dayKey, dayLabel: zone.dayLabel };
     case 'group':
       return {
         kind: 'joinGroup',
@@ -201,6 +210,8 @@ export function targetKey(rects: ZoneRect[], intent: FabDropIntent): string {
       return 'cancel';
     case 'pin':
       return 'pin';
+    case 'day':
+      return `day:${intent.dayKey}`;
     case 'joinGroup':
       return `group:${intent.groupId}`;
     case 'insert': {

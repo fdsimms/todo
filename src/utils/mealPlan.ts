@@ -49,6 +49,22 @@ export function sortMealEntries(entries: readonly MealPlanEntry[]): MealPlanEntr
   );
 }
 
+/**
+ * Which day a plain tap on the meal-plan FAB should target, when the button
+ * wasn't dragged onto a specific day.
+ *
+ * Today is the obvious guess, and it's on screen for exactly as long as it's
+ * useful: the only way it drops out of `days` is paging to a different week,
+ * at which point the user is already looking at that week's first day rather
+ * than at today's, so that's the sane fallback rather than "today" reaching
+ * off-screen into a week that isn't shown.
+ */
+export function defaultPlanningDay(days: readonly Date[], now: Date = new Date()): string | null {
+  if (days.length === 0) return null;
+  const today = days.find(d => isSameDay(d, now));
+  return dayKeyOf(today ?? days[0]);
+}
+
 /** One day's entries, in reading order. */
 export function entriesForDay(
   entries: readonly MealPlanEntry[],

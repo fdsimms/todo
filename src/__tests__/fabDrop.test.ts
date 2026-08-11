@@ -151,6 +151,13 @@ describe('resolveFabDrop', () => {
     expect(resolveFabDrop(zone({ kind: 'pinned', key: 'p-1' }, 0, 40), 20)).toEqual({ kind: 'pin' });
     expect(resolveFabDrop(zone({ kind: 'rest', key: 'rest-header' }, 40, 80), 60)).toEqual({ kind: 'plain' });
   });
+
+  it('names a meal-plan day from anywhere in its band, with no midpoint split', () => {
+    const dayZone = zone({ kind: 'day', key: 'd-thu', dayKey: '2026-08-13', dayLabel: 'Thursday' }, 300, 420);
+    const expected = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday' };
+    expect(resolveFabDrop(dayZone, 305)).toEqual(expected);
+    expect(resolveFabDrop(dayZone, 415)).toEqual(expected);
+  });
 });
 
 describe('targetKey', () => {
@@ -196,6 +203,13 @@ describe('targetKey', () => {
   it('treats every plain drop as the same target, apart from a pin', () => {
     expect(targetKey(RECTS, { kind: 'plain' })).toBe(targetKey(RECTS, { kind: 'plain' }));
     expect(targetKey(RECTS, { kind: 'plain' })).not.toBe(targetKey(RECTS, { kind: 'pin' }));
+  });
+
+  it('separates two different days but not one day sampled twice', () => {
+    const thu = { kind: 'day', dayKey: '2026-08-13', dayLabel: 'Thursday' } as const;
+    const fri = { kind: 'day', dayKey: '2026-08-14', dayLabel: 'Friday' } as const;
+    expect(targetKey(RECTS, thu)).toBe(targetKey(RECTS, { ...thu }));
+    expect(targetKey(RECTS, thu)).not.toBe(targetKey(RECTS, fri));
   });
 
   it('falls back to the anchor when it is not in the snapshot', () => {
