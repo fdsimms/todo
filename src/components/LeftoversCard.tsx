@@ -1,12 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Leftover, LeftoverFreshness } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 import { InlineAction } from './InlineAction';
 import { describeFridge, describeLeftover, freshnessOf, liveLeftovers } from '../utils/leftovers';
+
+/** How many rows the card shows before folding the rest behind "+N more". */
+const COLLAPSED_ROWS = 3;
 
 interface Props {
   /** Every leftover the store holds; the card takes the live ones itself. */
@@ -32,6 +36,13 @@ interface Props {
  * meal plan for everyone who never uses the feature, and unlike a screen with
  * nothing on it, this one has a whole week underneath it that wants the space.
  *
+ * **It never takes more than three rows of the week.** A full fridge is five
+ * or six containers, each a two-line row, which is most of a screen standing
+ * between the header and Monday — and this card is the thing you read *before*
+ * the plan, not instead of it (#1375). The rest fold behind a "+N more" that
+ * expands in place, so nothing is hidden, only deferred. Three is what fits
+ * above the fold alongside a day or two of the week itself.
+ *
  * **History is the one thing that keeps it on screen with an empty fridge**,
  * and only for someone who has actually used the feature inside the last
  * `LEFTOVER_RETENTION_DAYS`. That's a deliberate narrowing of the rule above
@@ -47,9 +58,16 @@ export function LeftoversCard({ leftovers, onPress, onAdd, onHistory }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
+  const [expanded, setExpanded] = useState(false);
+
   const live = useMemo(() => liveLeftovers(leftovers), [leftovers]);
   const hasHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
   if (live.length === 0 && !hasHistory) return null;
+
+  // Sorted by urgency (see sortLeftovers), so the ones that fold away are
+  // always the ones with the most time left — never the one about to go off.
+  const shown = expanded ? live : live.slice(0, COLLAPSED_ROWS);
+  const hidden = live.length - shown.length;
 
   return (
     <View style={styles.wrap}>
@@ -60,7 +78,7 @@ export function LeftoversCard({ leftovers, onPress, onAdd, onHistory }: Props) {
 
       {live.length > 0 && (
       <View style={styles.card}>
-        {live.map((leftover, i) => {
+        {shown.map((leftover, i) => {
           const freshness = freshnessOf(leftover);
           const tint = freshnessColor(freshness, colors);
           return (
@@ -87,6 +105,17 @@ export function LeftoversCard({ leftovers, onPress, onAdd, onHistory }: Props) {
             </TouchableOpacity>
           );
         })}
+        {hidden > 0 && (
+          <TouchableOpacity
+            style={[styles.row, styles.moreRow]}
+            onPress={() => { haptics.tap(); animateLayout(); setExpanded(true); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Show ${hidden} more in the fridge`}
+          >
+            <Text style={styles.moreText}>{`+${hidden} more`}</Text>
+          </TouchableOpacity>
+        )}
       </View>
       )}
 
@@ -150,7 +179,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   card: {
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
+    // radius.md, matching a day's card rather than the larger corner this had:
+    // two card treatments stacked on one screen read as two levels of
+    // importance, and the fridge is not the more important of the two (#1375).
+    borderRadius: radius.md,
     overflow: 'hidden',
   },
   actions: {
@@ -168,6 +200,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowDivided: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.separator,
+  },
+  moreRow: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.separator,
+    paddingVertical: 8,
+  },
+  moreText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   dot: {
     width: 8,

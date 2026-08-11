@@ -639,8 +639,19 @@ export function MealPlanScreen() {
               <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
             </TouchableOpacity>
 
-            {!collapsed && (
-              dayEntries.length > 0 ? (
+            {/*
+              An empty day is its header and the band under it, and nothing
+              else. It used to carry "No meals planned yet" — plain status text
+              since #1092 took the per-day add button away — which cost about
+              22pt a day for a sentence repeated up to seven times down one
+              screen, and on a normal week (three or four dinners planned) that
+              was most of what pushed the weekend below the fold (#1374). The
+              band stays the size it is because it is also the drop target for
+              the add button, and the week-level hint above says the thing the
+              seven copies were each saying badly.
+            */}
+            {!collapsed && dayEntries.length > 0 && (
+              (
                 <View style={styles.card}>
                   {dayEntries.map((entry, idx) => (
                     <React.Fragment key={entry.id}>
@@ -662,11 +673,6 @@ export function MealPlanScreen() {
                     </React.Fragment>
                   ))}
                 </View>
-              ) : (
-                // No per-day add affordance any more (see #1092) — planning a
-                // meal for a specific day happens by dragging the screen's FAB
-                // here; this is plain status text, not a control.
-                <Text style={styles.emptyDayText}>No meals planned yet</Text>
               )
             )}
           </View>
@@ -794,17 +800,6 @@ export function MealPlanScreen() {
         overline={describeWeekRange(days)}
         subtitle={subtitle}
         actions={headerActions}
-        right={
-          selectionMode ? undefined : (
-            <InlineAction
-              label="Add"
-              icon="cart-outline"
-              onPress={() => { haptics.tap(); setAddingToList(true); }}
-              disabled={!hasPlannableEntries}
-              accessibilityLabel="Add this week to the grocery list"
-            />
-          )
-        }
       />
       <GroceriesHubPills active="MealPlan" />
 
@@ -843,18 +838,50 @@ export function MealPlanScreen() {
                   onAdd={() => setLoggingLeftover({})}
                   onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
                 />
-                {canSuggestMeals && (
-                  <InlineAction
-                    label="Suggest meals"
-                    icon="restaurant-outline"
-                    variant="neutral"
-                    onPress={() => {
-                      haptics.tap();
-                      setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
-                    }}
-                    accessibilityLabel="Suggest meals made from what's in your grocery catalog"
-                    style={styles.suggestMeals}
-                  />
+                {/*
+                  The two things you do to a *week* rather than to a meal, in
+                  one row above it. "Add week to list" used to live in the
+                  header's `right` slot — the only use of it in the app — beside
+                  four icon buttons and the longest subtitle in the app, which
+                  is what made that header the most crowded one here (#1373).
+                  It belongs next to "Suggest meals" anyway: same object, same
+                  weight, and neither is a per-meal action.
+                */}
+                {/*
+                  Said once for the week rather than once per day. A brand-new
+                  user's first sight of this screen is otherwise seven bare day
+                  headers, and this is also the only resting place anything
+                  mentions the add button's drag (its own `dragHint` only
+                  appears once a drag is already under way — #1369).
+                */}
+                {entries.length === 0 && (
+                  <Text style={styles.emptyWeekHint}>
+                    Nothing planned this week. Tap + to plan today, or drag it onto a day.
+                  </Text>
+                )}
+                {(hasPlannableEntries || canSuggestMeals) && (
+                  <View style={styles.weekActions}>
+                    {hasPlannableEntries && (
+                      <InlineAction
+                        label="Add week to list"
+                        icon="cart-outline"
+                        onPress={() => { haptics.tap(); setAddingToList(true); }}
+                        accessibilityLabel="Add this week's ingredients to the grocery list"
+                      />
+                    )}
+                    {canSuggestMeals && (
+                      <InlineAction
+                        label="Suggest meals"
+                        icon="restaurant-outline"
+                        variant="neutral"
+                        onPress={() => {
+                          haptics.tap();
+                          setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
+                        }}
+                        accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                      />
+                    )}
+                  </View>
                 )}
               </>
             )
@@ -1137,16 +1164,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
   },
-  // Replaces the old per-day "Add a meal"/"Add" InlineAction (#1092) — plain
-  // status text, not a control, since planning now happens by dragging the
-  // screen's FAB onto a day.
-  emptyDayText: {
+  emptyWeekHint: {
     color: colors.textTertiary,
     fontSize: font.sm,
-    marginTop: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
-  suggestMeals: {
-    alignSelf: 'flex-start',
+  weekActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: spacing.xs,
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
   },
