@@ -45,6 +45,17 @@ interface SettingsStore {
   // dayResetTime, which decides which calendar day a task belongs to.
   activeHoursStart: string; // "HH:MM" (default "08:00")
   activeHoursEnd: string;   // "HH:MM" (default "22:00")
+  // "Don't buzz me between X and Y" for scheduleTaskReminder/scheduleTimerAlarm
+  // (src/utils/notifications.ts). Both null = off, which is the default — an
+  // existing install keeps buzzing exactly as before until the user opts in.
+  // Deliberately its own pair rather than reusing activeHoursStart/activeHoursEnd
+  // above: those are the span daily-target pacing ramps across (see the comment
+  // on them), an unrelated concept that happens to share the "HH:MM" shape —
+  // someone awake at 2am doing something else entirely still doesn't want a
+  // task reminder going off. Set together via setQuietHours so a half-set
+  // window (a start with no end) is unrepresentable.
+  quietHoursStart: string | null; // "HH:MM"
+  quietHoursEnd: string | null;   // "HH:MM"
   themeMode: ThemeMode;
   appFont: AppFont; // typeface for the whole app — see src/theme/fonts.ts
   use24HourTime: boolean; // render clock times as "17:30" rather than "5:30 PM"
@@ -157,6 +168,8 @@ interface SettingsStore {
   setNightStart: (time: string) => void;
   setActiveHoursStart: (time: string) => void;
   setActiveHoursEnd: (time: string) => void;
+  /** Set both at once, or (null, null) to turn quiet hours off. */
+  setQuietHours: (start: string | null, end: string | null) => void;
   setThemeMode: (mode: ThemeMode) => void;
   setAppFont: (fontId: AppFont) => void;
   setDailyAgendaEnabled: (on: boolean) => void;
@@ -274,6 +287,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   nightStart: '21:00',
   activeHoursStart: '08:00',
   activeHoursEnd: '22:00',
+  quietHoursStart: null,
+  quietHoursEnd: null,
   themeMode: 'dark',
   appFont: DEFAULT_APP_FONT,
   use24HourTime: false,
@@ -319,6 +334,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const nightStart = dbGetSetting('nightStart') ?? '21:00';
     const activeHoursStart = dbGetSetting('activeHoursStart') ?? '08:00';
     const activeHoursEnd = dbGetSetting('activeHoursEnd') ?? '22:00';
+    const quietHoursStart = dbGetSetting('quietHoursStart') || null;
+    const quietHoursEnd = dbGetSetting('quietHoursEnd') || null;
     const themeMode = (dbGetSetting('themeMode') as ThemeMode | null) ?? 'dark';
     const storedFont = dbGetSetting('appFont');
     const appFont = isAppFont(storedFont) ? storedFont : DEFAULT_APP_FONT;
@@ -402,7 +419,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         // keep defaults
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
   },
 
   /**
@@ -454,6 +471,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setActiveHoursEnd(time: string) {
     dbSetSetting('activeHoursEnd', time);
     set({ activeHoursEnd: time });
+  },
+
+  setQuietHours(start: string | null, end: string | null) {
+    dbSetSetting('quietHoursStart', start ?? '');
+    dbSetSetting('quietHoursEnd', end ?? '');
+    set({ quietHoursStart: start, quietHoursEnd: end });
   },
 
   setThemeMode(mode: ThemeMode) {

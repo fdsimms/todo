@@ -1,0 +1,4 @@
+{
+  "message": "Added Quiet hours (in Settings > Notifications): set a window and reminders due inside it wait until it ends, while timer alarms inside it are skipped instead. Off by default.",
+  "date": "2026-08-11"
+}
