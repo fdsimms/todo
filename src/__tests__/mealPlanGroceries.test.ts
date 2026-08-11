@@ -139,6 +139,13 @@ describe('collectPlannedIngredients', () => {
     expect(collectPlannedIngredients(entries, recipesById, RANGE)).toEqual([]);
   });
 
+  it('skips an entry already marked cooked', () => {
+    const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' })]);
+    const recipesById = new Map([[ragu.id, ragu]]);
+    const entries = [entry('2026-08-11', ragu.id, { cookedAt: '2026-08-11T18:00:00.000Z' })];
+    expect(collectPlannedIngredients(entries, recipesById, RANGE)).toEqual([]);
+  });
+
   it('carries the ingredient\'s own aisle hint through', () => {
     const ragu = recipe('Ragù', [ing('Basil', { aisle: 'Produce' })]);
     const recipesById = new Map([[ragu.id, ragu]]);

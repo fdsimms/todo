@@ -55,6 +55,11 @@ export interface PlannedIngredient {
  * that lives on the mash. Same weekday-plus-dish format either way, and it's
  * what keeps two components that both call for butter from collapsing into one
  * indistinguishable pair of sources on the row's breakdown.
+ *
+ * An entry already marked cooked (`cookedAt` set) is skipped — that meal has
+ * already been made, so its ingredients were either already bought or are
+ * moot, and suggesting them again reads as the app not knowing what already
+ * happened.
  */
 export function collectPlannedIngredients(
   entries: readonly MealPlanEntry[],
@@ -65,6 +70,7 @@ export function collectPlannedIngredients(
   for (const entry of entries) {
     if (!isKeyInRange(entry.date, range.startKey, range.endKey)) continue;
     if (!entry.recipeId) continue;
+    if (entry.cookedAt) continue;
     const recipe = recipesById.get(entry.recipeId);
     if (!recipe) continue;
     const weekday = format(dayKeyToDate(entry.date), 'EEE');
