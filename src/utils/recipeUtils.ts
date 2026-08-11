@@ -327,7 +327,8 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
   const servings = formatServings(recipe);
   if (servings) parts.push(`serves ${servings}`);
   if (recipe.recipeYield) parts.push(`makes ${recipe.recipeYield}`);
-  if (recipe.estimatedMinutes) parts.push(formatDuration(recipe.estimatedMinutes));
+  const total = totalMinutes(recipe);
+  if (total) parts.push(formatDuration(total));
   const attribution = describeAttribution(recipe);
   if (attribution) parts.push(attribution);
   return parts.join(' · ');
@@ -427,11 +428,19 @@ export function describePantryCoverage(coverage: PantryCoverage): string | null 
  * "by Alison Roman — Nothing Fancy", or whichever of author/source is set.
  * Falls back to the legacy sourceName only when neither new field has ever
  * been given a value — an old recipe nobody has re-edited since #1266.
+ *
+ * A cookbook page number rides along on `source` itself ("Nothing Fancy, p.
+ * 142") rather than getting its own clause — it only ever means anything
+ * alongside the book it's a page *of*, so it can't stand on its own the way
+ * author/source do.
  */
 export function describeAttribution(recipe: Recipe): string | null {
-  if (recipe.author && recipe.source) return `by ${recipe.author} — ${recipe.source}`;
+  const sourceLabel = recipe.source && recipe.sourceType === 'cookbook' && recipe.sourcePage
+    ? `${recipe.source}, p. ${recipe.sourcePage}`
+    : recipe.source;
+  if (recipe.author && sourceLabel) return `by ${recipe.author} — ${sourceLabel}`;
   if (recipe.author) return `by ${recipe.author}`;
-  if (recipe.source) return recipe.source;
+  if (sourceLabel) return sourceLabel;
   return recipe.sourceName || null;
 }
 
@@ -440,9 +449,47 @@ export function cleanRecipeName(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_NAME_MAX_LENGTH).trim();
 }
 
-/** Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer — no attribution. */
-export function cleanRecipeSource(raw: string): string {
-  return raw.trim().replace(/\s+/g, ' ').slice(0, RECIPE_SOURCE_MAX_LENGTH).trim();
+/**
+ * Trims and caps a source byline ("NYT Cooking"). Empty is a valid answer —
+ * no attribution. `maxLength` defaults to a byline's own ceiling; callers
+ * with a shorter field (a page number) pass their own.
+ */
+export function cleanRecipeSource(raw: string, maxLength: number = RECIPE_SOURCE_MAX_LENGTH): string {
+  return raw.trim().replace(/\s+/g, ' ').slice(0, maxLength).trim();
+}
+
+/**
+ * Distinct, alpha-sorted values of a text field across every *other* recipe —
+ * the same "derive suggestions from the data that's actually there" idea as
+ * groceryAisles/grocerySuggest, shared by both Source's and Author's
+ * suggestion chips (RecipeEditor) so retyping "NYT Cooking" or "Alison
+ * Roman" on a fifth recipe is one tap instead of two nearly-identical
+ * `useMemo`s.
+ */
+export function distinctRecipeValues(
+  recipes: readonly Recipe[],
+  excludeId: string | undefined,
+  field: (recipe: Recipe) => string | null
+): string[] {
+  return Array.from(
+    new Set(
+      recipes
+        .filter(r => r.id !== excludeId)
+        .map(r => field(r)?.trim())
+        .filter((s): s is string => !!s)
+    )
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Up to 8 of `values` matching `query` (substring, case-insensitive),
+ * excluding an exact match — what a suggestion chip row filters
+ * `distinctRecipeValues()` down to as the field is typed into.
+ */
+export function filterRecipeSuggestions(values: readonly string[], query: string): string[] {
+  const q = query.trim().toLowerCase();
+  const matches = q ? values.filter(v => v.toLowerCase().includes(q) && v.toLowerCase() !== q) : values;
+  return matches.slice(0, 8);
 }
 
 /**
@@ -514,6 +561,18 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
  * typed estimate is never silently overwritten by a single measurement —
  * exactly the rule applyMeasuredTime uses for a task's estimate/effort.
  */
+/**
+ * Prep + cook, whenever either is set — the number `describeRecipe` shows
+ * next to the ingredient count. Null only when neither field has ever been
+ * given a value; once one has, the other's absence reads as 0 rather than
+ * making the total unknowable, the same rule `describeRecipe`'s `servings`
+ * clause already applies to a servings-less yield.
+ */
+export function totalMinutes(recipe: Pick<Recipe, 'prepMinutes' | 'estimatedMinutes'>): number | null {
+  if (recipe.prepMinutes == null && recipe.estimatedMinutes == null) return null;
+  return (recipe.prepMinutes ?? 0) + (recipe.estimatedMinutes ?? 0);
+}
+
 export function applyMeasuredCookTime(
   minutes: number,
   recipe: Pick<Recipe, 'estimatedMinutes' | 'cookTimeCount' | 'totalCookMinutes'>
@@ -533,6 +592,26 @@ export function applyMeasuredCookTime(
   return { ...patch, estimatedMinutes: rounded };
 }
 
+/** The prep-timer counterpart of `applyMeasuredCookTime` — same shape, same backfill-only-if-unset rule, targeting `prepMinutes` instead of `estimatedMinutes`. */
+export function applyMeasuredPrepTime(
+  minutes: number,
+  recipe: Pick<Recipe, 'prepMinutes' | 'prepTimeCount' | 'totalPrepMinutes'>
+): {
+  lastPrepMinutes: number;
+  prepTimeCount: number;
+  totalPrepMinutes: number;
+  prepMinutes?: number;
+} {
+  const rounded = Math.max(1, Math.round(minutes));
+  const patch = {
+    lastPrepMinutes: rounded,
+    prepTimeCount: recipe.prepTimeCount + 1,
+    totalPrepMinutes: recipe.totalPrepMinutes + rounded,
+  };
+  if (recipe.prepMinutes != null) return patch;
+  return { ...patch, prepMinutes: rounded };
+}
+
 /**
  * The running average of logged cook sessions — `totalCookMinutes /
  * cookTimeCount`, derived at read time rather than stored, same as
@@ -543,6 +622,12 @@ export function applyMeasuredCookTime(
 export function avgCookMinutes(recipe: Pick<Recipe, 'cookTimeCount' | 'totalCookMinutes'>): number | null {
   if (recipe.cookTimeCount <= 0) return null;
   return Math.round(recipe.totalCookMinutes / recipe.cookTimeCount);
+}
+
+/** The prep-timer counterpart of `avgCookMinutes`. */
+export function avgPrepMinutes(recipe: Pick<Recipe, 'prepTimeCount' | 'totalPrepMinutes'>): number | null {
+  if (recipe.prepTimeCount <= 0) return null;
+  return Math.round(recipe.totalPrepMinutes / recipe.prepTimeCount);
 }
 
 /**
@@ -562,6 +647,22 @@ export function describeCookTime(recipe: Recipe): string {
   const avg = avgCookMinutes(recipe);
   if (avg != null && recipe.cookTimeCount > 1) {
     parts.push(`avg ${formatDuration(avg)} over ${recipe.cookTimeCount} cooks`);
+  }
+  return parts.join(' · ');
+}
+
+/** The prep-timer counterpart of `describeCookTime`. */
+export function describePrepTime(recipe: Recipe): string {
+  const parts: string[] = [];
+  if (recipe.prepMinutes) parts.push(`Est. ${formatDuration(recipe.prepMinutes)}`);
+  if (recipe.lastPrepMinutes != null) {
+    parts.push(recipe.prepTimeCount > 1
+      ? `took ${formatDuration(recipe.lastPrepMinutes)} last time`
+      : `took ${formatDuration(recipe.lastPrepMinutes)}`);
+  }
+  const avg = avgPrepMinutes(recipe);
+  if (avg != null && recipe.prepTimeCount > 1) {
+    parts.push(`avg ${formatDuration(avg)} over ${recipe.prepTimeCount} preps`);
   }
   return parts.join(' · ');
 }
