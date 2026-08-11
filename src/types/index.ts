@@ -308,6 +308,26 @@ export interface Task {
   // original. That's intended — "wait for trash day to happen once".
   blockedById: string | null;
 
+  // The MealPlanEntry this task was projected from — set only on a "Cook X"
+  // task the meal plan spawned, null on every task a person typed. See
+  // src/utils/mealTasks.ts for the projection rules.
+  //
+  // **The meal plan is the master and this task is the replica**, which is the
+  // one thing to keep straight. The entry owns the title, the day and the
+  // time-of-day segment, and reconciling rewrites exactly those three on the
+  // task; everything else the user sets on the row (category, notes, priority,
+  // subtasks) is theirs and is never touched. Nothing flows the other way
+  // except cooked-ness — completing this task stamps the entry's cookedAt, and
+  // marking the entry cooked completes this task, each guarded by the other's
+  // idempotence check so the two can't ping-pong.
+  //
+  // Deliberately NOT the inverse of a taskId on the entry: one pointer can't
+  // disagree with itself, and the lookup this direction is a scan of an array
+  // already in memory (see cookTaskFor in useMealPlanStore). Resolve-or-shrug
+  // like every other cross-row pointer here — an entry that has since been
+  // purged leaves this dangling, and a dangling cook task is just a task.
+  mealEntryId: string | null;
+
   // Streaks (recurring tasks only)
   streakCount: number;       // positive = N consecutive completions
   streakDate: string | null; // logical-day ISO string of last completion
@@ -1167,6 +1187,30 @@ export interface MealPlanEntry {
    * backup carrying 0 renders as-written rather than as nothing.
    */
   recipeScale: number;
+  /**
+   * Whether this meal gets a "Cook X" task on Today — `true`/`false` when the
+   * user has said so for this meal, `null` when they haven't and the
+   * `mealCookTasks` setting decides (see wantsCookTask in utils/mealTasks.ts).
+   *
+   * **Three states rather than a boolean, because "no" has to be sayable
+   * separately from "not yet asked".** Deleting the spawned task records
+   * `false` here, and that's the whole reason the field exists: without a
+   * tombstone the next edit to this meal reconciles the task straight back,
+   * and a row the user deleted reappearing is the one outcome that would make
+   * the feature intolerable. Same shape, and the same reasoning, as
+   * grocery `hiddenAisles` — a delete needs somewhere to be remembered when
+   * the thing deleted is derived from something else.
+   *
+   * `null` for every meal planned before this shipped, which reads as "follow
+   * the setting" and is what makes the rollout silent: nothing is backfilled,
+   * so no cook tasks appear for meals already on the calendar — only ones
+   * planned from here on.
+   *
+   * A fact about a cooking, not about the dish, exactly like recipeChoices and
+   * recipeScale above: "I need reminding to make this on Sunday" says nothing
+   * about the recipe, which may well be a component of something else.
+   */
+  cookTask: boolean | null;
 }
 
 /**
