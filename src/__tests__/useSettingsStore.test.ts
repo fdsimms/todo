@@ -530,6 +530,59 @@ describe('setProjectNudgeDismissedAt', () => {
   });
 });
 
+describe('meal plan nudge settings', () => {
+  it('defaults to off, Sunday, 09:00, and never fired', () => {
+    expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(false);
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(0);
+    expect(useSettingsStore.getState().mealPlanNudgeTime).toBe('09:00');
+    expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBeNull();
+  });
+
+  it('stores and persists mealPlanNudgeEnabled', () => {
+    useSettingsStore.getState().setMealPlanNudgeEnabled(true);
+    expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeEnabled', 'true');
+  });
+
+  it('stores and persists mealPlanNudgeWeekday', () => {
+    useSettingsStore.getState().setMealPlanNudgeWeekday(5);
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(5);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeWeekday', '5');
+  });
+
+  it('stores and persists mealPlanNudgeTime', () => {
+    useSettingsStore.getState().setMealPlanNudgeTime('18:30');
+    expect(useSettingsStore.getState().mealPlanNudgeTime).toBe('18:30');
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeTime', '18:30');
+  });
+
+  it('stores and clears mealPlanNudgeLastFiredWeekKey through an empty string', () => {
+    useSettingsStore.getState().setMealPlanNudgeLastFiredWeekKey('2026-08-09');
+    expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBe('2026-08-09');
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeLastFiredWeekKey', '2026-08-09');
+
+    useSettingsStore.getState().setMealPlanNudgeLastFiredWeekKey(null);
+    expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeLastFiredWeekKey', '');
+  });
+
+  it('reads an out-of-range stored weekday back as the default rather than trusting it', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealPlanNudgeWeekday' ? '9' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(0);
+  });
+
+  it('resetToDefaults turns the nudge back off without touching the idempotency key', () => {
+    useSettingsStore.getState().setMealPlanNudgeEnabled(true);
+    useSettingsStore.getState().setMealPlanNudgeLastFiredWeekKey('2026-08-09');
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().mealPlanNudgeEnabled).toBe(false);
+    expect(useSettingsStore.getState().mealPlanNudgeLastFiredWeekKey).toBe('2026-08-09');
+  });
+});
+
 describe('setVacationEnd', () => {
   it('updates vacationEnd independently of vacationMode', () => {
     useSettingsStore.getState().setVacationEnd('2025-09-01T23:59:59.999Z');

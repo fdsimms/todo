@@ -112,6 +112,38 @@ describe('logLeftover', () => {
     expect(dbInsertLeftover).not.toHaveBeenCalled();
   });
 
+  // #1322: the sheet logs one draft per part the user ticked, so a composed
+  // meal leaves several independent containers that happen to share a cooking.
+  it('keeps the parts of one meal apart, each pointing at its own recipe', () => {
+    const storedAt = new Date(2026, 7, 12, 18, 0).toISOString();
+    const whole = useLeftoverStore.getState().logLeftover({
+      title: 'Steak with mashed potatoes', storedAt, keepDays: 3, recipeId: 'r-steak', sourceEntryId: 'e-1',
+    })!;
+    const part = useLeftoverStore.getState().logLeftover({
+      title: 'Mashed potatoes', storedAt, keepDays: 3, recipeId: 'r-mash', sourceEntryId: 'e-1',
+    })!;
+
+    expect(whole.id).not.toBe(part.id);
+    expect([whole.recipeId, part.recipeId]).toEqual(['r-steak', 'r-mash']);
+    // The parent isn't recorded on the part — the cooking it came from is.
+    expect([whole.sourceEntryId, part.sourceEntryId]).toEqual(['e-1', 'e-1']);
+    expect(useLeftoverStore.getState().leftovers).toHaveLength(2);
+  });
+
+  // One clock each, even though they went in together: finishing the mash on
+  // Thursday must leave the steak alone.
+  it('gives each part its own row to finish', () => {
+    const storedAt = new Date(2026, 7, 12, 18, 0).toISOString();
+    const whole = useLeftoverStore.getState().logLeftover({ title: 'Steak', storedAt, sourceEntryId: 'e-1' })!;
+    const part = useLeftoverStore.getState().logLeftover({ title: 'Mash', storedAt, sourceEntryId: 'e-1' })!;
+
+    useLeftoverStore.getState().finishLeftover(part.id, 'eaten');
+
+    const rows = useLeftoverStore.getState().leftovers;
+    expect(rows.find(l => l.id === part.id)!.finishedAt).not.toBeNull();
+    expect(rows.find(l => l.id === whole.id)!.finishedAt).toBeNull();
+  });
+
   it('allows a second container of the same dish — the name is not the identity', () => {
     useLeftoverStore.getState().logLeftover({ title: 'Chilli' });
     const second = useLeftoverStore.getState().logLeftover({ title: 'Chilli' });

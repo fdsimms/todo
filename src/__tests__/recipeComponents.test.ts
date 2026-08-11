@@ -4,6 +4,7 @@ import {
   makeComponent,
   recipeMap,
   resolveComponents,
+  cookedDishes,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
   reachableRecipeIds,
@@ -227,6 +228,61 @@ describe('flattenRecipePrepTasks', () => {
     const steak = recipe('r1', 'Steak', { components: [link('r2', 'Mash')] });
 
     expect(flattenRecipePrepTasks(steak, recipeMap([steak, mash]))).toEqual([]);
+  });
+});
+
+describe('cookedDishes', () => {
+  it('is the meal alone when nothing is composed', () => {
+    const toast = recipe('r1', 'Toast', { ingredients: [ing('Bread')] });
+
+    expect(cookedDishes(toast, recipeMap([toast]))).toEqual([{ recipe: toast, whole: true }]);
+  });
+
+  it('names the meal and each part it cooked, depth-first', () => {
+    const gravy = recipe('r3', 'Gravy');
+    const mash = recipe('r2', 'Mash', { components: [link('r3', 'Gravy')] });
+    const steak = recipe('r1', 'Steak with mash', { components: [link('r2', 'Mash')] });
+
+    const dishes = cookedDishes(steak, recipeMap([steak, mash, gravy]));
+
+    expect(dishes.map(d => d.recipe.name)).toEqual(['Steak with mash', 'Mash', 'Gravy']);
+    expect(dishes.map(d => d.whole)).toEqual([true, false, false]);
+  });
+
+  it('names a shared part once', () => {
+    const stock = recipe('r4', 'Stock');
+    const gravy = recipe('r3', 'Gravy', { components: [link('r4', 'Stock')] });
+    const soup = recipe('r2', 'Soup', { components: [link('r4', 'Stock')] });
+    const feast = recipe('r1', 'Feast', { components: [link('r3', 'Gravy'), link('r2', 'Soup')] });
+
+    expect(cookedDishes(feast, recipeMap([feast, gravy, soup, stock])).map(d => d.recipe.name))
+      .toEqual(['Feast', 'Gravy', 'Stock', 'Soup']);
+  });
+
+  it('leaves out the alternative that was not cooked', () => {
+    const mash = recipe('r2', 'Mash');
+    const roast = recipe('r3', 'Roast potatoes');
+    const mashLink = link('r2', 'Mash', 'Side');
+    const roastLink = link('r3', 'Roast potatoes', 'Side');
+    const steak = recipe('r1', 'Steak', { components: [mashLink, roastLink] });
+    const byId = recipeMap([steak, mash, roast]);
+
+    expect(cookedDishes(steak, byId).map(d => d.recipe.name)).toEqual(['Steak', 'Mash']);
+    expect(cookedDishes(steak, byId, { chosen: [roastLink.id] }).map(d => d.recipe.name))
+      .toEqual(['Steak', 'Roast potatoes']);
+  });
+
+  it('shrugs off a part whose recipe is gone', () => {
+    const steak = recipe('r1', 'Steak', { components: [link('gone', 'Mash')] });
+
+    expect(cookedDishes(steak, recipeMap([steak])).map(d => d.recipe.name)).toEqual(['Steak']);
+  });
+
+  it('terminates on a cycle', () => {
+    const a = recipe('r1', 'A', { components: [link('r2', 'B')] });
+    const b = recipe('r2', 'B', { components: [link('r1', 'A')] });
+
+    expect(cookedDishes(a, recipeMap([a, b])).map(d => d.recipe.name)).toEqual(['A', 'B']);
   });
 });
 

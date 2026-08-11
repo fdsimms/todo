@@ -91,6 +91,11 @@ import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
+import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
+import { dayKeyOf } from '../utils/dateUtils';
 import {
   SpotlightOverlay,
   SpotlightProvider,
@@ -2021,6 +2026,22 @@ export function TodayScreen() {
 
   const today = format(new Date(), 'EEEE, MMMM d');
 
+  // Today's planned meals (#1133) — see TodayMealPlanSection for why this
+  // reads useMealPlanStore passively rather than calling loadRange itself.
+  const todayKey = useMemo(() => dayKeyOf(new Date()), []);
+  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
+  const mealRangeStart = useMealPlanStore(s => s.rangeStart);
+  const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+  const todayMealEntries = useMemo(
+    () => selectTodayMealEntries(mealEntries, mealRangeStart, mealRangeEnd, todayKey),
+    [mealEntries, mealRangeStart, mealRangeEnd, todayKey]
+  );
+  const openMealPlan = useCallback(() => {
+    navigation.navigate('MealPlan' as never);
+  }, [navigation]);
+
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
@@ -2193,6 +2214,14 @@ export function TodayScreen() {
               setPullVisible(true);
             }}
             onDismiss={dismissProjectNudge}
+          />
+        )}
+
+        {viewMode === 'today' && todayMealEntries && todayMealEntries.length > 0 && (
+          <TodayMealPlanSection
+            entries={todayMealEntries}
+            recipesById={recipesById}
+            onOpen={openMealPlan}
           />
         )}
 

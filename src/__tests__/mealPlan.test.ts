@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import {
   cleanMealTitle,
   dayKeyRange,
+  defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
@@ -11,6 +12,8 @@ import {
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   recipeIndex,
+  resolveBulkMoveTargets,
+  selectTodayMealEntries,
   slotLabel,
   slotRank,
   sortMealEntries,
@@ -188,6 +191,58 @@ describe('nextSortOrder', () => {
   });
 });
 
+describe('resolveBulkMoveTargets', () => {
+  it('moves every named entry to the new day, keeping each one\'s own slot', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-05', 'breakfast');
+    const targets = resolveBulkMoveTargets([a, b], [a.id, b.id], { date: '2026-08-07' });
+
+    expect(targets).toEqual([
+      { id: a.id, date: '2026-08-07', slot: 'dinner' },
+      { id: b.id, date: '2026-08-07', slot: 'breakfast' },
+    ]);
+  });
+
+  it('changes only the slot, keeping each entry\'s own day, when no date is given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const b = entry('2026-08-06', 'dinner');
+    const targets = resolveBulkMoveTargets([a, b], [a.id, b.id], { slot: 'lunch' });
+
+    expect(targets).toEqual([
+      { id: a.id, date: '2026-08-05', slot: 'lunch' },
+      { id: b.id, date: '2026-08-06', slot: 'lunch' },
+    ]);
+  });
+
+  it('sets both when both are given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const targets = resolveBulkMoveTargets([a], [a.id], { date: '2026-08-07', slot: 'lunch' });
+    expect(targets).toEqual([{ id: a.id, date: '2026-08-07', slot: 'lunch' }]);
+  });
+
+  it('only touches the named ids', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const untouched = entry('2026-08-05', 'lunch');
+    const targets = resolveBulkMoveTargets([a, untouched], [a.id], { date: '2026-08-07' });
+    expect(targets).toEqual([{ id: a.id, date: '2026-08-07', slot: 'dinner' }]);
+  });
+
+  it('drops an entry that would land exactly where it already is', () => {
+    const a = entry('2026-08-05', 'dinner');
+    const targets = resolveBulkMoveTargets([a], [a.id], { date: '2026-08-05', slot: 'dinner' });
+    expect(targets).toEqual([]);
+  });
+
+  it('is a no-op when neither date nor slot is given', () => {
+    const a = entry('2026-08-05', 'dinner');
+    expect(resolveBulkMoveTargets([a], [a.id], {})).toEqual([]);
+  });
+
+  it('returns nothing for an id it does not hold', () => {
+    expect(resolveBulkMoveTargets([], ['gone'], { date: '2026-08-07' })).toEqual([]);
+  });
+});
+
 describe('cleanMealTitle', () => {
   it('trims and collapses whitespace', () => {
     expect(cleanMealTitle('  Sausage   ragù ')).toBe('Sausage ragù');
@@ -244,6 +299,22 @@ describe('dayKeyRange', () => {
   });
 });
 
+describe('defaultPlanningDay', () => {
+  it('picks today when the week on screen includes it', () => {
+    const days = [new Date(2026, 7, 10), new Date(2026, 7, 11), new Date(2026, 7, 12)];
+    expect(defaultPlanningDay(days, new Date(2026, 7, 11, 9, 30))).toBe('2026-08-11');
+  });
+
+  it('falls back to the first day once paging has moved off the current week', () => {
+    const nextWeek = [new Date(2026, 7, 17), new Date(2026, 7, 18), new Date(2026, 7, 19)];
+    expect(defaultPlanningDay(nextWeek, new Date(2026, 7, 11))).toBe('2026-08-17');
+  });
+
+  it('is null for no days at all', () => {
+    expect(defaultPlanningDay([], new Date(2026, 7, 11))).toBeNull();
+  });
+});
+
 describe('isKeyInRange', () => {
   it('includes both ends', () => {
     expect(isKeyInRange('2026-08-03', '2026-08-03', '2026-08-09')).toBe(true);
@@ -258,6 +329,43 @@ describe('isKeyInRange', () => {
   it('compares by date across a month boundary', () => {
     expect(isKeyInRange('2026-08-01', '2026-07-28', '2026-08-03')).toBe(true);
     expect(isKeyInRange('2026-09-01', '2026-07-28', '2026-08-03')).toBe(false);
+  });
+});
+
+describe('selectTodayMealEntries', () => {
+  const todayKey = '2026-08-11';
+
+  it('is null when nothing has been loaded yet', () => {
+    expect(selectTodayMealEntries([], null, null, todayKey)).toBeNull();
+  });
+
+  it('is null when the loaded window does not cover today', () => {
+    const entries = [entry('2026-08-18', 'dinner')];
+    expect(selectTodayMealEntries(entries, '2026-08-17', '2026-08-23', todayKey)).toBeNull();
+  });
+
+  it('is an empty array when today is loaded but nothing is planned', () => {
+    const entries = [entry('2026-08-10', 'dinner'), entry('2026-08-12', 'dinner')];
+    expect(selectTodayMealEntries(entries, '2026-08-10', '2026-08-16', todayKey)).toEqual([]);
+  });
+
+  it('returns only today\'s entries, ordered by slot', () => {
+    const dinner = entry(todayKey, 'dinner');
+    const breakfast = entry(todayKey, 'breakfast');
+    const lunch = entry(todayKey, 'lunch');
+    const otherDay = entry('2026-08-12', 'breakfast');
+    const entries = [dinner, breakfast, otherDay, lunch];
+    expect(selectTodayMealEntries(entries, '2026-08-10', '2026-08-16', todayKey)).toEqual([
+      breakfast,
+      lunch,
+      dinner,
+    ]);
+  });
+
+  it('includes today when it sits exactly on either edge of the range', () => {
+    const meal = entry(todayKey, 'lunch');
+    expect(selectTodayMealEntries([meal], todayKey, '2026-08-16', todayKey)).toEqual([meal]);
+    expect(selectTodayMealEntries([meal], '2026-08-10', todayKey, todayKey)).toEqual([meal]);
   });
 });
 

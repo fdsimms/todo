@@ -13,22 +13,26 @@ interface Props {
   title: string;
   /** Whether `entry.recipeId` still points at a recipe that exists. */
   hasRecipe: boolean;
-  /**
-   * False for a row that continues the slot above it. Two things on one dinner
-   * is normal here, and captioning both "DINNER" reads as noise rather than as
-   * information — the run header says it once and the second row is visibly
-   * part of it. The spoken label always names the slot regardless.
-   */
-  showSlot: boolean;
   onPress: () => void;
   /**
    * Marks the entry cooked directly from the row, without opening
    * MealEntrySheet — the same shortcut a task row's checkbox gives over its
    * editor. Omitted (and the badge left untappable) once the entry is
    * already cooked, matching MealEntrySheet's own "Mark cooked" action,
-   * which likewise disappears once there's nothing left to mark.
+   * which likewise disappears once there's nothing left to mark. Also
+   * omitted while `selectionMode` is on — see below.
    */
   onMarkCooked?: () => void;
+  /**
+   * Bulk-selection mode (#1110). While on, the leading icon becomes a
+   * checkbox — same swap RecipesScreen's row makes — `onPress` is expected to
+   * toggle selection rather than open MealEntrySheet, and the per-row
+   * "Mark cooked" badge and chevron both disappear: a finger reaching for the
+   * badge mid-selection is reaching to select the row, not to cook one meal
+   * out from under a bulk action.
+   */
+  selectionMode?: boolean;
+  selected?: boolean;
 }
 
 /**
@@ -40,8 +44,19 @@ interface Props {
  * your recipe box and tapping through will open it; this one is already cooked
  * and in the fridge). Thursday is allowed to just say "leftovers"; every
  * planner that treats that as an unfinished row is abandoned on a Wednesday.
+ *
+ * The slot caption renders on every row, including a second dish sharing the
+ * slot above it. It used to be suppressed on a run — "two things on one
+ * dinner is normal here, captioning both DINNER reads as noise" — but the
+ * adjacency alone (two stacked rows, no divider change) didn't read as
+ * "these are grouped" to an actual user; the caption was the only thing
+ * saying so, and losing it read as wrong rather than as decluttering (#1221).
+ * Grouping has to be communicated by something present on the row, not by an
+ * absence a reader is expected to infer.
  */
-export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMarkCooked }: Props) {
+export function MealSlotRow({
+  entry, title, hasRecipe, onPress, onMarkCooked, selectionMode, selected,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const cooked = !!entry.cookedAt;
@@ -49,54 +64,70 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMark
 
   return (
     <TouchableOpacity
-      style={styles.row}
+      style={[styles.row, selectionMode && selected && styles.rowSelected]}
       onPress={onPress}
       activeOpacity={interaction.activeOpacity}
-      accessibilityRole="button"
+      accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+      accessibilityState={selectionMode ? { checked: !!selected } : undefined}
       accessibilityLabel={[slotLabel(entry.slot), title, cooked ? 'cooked' : null].filter(Boolean).join(', ')}
-      accessibilityHint="Double tap to move or remove this meal."
+      accessibilityHint={selectionMode ? 'Double tap to select this meal.' : 'Double tap to move or remove this meal.'}
     >
-      <View
-        style={[
-          styles.icon,
-          { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
-        ]}
-      >
-        <Ionicons
-          name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
-          size={16}
-          color={hasRecipe ? colors.accent : colors.textSecondary}
-        />
-        {/*
-          The badge is the row's own checkbox: an outline circle that fills in
-          on tap, same glyph swap TaskItem's checkbox does. It's a nested
-          TouchableOpacity inside the row's own — RN's responder system
-          resolves the touch to whichever one is under the finger, so tapping
-          here never also opens the sheet. Only interactive while there's an
-          onMarkCooked to call — once cooked, it's the same static badge this
-          row always showed, matching MealEntrySheet dropping its "Mark
-          cooked" action for the same reason.
-        */}
-        {onMarkCooked ? (
-          <TouchableOpacity
-            style={styles.cookedBadgeOutline}
-            onPress={() => { haptics.success(); onMarkCooked(); }}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`Mark ${title} cooked`}
+      {selectionMode ? (
+        // Takes the icon tile's place rather than sitting beside it, same
+        // swap RecipesScreen's row makes — every row shifts by the same
+        // amount, so the title column stays put.
+        <View style={styles.select}>
+          <Ionicons
+            name={selected ? 'checkmark-circle' : 'ellipse-outline'}
+            size={24}
+            color={selected ? colors.accent : colors.textTertiary}
           />
-        ) : cooked && (
-          <View style={styles.cookedBadge}>
-            <Ionicons name="checkmark" size={9} color={colors.onAccent} />
-          </View>
-        )}
-      </View>
+        </View>
+      ) : (
+        <View
+          style={[
+            styles.icon,
+            { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
+          ]}
+        >
+          <Ionicons
+            name={fromFridge ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
+            size={16}
+            color={hasRecipe ? colors.accent : colors.textSecondary}
+          />
+          {/*
+            The badge is the row's own checkbox: an outline circle that fills in
+            on tap, same glyph swap TaskItem's checkbox does. It's a nested
+            TouchableOpacity inside the row's own — RN's responder system
+            resolves the touch to whichever one is under the finger, so tapping
+            here never also opens the sheet. Only interactive while there's an
+            onMarkCooked to call — once cooked, it's the same static badge this
+            row always showed, matching MealEntrySheet dropping its "Mark
+            cooked" action for the same reason.
+          */}
+          {onMarkCooked ? (
+            <TouchableOpacity
+              style={styles.cookedBadgeOutline}
+              onPress={() => { haptics.success(); onMarkCooked(); }}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Mark ${title} cooked`}
+            />
+          ) : cooked && (
+            <View style={styles.cookedBadge}>
+              <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+            </View>
+          )}
+        </View>
+      )}
       <View style={styles.info}>
         <Text style={styles.title} numberOfLines={2}>{title}</Text>
-        {showSlot && <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>}
+        <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+      {!selectionMode && (
+        <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+      )}
     </TouchableOpacity>
   );
 }
@@ -109,10 +140,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
   },
+  rowSelected: {
+    backgroundColor: colors.accent + '1A',
+  },
   icon: {
     width: 32,
     height: 32,
     borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Same footprint as the icon tile it replaces, so entering selection mode
+  // doesn't shift the row's text.
+  select: {
+    width: 32,
+    height: 32,
     alignItems: 'center',
     justifyContent: 'center',
   },

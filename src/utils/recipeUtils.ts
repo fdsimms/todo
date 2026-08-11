@@ -351,11 +351,76 @@ export function countLikelyInPantry(
   now: Date,
   recipesById?: ReadonlyMap<string, Recipe>,
 ): number | null {
+  const coverage = pantryCoverageForRecipe(recipe, items, now, recipesById);
+  return coverage.probablyHave > 0 ? coverage.probablyHave : null;
+}
+
+/**
+ * The richer form of `countLikelyInPantry` (#1103) — a percentage plus enough
+ * of its denominator for a caller to tell "we checked and it's low" apart
+ * from "there's nothing to check against yet", which a bare count can't say.
+ */
+export interface PantryCoverage {
+  /** Ingredient lines counted, after flattening to the resolved defaults — same denominator scoreRecipeAgainstCatalog uses. */
+  total: number;
+  /**
+   * How many of those lines have *any* catalog row, matched or not — the
+   * denominator for whether there's purchase history to judge by at all.
+   * Zero here (with `total` > 0) is what makes `percent` null rather than 0:
+   * a recipe of ingredients nobody has ever bought isn't "0% likely on
+   * hand", it's unjudged.
+   */
+  catalogMatches: number;
+  /** How many lines `classifyPlanned` currently calls "probably have" — grocerySuggest's pantry guess, or an explicit `onHandUntil` assertion. */
+  probablyHave: number;
+  /** `probablyHave / total` as a whole-number percentage. Null when there's nothing to compute it from: no ingredients, or none of them has ever been added to the grocery catalog. */
+  percent: number | null;
+}
+
+/**
+ * The pantry-coverage signal for one recipe — "you probably have ~60% of
+ * this already" — built on the same `plannedIngredientsForRecipe` +
+ * `classifyPlanned` pass `countLikelyInPantry` already reduces to a count,
+ * kept here as a shape a suggestion row can render directly (see
+ * `describePantryCoverage` and `SuggestMealsSheet`).
+ *
+ * `recipesById` folds a composed recipe's components in, same as
+ * `countLikelyInPantry` — a dish that's mostly its parts must not read as
+ * fully unjudged just because its own two lines are.
+ */
+export function pantryCoverageForRecipe(
+  recipe: Recipe,
+  items: readonly GroceryItem[],
+  now: Date,
+  recipesById?: ReadonlyMap<string, Recipe>,
+): PantryCoverage {
   const planned = plannedIngredientsForRecipe(recipe, recipesById);
-  if (planned.length === 0) return null;
+  if (planned.length === 0) return { total: 0, catalogMatches: 0, probablyHave: 0, percent: null };
+
   const classified = classifyPlanned(planned, items, now);
-  const count = classified.filter(row => row.category === 'probablyHave').length;
-  return count > 0 ? count : null;
+  const total = classified.length;
+  const itemKeys = new Set(items.map(i => i.nameKey));
+  const catalogMatches = classified.filter(row => itemKeys.has(row.nameKey)).length;
+  const probablyHave = classified.filter(row => row.category === 'probablyHave').length;
+  const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;
+
+  return { total, catalogMatches, probablyHave, percent };
+}
+
+/**
+ * "~60% likely on hand" / "No purchase history for these yet" — the one line
+ * a suggestion row renders next to a recipe. Null only when there's nothing
+ * to say at all (no ingredients), same as `countLikelyInPantry`'s null.
+ *
+ * The no-catalog-match case is worded as a state, not a number: a bare "0%"
+ * there would read as "you have none of this" when the honest answer is
+ * "we've never seen these ingredients bought, so we can't guess" — the
+ * graceful-degradation case #1103 asks for.
+ */
+export function describePantryCoverage(coverage: PantryCoverage): string | null {
+  if (coverage.total === 0) return null;
+  if (coverage.catalogMatches === 0) return 'No purchase history for these yet';
+  return `~${coverage.percent}% likely on hand`;
 }
 
 /**
@@ -596,6 +661,38 @@ function purchaseRecency(item: GroceryItem, now: Date): number {
 }
 
 /**
+ * How much a "what can I cook" suggestion should be discounted for having
+ * been cooked recently (#1103) — the mirror image of `cookFamiliarity`
+ * above: that one *rewards* a recent cook for the "Cook again" shelf,
+ * because pulling up something you already know you like is the point of
+ * that shelf. This one *penalizes* it, because the point of an empty-night
+ * suggestion is variety — the same dinner every week is exactly what this
+ * feature exists to avoid repeating.
+ *
+ * A two-week half-life (not the 30-day one used elsewhere) so "made this two
+ * nights ago" reads as a real discount instead of a rounding error, while a
+ * favorite from three-plus weeks back is most of the way back to full
+ * strength. Never cooked (or no cook history) applies no discount at all —
+ * `1`, not a bonus — since a made-up recency can't be more novel than
+ * genuinely unknown.
+ *
+ * Bounded to at most a `MAX_RECENCY_DISCOUNT` (50%) cut, deliberately not
+ * closer to 100%: catalog coverage is what answers "can I actually cook
+ * this tonight", and recency is a nudge on top of that answer, not a veto —
+ * a well-stocked recipe must still be able to outrank a poorly-stocked one
+ * cooked a month ago, however many nights it's been.
+ */
+const SUGGESTION_NOVELTY_HALF_LIFE_DAYS = 14;
+const MAX_RECENCY_DISCOUNT = 0.5;
+
+function suggestionNovelty(recipe: Pick<Recipe, 'lastCookedAt'>, now: Date): number {
+  if (!recipe.lastCookedAt) return 1;
+  const days = Math.max(0, (now.getTime() - new Date(recipe.lastCookedAt).getTime()) / DAY_MS);
+  const closeness = 0.5 ** (days / SUGGESTION_NOVELTY_HALF_LIFE_DAYS); // 1 right after cooking, → 0 as it fades
+  return 1 - MAX_RECENCY_DISCOUNT * closeness;
+}
+
+/**
  * How well a recipe fits what's actually in the catalog, for "what can I
  * make tonight" — not what the user has cooked before (that's
  * rankRecipeSuggestions' job), but what they could cook *right now* without
@@ -604,9 +701,15 @@ function purchaseRecency(item: GroceryItem, now: Date): number {
  * bought only nudges the ranking, since an item you bought once six months
  * ago still means you've made this before and know how to get it.
  *
+ * How recently the *recipe itself* was last cooked nudges it the other way
+ * (#1103, `suggestionNovelty`) — a recipe made two nights ago is discounted
+ * so it doesn't crowd out something that hasn't come up in a while, without
+ * that discount ever being able to drop a well-stocked recipe below a
+ * poorly-stocked one just because it's due for a repeat.
+ *
  * Zero for a recipe with no ingredients or nothing in common with the
  * catalog — there is nothing here to recommend it over any other empty
- * night.
+ * night, regardless of how long it's been since it was cooked.
  */
 export function scoreRecipeAgainstCatalog(
   recipe: Recipe,
@@ -637,7 +740,8 @@ export function scoreRecipeAgainstCatalog(
   if (matched === 0) return 0;
   const coverage = matched / ingredients.length;
   const avgRecency = recencySum / matched;
-  return coverage * (0.5 + 0.5 * avgRecency);
+  const catalogFit = coverage * (0.5 + 0.5 * avgRecency);
+  return catalogFit * suggestionNovelty(recipe, now);
 }
 
 /**

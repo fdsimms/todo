@@ -23,6 +23,7 @@ import {
   dbRemoveTagFromAllTasks,
   dbMarkTaskSeen,
   dbTransaction,
+  dbGetMealPlanEntries,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore } from './useCategoryStore';
@@ -36,6 +37,7 @@ import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
 import { dripCandidate, projectPullUpdates } from '../utils/projectPull';
+import { dueMealPlanNudge, mealPlanNudgeSuppressed, hasLiveMealPlanNudgeTask, MEAL_PLAN_NUDGE_LINK_URL } from '../utils/mealPlanNudge';
 import type { TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { reorderSubset } from '../utils/reorder';
@@ -545,6 +547,13 @@ interface TaskStore {
   // dating a member makes the project non-stalled, so a second call in the same
   // session finds nothing, exactly as rolloverQuotas' condition self-clears.
   dripStalledProjects: () => void;
+  /**
+   * The opt-in "plan meals for the week" nudge (#1121) — creates a real Task
+   * reminding the user to plan the coming week's meals, at most once a week
+   * and only when that week has nothing planned yet. See
+   * src/utils/mealPlanNudge.ts for the firing/suppression rules this wraps.
+   */
+  checkMealPlanNudge: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook.
@@ -1989,6 +1998,51 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // through machinery that already exists instead — the newly dated task has
     // an old seenAt and a dueDate of today, so isTaskNew is true and it shows
     // up in the existing NewTasksBanner with a new dot.
+  },
+
+  checkMealPlanNudge() {
+    const settings = useSettingsStore.getState();
+    if (!settings.mealPlanNudgeEnabled) return;
+    // Same reasoning as findProjectStalls' vacation gate: every route out of
+    // this check creates a task unattended, and vacation is a deliberate
+    // "hide work from me" the user set today. Deliberately doesn't record
+    // weekKey when skipped this way, so the same week's trigger fires for
+    // real the first time the app is opened after vacation ends.
+    if (settings.vacationMode) return;
+
+    const due = dueMealPlanNudge(
+      new Date(),
+      settings.weekStartsOn,
+      settings.mealPlanNudgeWeekday,
+      settings.mealPlanNudgeTime,
+      settings.mealPlanNudgeLastFiredWeekKey
+    );
+    if (!due) return;
+
+    // Recorded before the suppression checks below, and unconditionally: a
+    // week that's already handled — planned, or still carrying last week's
+    // untouched nudge — must not be re-diagnosed the same way on every later
+    // launch this week either, so every outcome counts as "handled" for the
+    // idempotency key's purposes.
+    settings.setMealPlanNudgeLastFiredWeekKey(due.weekKey);
+
+    // This is a fresh addTask() every week, not one recurring row that only
+    // spawns its successor on completion (see mealPlanNudge.ts) — so without
+    // this gate, ignoring one nudge would pile up a new one every week
+    // instead of just leaving the same task unread.
+    if (hasLiveMealPlanNudgeTask(get().tasks)) return;
+
+    const plannedEntries = dbGetMealPlanEntries(due.targetWeekStartKey, due.targetWeekEndKey);
+    if (mealPlanNudgeSuppressed(due, plannedEntries)) return;
+
+    get().addTask({
+      title: due.title,
+      dueDate: due.dueDate.toISOString(),
+      linkUrl: MEAL_PLAN_NUDGE_LINK_URL,
+    });
+    // Deliberately no setLastAction, same reasoning as dripStalledProjects:
+    // an unattended background write shouldn't occupy the shake-to-undo slot
+    // for an action nobody saw happen.
   },
 
   skipNextRecurrence(id) {

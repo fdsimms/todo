@@ -11,6 +11,7 @@ import {
   AI_FEATURE_IDS, defaultAiFeatureConfig, isAiModelId,
   type AiFeatureConfig, type AiFeatureConfigMap, type AiFeatureId,
 } from '../utils/aiFeatures';
+import { DEFAULT_MEAL_PLAN_NUDGE_TIME, DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY } from '../utils/mealPlanNudge';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
 
@@ -201,6 +202,20 @@ interface SettingsStore {
   // testing it for existence — so it expires at the day rollover on its own and
   // nothing ever has to clear it (same idiom as TaskGroup.completedAt).
   projectNudgeDismissedAt: string | null;
+  // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
+  // auto-created once a week, off by default so an existing install sees no
+  // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
+  // firing/suppression rules; weekday follows date-fns' Date.getDay()
+  // convention (0 = Sunday).
+  mealPlanNudgeEnabled: boolean;
+  mealPlanNudgeWeekday: number;
+  mealPlanNudgeTime: string; // "HH:MM"
+  // Idempotency state, not a preference — the day-key of the week the nudge
+  // last fired in. Read only by dueMealPlanNudge, which compares it against
+  // the current week rather than testing it for existence, so it "expires"
+  // at the next week boundary on its own (same idiom as
+  // projectNudgeDismissedAt / TaskGroup.completedAt).
+  mealPlanNudgeLastFiredWeekKey: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
   // What a *new* project's nudgeCadenceDays starts at (see DEFAULT_NUDGE_CADENCE_DAYS
   // in src/types/index.ts for why that constant itself stays 0). This is the
@@ -262,6 +277,10 @@ interface SettingsStore {
   setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
+  setMealPlanNudgeEnabled: (on: boolean) => void;
+  setMealPlanNudgeWeekday: (weekday: number) => void;
+  setMealPlanNudgeTime: (time: string) => void;
+  setMealPlanNudgeLastFiredWeekKey: (weekKey: string | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
   resetToDefaults: () => void;
@@ -292,6 +311,9 @@ const DEFAULT_SETTINGS = {
   groceryImportDelete: true,
   remindersImportReview: true,
   defaultProjectNudgeCadenceDays: 0,
+  mealPlanNudgeEnabled: false,
+  mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
+  mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -450,6 +472,10 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
+  mealPlanNudgeEnabled: false,
+  mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
+  mealPlanNudgeTime: DEFAULT_MEAL_PLAN_NUDGE_TIME,
+  mealPlanNudgeLastFiredWeekKey: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
   initialized: false,
 
@@ -516,6 +542,14 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const storedDefaultCadence = Number(dbGetSetting('defaultProjectNudgeCadenceDays'));
     const defaultProjectNudgeCadenceDays =
       Number.isFinite(storedDefaultCadence) && storedDefaultCadence > 0 ? storedDefaultCadence : 0;
+    const mealPlanNudgeEnabled = dbGetSetting('mealPlanNudgeEnabled') === 'true';
+    const storedNudgeWeekday = Number(dbGetSetting('mealPlanNudgeWeekday'));
+    const mealPlanNudgeWeekday =
+      Number.isInteger(storedNudgeWeekday) && storedNudgeWeekday >= 0 && storedNudgeWeekday <= 6
+        ? storedNudgeWeekday
+        : DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY;
+    const mealPlanNudgeTime = dbGetSetting('mealPlanNudgeTime') || DEFAULT_MEAL_PLAN_NUDGE_TIME;
+    const mealPlanNudgeLastFiredWeekKey = dbGetSetting('mealPlanNudgeLastFiredWeekKey') || null;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -548,7 +582,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -814,6 +848,29 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setDefaultProjectNudgeCadenceDays(days: number) {
     dbSetSetting('defaultProjectNudgeCadenceDays', String(days));
     set({ defaultProjectNudgeCadenceDays: days });
+  },
+
+  setMealPlanNudgeEnabled(on: boolean) {
+    dbSetSetting('mealPlanNudgeEnabled', on ? 'true' : 'false');
+    set({ mealPlanNudgeEnabled: on });
+  },
+
+  setMealPlanNudgeWeekday(weekday: number) {
+    dbSetSetting('mealPlanNudgeWeekday', String(weekday));
+    set({ mealPlanNudgeWeekday: weekday });
+  },
+
+  setMealPlanNudgeTime(time: string) {
+    dbSetSetting('mealPlanNudgeTime', time);
+    set({ mealPlanNudgeTime: time });
+  },
+
+  // Stored as '' for "never fired", matching projectNudgeDismissedAt — an
+  // unrecognised or missing row reads back as null, never as some inherited
+  // week.
+  setMealPlanNudgeLastFiredWeekKey(weekKey: string | null) {
+    dbSetSetting('mealPlanNudgeLastFiredWeekKey', weekKey ?? '');
+    set({ mealPlanNudgeLastFiredWeekKey: weekKey });
   },
 
   setNewTaskDefaults(patch: Partial<NewTaskDefaults>) {

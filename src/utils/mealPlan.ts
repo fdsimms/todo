@@ -49,6 +49,22 @@ export function sortMealEntries(entries: readonly MealPlanEntry[]): MealPlanEntr
   );
 }
 
+/**
+ * Which day a plain tap on the meal-plan FAB should target, when the button
+ * wasn't dragged onto a specific day.
+ *
+ * Today is the obvious guess, and it's on screen for exactly as long as it's
+ * useful: the only way it drops out of `days` is paging to a different week,
+ * at which point the user is already looking at that week's first day rather
+ * than at today's, so that's the sane fallback rather than "today" reaching
+ * off-screen into a week that isn't shown.
+ */
+export function defaultPlanningDay(days: readonly Date[], now: Date = new Date()): string | null {
+  if (days.length === 0) return null;
+  const today = days.find(d => isSameDay(d, now));
+  return dayKeyOf(today ?? days[0]);
+}
+
 /** One day's entries, in reading order. */
 export function entriesForDay(
   entries: readonly MealPlanEntry[],
@@ -81,6 +97,46 @@ export function nextSortOrder(
   return entries
     .filter(e => e.date === dayKey && e.slot === slot)
     .reduce((max, e) => Math.max(max, e.sortOrder), 0) + 1;
+}
+
+/** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
+export interface BulkMoveTarget {
+  id: string;
+  date: string;
+  slot: MealSlot;
+}
+
+/**
+ * Resolves the destination of every entry in a bulk move, for
+ * useMealPlanStore.bulkMoveEntries.
+ *
+ * Same per-entry fallback as moveEntry — an omitted `date` or `slot` keeps
+ * that entry's own value, so "move to Thursday" run against a mixed-slot
+ * selection changes only the day. An entry landing exactly where it already
+ * is drops out of the result, the same no-op moveEntry itself already
+ * refuses, rather than round-tripping a write that changes nothing.
+ *
+ * Stops short of assigning sortOrder: two selected entries can resolve to
+ * the same (date, slot) destination (two dinners both moved to Thursday), and
+ * ordering them against each other and against what the destination already
+ * holds needs the live table, which is store, not util, territory.
+ */
+export function resolveBulkMoveTargets(
+  entries: readonly MealPlanEntry[],
+  ids: readonly string[],
+  to: { date?: string; slot?: MealSlot }
+): BulkMoveTarget[] {
+  if (to.date === undefined && to.slot === undefined) return [];
+  const idSet = new Set(ids);
+  const targets: BulkMoveTarget[] = [];
+  for (const entry of entries) {
+    if (!idSet.has(entry.id)) continue;
+    const date = to.date ?? entry.date;
+    const slot = to.slot ?? entry.slot;
+    if (date === entry.date && slot === entry.slot) continue;
+    targets.push({ id: entry.id, date, slot });
+  }
+  return targets;
 }
 
 /**
@@ -136,6 +192,34 @@ export function dayKeyRange(days: readonly Date[]): { startKey: string; endKey: 
 /** Whether a day key falls inside an inclusive range. Keys sort lexically. */
 export function isKeyInRange(key: string, startKey: string, endKey: string): boolean {
   return key >= startKey && key <= endKey;
+}
+
+/**
+ * Today's planned meals, for TodayScreen's inline section (#1133) —
+ * `useMealPlanStore.entries` is range-scoped (see the store's own doc
+ * comment), so a bare filter on `entries` would silently read "nothing
+ * planned" for a today that was simply never loaded, as happens on a cold
+ * app start before the user has ever opened Meal plan this session.
+ *
+ * Returns `null` when today isn't known to be covered by the loaded window —
+ * `rangeStart`/`rangeEnd` null (nothing loaded yet) or today outside them
+ * (the user paged Meal plan to a different week and left it there) — so the
+ * caller can tell "definitely nothing planned" (`[]`) apart from "no idea"
+ * (`null`) and render neither an empty state nor a false one for the latter.
+ * Deliberately never loads the range itself: `entries` is a single shared
+ * window and Today calling loadRange would clobber whatever week
+ * MealPlanScreen currently has on screen the next time it's visited without
+ * remounting (see AppNavigator's `enableScreens(false)` note in CLAUDE.md —
+ * hidden tabs stay mounted, they don't reload on refocus).
+ */
+export function selectTodayMealEntries(
+  entries: readonly MealPlanEntry[],
+  rangeStart: string | null,
+  rangeEnd: string | null,
+  todayKey: string
+): MealPlanEntry[] | null {
+  if (!rangeStart || !rangeEnd || !isKeyInRange(todayKey, rangeStart, rangeEnd)) return null;
+  return entriesForDay(entries, todayKey);
 }
 
 /**

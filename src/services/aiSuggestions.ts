@@ -8,6 +8,10 @@ import {
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
+import {
+  clampIdeaCount, dedupeMealIdeas, MAX_MEAL_IDEAS, MIN_MEAL_IDEAS,
+  type MealIdea, type RawMealIdea,
+} from '../utils/mealIdeas';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 
@@ -425,6 +429,42 @@ function parseExtractedItems(
 }
 
 /**
+ * The shopping-item array schema `extract_recipe` uses, factored out so the
+ * invented-meal draft below (#1063) asks for the same shape and reads it back
+ * through the same `parseExtractedItems` validator. Two prompts, one schema,
+ * one parser — the prompts are what differ, and the shape they have to
+ * produce must not.
+ */
+function groceryItemsSchema(availableAisles: string[], description: string) {
+  return {
+    type: 'array',
+    description,
+    items: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: `What to buy, as it would be labelled in a shop — "garlic", not "3 cloves garlic, minced". Under ${GROCERY_NAME_MAX_LENGTH} characters.`,
+        },
+        quantity: {
+          type: 'string',
+          description: 'The recipe\'s own amount, as written, with the prep dropped — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
+        },
+        aisle: {
+          type: 'string',
+          description: `Where to find it. Must be exactly one of: ${availableAisles.join(', ')}.`,
+        },
+        component: {
+          type: 'string',
+          description: 'The recipe\'s own label for the part this ingredient belongs to, e.g. "For the cake" or "For the frosting" — only when the source actually splits its ingredients that way. Empty string otherwise.',
+        },
+      },
+      required: ['name', 'quantity', 'aisle'],
+    },
+  };
+}
+
+/**
  * The four the Messages API accepts. `recipePhoto.ts` always re-encodes to JPEG,
  * so in practice only the first one is ever produced — the union exists so a
  * caller that already holds a PNG doesn't have to launder it through one.
@@ -550,32 +590,10 @@ export async function extractRecipe(
             type: 'integer',
             description: 'Total prep/cook time in minutes, if stated. 0 if not stated.',
           },
-          items: {
-            type: 'array',
-            description: 'The things a shopper needs to buy for this recipe.',
-            items: {
-              type: 'object',
-              properties: {
-                name: {
-                  type: 'string',
-                  description: `What to buy, as it would be labelled in a shop — "garlic", not "3 cloves garlic, minced". Under ${GROCERY_NAME_MAX_LENGTH} characters.`,
-                },
-                quantity: {
-                  type: 'string',
-                  description: 'The recipe\'s own amount, as written, with the prep dropped — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
-                },
-                aisle: {
-                  type: 'string',
-                  description: `Where to find it. Must be exactly one of: ${availableAisles.join(', ')}.`,
-                },
-                component: {
-                  type: 'string',
-                  description: 'The recipe\'s own label for the part this ingredient belongs to, e.g. "For the cake" or "For the frosting" — only when the source actually splits its ingredients that way. Empty string otherwise.',
-                },
-              },
-              required: ['name', 'quantity', 'aisle'],
-            },
-          },
+          items: groceryItemsSchema(
+            availableAisles,
+            'The things a shopper needs to buy for this recipe.',
+          ),
         },
         required: ['name', 'items'],
       },
@@ -621,4 +639,155 @@ export async function suggestRecipeGroceries(
 ): Promise<RecipeGroceryItem[]> {
   const extracted = await extractRecipe(source, availableAisles);
   return extracted.ingredients;
+}
+
+// ─── Meal ideas from nothing (#1063) ────────────────────────────────────────
+
+/** Free-text nudge ("something quick", "no pork") — a sentence, not an essay. */
+const MAX_MEAL_HINT_CHARS = 200;
+/** Planned/recent dinners named in the prompt. A fortnight of context, not a year of it. */
+const MAX_MEAL_CONTEXT_TITLES = 20;
+
+/**
+ * Invents meal ideas for the empty nights of a week.
+ *
+ * The one thing this does that nothing else in the app does: it makes up a
+ * dish the user doesn't own. `suggestRecipesForEmptyNight` (offline, no key,
+ * always available) ranks recipes they already have against what's in their
+ * grocery catalog and invents nothing — this is the other half, and it's why
+ * the two are kept apart all the way down: ideas from here may only ever be
+ * shown *after* that ranking, never instead of it (`mergeMealSuggestions`).
+ *
+ * Bounds and the case-insensitive dedupe are `suggestTemplateItems`' — asked
+ * for in the schema and enforced on the way back by `dedupeMealIdeas`, which
+ * also drops anything colliding with a title the caller already knows about.
+ */
+export async function suggestMealIdeas(
+  plannedTitles: string[],
+  recentTitles: string[],
+  slotsToFill: number,
+  hints?: string,
+): Promise<MealIdea[]> {
+  const { apiKey, model } = requireFeature('mealIdeas');
+
+  const planned = plannedTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
+  const recent = recentTitles.map(t => t.trim()).filter(Boolean).slice(0, MAX_MEAL_CONTEXT_TITLES);
+  const nudge = (hints ?? '').trim().slice(0, MAX_MEAL_HINT_CHARS);
+  const wanted = clampIdeaCount(slotsToFill);
+
+  const plannedPart = planned.length > 0
+    ? `Already planned for this week — do NOT repeat or rephrase any of these:\n${planned.map(t => `- ${t}`).join('\n')}`
+    : 'Nothing is planned for this week yet.';
+  const recentPart = recent.length > 0
+    ? `Cooked in the last few weeks — avoid these too, but they are a fair guide to the kind of cooking that gets done here:\n${recent.map(t => `- ${t}`).join('\n')}`
+    : 'There is no recent cooking history to go on, so keep the ideas broad and unfussy.';
+
+  const data = await callAnthropic({
+    max_tokens: 800,
+    tools: [{
+      name: 'suggest_meals',
+      description: 'Return a list of meal ideas to fill the empty nights of a week',
+      input_schema: {
+        type: 'object',
+        properties: {
+          meals: {
+            type: 'array',
+            description: `Between ${MIN_MEAL_IDEAS} and ${MAX_MEAL_IDEAS} meal ideas. Aim for ${wanted}.`,
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `The name of one dish, the way someone would say it at the table — "Lemon chicken traybake", not "Chicken" and not "Italian night". Under ${RECIPE_NAME_MAX_LENGTH} characters.`,
+                },
+                blurb: {
+                  type: 'string',
+                  description: 'One short line saying what it actually is, so someone who has never made it can tell whether they want it. No marketing language.',
+                },
+              },
+              required: ['title', 'blurb'],
+            },
+          },
+        },
+        required: ['meals'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_meals' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Suggest ${wanted} dinners for a home cook filling in the empty nights of their week.`,
+        'Each one must be a specific, cookable dish a home cook could shop for and make on a weeknight — not a cuisine, not a category, not a theme. Favour everyday cooking over restaurant cooking, and vary the ideas across the set rather than offering the same dish three ways.',
+        plannedPart,
+        recentPart,
+        nudge ? `What they asked for: ${nudge}` : '',
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { meals?: RawMealIdea[] } | undefined;
+  if (!input?.meals) throw new Error('No suggestions returned');
+
+  return dedupeMealIdeas(input.meals, [...planned, ...recent]);
+}
+
+/**
+ * Drafts the shopping list for a meal that has no recipe — "leftovers" or a
+ * just-invented idea turned into something you can actually buy for.
+ *
+ * Deliberately the same tool shape, the same aisle clamp and the same
+ * `parseExtractedItems` validator as `extractRecipe` (see
+ * `groceryItemsSchema`): the difference between reading a recipe and
+ * inventing one belongs in the prompt, not in a second output format for the
+ * same kind of answer. That's what lets an accepted idea go straight into
+ * `addStructuredIngredients` alongside an imported one.
+ */
+export async function suggestMealIngredients(
+  mealName: string,
+  availableAisles: string[],
+  servings: number | null,
+): Promise<RecipeGroceryItem[]> {
+  const { apiKey, model } = requireFeature('mealIdeas');
+
+  const name = mealName.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
+  // Nothing in, no network call — same guard extractRecipe makes on an empty
+  // paste.
+  if (!name) return [];
+  const serves = servings && servings > 0 ? Math.min(99, Math.round(servings)) : 4;
+
+  const data = await callAnthropic({
+    max_tokens: 1500,
+    tools: [{
+      name: 'draft_ingredients',
+      description: 'Draft the shopping list for a meal that has no written recipe',
+      input_schema: {
+        type: 'object',
+        properties: {
+          items: groceryItemsSchema(
+            availableAisles,
+            'The things a shopper needs to buy to cook this meal.',
+          ),
+        },
+        required: ['items'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'draft_ingredients' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Write the shopping list for a home-cooked meal called "${name}". There is no written recipe — draft what a cook would need to buy to make a straightforward home version of it.`,
+        `Quantities should feed ${serves}. Give the amount in the quantity field, and name each item the way a shop would label it, not the way the dish prepares it — "garlic" rather than "3 cloves garlic, minced". Abbreviate tablespoon/teaspoon as "tbsp"/"tsp".`,
+        'Cover what the dish genuinely needs and stop there: the everyday version rather than an elaborate one, no optional garnishes, and skip water. Include salt, pepper and cooking oil only when the dish actually turns on them.',
+        `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
+        'If the name is too vague to shop for at all, return an empty list rather than guessing at a dish.',
+      ].join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { items?: unknown } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+
+  return parseExtractedItems(input.items, availableAisles);
 }

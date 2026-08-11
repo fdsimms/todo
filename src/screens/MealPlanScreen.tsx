@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -20,17 +20,31 @@ import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
+import { CalendarPicker } from '../components/CalendarPicker';
+import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
+import { ListBulkBar } from '../components/ListBulkBar';
+import { useRowSelection } from '../hooks/useRowSelection';
+import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
+import {
+  FabDropZone,
+  FabDropZoneProvider,
+  useFabIntentChannel,
+  useFabIntentSelector,
+  type FabDropZonesHandle,
+  type FabIntentChannel,
+} from '../components/FabDropZones';
+import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { LeftoversCard } from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
-import { isLiveLeftover } from '../utils/leftovers';
+import { isLiveLeftover, leftoverPartsFor } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
@@ -39,17 +53,22 @@ import {
   prepTaskDraftsForMeal,
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
+  pantryCoverageForRecipe,
+  type PantryCoverage,
   type PrepTaskDraft,
 } from '../utils/recipeUtils';
+import { recentlyCookedTitles } from '../utils/mealIdeas';
 import {
   applyChoice,
   recipeChoiceGroups,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
+  recipeMap,
   type FlatPrepTask,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
+  defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
@@ -57,6 +76,83 @@ import {
   recipeIndex,
   titleForEntry,
 } from '../utils/mealPlan';
+
+/**
+ * Tints a day section while the add-button drag is aimed at it — the same
+ * "arm on the way in, ease out on the way off" treatment `GroupDropTarget`
+ * gives a stack, but flush against this screen's own card rather than traced
+ * off `TaskGroupTray`'s margins, since a day section carries no tray of its
+ * own to match.
+ */
+function DayDropHighlight({ active, children }: { active: boolean; children: React.ReactNode }) {
+  const colors = useColors();
+  const progress = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(progress, {
+      toValue: active ? 1 : 0,
+      duration: active ? animation.duration.fast : animation.duration.normal,
+      useNativeDriver: true,
+    }).start();
+  }, [active, progress]);
+
+  return (
+    <View style={dropHighlightStyles.wrap}>
+      {children}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          dropHighlightStyles.highlight,
+          { borderColor: colors.accent, backgroundColor: colors.accentSubtle, opacity: progress },
+        ]}
+      />
+    </View>
+  );
+}
+
+// Static — colors are applied inline above, since this wraps a section that
+// isn't itself theme-dependent in shape.
+const dropHighlightStyles = StyleSheet.create({
+  wrap: { position: 'relative' },
+  highlight: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: radius.md,
+    borderWidth: border.md,
+  },
+});
+
+// A day section, lit up while the add button is being dragged over it. Reads
+// the drag intent through the channel (not screen state) for the same reason
+// TodayScreen's GroupDropTargetRow does — the target changes several times a
+// second while the finger moves, and re-rendering the whole day list on every
+// sample is what that channel exists to avoid.
+function DayDropTargetRow({
+  channel,
+  dayKey,
+  children,
+}: {
+  channel: FabIntentChannel;
+  dayKey: string;
+  children: React.ReactNode;
+}) {
+  const aimed = useFabIntentSelector(channel, intent => intent?.kind === 'day' && intent.dayKey === dayKey);
+  return <DayDropHighlight active={aimed}>{children}</DayDropHighlight>;
+}
+
+// The add button, naming what a release right now would do.
+function AddMealFabWithDropLabel({
+  channel,
+  ...props
+}: {
+  channel: FabIntentChannel;
+} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
+  const label = useFabIntentSelector(channel, intent => {
+    if (intent?.kind === 'cancel') return 'Cancel';
+    if (intent?.kind !== 'day') return null;
+    return `Plan a meal on ${intent.dayLabel}`;
+  });
+  return <Fab {...props} dragLabel={label} />;
+}
 
 /**
  * The week plan.
@@ -67,10 +163,14 @@ import {
  * carries content. Content under a day already has a settled treatment in this
  * app and it's vertical.
  *
- * **No drag in this increment.** Moving a meal is a row action opening a
- * compact 7-day chip row (see MealEntrySheet); cross-section drag has needed
- * bespoke math twice here and the one built for Today's category headers never
- * lined up with the finger and was deleted along with its helpers.
+ * **No drag *between* days in this increment.** Moving a planned meal is a row
+ * action opening a compact 7-day chip row (see MealEntrySheet); cross-section
+ * drag has needed bespoke math twice here and the one built for Today's
+ * category headers never lined up with the finger and was deleted along with
+ * its helpers. Dragging the add button *onto* a day to plan a new meal there
+ * is a different gesture — the same one Projects/Templates/Grocery already
+ * use to place a new row — and doesn't reopen that question: it never
+ * reorders anything, it only names which day's `planningDay` opens.
  *
  * The store is loaded a week at a time rather than wholesale, and that matters
  * more here than it looks: `enableScreens(false)` makes `freezeOnBlur` inert
@@ -85,6 +185,9 @@ export function MealPlanScreen() {
   const navigation = useNavigation<any>();
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  // #1063's gate. Without a key the suggestion sheet is exactly the offline
+  // one it has always been — the ranking below is deliberately ungated.
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
 
@@ -100,6 +203,10 @@ export function MealPlanScreen() {
   const markEntryCooked = useMealPlanStore(s => s.markCooked);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
+  const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
+  const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
+  const bulkReplaceItem = useMealPlanStore(s => s.bulkReplaceItem);
+  const bulkSetCooked = useMealPlanStore(s => s.bulkSetCooked);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
@@ -128,6 +235,31 @@ export function MealPlanScreen() {
   // away is just less to scroll past, not a decision worth persisting.
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
 
+  // ——— Bulk selection (#1110) ————————————————————————————————————————
+  //
+  // Plain useRowSelection, the same as RecipesScreen/TemplatesScreen use for
+  // their non-task rows — no recurrence-aware delete flow to borrow from
+  // useTaskSelection (a meal plan entry never repeats; recurrence lives on
+  // Task, not MealPlanEntry), and no PaintSelectionProvider: painting exists
+  // to save taps down one long column of checkboxes, and this list is the
+  // opposite shape — a handful of entries a piece, broken into seven
+  // collapsible day sections rather than one flat scroll. A drag through a
+  // collapsed day's header, or across the gap between two day cards, has no
+  // obvious answer for what it should paint, so the tap-per-row toggle every
+  // other non-task list already settled on is the one used here too.
+  const {
+    selectionMode,
+    selectedIds,
+    enterSelectionMode,
+    toggleSelection,
+    exitSelection,
+    selectAll,
+    deselectAll,
+  } = useRowSelection();
+  const [bulkBarHeight, setBulkBarHeight] = useState(0);
+  const [bulkMoveVisible, setBulkMoveVisible] = useState(false);
+  const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
+
   const toggleDayCollapse = (key: string) => {
     haptics.tap();
     animateLayout();
@@ -136,6 +268,70 @@ export function MealPlanScreen() {
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  };
+
+  // ——— Dragging the add button onto a day ————————————————————————————
+  //
+  // Same gesture as Projects'/Templates'/Grocery's add-button drag, over a
+  // much flatter shape than any of theirs: seven day bands, no ordering
+  // within one, no category grouping. Each day is a `day` zone (fabDrop.ts)
+  // and a drop anywhere in its band means "plan a meal on this day" — there's
+  // no midpoint to split, the same "whole band" rule a stack row already gets.
+  const dropZonesRef = useRef<FabDropZonesHandle>(null);
+  const [fabDragging, setFabDragging] = useState(false);
+  const fabIntentChannel = useFabIntentChannel();
+  // Lets the drag autoscroll the day list once the finger reaches either end —
+  // FlatList doesn't expose the DragScroller contract itself, so it's read off
+  // a plain scroll listener the same way ReorderableList's own does.
+  const scrollControl = useRef<DragScroller | null>(null);
+  const flatListRef = useRef<FlatList<Date>>(null);
+  const scrollOffsetRef = useRef(0);
+  const viewportHeightRef = useRef(0);
+  const contentHeightRef = useRef(0);
+  useEffect(() => {
+    scrollControl.current = {
+      getOffset: () => scrollOffsetRef.current,
+      getMaxOffset: () => Math.max(0, contentHeightRef.current - viewportHeightRef.current),
+      scrollToOffset: (y: number) => {
+        scrollOffsetRef.current = y;
+        flatListRef.current?.scrollToOffset({ offset: y, animated: false });
+      },
+    };
+  }, []);
+
+  const openPlanningForDrop = (intent: FabDropIntent) => {
+    // Dropped back on the button: the drag is the whole of what happened.
+    if (intent.kind === 'cancel') {
+      haptics.tap();
+      return;
+    }
+    const dayKey = intent.kind === 'day' ? intent.dayKey : defaultPlanningDay(days);
+    if (dayKey) setPlanningDay(dayKey);
+  };
+
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragging(true);
+      dropZonesRef.current?.begin();
+    },
+    onMove: (pageY, home) => dropZonesRef.current?.moveTo(pageY, home),
+    onEnd: (pageY, home) => {
+      setFabDragging(false);
+      // end()/cancel() publish a null intent themselves, which is what clears
+      // the button's drag label.
+      openPlanningForDrop(dropZonesRef.current?.end(pageY, home) ?? { kind: 'plain' });
+    },
+    onCancel: () => {
+      setFabDragging(false);
+      dropZonesRef.current?.cancel();
+    },
+  };
+
+  // A plain tap carries no drop target, so it needs its own sane guess —
+  // today when the week on screen has it, otherwise the first day shown.
+  const openPlanningForTap = () => {
+    const dayKey = defaultPlanningDay(days);
+    if (dayKey) setPlanningDay(dayKey);
   };
 
   // The recipe whose ingredients we're offering to re-add after mark-cooked —
@@ -160,8 +356,13 @@ export function MealPlanScreen() {
 
   const onThisWeek = isSameWeek(anchor, new Date(), { weekStartsOn });
 
+  // A selection is scoped to the week on screen — the store's bulk methods
+  // would still reach an off-screen id fine, but the bar's counts and
+  // "Select All" wouldn't, so paging away closes the selection rather than
+  // carrying stale ids into a week that doesn't render them.
   const page = (delta: number) => {
     haptics.tap();
+    if (selectionMode) exitSelection();
     setAnchor(a => addWeeks(a, delta));
   };
 
@@ -277,6 +478,74 @@ export function MealPlanScreen() {
     setCookedRecipeForList({ recipe, choices: entry.recipeChoices });
   };
 
+  // ——— Bulk selection actions (#1110) ——————————————————————————————————
+
+  const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
+
+  // "Cooked"/"Uncooked" flips direction based on the selection itself, same
+  // as Recipes' bulk Favorite/Unfavorite and the task bar's Pin/Unpin — a
+  // selection that's already all cooked has nothing left to mark.
+  const allSelectedCooked = useMemo(() => {
+    if (selectedIds.size === 0) return false;
+    return selectedIdList.every(id => entries.find(e => e.id === id)?.cookedAt);
+  }, [selectedIds, selectedIdList, entries]);
+
+  const handleBulkMarkCooked = () => {
+    const cooked = !allSelectedCooked;
+    if (cooked) {
+      // Bumps each distinct recipe's cookCount once, mirroring the single-row
+      // markCooked flow above — but only for entries newly transitioning to
+      // cooked, and never in the other direction: cookCount only ever counts
+      // up (see bulkSetCooked's doc comment).
+      const newlyCooked = selectedIdList
+        .map(id => entries.find(e => e.id === id))
+        .filter((e): e is MealPlanEntry => !!e && !e.cookedAt);
+      const recipeIds = new Set(
+        newlyCooked.map(e => e.recipeId).filter((id): id is string => !!id)
+      );
+      recipeIds.forEach(markRecipeCooked);
+    }
+    bulkSetCooked(selectedIdList, cooked);
+    haptics.success();
+    exitSelection();
+  };
+
+  const handleBulkMove = (date: Date) => {
+    animateLayout();
+    bulkMoveEntries(selectedIdList, { date: dayKeyOf(date) });
+    setBulkMoveVisible(false);
+    exitSelection();
+  };
+
+  const handleBulkReplace = (replacement: MealReplacement) => {
+    bulkReplaceItem(selectedIdList, replacement);
+    setBulkReplaceVisible(false);
+    haptics.success();
+    exitSelection();
+  };
+
+  const handleBulkDelete = () => {
+    const count = selectedIdList.length;
+    const plural = count === 1 ? 'meal' : 'meals';
+    haptics.warning();
+    Alert.alert(
+      `Remove ${count} ${plural}?`,
+      `You're about to take ${count} ${plural} off the plan. This can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            animateLayout();
+            bulkDeleteEntries(selectedIdList);
+            exitSelection();
+          },
+        },
+      ],
+    );
+  };
+
   /**
    * Opens the log sheet prefilled from a planned meal — the entry point the
    * leftovers tracker is mostly reached through, since a container in the
@@ -285,13 +554,21 @@ export function MealPlanScreen() {
    * Deliberately an action on the entry rather than something mark-cooked does
    * by itself: not every meal leaves any, and a sheet that opened uninvited
    * after every cooking would be a second modal chasing the ingredient one.
+   *
+   * The parts are read under the entry's *own* choices, so a night the roast
+   * potatoes won never offers to log leftover mash — the mash was never made.
+   * An uncomposed meal yields a single part, which the sheet renders exactly as
+   * it always did.
    */
   const logLeftoversFor = (entry: MealPlanEntry) => {
     setSelectedId(null);
+    const title = titleForEntry(entry, recipesById);
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     setLoggingLeftover({
-      title: titleForEntry(entry, recipesById),
+      title,
       recipeId: entry.recipeId,
       sourceEntryId: entry.id,
+      parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices }),
     });
   };
 
@@ -316,70 +593,75 @@ export function MealPlanScreen() {
     const dayEntries = entriesForDay(entries, key);
     const today = isToday(day);
     const collapsed = collapsedDays.has(key);
+    const weekdayName = format(day, 'EEEE');
     const dayLabel = format(day, 'EEEE d MMMM');
+    // Whole-band target: any drop inside this day's zone means "plan a meal
+    // here", so there's no anchor/before split to carry, unlike a task row.
+    const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
 
     return (
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.dayHeader}
-          onPress={() => toggleDayCollapse(key)}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="button"
-          accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
-          accessibilityState={{ expanded: !collapsed }}
-        >
-          <View style={styles.dayHeaderLeft}>
-            <Text style={[styles.dayName, today && styles.dayNameToday]}>
-              {format(day, 'EEEE')}
-            </Text>
-            {collapsed && dayEntries.length > 0 && (
-              <Text style={styles.dayCount}>({dayEntries.length})</Text>
-            )}
-            <Ionicons
-              name={collapsed ? 'chevron-forward' : 'chevron-down'}
-              size={13}
-              color={colors.textTertiary}
-            />
-          </View>
-          <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
-        </TouchableOpacity>
-
-        {!collapsed && (
-          <>
-            {dayEntries.length > 0 && (
-              <View style={styles.card}>
-                {dayEntries.map((entry, idx) => (
-                  <React.Fragment key={entry.id}>
-                    {idx > 0 && <View style={styles.sep} />}
-                    <MealSlotRow
-                      entry={entry}
-                      title={titleForEntry(entry, recipesById)}
-                      hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                      // The rows are already sorted by slot, so "the slot changed"
-                      // is the run header — captioning both halves of a two-dish
-                      // dinner "DINNER" says it twice.
-                      showSlot={idx === 0 || dayEntries[idx - 1].slot !== entry.slot}
-                      onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
-                      onMarkCooked={entry.cookedAt ? undefined : () => markCooked(entry)}
-                    />
-                  </React.Fragment>
-                ))}
+      <FabDropZone zone={zone}>
+        <DayDropTargetRow channel={fabIntentChannel} dayKey={key}>
+          <View style={styles.section}>
+            <TouchableOpacity
+              style={styles.dayHeader}
+              onPress={() => toggleDayCollapse(key)}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
+              accessibilityState={{ expanded: !collapsed }}
+            >
+              <View style={styles.dayHeaderLeft}>
+                <Text style={[styles.dayName, today && styles.dayNameToday]}>
+                  {weekdayName}
+                </Text>
+                {collapsed && dayEntries.length > 0 && (
+                  <Text style={styles.dayCount}>({dayEntries.length})</Text>
+                )}
+                <Ionicons
+                  name={collapsed ? 'chevron-forward' : 'chevron-down'}
+                  size={13}
+                  color={colors.textTertiary}
+                />
               </View>
-            )}
+              <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+            </TouchableOpacity>
 
-            <InlineAction
-              label={dayEntries.length > 0 ? 'Add' : 'Add a meal'}
-              icon="add"
-              variant={dayEntries.length > 0 ? 'neutral' : 'accent'}
-              onPress={() => { haptics.tap(); setPlanningDay(key); }}
-              accessibilityLabel={`Plan a meal for ${dayLabel}`}
-              style={styles.add}
-            />
-          </>
-        )}
-      </View>
+            {!collapsed && (
+              dayEntries.length > 0 ? (
+                <View style={styles.card}>
+                  {dayEntries.map((entry, idx) => (
+                    <React.Fragment key={entry.id}>
+                      {idx > 0 && <View style={styles.sep} />}
+                      <MealSlotRow
+                        entry={entry}
+                        title={titleForEntry(entry, recipesById)}
+                        hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                        onPress={() => {
+                          if (selectionMode) toggleSelection(entry.id);
+                          else { haptics.tap(); setSelectedId(entry.id); }
+                        }}
+                        onMarkCooked={
+                          selectionMode || entry.cookedAt ? undefined : () => markCooked(entry)
+                        }
+                        selectionMode={selectionMode}
+                        selected={selectedIds.has(entry.id)}
+                      />
+                    </React.Fragment>
+                  ))}
+                </View>
+              ) : (
+                // No per-day add affordance any more (see #1092) — planning a
+                // meal for a specific day happens by dragging the screen's FAB
+                // here; this is plain status text, not a control.
+                <Text style={styles.emptyDayText}>No meals planned yet</Text>
+              )
+            )}
+          </View>
+        </DayDropTargetRow>
+      </FabDropZone>
     );
-  }, [entries, recipesById, styles, collapsedDays, colors]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -409,6 +691,31 @@ export function MealPlanScreen() {
     [entries.length, recipes, groceryItems]
   );
 
+  // The visible half of #1103's pantry signal — computed only for the
+  // recipes actually on the suggestions shelf, same "just the visible list"
+  // scoping RecipesScreen's pantryCounts uses, not the whole library.
+  const suggestionPantryCoverage = useMemo(() => {
+    const byId = recipeMap(recipes);
+    const map = new Map<string, PantryCoverage>();
+    for (const recipe of emptyWeekSuggestions) {
+      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId));
+    }
+    return map;
+  }, [emptyWeekSuggestions, recipes, groceryItems]);
+
+  // The shelf still opens on an empty week the offline ranking can't fill, so
+  // long as there's a key for the generation half to use (#1063) — that empty
+  // week is exactly the case AI ideas exist for. With no key the condition is
+  // unchanged: nothing to rank, no button.
+  const canSuggestMeals = emptyWeekSuggestions.length > 0
+    || (!!anthropicApiKey && entries.length === 0);
+
+  // Context for the AI half of that sheet (#1063), so an invented idea isn't
+  // something already on the week or something cooked last Tuesday. Both are
+  // cheap and only read when the sheet is open.
+  const plannedMealTitles = useMemo(() => entries.map(e => e.title).filter(Boolean), [entries]);
+  const recentMealTitles = useMemo(() => recentlyCookedTitles(recipes, new Date()), [recipes]);
+
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
     const entry = planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
@@ -417,12 +724,6 @@ export function MealPlanScreen() {
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
     const actions: ScreenHeaderAction[] = [
-      {
-        icon: 'cart-outline',
-        onPress: () => { haptics.tap(); setAddingToList(true); },
-        disabled: !hasPlannableEntries,
-        accessibilityLabel: 'Add this week to the grocery list',
-      },
       { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
       { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
     ];
@@ -431,12 +732,18 @@ export function MealPlanScreen() {
     if (!onThisWeek) {
       actions.push({
         icon: 'today-outline',
-        onPress: () => { haptics.tap(); setAnchor(new Date()); },
+        onPress: () => { haptics.tap(); if (selectionMode) exitSelection(); setAnchor(new Date()); },
         accessibilityLabel: 'Back to this week',
       });
     }
+    actions.push({
+      icon: 'checkmark-circle-outline',
+      onPress: () => (selectionMode ? exitSelection() : enterSelectionMode()),
+      active: selectionMode,
+      accessibilityLabel: selectionMode ? 'Done selecting' : 'Select meals',
+    });
     return actions;
-  }, [onThisWeek, hasPlannableEntries]);
+  }, [onThisWeek, selectionMode]);
 
   const addedStamp = range ? addedToListAt[range.startKey] : undefined;
   const subtitle = [
@@ -451,37 +758,149 @@ export function MealPlanScreen() {
         overline={describeWeekRange(days)}
         subtitle={subtitle}
         actions={headerActions}
+        right={
+          selectionMode ? undefined : (
+            <InlineAction
+              label="Add"
+              icon="cart-outline"
+              onPress={() => { haptics.tap(); setAddingToList(true); }}
+              disabled={!hasPlannableEntries}
+              accessibilityLabel="Add this week to the grocery list"
+            />
+          )
+        }
       />
       <GroceriesHubPills active="MealPlan" />
 
-      <FlatList
-        data={days}
-        keyExtractor={d => dayKeyOf(d)}
-        renderItem={renderDay}
-        contentContainerStyle={styles.list}
-        ListHeaderComponent={
-          <>
-            {/* Above the week rather than beside it: the fridge is what should
-                be eaten before anything new is planned, and it renders nothing
-                at all when empty (see LeftoversCard). */}
-            <LeftoversCard
-              leftovers={leftovers}
-              onPress={l => setEditingLeftoverId(l.id)}
-              onAdd={() => setLoggingLeftover({})}
+      <FabDropZoneProvider
+        ref={dropZonesRef}
+        onIntentChange={fabIntentChannel.publish}
+        scroller={scrollControl}
+      >
+        <FlatList
+          ref={flatListRef}
+          data={days}
+          keyExtractor={d => dayKeyOf(d)}
+          renderItem={renderDay}
+          contentContainerStyle={styles.list}
+          // The user can't scroll during an add-button drag (the button's
+          // responder has the touch); the drag scrolls it instead, through the
+          // control wired up above.
+          scrollEnabled={!fabDragging}
+          onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
+          scrollEventThrottle={16}
+          onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
+          onContentSizeChange={(_w, h) => { contentHeightRef.current = h; }}
+          // Hidden while selecting: both are shortcuts off the week (into the
+          // leftover sheet, into the suggestion sheet) and opening one out
+          // from under an in-progress selection would lose it — same restraint
+          // RecipesScreen's own list header takes with its "Cook again" shelf.
+          ListHeaderComponent={
+            selectionMode ? null : (
+              <>
+                {/* Above the week rather than beside it: the fridge is what should
+                    be eaten before anything new is planned, and it renders nothing
+                    at all when empty (see LeftoversCard). */}
+                <LeftoversCard
+                  leftovers={leftovers}
+                  onPress={l => setEditingLeftoverId(l.id)}
+                  onAdd={() => setLoggingLeftover({})}
+                />
+                {canSuggestMeals && (
+                  <InlineAction
+                    label="Suggest meals"
+                    icon="restaurant-outline"
+                    variant="neutral"
+                    onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
+                    accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                    style={styles.suggestMeals}
+                  />
+                )}
+              </>
+            )
+          }
+          ListFooterComponent={
+            <View
+              style={{
+                height: selectionMode
+                  ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm
+                  : tabBarHeight + FAB_SIZE + spacing.xl,
+              }}
             />
-            {emptyWeekSuggestions.length > 0 && (
-              <InlineAction
-                label="Suggest meals"
-                icon="restaurant-outline"
-                variant="neutral"
-                onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
-                accessibilityLabel="Suggest meals made from what's in your grocery catalog"
-                style={styles.suggestMeals}
-              />
-            )}
-          </>
-        }
-        ListFooterComponent={<View style={{ height: tabBarHeight + spacing.xl }} />}
+          }
+        />
+      </FabDropZoneProvider>
+
+      {/*
+        Hidden rather than merely disabled while selecting (#1110) — same
+        move RecipesScreen makes for its own add button. It settles the
+        selection-vs-drag conflict CLAUDE.md calls out for this change: with
+        no FAB mounted there's no drag responder to arm, so a selection can't
+        leave the drag armed and a drag can't be started out from under an
+        in-progress selection. The bulk bar takes the button's floating spot
+        instead, and planning a new meal isn't something you're doing
+        mid-selection anyway — same restraint the "Add" header button and the
+        leftovers/suggestions shelf above take.
+      */}
+      {!selectionMode && (
+        <AddMealFabWithDropLabel
+          channel={fabIntentChannel}
+          onPress={openPlanningForTap}
+          accessibilityLabel="Plan a meal"
+          bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag onto a day to plan a meal there, or back to the button to cancel"
+        />
+      )}
+
+      {selectionMode && (
+        <ListBulkBar
+          selectedCount={selectedIds.size}
+          totalCount={entries.length}
+          actions={[
+            {
+              key: 'move',
+              icon: 'calendar-outline',
+              label: 'Move',
+              onPress: () => { haptics.tap(); setBulkMoveVisible(true); },
+            },
+            {
+              key: 'replace',
+              icon: 'swap-horizontal-outline',
+              label: 'Replace',
+              onPress: () => { haptics.tap(); setBulkReplaceVisible(true); },
+            },
+            {
+              key: 'cooked',
+              icon: allSelectedCooked ? 'close-circle-outline' : 'checkmark-circle-outline',
+              label: allSelectedCooked ? 'Uncook' : 'Cooked',
+              onPress: handleBulkMarkCooked,
+            },
+            { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
+          ]}
+          onSelectAll={() => selectAll(entries.map(e => e.id))}
+          onDeselectAll={deselectAll}
+          onCancel={exitSelection}
+          bottomInset={tabBarHeight}
+          onHeightChange={setBulkBarHeight}
+        />
+      )}
+
+      <CalendarPicker
+        visible={bulkMoveVisible}
+        value={null}
+        mode="date"
+        title={`Move ${selectedIds.size} meal${selectedIds.size === 1 ? '' : 's'}`}
+        nlEnabled
+        onConfirm={handleBulkMove}
+        onCancel={() => setBulkMoveVisible(false)}
+      />
+
+      <MealReplaceItemSheet
+        visible={bulkReplaceVisible}
+        count={selectedIds.size}
+        onReplace={handleBulkReplace}
+        onClose={() => setBulkReplaceVisible(false)}
       />
 
       <RecipePickerSheet
@@ -557,7 +976,12 @@ export function MealPlanScreen() {
       <SuggestMealsSheet
         visible={suggestingMeals}
         recipes={emptyWeekSuggestions}
+        pantryByRecipeId={suggestionPantryCoverage}
         weekDays={days}
+        aiIdeasEnabled={!!anthropicApiKey}
+        plannedTitles={plannedMealTitles}
+        recentTitles={recentMealTitles}
+        slotsToFill={days.length}
         onPlan={planSuggestion}
         onClose={() => setSuggestingMeals(false)}
       />
@@ -583,16 +1007,19 @@ export function MealPlanScreen() {
         visible={editingLeftover !== null || loggingLeftover !== null}
         leftover={editingLeftover}
         seed={loggingLeftover ?? undefined}
-        // The seed's own `title` is deliberately not spread back in — it was
-        // only ever the sheet's starting text, and by the time this fires the
-        // user may have typed over it.
-        onLog={(title, storedAt, keepDays) => logLeftover({
-          title,
+        // The seed's own `title`/`recipeId` are deliberately not spread back in
+        // — they were only ever the sheet's starting point, and by the time
+        // this fires the user may have typed over the name or ticked the mash
+        // instead of the meal. `sourceEntryId` is the one thing the sheet
+        // can't have changed: every container here came out of that cooking,
+        // whichever part of it it is.
+        onLog={(picks, storedAt, keepDays) => picks.forEach(pick => logLeftover({
+          title: pick.title,
           storedAt,
           keepDays,
-          recipeId: loggingLeftover?.recipeId ?? null,
+          recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
-        })}
+        }))}
         onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
         onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
         onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
@@ -658,8 +1085,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
   },
-  add: {
-    alignSelf: 'flex-start',
+  // Replaces the old per-day "Add a meal"/"Add" InlineAction (#1092) — plain
+  // status text, not a control, since planning now happens by dragging the
+  // screen's FAB onto a day.
+  emptyDayText: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
     marginTop: spacing.xs,
   },
   suggestMeals: {

@@ -16,11 +16,14 @@ import {
   keepUntilKeyFor,
   leftoverPurgeCutoff,
   liveLeftovers,
+  leftoverPartsFor,
   mealTitleForLeftover,
   needsAttention,
   sortLeftovers,
+  WHOLE_PART_KEY,
 } from '../utils/leftovers';
-import type { Leftover } from '../types';
+import { recipeMap } from '../utils/recipeComponents';
+import type { Leftover, Recipe, RecipeComponent } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
 
 // leftovers reaches dateUtils for dayKeyOf, which reaches the settings store for
@@ -50,6 +53,45 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     createdAt: new Date(2026, 7, 13, 9, 0, 0).toISOString(),
     ...overrides,
   };
+}
+
+/** Just enough of a Recipe for the component walk leftoverPartsFor takes. */
+function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
+  return {
+    id,
+    name,
+    nameKey: name.toLowerCase(),
+    notes: '',
+    sourceUrl: null,
+    sourceName: null,
+    author: null,
+    source: null,
+    servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    mealType: null,
+    ingredients: [],
+    components: [],
+    prepTasks: [],
+    favorite: false,
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    imagePath: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
+    cookCount: 0,
+    lastCookedAt: null,
+    ...overrides,
+  };
+}
+
+function componentLink(recipeId: string, name: string, choiceGroup: string | null = null): RecipeComponent {
+  seq += 1;
+  return { id: `link-${seq}`, recipeId, name, choiceGroup };
 }
 
 /** A container put away `daysAgo` days ago and kept for `keepDays` from then. */
@@ -316,5 +358,62 @@ describe('mealTitleForLeftover', () => {
 describe('leftoverPurgeCutoff', () => {
   it('is an instant, matching what finishedAt holds', () => {
     expect(leftoverPurgeCutoff(NOW, 60)).toBe(new Date(2026, 5, 14, 15, 0, 0).toISOString());
+  });
+});
+
+describe('leftoverPartsFor', () => {
+  it('is one part for a meal with no recipe behind it', () => {
+    expect(leftoverPartsFor('Takeaway curry', null, recipeMap([]))).toEqual([
+      { key: WHOLE_PART_KEY, title: 'Takeaway curry', recipeId: null, whole: true },
+    ]);
+  });
+
+  it('is one part for a recipe with no components', () => {
+    const chilli = makeRecipe('r1', 'Chilli');
+
+    expect(leftoverPartsFor('Chilli', chilli, recipeMap([chilli]))).toEqual([
+      { key: WHOLE_PART_KEY, title: 'Chilli', recipeId: 'r1', whole: true },
+    ]);
+  });
+
+  it('offers the dish and each of its parts, named after their own recipes', () => {
+    const mash = makeRecipe('r2', 'Mashed potatoes');
+    const steak = makeRecipe('r1', 'Steak with mashed potatoes', {
+      components: [componentLink('r2', 'Mashed potatoes')],
+    });
+
+    expect(leftoverPartsFor('Steak with mashed potatoes', steak, recipeMap([steak, mash]))).toEqual([
+      { key: WHOLE_PART_KEY, title: 'Steak with mashed potatoes', recipeId: 'r1', whole: true },
+      { key: 'r2', title: 'Mashed potatoes', recipeId: 'r2', whole: false },
+    ]);
+  });
+
+  it('calls the whole thing what the meal was called, not what the recipe is', () => {
+    const mash = makeRecipe('r2', 'Mashed potatoes');
+    const steak = makeRecipe('r1', 'Steak with mashed potatoes', {
+      components: [componentLink('r2', 'Mashed potatoes')],
+    });
+
+    expect(leftoverPartsFor('Steak night  ', steak, recipeMap([steak, mash]))[0].title)
+      .toBe('Steak night');
+  });
+
+  it('falls back to the recipe name when the meal carries no title', () => {
+    const chilli = makeRecipe('r1', 'Chilli');
+
+    expect(leftoverPartsFor('   ', chilli, recipeMap([chilli]))[0].title).toBe('Chilli');
+  });
+
+  it('offers only the side that was actually cooked', () => {
+    const mash = makeRecipe('r2', 'Mash');
+    const roast = makeRecipe('r3', 'Roast potatoes');
+    const mashLink = componentLink('r2', 'Mash', 'Side');
+    const roastLink = componentLink('r3', 'Roast potatoes', 'Side');
+    const steak = makeRecipe('r1', 'Steak', { components: [mashLink, roastLink] });
+    const byId = recipeMap([steak, mash, roast]);
+
+    expect(leftoverPartsFor('Steak', steak, byId).map(p => p.title)).toEqual(['Steak', 'Mash']);
+    expect(leftoverPartsFor('Steak', steak, byId, { chosen: [roastLink.id] }).map(p => p.title))
+      .toEqual(['Steak', 'Roast potatoes']);
   });
 });

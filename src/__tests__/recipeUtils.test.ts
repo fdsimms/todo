@@ -23,6 +23,8 @@ import {
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
   countLikelyInPantry,
+  pantryCoverageForRecipe,
+  describePantryCoverage,
   formatServingsRange,
 } from '../utils/recipeUtils';
 import type { GroceryItem, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
@@ -916,6 +918,77 @@ describe('scoreRecipeAgainstCatalog', () => {
     expect(scoreRecipeAgainstCatalog(steak, items, now, byId))
       .toBeLessThan(scoreRecipeAgainstCatalog(steak, items, now));
   });
+
+  // #1103 — recency of last cook nudges the score.
+  describe('recency of last cook', () => {
+    const items = [item('Onions', { nameKey: 'onions' })];
+
+    it('scores a never-cooked recipe above the same recipe cooked today', () => {
+      const neverCooked = recipe('Never', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+      const cookedToday = recipe('Today', {
+        ingredients: [ing('Onions', { nameKey: 'onions' })],
+        cookCount: 5,
+        lastCookedAt: now.toISOString(),
+      });
+      expect(scoreRecipeAgainstCatalog(neverCooked, items, now))
+        .toBeGreaterThan(scoreRecipeAgainstCatalog(cookedToday, items, now));
+    });
+
+    it('recovers toward the never-cooked score as the last cook fades into the past', () => {
+      const cookedToday = recipe('Today', {
+        ingredients: [ing('Onions', { nameKey: 'onions' })],
+        lastCookedAt: now.toISOString(),
+      });
+      const cookedLongAgo = recipe('Long ago', {
+        ingredients: [ing('Onions', { nameKey: 'onions' })],
+        lastCookedAt: new Date(now.getTime() - 120 * 86_400_000).toISOString(),
+      });
+      const neverCooked = recipe('Never', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+
+      const scoreToday = scoreRecipeAgainstCatalog(cookedToday, items, now);
+      const scoreLongAgo = scoreRecipeAgainstCatalog(cookedLongAgo, items, now);
+      const scoreNever = scoreRecipeAgainstCatalog(neverCooked, items, now);
+
+      expect(scoreLongAgo).toBeGreaterThan(scoreToday);
+      // Never asymptotes past "never cooked" — a cook 120 days ago still
+      // reads as a hair less novel than one that's never happened at all.
+      expect(scoreLongAgo).toBeLessThan(scoreNever);
+      expect(scoreLongAgo).toBeCloseTo(scoreNever, 2);
+    });
+
+    it('never discounts a recipe by more than half, however recently it was cooked', () => {
+      const cookedThisMinute = recipe('Just now', {
+        ingredients: [ing('Onions', { nameKey: 'onions' })],
+        lastCookedAt: now.toISOString(),
+      });
+      const bare = scoreRecipeAgainstCatalog(
+        recipe('Bare', { ingredients: [ing('Onions', { nameKey: 'onions' })] }),
+        items,
+        now
+      );
+      expect(scoreRecipeAgainstCatalog(cookedThisMinute, items, now)).toBeGreaterThanOrEqual(bare * 0.5 - 1e-9);
+    });
+
+    it('never lets recency alone beat a well-stocked recipe over a poorly-stocked one cooked long ago', () => {
+      const wellStocked = recipe('Well stocked', {
+        ingredients: [ing('Onions', { nameKey: 'onions' }), ing('Garlic', { nameKey: 'garlic' })],
+        lastCookedAt: now.toISOString(), // cooked minutes ago — takes the full discount
+      });
+      const poorlyStocked = recipe('Poorly stocked', {
+        ingredients: [
+          ing('Onions', { nameKey: 'onions' }),
+          ing('Saffron', { nameKey: 'saffron' }),
+          ing('Truffle', { nameKey: 'truffle' }),
+          ing('Vanilla', { nameKey: 'vanilla' }),
+          ing('Cardamom', { nameKey: 'cardamom' }),
+        ],
+        lastCookedAt: new Date(now.getTime() - 200 * 86_400_000).toISOString(), // essentially undiscounted
+      });
+      const stockedItems = [item('Onions', { nameKey: 'onions' }), item('Garlic', { nameKey: 'garlic' })];
+      expect(scoreRecipeAgainstCatalog(wellStocked, stockedItems, now))
+        .toBeGreaterThan(scoreRecipeAgainstCatalog(poorlyStocked, stockedItems, now));
+    });
+  });
 });
 
 describe('countLikelyInPantry', () => {
@@ -967,6 +1040,80 @@ describe('countLikelyInPantry', () => {
   });
 });
 
+// #1103 — the percentage form of countLikelyInPantry, plus enough of its
+// denominator to tell "checked, and it's low" apart from "nothing to check".
+describe('pantryCoverageForRecipe', () => {
+  const now = new Date('2026-08-11T12:00:00.000Z');
+  function daysAgo(n: number): string {
+    return new Date(now.getTime() - n * 86_400_000).toISOString();
+  }
+
+  it('is all-zero with a null percent for a recipe with no ingredients', () => {
+    expect(pantryCoverageForRecipe(recipe('Toast', { ingredients: [] }), [], now))
+      .toEqual({ total: 0, catalogMatches: 0, probablyHave: 0, percent: null });
+  });
+
+  it('has a null percent when nothing in the recipe has ever been added to the catalog', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    expect(pantryCoverageForRecipe(r, [], now)).toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, percent: null });
+  });
+
+  it('is a real 0%, not null, when the catalog knows the ingredient but has no purchase history for it', () => {
+    // In the catalog (so catalogMatches counts it) but never bought — no
+    // cadence to trust, so it can't read as probably-have.
+    const saffron = item('Saffron', { nameKey: 'saffron', purchaseCount: 0 });
+    const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    expect(pantryCoverageForRecipe(r, [saffron], now)).toEqual({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 });
+  });
+
+  it('computes a percentage over the whole recipe, not just the catalog matches', () => {
+    // Milk: bought every ~30 days, last one 10 days ago — reads as probably-have.
+    const milk = item('Milk', { nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) });
+    const r = recipe('Breakfast', {
+      ingredients: [
+        ing('Milk', { nameKey: 'milk' }),
+        ing('Eggs', { nameKey: 'eggs' }), // no catalog row
+        ing('Bread', { nameKey: 'bread' }), // no catalog row
+        ing('Butter', { nameKey: 'butter' }), // no catalog row
+      ],
+    });
+    const coverage = pantryCoverageForRecipe(r, [milk], now);
+    expect(coverage).toEqual({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 });
+  });
+
+  it('folds a composed recipe\'s components in, given the library', () => {
+    const milk = item('Milk', { nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10) });
+    const mash = recipe('Mash', { ingredients: [ing('Milk', { nameKey: 'milk' })] });
+    const steak = recipe('Steak dinner', {
+      ingredients: [ing('Steak', { nameKey: 'steak' })],
+      components: [component(mash.id, 'Mash')],
+    });
+
+    // Standing alone, the parent doesn't even see the mash's milk.
+    expect(pantryCoverageForRecipe(steak, [milk], now))
+      .toEqual({ total: 1, catalogMatches: 0, probablyHave: 0, percent: null });
+
+    expect(pantryCoverageForRecipe(steak, [milk], now, new Map([[steak.id, steak], [mash.id, mash]])))
+      .toEqual({ total: 2, catalogMatches: 1, probablyHave: 1, percent: 50 });
+  });
+});
+
+describe('describePantryCoverage', () => {
+  it('is null for a recipe with no ingredients', () => {
+    expect(describePantryCoverage({ total: 0, catalogMatches: 0, probablyHave: 0, percent: null })).toBeNull();
+  });
+
+  it('names the degraded state rather than showing 0% when there\'s no catalog history at all', () => {
+    expect(describePantryCoverage({ total: 3, catalogMatches: 0, probablyHave: 0, percent: null }))
+      .toBe('No purchase history for these yet');
+  });
+
+  it('renders the real percentage, including a real 0%, once there is history to judge from', () => {
+    expect(describePantryCoverage({ total: 4, catalogMatches: 1, probablyHave: 1, percent: 25 })).toBe('~25% likely on hand');
+    expect(describePantryCoverage({ total: 1, catalogMatches: 1, probablyHave: 0, percent: 0 })).toBe('~0% likely on hand');
+  });
+});
+
 describe('suggestRecipesForEmptyNight', () => {
   const now = new Date(2026, 7, 12);
 
@@ -990,6 +1137,18 @@ describe('suggestRecipesForEmptyNight', () => {
       recipe(name, { ingredients: [ing('Onions', { nameKey: 'onions' })] })
     );
     expect(suggestRecipesForEmptyNight(recipes, items, now, 2)).toHaveLength(2);
+  });
+
+  it('ranks a recipe cooked last night below the same-coverage one that has never been cooked (#1103)', () => {
+    const items = [item('Onions', { nameKey: 'onions' })];
+    const cookedLastNight = recipe('Cooked last night', {
+      ingredients: [ing('Onions', { nameKey: 'onions' })],
+      cookCount: 3,
+      lastCookedAt: new Date(now.getTime() - 86_400_000).toISOString(),
+    });
+    const neverCooked = recipe('Never cooked', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
+    expect(suggestRecipesForEmptyNight([cookedLastNight, neverCooked], items, now).map(r => r.name))
+      .toEqual(['Never cooked', 'Cooked last night']);
   });
 });
 

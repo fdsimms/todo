@@ -72,6 +72,7 @@ function AppRoot() {
   const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
   const sweepOvershootQuotas = useTaskStore(s => s.sweepOvershootQuotas);
   const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
+  const checkMealPlanNudge = useTaskStore(s => s.checkMealPlanNudge);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
   const purgeOldLeftovers = useLeftoverStore(s => s.purgeOldLeftovers);
@@ -113,6 +114,11 @@ function AppRoot() {
       // spawn members and so change what a project counts as scheduled; and
       // after initSettings, since "quiet" is measured in logical days.
       ['drip stalled projects', dripStalledProjects],
+      // Opt-in weekly nudge to plan the coming week's meals (#1121) — off by
+      // default. After initSettings, since it reads mealPlanNudge* and
+      // weekStartsOn, and after initTasks, whose fan-out creates the meal
+      // plan tables it queries directly.
+      ['check meal plan nudge', checkMealPlanNudge],
       // Enforce the completed-task retention window, if the user set one. Last
       // of the maintenance passes on purpose: it only ever deletes rows old
       // enough to be out of every other pass's reach, and running it after
@@ -136,7 +142,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initTasks, initSettings, initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
