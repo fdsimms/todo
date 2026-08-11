@@ -16,7 +16,6 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
-import { ProgressBar } from './ProgressBar';
 import { haptics } from '../utils/haptics';
 import {
   planTrip,
@@ -53,6 +52,19 @@ interface Props {
  * Selecting several stores creates one task per store, not one task naming
  * them all — they're two errands, separately schedulable and separately
  * completable, which a single title can't be.
+ *
+ * **Every number here is a floor, and the copy has to keep saying so.** The
+ * app knows where you've *bought* things, which is not the same as what a shop
+ * stocks, so a store with nothing recorded against your list is a store you
+ * haven't shopped that way — not a store without bread. That's why no string
+ * in this file asserts an absence: rows say "seen here", the gap card says
+ * these items "haven't come from" the store before, and the total says "at
+ * least". `shoppingTrip.ts` supplies the softer half — items a store probably
+ * has, on the evidence of aisles it demonstrably stocks — which is the only
+ * way a shop you've recorded twice can ever climb past one you've recorded
+ * four hundred times. The footnote under the list says both things plainly,
+ * because a ranking that looks authoritative is exactly the one worth
+ * undercutting.
  *
  * No store stays a real answer, same as `FinishShoppingSheet`: it's a row of
  * its own rather than a cancel, and it makes exactly the task this button made
@@ -161,8 +173,8 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                 {selected.length === 0 ? (
                   <>
                     <Text style={styles.suggestionTitle}>
-                      {next[0].shop.name} has the most of your list — {next[0].itemIds.length} of{' '}
-                      {total}.
+                      You’ve got {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
+                      before — more than anywhere else.
                     </Text>
                     {next.length > 1 && (
                       <Text style={styles.suggestionSub}>
@@ -171,20 +183,37 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                       </Text>
                     )}
                   </>
+                ) : summary.gap.length > 0 ? (
+                  <>
+                    {/* A fact about your history, not about the shop's shelves:
+                        the app has no idea whether the selected store stocks
+                        these, only that you've never got them there. */}
+                    <Text style={styles.suggestionTitle}>
+                      {capitalize(namesFor(summary.gap))}{' '}
+                      {summary.gap.length === 1 ? 'hasn’t' : 'haven’t'} come from {selectedNames}{' '}
+                      before.
+                    </Text>
+                    <Text style={styles.suggestionSub}>
+                      {gapGain > 0
+                        ? `${next[0].shop.name} has ${
+                            gapGain === summary.gap.length
+                              ? summary.gap.length === 1
+                                ? 'it'
+                                : 'them all'
+                              : `${gapGain} of them`
+                          }.`
+                        : `${next[0].shop.name} stocks that aisle, so it probably has ${
+                            summary.gap.length === 1 ? 'it' : 'some'
+                          }.`}
+                    </Text>
+                  </>
                 ) : (
                   <>
                     <Text style={styles.suggestionTitle}>
-                      {capitalize(namesFor(summary.gap))} {summary.gap.length === 1 ? 'isn’t' : 'aren’t'}{' '}
-                      at {selectedNames}.
+                      No store on record has {namesFor(summary.maybe)}.
                     </Text>
                     <Text style={styles.suggestionSub}>
-                      {next[0].shop.name} has{' '}
-                      {gapGain === summary.gap.length
-                        ? summary.gap.length === 1
-                          ? 'it'
-                          : 'them all'
-                        : `${gapGain} of them`}
-                      .
+                      {next[0].shop.name} stocks that aisle, so it’s the likeliest bet.
                     </Text>
                   </>
                 )}
@@ -210,7 +239,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
           <Text style={styles.hint}>
             {total === 0
               ? 'In your own order — there’s nothing on the list to rank them by.'
-              : 'Most of your list first. Pick as many as the trip needs.'}
+              : 'Ranked by what you’ve bought where. Pick as many as the trip needs.'}
           </Text>
 
           <View style={styles.card}>
@@ -232,8 +261,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
                 styles={styles}
                 colors={colors}
                 title={entry.shop.name}
-                subtitle={describeShopCoverage(entry.itemIds.length, total)}
+                subtitle={describeShopCoverage(entry, total)}
                 progress={total > 0 ? entry.itemIds.length / total : 0}
+                likelyProgress={total > 0 ? entry.likelyItemIds.length / total : 0}
                 selected={selected.includes(entry.shop.id)}
                 onPress={() => toggle(entry.shop.id)}
               />
@@ -242,19 +272,31 @@ export function ShoppingTripSheet({ visible, onClose, onCreate }: Props) {
 
           {total > 0 && (
             <View style={styles.footer}>
+              {/* "At least" is the whole disclaimer in one word, and it needs
+                  to sit on the number the sheet states most loudly: a store
+                  may perfectly well have the other three, the app just has no
+                  way to know. */}
               <Text style={styles.footerLine}>
                 {selected.length === 0
                   ? 'No store picked — the task won’t name one.'
                   : summary.covered.length === total
                     ? `${selectedNames} covers your whole list.`
-                    : `${selectedNames} covers ${summary.covered.length} of ${total}.`}
+                    : `${selectedNames} covers at least ${summary.covered.length} of ${total}${
+                        summary.likely.length > 0
+                          ? `, and probably ${summary.covered.length + summary.likely.length}`
+                          : ''
+                      }.`}
               </Text>
               {summary.unknown.length > 0 && (
                 <Text style={styles.footerNote}>
-                  You haven’t recorded a store for {namesFor(summary.unknown)} yet, so nothing here
-                  counts {summary.unknown.length === 1 ? 'it' : 'them'}.
+                  Nothing’s on record about {namesFor(summary.unknown)} anywhere, so no store here
+                  gets credit for {summary.unknown.length === 1 ? 'it' : 'them'}.
                 </Text>
               )}
+              <Text style={styles.footerNote}>
+                These counts are only what you’ve bought or noted — a store may well carry more.
+                “Likely” means it stocks that aisle.
+              </Text>
             </View>
           )}
 
@@ -280,6 +322,7 @@ function Row({
   title,
   subtitle,
   progress,
+  likelyProgress = 0,
   selected,
   first = false,
   onPress,
@@ -289,6 +332,7 @@ function Row({
   title: string;
   subtitle: string | null;
   progress?: number;
+  likelyProgress?: number;
   selected: boolean;
   first?: boolean;
   onPress: () => void;
@@ -311,13 +355,23 @@ function Row({
         </Text>
         {!!subtitle && <Text style={styles.rowSub}>{subtitle}</Text>}
       </View>
-      {progress !== undefined && progress > 0 && (
+      {progress !== undefined && progress + likelyProgress > 0 && (
+        // Not `ProgressBar`: this is two segments, and which half is which is
+        // the entire point — a solid run of what you've actually bought here,
+        // then a faded run of what the store's aisles suggest. One fill would
+        // have to either drop the guess or launder it into the known count.
         <View style={styles.bar}>
-          <ProgressBar progress={progress} height={4} />
+          <View style={[styles.barFill, { flex: clamp(progress) }]} />
+          <View style={[styles.barLikely, { flex: clamp(likelyProgress) }]} />
+          <View style={{ flex: Math.max(0, 1 - clamp(progress) - clamp(likelyProgress)) }} />
         </View>
       )}
     </TouchableOpacity>
   );
+}
+
+function clamp(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }
 
 function countIn(ids: readonly string[], within: readonly string[]): number {
@@ -407,7 +461,18 @@ function makeStyles(colors: Colors) {
     rowText: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowSub: { color: colors.textTertiary, fontSize: font.sm, marginTop: 1 },
-    bar: { width: 44 },
+    bar: {
+      width: 44,
+      height: 4,
+      flexDirection: 'row',
+      borderRadius: radius.full,
+      backgroundColor: colors.bgTertiary,
+      overflow: 'hidden',
+    },
+    barFill: { backgroundColor: colors.accent },
+    // Same hue, half-present — a guess reading as a quieter version of the
+    // fact it sits next to, rather than as a different measurement.
+    barLikely: { backgroundColor: colors.accent + '59' },
     footer: { marginTop: spacing.lg },
     footerLine: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 19 },
     footerNote: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xs, lineHeight: 19 },
