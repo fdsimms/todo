@@ -11,8 +11,11 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  suggestMealIdeas,
+  suggestMealIngredients,
   describeAIError,
 } from '../services/aiSuggestions';
+import { MAX_MEAL_IDEAS } from '../utils/mealIdeas';
 import type { Task } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -24,6 +27,7 @@ const TEST_AI_FEATURE_CONFIG = {
   templateSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -879,5 +883,234 @@ describe('extractRecipe', () => {
         { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null },
       ]);
     });
+  });
+});
+
+// ============================================================================
+// suggestMealIdeas (#1063) — generation, not ranking
+// ============================================================================
+
+describe('suggestMealIdeas', () => {
+  const ideasResponse = (meals: unknown[]) => toolUseResponse('suggest_meals', { meals });
+
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({ anthropicApiKey: '' });
+
+    await expect(suggestMealIdeas([], [], 3)).rejects.toThrow('No API key');
+  });
+
+  it('throws without hitting the network when the feature is turned off', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({
+      anthropicApiKey: 'test-key-does-not-hit-network',
+      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
+    });
+    const spy = jest.spyOn(global, 'fetch');
+
+    await expect(suggestMealIdeas([], [], 3)).rejects.toThrow('AI feature disabled');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 500);
+    await expect(suggestMealIdeas([], [], 3)).rejects.toThrow('API error 500');
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
+    await expect(suggestMealIdeas([], [], 3)).rejects.toThrow('No suggestions returned');
+  });
+
+  it('returns titles and blurbs from the tool_use response', async () => {
+    mockFetchOnce(ideasResponse([
+      { title: 'Lemon chicken traybake', blurb: 'One tray, thighs and potatoes' },
+      { title: 'Black bean chilli', blurb: 'Storecupboard, freezes well' },
+    ]));
+    const result = await suggestMealIdeas([], [], 4);
+    expect(result.map(i => i.title)).toEqual(['Lemon chicken traybake', 'Black bean chilli']);
+    expect(result[0].blurb).toBe('One tray, thighs and potatoes');
+  });
+
+  it('drops an idea colliding case-insensitively with something already planned', async () => {
+    mockFetchOnce(ideasResponse([{ title: 'fish PIE' }, { title: 'Chilli' }]));
+    const result = await suggestMealIdeas(['Fish pie'], [], 3);
+    expect(result.map(i => i.title)).toEqual(['Chilli']);
+  });
+
+  it('drops an idea colliding with something cooked recently', async () => {
+    mockFetchOnce(ideasResponse([{ title: 'Chilli' }, { title: 'Fish pie' }]));
+    const result = await suggestMealIdeas([], ['chilli'], 3);
+    expect(result.map(i => i.title)).toEqual(['Fish pie']);
+  });
+
+  it('caps the set at MAX_MEAL_IDEAS however many come back', async () => {
+    mockFetchOnce(ideasResponse(
+      Array.from({ length: 20 }, (_, i) => ({ title: `Dish ${i}` })),
+    ));
+    const result = await suggestMealIdeas([], [], 20);
+    expect(result).toHaveLength(MAX_MEAL_IDEAS);
+  });
+
+  it('names what is planned and what was cooked recently in the request', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas(['Fish pie'], ['Chilli'], 3);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Fish pie');
+    expect(content).toContain('Chilli');
+  });
+
+  it('passes the hint through to the prompt', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3, 'something quick and vegetarian');
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content as string).toContain('something quick and vegetarian');
+  });
+
+  it('asks for a count clamped into the MIN/MAX band', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 99);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content as string).toContain(`Suggest ${MAX_MEAL_IDEAS} dinners`);
+  });
+
+  it('forces the suggest_meals tool', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(ideasResponse([])),
+    } as Response);
+
+    await suggestMealIdeas([], [], 3);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_meals' });
+  });
+});
+
+// ============================================================================
+// suggestMealIngredients (#1063)
+// ============================================================================
+
+describe('suggestMealIngredients', () => {
+  const AISLES = ['Produce', 'Meat', 'Pantry', 'Other'];
+  const itemsResponse = (items: unknown[]) => toolUseResponse('draft_ingredients', { items });
+
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({ anthropicApiKey: '' });
+
+    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('No API key');
+  });
+
+  it('throws without hitting the network when the feature is turned off', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValue({
+      anthropicApiKey: 'test-key-does-not-hit-network',
+      aiFeatureConfig: { ...TEST_AI_FEATURE_CONFIG, mealIdeas: { enabled: false, model: 'claude-haiku-4-5-20251001' } },
+    });
+    const spy = jest.spyOn(global, 'fetch');
+
+    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('AI feature disabled');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('makes no network call for an empty meal name', async () => {
+    const spy = jest.spyOn(global, 'fetch');
+    await expect(suggestMealIngredients('   ', AISLES, 4)).resolves.toEqual([]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns the drafted shopping list', async () => {
+    mockFetchOnce(itemsResponse([
+      { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat' },
+      { name: 'lemons', quantity: '2', aisle: 'Produce' },
+    ]));
+    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).resolves.toEqual([
+      { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat', section: null },
+      { name: 'lemons', quantity: '2', aisle: 'Produce', section: null },
+    ]);
+  });
+
+  it('files an invented aisle under Other rather than trusting it', async () => {
+    mockFetchOnce(itemsResponse([{ name: 'lemons', quantity: '2', aisle: 'Citrus Corner' }]));
+    const result = await suggestMealIngredients('Lemon chicken', AISLES, 4);
+    expect(result[0].aisle).toBe('Other');
+  });
+
+  it('dedupes two spellings of the same item on the catalog key', async () => {
+    mockFetchOnce(itemsResponse([
+      { name: 'Lemons', quantity: '2', aisle: 'Produce' },
+      { name: 'lemons', quantity: '3', aisle: 'Produce' },
+    ]));
+    const result = await suggestMealIngredients('Lemon chicken', AISLES, 4);
+    expect(result).toHaveLength(1);
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 401);
+    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('API error 401');
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
+    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('No suggestions returned');
+  });
+
+  it('names the meal, the serving count and the available aisles in the request', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(itemsResponse([])),
+    } as Response);
+
+    await suggestMealIngredients('Lemon chicken', AISLES, 6);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Lemon chicken');
+    expect(content).toContain('feed 6');
+    expect(content).toContain('Produce');
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'draft_ingredients' });
+  });
+
+  it('falls back to a four-serving quantity when servings is unknown', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(itemsResponse([])),
+    } as Response);
+
+    await suggestMealIngredients('Lemon chicken', AISLES, null);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.messages[0].content as string).toContain('feed 4');
   });
 });

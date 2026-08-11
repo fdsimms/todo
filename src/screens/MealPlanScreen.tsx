@@ -55,6 +55,7 @@ import {
   type PantryCoverage,
   type PrepTaskDraft,
 } from '../utils/recipeUtils';
+import { recentlyCookedTitles } from '../utils/mealIdeas';
 import {
   applyChoice,
   recipeChoiceGroups,
@@ -181,6 +182,9 @@ export function MealPlanScreen() {
   const navigation = useNavigation<any>();
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
+  // #1063's gate. Without a key the suggestion sheet is exactly the offline
+  // one it has always been — the ranking below is deliberately ungated.
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
 
@@ -692,6 +696,19 @@ export function MealPlanScreen() {
     return map;
   }, [emptyWeekSuggestions, recipes, groceryItems]);
 
+  // The shelf still opens on an empty week the offline ranking can't fill, so
+  // long as there's a key for the generation half to use (#1063) — that empty
+  // week is exactly the case AI ideas exist for. With no key the condition is
+  // unchanged: nothing to rank, no button.
+  const canSuggestMeals = emptyWeekSuggestions.length > 0
+    || (!!anthropicApiKey && entries.length === 0);
+
+  // Context for the AI half of that sheet (#1063), so an invented idea isn't
+  // something already on the week or something cooked last Tuesday. Both are
+  // cheap and only read when the sheet is open.
+  const plannedMealTitles = useMemo(() => entries.map(e => e.title).filter(Boolean), [entries]);
+  const recentMealTitles = useMemo(() => recentlyCookedTitles(recipes, new Date()), [recipes]);
+
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
     const entry = planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
@@ -782,7 +799,7 @@ export function MealPlanScreen() {
                   onPress={l => setEditingLeftoverId(l.id)}
                   onAdd={() => setLoggingLeftover({})}
                 />
-                {emptyWeekSuggestions.length > 0 && (
+                {canSuggestMeals && (
                   <InlineAction
                     label="Suggest meals"
                     icon="restaurant-outline"
@@ -950,6 +967,10 @@ export function MealPlanScreen() {
         recipes={emptyWeekSuggestions}
         pantryByRecipeId={suggestionPantryCoverage}
         weekDays={days}
+        aiIdeasEnabled={!!anthropicApiKey}
+        plannedTitles={plannedMealTitles}
+        recentTitles={recentMealTitles}
+        slotsToFill={days.length}
         onPlan={planSuggestion}
         onClose={() => setSuggestingMeals(false)}
       />

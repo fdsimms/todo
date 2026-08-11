@@ -3,10 +3,11 @@
 // model-selectable — someone happy to spend more on task suggestions but not
 // on grocery-aisle sorting shouldn't have to choose one setting for both.
 
-export type AiFeatureId = 'taskSuggestions' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction';
+export type AiFeatureId =
+  | 'taskSuggestions' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
-  'taskSuggestions', 'templateSuggestions', 'groceryAisles', 'recipeExtraction',
+  'taskSuggestions', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -50,6 +51,15 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     label: 'Recipe import',
     hint: 'Pulls a name, servings, and shopping list out of pasted recipe text or a photo',
   },
+  {
+    id: 'mealIdeas',
+    label: 'Meal ideas',
+    // Both halves of #1063 sit under one switch on purpose: inventing the meal
+    // and drafting its shopping list are one action from where the user
+    // stands, and a key that can do the first but not the second would offer
+    // an idea it can't then save as a recipe.
+    hint: 'Invents new meals for empty nights, and drafts a shopping list for one you accept',
+  },
 ];
 
 export interface AiFeatureConfig {
@@ -65,5 +75,6 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     templateSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     groceryAisles: { enabled: true, model: DEFAULT_AI_MODEL },
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
+    mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },
   };
 }
