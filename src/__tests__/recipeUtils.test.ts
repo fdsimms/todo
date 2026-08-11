@@ -63,6 +63,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     source: null,
     servings: null,
     servingsMax: null,
+    recipeYield: null,
     imagePath: null,
     mealType: null,
     ingredients: [],
@@ -433,6 +434,16 @@ describe('describeRecipe', () => {
       .toBe('1 ingredient · serves 4');
     expect(describeRecipe(recipe('D4', { ingredients: [ing('Salt')], servings: 4, servingsMax: 2 })))
       .toBe('1 ingredient · serves 4');
+  });
+
+  it('adds yield only when set, after servings', () => {
+    expect(describeRecipe(recipe('D5', { ingredients: [ing('Flour')], recipeYield: '3 cups' })))
+      .toBe('1 ingredient · makes 3 cups');
+    expect(describeRecipe(recipe('D6', {
+      ingredients: [ing('Flour')],
+      servings: 8,
+      recipeYield: '2 loaves',
+    }))).toBe('1 ingredient · serves 8 · makes 2 loaves');
   });
 
   it('adds the source name only when set, after servings', () => {

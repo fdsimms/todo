@@ -57,6 +57,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
@@ -68,8 +69,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
+  const [recipeYield, setRecipeYieldDraft] = useState('');
   const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [yieldOpen, setYieldOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
   const [durationOpen, setDurationOpen] = useState(false);
   const [mealTypeOpen, setMealTypeOpen] = useState(false);
@@ -110,8 +113,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
     setServingsMaxDraft(recipe.servingsMax);
+    setRecipeYieldDraft(recipe.recipeYield ?? '');
     setMealTypeDraft(recipe.mealType);
     setServingsOpen(false);
+    setYieldOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
     setDurationOpen(false);
     setMealTypeOpen(false);
@@ -134,6 +139,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
     setServings(recipe.id, servings, servingsMax);
+    setRecipeYield(recipe.id, recipeYield);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setMealType(recipe.id, mealType);
     onClose();
@@ -257,6 +263,28 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               </View>
             )}
           </>
+        )}
+        <EditorRow
+          icon="restaurant-outline"
+          label="Yield"
+          value={recipeYield.trim() || undefined}
+          hint="What it makes, when a serving count isn't the right unit — “3 cups”, “2 dozen cookies”, “1 loaf”."
+          expanded={yieldOpen}
+          onPress={() => { animateLayout(); setYieldOpen(v => !v); }}
+          onClear={recipeYield.trim() ? () => { setRecipeYieldDraft(''); setYieldOpen(false); } : undefined}
+        />
+        {yieldOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={recipeYield}
+            onChangeText={setRecipeYieldDraft}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            placeholder="3 cups, 2 dozen cookies…"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="Recipe yield"
+          />
         )}
         <CollapsibleField
           label="Meal type"

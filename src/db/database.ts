@@ -487,6 +487,9 @@ export function initDatabase(): void {
     // rather than a range the way the meal plan does — small, but it's also the
     // index the retention purge sweeps on.
     'CREATE INDEX IF NOT EXISTS idx_leftovers_finished ON leftovers(finished_at)',
+    // Null for every existing recipe, same as servings_max — nothing predating
+    // this had a yield beyond a serving count. See Recipe.recipeYield.
+    'ALTER TABLE recipes ADD COLUMN recipe_yield TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1551,6 +1554,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
     servingsMax: (row.servings_max as number) ?? null,
+    recipeYield: (row.recipe_yield as string) ?? null,
     imagePath: (row.image_path as string) ?? null,
     // Unrecognised reads as null (untagged), not a guessed value — unlike
     // MealSlot's dinner fallback below, an unset meal type is itself a valid,
@@ -1585,13 +1589,14 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, servings_max, image_path, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, servings_max, recipe_yield, image_path, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.imagePath ?? null, recipe.mealType ?? null,
+      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
@@ -1605,14 +1610,15 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, servings_max=?, image_path=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, servings_max=?, recipe_yield=?, image_path=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.imagePath ?? null, recipe.mealType ?? null,
+      recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
+      recipe.imagePath ?? null, recipe.mealType ?? null,
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,

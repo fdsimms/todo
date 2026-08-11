@@ -50,6 +50,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     sortOrder: ++seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     servingsMax: null,
+    recipeYield: null,
     imagePath: null,
     estimatedMinutes: null,
     timerStartedAt: null,

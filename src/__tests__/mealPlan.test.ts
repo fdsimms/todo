@@ -57,6 +57,7 @@ function recipe(id: string, name: string): Recipe {
     source: null,
     servings: null,
     servingsMax: null,
+    recipeYield: null,
     imagePath: null,
     mealType: null,
     ingredients: [],
