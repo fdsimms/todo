@@ -477,30 +477,63 @@ describe('setRecipeScale', () => {
   });
 });
 
-describe('markCooked', () => {
+describe('setCooked', () => {
   it('stamps cookedAt and writes it back', () => {
     const dinner = entry('2026-08-05', 'dinner');
     loadWeek([dinner]);
 
-    useMealPlanStore.getState().markCooked(dinner.id);
+    useMealPlanStore.getState().setCooked(dinner.id, true);
 
     const updated = getEntries().find(e => e.id === dinner.id)!;
     expect(updated.cookedAt).not.toBeNull();
     expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) }));
   });
 
-  it('is a no-op on an entry already marked cooked', () => {
+  // The half that used not to exist: a row could be ticked and never un-ticked
+  // except through the bulk bar (#1361).
+  it('clears cookedAt again', () => {
     const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
     loadWeek([dinner]);
 
-    useMealPlanStore.getState().markCooked(dinner.id);
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.cookedAt).toBeNull();
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(expect.objectContaining({ id: dinner.id, cookedAt: null }));
+  });
+
+  // Idempotence is what holds the recipe's cookCount to one bump per cooking.
+  it('is a no-op on an entry already in the target state', () => {
+    const dinner = entry('2026-08-05', 'dinner', { cookedAt: '2026-08-05T18:00:00.000Z' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
 
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 
+  it('is a no-op un-cooking something that was never cooked', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, false);
+
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+
+  // The undo is the caller's: marking cooked is two writes (this and the
+  // recipe's counters) and only the caller knows they were one action.
+  it('registers no undo of its own', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
   it('shrugs at an unknown id', () => {
     loadWeek([]);
-    expect(() => useMealPlanStore.getState().markCooked('gone')).not.toThrow();
+    expect(() => useMealPlanStore.getState().setCooked('gone', true)).not.toThrow();
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });

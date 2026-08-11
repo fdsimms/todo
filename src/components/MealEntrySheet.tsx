@@ -58,8 +58,12 @@ interface Props {
   baseServings?: number | null;
   /** The high end of a range, for the "recipe says serves 4-6" caption. */
   baseServingsMax?: number | null;
-  /** Present only while the entry hasn't already been marked cooked. */
-  onMarkCooked?: () => void;
+  /**
+   * Ticks the meal off, or back on. Present either way now — the action used
+   * to vanish once an entry was cooked, so the sheet could get you into that
+   * state and not back out of it (#1361).
+   */
+  onSetCooked?: (cooked: boolean) => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /** Present only while the entry's recipe still resolves and has prep tasks. */
@@ -104,13 +108,14 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onScale, baseServings, baseServingsMax, onSetCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
   onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
+  const cooked = !!entry?.cookedAt;
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -313,20 +318,30 @@ export function MealEntrySheet({
             })}
           </View>
 
-          {!!onMarkCooked && (
+          {!!onSetCooked && (
             <>
               <View style={styles.sep} />
               <TouchableOpacity
                 style={styles.action}
-                onPress={() => { haptics.success(); dismiss(onMarkCooked); }}
+                onPress={() => {
+                  const next = !cooked;
+                  next ? haptics.success() : haptics.tap();
+                  dismiss(() => onSetCooked(next));
+                }}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel="Mark this meal cooked"
+                accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
               >
                 <View style={styles.actionIcon}>
-                  <Ionicons name="checkmark-circle-outline" size={16} color={colors.accent} />
+                  <Ionicons
+                    name={cooked ? 'close-circle-outline' : 'checkmark-circle-outline'}
+                    size={16}
+                    color={colors.accent}
+                  />
                 </View>
-                <Text style={[styles.actionText, { color: colors.accent }]}>Mark cooked</Text>
+                <Text style={[styles.actionText, { color: colors.accent }]}>
+                  {cooked ? 'Mark not cooked' : 'Mark cooked'}
+                </Text>
               </TouchableOpacity>
             </>
           )}
