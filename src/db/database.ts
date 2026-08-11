@@ -420,6 +420,10 @@ export function initDatabase(): void {
     // existing row, same as an item typed by hand always will be.
     'ALTER TABLE grocery_items ADD COLUMN source_recipe_id TEXT',
     'ALTER TABLE grocery_items ADD COLUMN source_recipe_title TEXT',
+    // 0 for every existing store — nothing predating this feature was ever
+    // meant to drop out of suggestions. Same naming convention as
+    // categories' exclude_from_pin_suggestions.
+    'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1399,6 +1403,7 @@ function rowToShop(row: Record<string, unknown>): Shop {
     nameKey: row.name_key as string,
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
+    excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
   };
 }
 
@@ -1421,6 +1426,10 @@ export function dbUpdateGroceryShop(shop: Shop): void {
     'UPDATE grocery_shops SET name=?, name_key=?, sort_order=? WHERE id=?',
     [shop.name, shop.nameKey, shop.sortOrder, shop.id]
   );
+}
+
+export function dbSetShopExcludeFromSuggestions(id: string, exclude: boolean): void {
+  db.runSync('UPDATE grocery_shops SET exclude_from_suggestions = ? WHERE id = ?', [exclude ? 1 : 0, id]);
 }
 
 /**

@@ -16,8 +16,16 @@ import {
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
+  countLikelyInPantry,
 } from '../utils/recipeUtils';
 import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+
+// recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
+// through it, mealPlan.ts → dateUtils.ts → the settings store — which
+// nothing here needs. Same mock as mealPlanGroceries.test.ts.
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => ({ dayResetTime: '00:00' }) },
+}));
 
 let seq = 0;
 function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIngredient {
@@ -369,6 +377,19 @@ describe('describeRecipe', () => {
       sourceName: 'Bon Appétit',
     }))).toBe('1 ingredient · serves 4 · Bon Appétit');
   });
+
+  it('inserts the pantry count between the ingredient count and servings, singularising one', () => {
+    const withServings = recipe('G', { ingredients: [ing('Salt'), ing('Pepper')], servings: 2 });
+    expect(describeRecipe(withServings, 1)).toBe('2 ingredients · 1 likely in pantry · serves 2');
+    expect(describeRecipe(withServings, 6)).toBe('2 ingredients · 6 likely in pantry · serves 2');
+  });
+
+  it('omits the pantry phrase for a null, undefined or zero count', () => {
+    const r = recipe('H', { ingredients: [ing('Salt')] });
+    expect(describeRecipe(r)).toBe('1 ingredient');
+    expect(describeRecipe(r, null)).toBe('1 ingredient');
+    expect(describeRecipe(r, 0)).toBe('1 ingredient');
+  });
 });
 
 describe('cleanRecipeName', () => {
@@ -525,6 +546,41 @@ describe('scoreRecipeAgainstCatalog', () => {
     const fresh = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 7, 10).toISOString() })];
     const stale = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 0, 1).toISOString() })];
     expect(scoreRecipeAgainstCatalog(r, fresh, now)).toBeGreaterThan(scoreRecipeAgainstCatalog(r, stale, now));
+  });
+});
+
+describe('countLikelyInPantry', () => {
+  const now = new Date('2026-08-11T12:00:00.000Z');
+  function daysAgo(n: number): string {
+    return new Date(now.getTime() - n * 86_400_000).toISOString();
+  }
+
+  it('is null for a recipe with no ingredients', () => {
+    expect(countLikelyInPantry(recipe('Toast', { ingredients: [] }), [], now)).toBeNull();
+  });
+
+  it('is null when nothing reads as probably on hand', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
+    const items = [item('Saffron', { nameKey: 'saffron', purchaseCount: 0 })];
+    expect(countLikelyInPantry(r, items, now)).toBeNull();
+  });
+
+  it('counts only ingredients classifyPlanned puts in probablyHave', () => {
+    // Milk: bought every ~30 days, last one 10 days ago — inside cadence.
+    const milk = item('Milk', {
+      nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
+    });
+    // Onions: on the list already, so it's alreadyOnList/inTrolley, not probablyHave.
+    const onions = item('Onions', { nameKey: 'onions', onList: true });
+    // Saffron: no catalog row at all.
+    const r = recipe('Ragù', {
+      ingredients: [
+        ing('Milk', { nameKey: 'milk' }),
+        ing('Onions', { nameKey: 'onions' }),
+        ing('Saffron', { nameKey: 'saffron' }),
+      ],
+    });
+    expect(countLikelyInPantry(r, [milk, onions], now)).toBe(1);
   });
 });
 

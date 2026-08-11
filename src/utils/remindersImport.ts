@@ -161,6 +161,7 @@ export function reminderTimeFromAlarms(reminder: Reminder, now: Date = new Date(
  */
 export function scheduleToDraft(schedule: ParsedSchedule): Partial<Task> {
   const draft: Partial<Task> = { dueDate: schedule.dueDate.toISOString() };
+  if (schedule.deadline) draft.deadline = schedule.deadline.toISOString();
   if (schedule.timeSegments.length > 0) draft.timeSegments = [...schedule.timeSegments];
   if (schedule.recurrenceType !== 'none') {
     draft.recurrenceType = schedule.recurrenceType;

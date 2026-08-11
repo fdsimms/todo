@@ -466,6 +466,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     animateLayout();
     setTitle(parsedSchedule.cleanTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
+    if (parsedSchedule.schedule.deadline) {
+      setDeadline(parsedSchedule.schedule.deadline);
+      setDeadlineOffsetDays(null);
+      setDeadlineMonthDay(null);
+    }
     setTimeSegments(parsedSchedule.schedule.timeSegments);
     setRecurrenceType(parsedSchedule.schedule.recurrenceType);
     setRecurrenceInterval(parsedSchedule.schedule.recurrenceInterval);
@@ -1317,7 +1322,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         >
           <PressableScale style={styles.scheduleBannerBtn} onPress={applyParsedSchedule}>
             <Ionicons
-              name={parsedSchedule.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline'}
+              name={
+                parsedSchedule.schedule.recurrenceType !== 'none'
+                  ? 'repeat'
+                  : parsedSchedule.schedule.deadline ? 'flag-outline' : 'calendar-outline'
+              }
               size={14}
               color={colors.onAccent}
             />

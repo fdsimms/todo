@@ -51,7 +51,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -187,6 +187,7 @@ export function QuickAddModal({
   const [customEffortText, setCustomEffortText] = useState('');
   const [effortNote, setEffortNote] = useState<string | null>(null);
   const [dueDate, setDueDate] = useState<Date | null>(null);
+  const [deadline, setDeadline] = useState<Date | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState<string | null>(null);
@@ -251,6 +252,7 @@ export function QuickAddModal({
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
       setPhoneNumber(null);
+      setDeadline(null);
       setType(initialType);
       setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
       setCustomTimedText('');
@@ -303,12 +305,25 @@ export function QuickAddModal({
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
   );
+  // "pay rent tmrw #home" — a "#tag" naming an existing category. Same single
+  // tooltip slot, checked right after the schedule phrase (and before
+  // link/phone/duration below) so a trailing tag that blocks the
+  // suffix-anchored schedule match — the phrase has to reach the true end of
+  // the title — doesn't leave both undetected: this fires instead, and once
+  // the tag is stripped the schedule phrase parses cleanly on the next
+  // keystroke or tap. Only matches a tag that names a real category, so a
+  // stray "#" elsewhere in the title never lights it up.
+  const categoryParsed = useMemo(
+    () => (!parsed && title.trim() ? parseCategoryInput(title, categories.map(c => c.name)) : null),
+    [title, parsed, categories]
+  );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase matched, so the two tooltips never compete for the same slot.
+  // phrase or category tag matched, so the tooltips never compete for the
+  // same slot.
   const linkParsed = useMemo(
-    () => (!parsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed]
+    () => (!parsed && !categoryParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -316,32 +331,38 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, linkParsed]
+    () => (!parsed && !categoryParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryParsed, linkParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule or link phrase always wins.
+  // tooltip slot, checked last, so a schedule, category tag, or link phrase
+  // always wins.
   //
   // Only offered from the plain type, because accepting it switches the sheet
   // into Timed: it's how someone who has never picked a type discovers there
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, linkParsed, phoneParsed, type]
+    () => (!parsed && !categoryParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryParsed, linkParsed, phoneParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
-    : linkParsed
-      ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
-      : phoneParsed
-        ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
-        : durationParsed
-          ? {
-              matchStart: durationParsed.matchStart,
-              matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
-            }
-          : null;
+    : categoryParsed
+      ? {
+          matchStart: categoryParsed.matchStart,
+          matchedText: title.slice(categoryParsed.matchStart, categoryParsed.matchEnd),
+        }
+      : linkParsed
+        ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
+        : phoneParsed
+          ? { matchStart: phoneParsed.matchStart, matchedText: phoneParsed.number }
+          : durationParsed
+            ? {
+                matchStart: durationParsed.matchStart,
+                matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
+              }
+            : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -390,6 +411,7 @@ export function QuickAddModal({
     animateLayout();
     setTitle(parsed.cleanTitle);
     setDueDate(parsed.schedule.dueDate);
+    setDeadline(parsed.schedule.deadline ?? null);
     setTimeSegments(parsed.schedule.timeSegments);
     setRecurrenceType(parsed.schedule.recurrenceType);
     setRecurrenceInterval(parsed.schedule.recurrenceInterval);
@@ -399,6 +421,15 @@ export function QuickAddModal({
     setRecurrenceEndDate(parsed.schedule.recurrenceEndDate ?? null);
     setRecurrenceCount(parsed.schedule.recurrenceCount ?? null);
     setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
+  };
+
+  // Apply the detected "#category" tag and strip it from the title.
+  const applyCategory = () => {
+    if (!categoryParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(categoryParsed.cleanTitle);
+    setCategory(categoryParsed.category);
   };
 
   // Apply the detected link and strip it from the title.
@@ -525,6 +556,7 @@ export function QuickAddModal({
       priority,
       ...baked,
       dueDate: dueDate?.toISOString() ?? null,
+      deadline: deadline?.toISOString() ?? null,
       timeSegments,
       tags,
       category,
@@ -881,18 +913,22 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
+                  onPress={parsed ? applyParse : categoryParsed ? applyCategory : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
                     name={
                       parsed
-                        ? (parsed.schedule.recurrenceType !== 'none' ? 'repeat' : 'calendar-outline')
-                        : linkParsed
-                          ? 'link-outline'
-                          : phoneParsed
-                            ? 'call-outline'
-                            : 'timer-outline'
+                        ? (parsed.schedule.recurrenceType !== 'none'
+                            ? 'repeat'
+                            : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                        : categoryParsed
+                          ? 'pricetag-outline'
+                          : linkParsed
+                            ? 'link-outline'
+                            : phoneParsed
+                              ? 'call-outline'
+                              : 'timer-outline'
                     }
                     size={14}
                     color={colors.onAccent}
@@ -900,11 +936,13 @@ export function QuickAddModal({
                   <Text style={styles.tooltipText}>
                     {parsed
                       ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                      : linkParsed
-                        ? linkLabel(linkParsed.url)
-                        : phoneParsed
-                          ? `Call ${phoneParsed.number}`
-                          : `Timer · ${formatDuration(durationParsed!.minutes)}`}
+                      : categoryParsed
+                        ? categoryLabel(categoryParsed.category, categories)
+                        : linkParsed
+                          ? linkLabel(linkParsed.url)
+                          : phoneParsed
+                            ? `Call ${phoneParsed.number}`
+                            : `Timer · ${formatDuration(durationParsed!.minutes)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>

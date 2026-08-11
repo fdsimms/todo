@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, FlatList, StyleSheet, Alert } from 'react-native';
+import { View, Text, FlatList, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -23,7 +24,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
+import { spacing, font, fontWeight, radius, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
@@ -96,6 +97,19 @@ export function MealPlanScreen() {
   const selected = entries.find(e => e.id === selectedId) ?? null;
   const [addingToList, setAddingToList] = useState(false);
   const [suggestingMeals, setSuggestingMeals] = useState(false);
+  // Per-day collapse, local-only — every day starts expanded, and folding one
+  // away is just less to scroll past, not a decision worth persisting.
+  const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
+
+  const toggleDayCollapse = (key: string) => {
+    haptics.tap();
+    animateLayout();
+    setCollapsedDays(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -171,48 +185,71 @@ export function MealPlanScreen() {
     const key = dayKeyOf(day);
     const dayEntries = entriesForDay(entries, key);
     const today = isToday(day);
+    const collapsed = collapsedDays.has(key);
+    const dayLabel = format(day, 'EEEE d MMMM');
 
     return (
       <View style={styles.section}>
-        <View style={styles.dayHeader}>
-          <Text style={[styles.dayName, today && styles.dayNameToday]}>
-            {format(day, 'EEEE')}
-          </Text>
-          <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
-        </View>
-
-        {dayEntries.length > 0 && (
-          <View style={styles.card}>
-            {dayEntries.map((entry, idx) => (
-              <React.Fragment key={entry.id}>
-                {idx > 0 && <View style={styles.sep} />}
-                <MealSlotRow
-                  entry={entry}
-                  title={titleForEntry(entry, recipesById)}
-                  hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                  // The rows are already sorted by slot, so "the slot changed"
-                  // is the run header — captioning both halves of a two-dish
-                  // dinner "DINNER" says it twice.
-                  showSlot={idx === 0 || dayEntries[idx - 1].slot !== entry.slot}
-                  onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
-                  onMarkCooked={entry.cookedAt ? undefined : () => markCooked(entry)}
-                />
-              </React.Fragment>
-            ))}
+        <TouchableOpacity
+          style={styles.dayHeader}
+          onPress={() => toggleDayCollapse(key)}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${dayLabel}`}
+          accessibilityState={{ expanded: !collapsed }}
+        >
+          <View style={styles.dayHeaderLeft}>
+            <Text style={[styles.dayName, today && styles.dayNameToday]}>
+              {format(day, 'EEEE')}
+            </Text>
+            {collapsed && dayEntries.length > 0 && (
+              <Text style={styles.dayCount}>({dayEntries.length})</Text>
+            )}
+            <Ionicons
+              name={collapsed ? 'chevron-forward' : 'chevron-down'}
+              size={13}
+              color={colors.textTertiary}
+            />
           </View>
-        )}
+          <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+        </TouchableOpacity>
 
-        <InlineAction
-          label={dayEntries.length > 0 ? 'Add' : 'Add a meal'}
-          icon="add"
-          variant={dayEntries.length > 0 ? 'neutral' : 'accent'}
-          onPress={() => { haptics.tap(); setPlanningDay(key); }}
-          accessibilityLabel={`Plan a meal for ${format(day, 'EEEE d MMMM')}`}
-          style={styles.add}
-        />
+        {!collapsed && (
+          <>
+            {dayEntries.length > 0 && (
+              <View style={styles.card}>
+                {dayEntries.map((entry, idx) => (
+                  <React.Fragment key={entry.id}>
+                    {idx > 0 && <View style={styles.sep} />}
+                    <MealSlotRow
+                      entry={entry}
+                      title={titleForEntry(entry, recipesById)}
+                      hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                      // The rows are already sorted by slot, so "the slot changed"
+                      // is the run header — captioning both halves of a two-dish
+                      // dinner "DINNER" says it twice.
+                      showSlot={idx === 0 || dayEntries[idx - 1].slot !== entry.slot}
+                      onPress={() => { haptics.tap(); setSelectedId(entry.id); }}
+                      onMarkCooked={entry.cookedAt ? undefined : () => markCooked(entry)}
+                    />
+                  </React.Fragment>
+                ))}
+              </View>
+            )}
+
+            <InlineAction
+              label={dayEntries.length > 0 ? 'Add' : 'Add a meal'}
+              icon="add"
+              variant={dayEntries.length > 0 ? 'neutral' : 'accent'}
+              onPress={() => { haptics.tap(); setPlanningDay(key); }}
+              accessibilityLabel={`Plan a meal for ${dayLabel}`}
+              style={styles.add}
+            />
+          </>
+        )}
       </View>
     );
-  }, [entries, recipesById, styles]);
+  }, [entries, recipesById, styles, collapsedDays, colors]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -370,6 +407,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'space-between',
     paddingBottom: spacing.xs,
   },
+  dayHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: spacing.xs,
+  },
   // Uppercase section-header treatment, matching every other list section
   // header in the app.
   dayName: {
@@ -381,6 +423,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   dayNameToday: {
     color: colors.accent,
+  },
+  dayCount: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   dayDate: {
     color: colors.textTertiary,

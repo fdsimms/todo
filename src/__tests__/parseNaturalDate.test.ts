@@ -139,6 +139,23 @@ describe('parseNaturalDate', () => {
       expect(d.getMonth()).toBe(6); // July
       expect(d.getDate()).toBe(10);
     });
+
+    it('parses spelled-out counts ("in three months", "in two weeks")', () => {
+      expect(parse('in three months')!.getMonth()).toBe(8); // September
+      expect(parse('in two weeks')!.getDate()).toBe(24);
+      expect(parse('in twelve days')!.getDate()).toBe(22);
+    });
+
+    it('parses "N days/weeks from now"', () => {
+      expect(parse('45 days from now')!.getDate()).toBe(25); // July 25
+      expect(parse('2 weeks from now')!.getDate()).toBe(24);
+      expect(parse('three months from now')!.getMonth()).toBe(8); // September
+    });
+
+    it('parses "a/an  from now"', () => {
+      expect(parse('a week from now')!.getDate()).toBe(17);
+      expect(parse('an hour from now')!.getHours()).toBe(11);
+    });
   });
 
   describe('next week/month/year', () => {
