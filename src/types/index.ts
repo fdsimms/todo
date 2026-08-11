@@ -853,6 +853,20 @@ export interface Recipe {
   // Null means untagged, not "none of these" — most existing recipes predate
   // this field and nothing should guess for them. See RecipeMealType above.
   mealType: RecipeMealType | null;
+  // Free-form labels — "vegetarian", "quick", "thai". Deliberately alongside
+  // `mealType` rather than replacing it: a meal type is a closed set the box
+  // groups by and the meal planner reasons about, while these are whatever the
+  // cook wants to slice their own library on. Lowercased and deduped by
+  // normalizeRecipeTags (src/utils/recipeTags.ts) — a tag is an identity, so
+  // "Thai" and "thai" must not be two chips in the filter row.
+  //
+  // **No registry, unlike Task.tags.** A task's tag survives with no tasks on
+  // it because tag_registry keeps it (there's a Tags screen to create one from,
+  // and a tag is how a task gets filed before it exists). A recipe tag is only
+  // ever typed onto a recipe, so the vocabulary is derived from the recipes
+  // themselves (allRecipeTags) and a tag nobody carries is a typo that cleans
+  // itself up rather than a name to maintain.
+  tags: string[];
   ingredients: RecipeIngredient[];
   // The recipes this one is partly made of — see RecipeComponent. Empty for
   // every recipe that isn't composed, which is most of them; the ingredient
@@ -937,6 +951,11 @@ export interface RecipePrepTask {
 export const RECIPE_NAME_MAX_LENGTH = 80;
 // A byline, not a title — "NYT Cooking" not a full citation.
 export const RECIPE_SOURCE_MAX_LENGTH = 60;
+
+// A tag is a chip in a filter row, so it has to stay readable at chip size —
+// "weeknight", "make ahead", not a sentence. Shorter than every other recipe
+// string for that reason. See Recipe.tags.
+export const RECIPE_TAG_MAX_LENGTH = 24;
 
 // A choice group's label ("Side", "Starch") — the same kind of short component
 // name an ingredient section carries, and the same ceiling, for the same

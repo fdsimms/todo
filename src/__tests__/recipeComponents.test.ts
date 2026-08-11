@@ -52,6 +52,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     source: null,
     servings: null,
     mealType: null,
+    tags: [],
     ingredients: [],
     components: [],
     prepTasks: [],

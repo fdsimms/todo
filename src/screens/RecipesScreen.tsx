@@ -24,6 +24,7 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
+import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -47,6 +48,8 @@ import {
   type RecipeListItem,
 } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
+import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
+import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
@@ -89,6 +92,8 @@ export function RecipesScreen() {
   const groceryItems = useGroceryStore(useShallow(s => s.items));
 
   const [query, setQuery] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -162,14 +167,33 @@ export function RecipesScreen() {
 
   const fabDragLabel = fabDragActive ? (dragCanceling ? 'Cancel' : 'New recipe') : null;
 
+  // The whole box's vocabulary, and the counts beside each chip. Derived from
+  // the recipes rather than stored (see Recipe.tags), so the row holds exactly
+  // the tags that are on something right now.
+  const tagVocabulary = useMemo(() => allRecipeTags(recipes), [recipes]);
+  const tagCounts = useMemo(() => recipeTagCounts(recipes), [recipes]);
+
+  // A selected tag that's since been lifted off the last recipe carrying it
+  // stops filtering rather than emptying the list — resolve-or-shrug, the same
+  // answer every other dangling reference in this app gives. The chip it was
+  // selected from has already left the row, so there'd be no way back.
+  const activeTags = useMemo(
+    () => selectedTags.filter(t => tagCounts.has(t)),
+    [selectedTags, tagCounts]
+  );
+  const filtering = activeTags.length > 0;
+
   const visible = useMemo(() => {
-    const matched = rankRecipes(query, recipes);
+    // Filter, then rank — the same order BuyAgainSheet's store filter uses.
+    // Ranking a filtered set is the same function over fewer rows; filtering a
+    // ranked one would be a second pass over work already done.
+    const matched = rankRecipes(query, filterRecipesByTags(recipes, activeTags));
     // rankRecipes already orders a search by weight; only the unfiltered list
     // needs the favourites-first pass, or a name match would lose its place to
     // a starred recipe that merely mentions the word.
     if (query.trim()) return matched;
     return sortRecipesForDisplay(matched);
-  }, [query, recipes]);
+  }, [query, recipes, activeTags]);
 
   // Grouping is only offered on the unfiltered box — see the doc comment
   // above. Built from `visible` (already favourites-sorted) so the flat and
@@ -198,12 +222,14 @@ export function RecipesScreen() {
     return map;
   }, [grouped]);
 
-  // Only offered on the unfiltered list — a search is already a specific
-  // question ("what has fennel"), and a shelf of suggestions above the
-  // results would answer a question nobody asked.
+  // Only offered on the unfiltered list — a search or a tag filter is already a
+  // specific question ("what has fennel", "what's vegetarian"), and a shelf of
+  // suggestions above the results would answer a question nobody asked. It
+  // ranks the whole box, so under a filter it would also be offering exactly
+  // the recipes just filtered out.
   const cookAgain = useMemo(
-    () => query.trim() ? [] : rankRecipeSuggestions(recipes, new Date()),
-    [query, recipes]
+    () => query.trim() || filtering ? [] : rankRecipeSuggestions(recipes, new Date()),
+    [query, filtering, recipes]
   );
 
   // Computed once for the visible list rather than per row render — same
@@ -358,9 +384,14 @@ export function RecipesScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
         title="Recipes"
-        subtitle={recipes.length > 0
-          ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
-          : undefined}
+        // Under a tag filter the count says what's on screen against what's in
+        // the box, so a short list reads as filtered rather than as a box that
+        // lost most of its recipes.
+        subtitle={recipes.length === 0
+          ? undefined
+          : filtering
+            ? `${visible.length} of ${recipes.length} recipes`
+            : `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`}
         actions={recipes.length > 0 ? [
           {
             icon: 'grid-outline',
@@ -405,11 +436,71 @@ export function RecipesScreen() {
             />
           </View>
 
+          {tagVocabulary.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              // flexGrow: 0 in the style, or this row stretches to share the
+              // column with the list below it — same reason the Logbook pins
+              // its own filter bar's height. Unlike the vocabulary itself
+              // (unbounded — see RecipeTagFilterSheet), what's *selected* is
+              // small enough in practice to sit in a scrolling row: it's the
+              // handful the cook is actively narrowing by, not the whole box.
+              style={styles.tagFilterScroll}
+              contentContainerStyle={styles.tagFilterRow}
+              keyboardShouldPersistTaps="handled"
+            >
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => { haptics.tap(); setTagFilterVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Filter recipes by tag"
+              >
+                <Ionicons name="funnel-outline" size={13} color={colors.text} />
+                <Text style={styles.filterButtonText}>
+                  {filtering ? `Tags (${activeTags.length})` : 'Tags'}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
+              </TouchableOpacity>
+              {activeTags.map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  // Tinted rather than filled, and colored text rather than
+                  // onAccent — the same treatment every other removable tag
+                  // chip in this app uses (TaskEditor, LogbookScreen). A
+                  // filled pill would put white text on a yellow tag.
+                  style={[styles.activePill, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => {
+                    haptics.tap();
+                    animateLayout();
+                    setSelectedTags(prev => prev.filter(t => t !== tag));
+                  }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove tag filter ${tag}`}
+                >
+                  <Text style={[styles.activePillText, { color: tagColor(tag) }]} numberOfLines={1}>{tag}</Text>
+                  <Ionicons name="close" size={13} color={tagColor(tag)} />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
           {visible.length === 0 ? (
             <EmptyState
-              icon="search-outline"
+              icon={filtering && !query.trim() ? 'pricetags-outline' : 'search-outline'}
               title="Nothing matched"
-              subtitle={`No recipe here is called “${query.trim()}” or uses it`}
+              // Two ways to end up here, and they need different answers: with
+              // both on, the tags are the narrower half and naming them is what
+              // tells you which one to lift.
+              subtitle={filtering
+                ? query.trim()
+                  ? `No recipe tagged ${formatTagList(activeTags)} is called “${query.trim()}” or uses it`
+                  : `No recipe here is tagged ${formatTagList(activeTags)}`
+                : `No recipe here is called “${query.trim()}” or uses it`}
+              actionLabel={filtering ? 'Clear tags' : undefined}
+              onAction={filtering ? () => { animateLayout(); setSelectedTags([]); } : undefined}
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
@@ -519,6 +610,15 @@ export function RecipesScreen() {
         onClose={() => setImportVisible(false)}
         onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
       />
+
+      <RecipeTagFilterSheet
+        visible={tagFilterVisible}
+        onClose={() => setTagFilterVisible(false)}
+        tags={tagVocabulary}
+        counts={tagCounts}
+        selected={activeTags}
+        onChange={next => { animateLayout(); setSelectedTags(next); }}
+      />
     </View>
   );
 }
@@ -547,6 +647,49 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     padding: 0,
+  },
+  // The tag filter row — a button that opens RecipeTagFilterSheet (the
+  // vocabulary is unbounded, see that component's doc comment) plus the
+  // currently-active tags as removable pills. Same shape as LogbookScreen's
+  // own filterButton/activePill.
+  tagFilterScroll: {
+    flexGrow: 0,
+  },
+  tagFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary,
+  },
+  filterButtonText: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: 220,
+    paddingLeft: spacing.md,
+    paddingRight: 10,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+  },
+  activePillText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
   // Same treatment as LogbookScreen's day headers — section headers app-wide
   // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.

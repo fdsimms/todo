@@ -4,6 +4,7 @@ import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES } from '../ty
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
+import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import { projectRow, REDACTED_SETTING_KEYS, type BackupRow } from '../utils/backup';
@@ -501,6 +502,12 @@ export function initDatabase(): void {
     // behaviour: reaching target_count still completes it immediately. See
     // Task.allowOvershoot (#1257).
     'ALTER TABLE tasks ADD COLUMN allow_overshoot INTEGER NOT NULL DEFAULT 0',
+    // Empty array for every existing recipe — nothing predating this could be
+    // tagged. A JSON blob rather than a join table for the reason `ingredients`
+    // is one: nothing outside this row holds a tag's identity (there's no
+    // registry — see Recipe.tags), so it needs no id, and it's read as part of
+    // the row it belongs to every single time.
+    "ALTER TABLE recipes ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1576,6 +1583,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     mealType: RECIPE_MEAL_TYPES.includes(row.meal_type as RecipeMealType)
       ? (row.meal_type as RecipeMealType)
       : null,
+    tags: parseRecipeTags(row.tags),
     ingredients: parseRecipeIngredients(row.ingredients),
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
@@ -1603,14 +1611,15 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, servings_max, recipe_yield, image_path, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, servings_max, recipe_yield, image_path, meal_type, tags, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
@@ -1624,7 +1633,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, servings_max=?, recipe_yield=?, image_path=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, servings_max=?, recipe_yield=?, image_path=?, meal_type=?, tags=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?
      WHERE id=?`,
@@ -1633,6 +1642,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
+      JSON.stringify(recipe.tags),
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,

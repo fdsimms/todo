@@ -11,9 +11,12 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeMealType } from '../types';
-import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS, RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS, RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, RECIPE_TAG_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsing } from '../utils/recipeComponents';
+import { allRecipeTags, cleanRecipeTag, toggleRecipeTag } from '../utils/recipeTags';
+import { tagColor } from '../utils/tagColor';
+import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -60,6 +63,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setMealType = useRecipeStore(s => s.setMealType);
+  const setTags = useRecipeStore(s => s.setTags);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
   const [name, setName] = useState('');
@@ -71,6 +75,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servingsMax, setServingsMaxDraft] = useState<number | null>(null);
   const [recipeYield, setRecipeYieldDraft] = useState('');
   const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
+  const [tags, setTagsDraft] = useState<string[]>([]);
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTag, setNewTag] = useState('');
   const [servingsOpen, setServingsOpen] = useState(false);
   const [yieldOpen, setYieldOpen] = useState(false);
   const [estimatedMinutes, setEstimatedMinutesDraft] = useState<number | null>(null);
@@ -104,6 +112,24 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   }, [existingSources, source]);
   const [linkOpen, setLinkOpen] = useState(false);
 
+  // The box's whole vocabulary, minus what this recipe already carries — the
+  // same "computed from the data that's actually there" idea as the source
+  // suggestions above, and the reason recipe tags need no registry (see
+  // Recipe.tags): the recipes are the list.
+  const tagSuggestions = useMemo(
+    () => allRecipeTags(recipes).filter(t => !tags.includes(t)),
+    [recipes, tags]
+  );
+
+  const addTagFromInput = () => {
+    const tag = cleanRecipeTag(newTag);
+    // Typing a name the recipe already carries does nothing — the one place
+    // this differs from a chip tap, which toggles it back off.
+    if (tag && !tags.includes(tag)) setTagsDraft(prev => [...prev, tag]);
+    setNewTag('');
+    setAddingTag(false);
+  };
+
   useEffect(() => {
     if (!recipe) return;
     setName(recipe.name);
@@ -115,6 +141,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setServingsMaxDraft(recipe.servingsMax);
     setRecipeYieldDraft(recipe.recipeYield ?? '');
     setMealTypeDraft(recipe.mealType);
+    setTagsDraft(recipe.tags);
+    setTagsOpen(false);
+    setAddingTag(false);
+    setNewTag('');
     setServingsOpen(false);
     setYieldOpen(false);
     setEstimatedMinutesDraft(recipe.estimatedMinutes);
@@ -142,6 +172,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setRecipeYield(recipe.id, recipeYield);
     setEstimatedMinutes(recipe.id, estimatedMinutes);
     setMealType(recipe.id, mealType);
+    // A tag half-typed when Done was tapped still counts — the field commits on
+    // blur, but tapping Done can beat the blur.
+    setTags(recipe.id, addingTag ? [...tags, cleanRecipeTag(newTag)] : tags);
     onClose();
   };
 
@@ -314,6 +347,68 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+        </CollapsibleField>
+        <CollapsibleField
+          label="Tags"
+          summary={tags.length > 0 ? tags.join(', ') : undefined}
+          hint="Free-form labels — “weeknight”, “vegetarian”, “thai”. Filter the recipe box by them, and combine two to narrow it."
+          expanded={tagsOpen}
+          onToggle={() => setTagsOpen(v => !v)}
+        >
+          <View style={styles.tagRow}>
+            {tags.map(tag => (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); setTagsDraft(prev => toggleRecipeTag(prev, tag)); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove tag ${tag}`}
+              >
+                <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
+                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+                <Ionicons name="close" size={12} color={tagColor(tag)} />
+              </TouchableOpacity>
+            ))}
+            {addingTag ? (
+              <TextInput
+                autoFocus
+                style={styles.tagInput}
+                value={newTag}
+                onChangeText={setNewTag}
+                onSubmitEditing={addTagFromInput}
+                onBlur={addTagFromInput}
+                placeholder="tag name"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_TAG_MAX_LENGTH}
+                returnKeyType="done"
+                autoCapitalize="none"
+                autoCorrect={false}
+                accessibilityLabel="New tag name"
+              />
+            ) : (
+              // Neutral, not accent: it sits at the end of a row of chips that
+              // tint themselves from tagPalette, whose first colour *is* the
+              // accent — an accent pill there reads as one more tag.
+              <InlineAction icon="add" label="Add tag" variant="neutral" onPress={() => setAddingTag(true)} />
+            )}
+          </View>
+          {tagSuggestions.length > 0 && (
+            <View style={styles.tagSuggestions}>
+              {tagSuggestions.slice(0, 8).map(tag => (
+                <TouchableOpacity
+                  key={tag}
+                  style={styles.tagSuggestion}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setTagsDraft(prev => toggleRecipeTag(prev, tag)); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Add tag ${tag}`}
+                >
+                  <Text style={styles.tagSuggestionText}>{tag}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </CollapsibleField>
         <EditorRow
           icon="time-outline"
@@ -501,6 +596,32 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.sm,
   },
+  // Same tag treatment as TaskEditor's — a tag chip looks the same wherever
+  // tags are edited in this app.
+  tagRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+    alignItems: 'center', paddingBottom: spacing.sm,
+  },
+  tagChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 5, borderRadius: radius.full,
+  },
+  tagDot: { width: 6, height: 6, borderRadius: 3 },
+  tagChipText: { fontSize: font.sm, fontWeight: fontWeight.medium },
+  tagInput: {
+    color: colors.text, fontSize: font.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 4, paddingHorizontal: 4, minWidth: 80,
+  },
+  tagSuggestions: {
+    flexDirection: 'row', flexWrap: 'wrap',
+    gap: spacing.xs, paddingBottom: spacing.sm,
+  },
+  tagSuggestion: {
+    paddingHorizontal: 8, paddingVertical: 3,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
   pill: {
     paddingHorizontal: 14,

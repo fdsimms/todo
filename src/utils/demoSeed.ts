@@ -45,7 +45,7 @@ export function seedDemoData(): void {
     addShop,
     linkItemShop,
   } = useGroceryStore.getState();
-  const { addRecipe, addIngredientsFromText, setMealType, setSourceUrl } = useRecipeStore.getState();
+  const { addRecipe, addIngredientsFromText, setMealType, setSourceUrl, setTags } = useRecipeStore.getState();
   const { planMeal } = useMealPlanStore.getState();
 
   const today = getCurrentDayStart();
@@ -309,6 +309,10 @@ export function seedDemoData(): void {
       ['2 chicken breasts', '1 red bell pepper', '2 tbsp soy sauce', '1 clove garlic', '2 cups rice'].join('\n')
     );
     setMealType(stirFry.id, 'dinner');
+    // Two recipes share "weeknight" so the recipe box's tag filter has
+    // something to actually narrow, and one carries a second tag so combining
+    // two chips has a visible effect.
+    setTags(stirFry.id, ['weeknight', 'quick']);
   }
 
   const oats = addRecipe('Overnight oats');
@@ -318,6 +322,7 @@ export function seedDemoData(): void {
       ['1 cup rolled oats', '1 cup milk', '1 tbsp honey', '1/2 cup berries'].join('\n')
     );
     setMealType(oats.id, 'breakfast');
+    setTags(oats.id, ['make ahead']);
   }
 
   const salmon = addRecipe('Lemon garlic salmon');
@@ -327,6 +332,7 @@ export function seedDemoData(): void {
       ['2 salmon fillets', '1 lemon', '2 cloves garlic', '2 tbsp butter', '1 bunch asparagus'].join('\n')
     );
     setMealType(salmon.id, 'dinner');
+    setTags(salmon.id, ['weeknight']);
     setSourceUrl(salmon.id, 'https://www.example-recipes.com/lemon-garlic-salmon');
   }
 

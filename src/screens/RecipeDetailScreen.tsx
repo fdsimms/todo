@@ -41,6 +41,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
 import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
+import { tagColor } from '../utils/tagColor';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import {
   cookTimerElapsed,
@@ -619,6 +620,20 @@ export function RecipeDetailScreen() {
         </TouchableOpacity>
 
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
+        {/* Chips rather than another clause in the summary line above: tags are
+            the cook's own words and there can be several, so they'd swamp a
+            sentence whose other parts are all single facts. Not tappable —
+            filtering by one is the recipe box's job, and a tap here that
+            navigated back to it would take the recipe off screen. */}
+        {recipe.tags.length > 0 && (
+          <View style={styles.tagRow}>
+            {recipe.tags.map(tag => (
+              <View key={tag} style={[styles.tagChip, { backgroundColor: tagColor(tag) + '33' }]}>
+                <Text style={[styles.tagChipText, { color: tagColor(tag) }]}>{tag}</Text>
+              </View>
+            ))}
+          </View>
+        )}
         {!!recipe.notes && <Text style={styles.notes}>{recipe.notes}</Text>}
 
         <View style={styles.timerCard}>
@@ -928,6 +943,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summary: {
     color: colors.textSecondary,
     fontSize: font.sm,
+  },
+  // Same tag chip as TaskEditor's and the recipe editor's, minus the remove
+  // affordance — these are a read of the recipe, edited from the editor sheet.
+  tagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+  },
+  tagChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.full,
+  },
+  tagChipText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   notes: {
     color: colors.text,
