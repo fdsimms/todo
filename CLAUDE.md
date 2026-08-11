@@ -80,6 +80,7 @@ Start from this table instead of searching. Most work lands in one of these file
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
 | any model's shape | `src/types/index.ts` — one file, every type |
 | colors, spacing, animation | `src/theme/index.ts`, `src/theme/ThemeContext.tsx` |
+| pinning, the Pinned Tasks block | `pinnedBlock` in `src/screens/TodayScreen.tsx` — see Pinning below |
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
@@ -197,6 +198,47 @@ The core differentiator: tasks have multiple reasons to be hidden, checked in `s
 All time comparisons use the configurable `dayResetTime` (default `"00:00"`) to define when the logical day starts — e.g. a 2 AM reset means tasks on a "day" don't surface until 2 AM.
 
 **Expiry needs a window that closes and a day to close it on.** `isTaskExpired()` is the one gate with no way back — `sweepExpiredTasks` deletes what it flags — so it checks both. `effectiveWindowEnd()` ignores a `windowEnd` that isn't after its `windowStart`, because both gates anchor to a single logical day and "22:00–02:00" otherwise compares as past from 02:00 onward: expired before it ever opened. And `windowEnd` is deliberately not a date signal (see `hasNoDateSignal`), so a task carrying only one has no day to be late for — `hasDayArrived()` can't catch that, since with no `dueDate` it's vacuously true. Expiry now demands the same placement `isTaskVisible` does.
+
+### Pinning — a pinned task has two rows, and that's the feature
+
+Pinning adds a **copy** of a task to a "Pinned Tasks" block at the top of Today. The original row
+stays exactly where it is, in its own category section, with its pin glyph lit. Both rows are live
+and interchangeable — same task, so completing or swiping either does the same thing.
+
+**Never filter pinned tasks out of the main list again.** `listItems` used to do it in one line
+(`filtered.filter(t => !t.pinned)`), with an "Everything else" divider collapsing whatever was
+left, and essentially every problem the feature had came from that:
+
+- Pinning moved every row below the finger, so the second pin in a run was a tap on a row that had
+  just jumped. ~110 lines existed to paper over it — a 3s ceiling timer, five "the run of taps is
+  over" interaction signals, a render-time `prevPinnedCount` check to kill a one-frame flash, and a
+  `todayDragging` hold. All deleted. Don't reintroduce any of it; nothing moves on a pin now, so
+  there is nothing to delay.
+- The pinned layout was a *second list component* (a plain `FlatList`), so the first pin remounted
+  the list and lost its scroll offset — and because that branch never got `visibleGroupItems`,
+  **stacks silently vanished while anything was pinned**. One `ReorderableList` is always mounted now.
+- "Everything else" arrived collapsed, so pinning one task hid the day. The eye button in the pinned
+  header does that now, on request, and defaults to off (`othersHidden`, session-only).
+
+The block is the list's **`ListHeaderComponent`, not rows in its data** — read that prop's note in
+`ReorderableList` before moving it, since a header outside the ScrollView silently offsets the drag
+math. As rows it couldn't work: `resolveDrop` derives a dropped row's category from the nearest
+header above it, so a pinned row dragged down would inherit a category and a task dragged up into
+the block would inherit none.
+
+- **`pinnedOrder` is its own number space** (`Task.pinnedOrder`, `reorderPinnedTasks`), because the
+  section is hand-orderable and dragging a pin must not also move the original in Work. Default `0`
+  = never ranked, with `sortOrder` breaking ties, so an install that upgrades into the column reads
+  exactly as it did. Pinning stamps `max + 1` (appends to the bottom) — on the *transition* only,
+  or the editor would reshuffle a pinned task to the bottom on every save.
+- **The copy passes `duplicateRow`**, which keeps it out of the paint-select registry — that's keyed
+  by task id, and two rows claiming one id means whichever unmounts first evicts a row still on
+  screen. Same opt-out the drag overlay's floating copy already used.
+- **Expansion is keyed on the row, not the task** (`renderTaskRow`'s `rowKey`, `pin-<id>` for the
+  copy), so tapping one row doesn't also expand its twin halfway down the list.
+- **`pinnedTasks()` ignores visibility on purpose** — a pinned task shows in the block whether or not
+  it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
+  today has only the one row rather than two.
 
 ### Recurrence
 
@@ -586,7 +628,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   the count and only the stored day total changes.
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
-  (task row's expanded actions, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
+  (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
   and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
   is a *map* pin — thin needle, round head — which reads as a location rather than "hold this at
   the top" and goes wispy at `iconSize.sm`. So it's drawn, as two `react-native-svg` paths on the

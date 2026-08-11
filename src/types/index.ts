@@ -239,6 +239,18 @@ export interface Task {
   sortOrder: number;
 
   pinned: boolean;
+  /**
+   * Rank within the Pinned section, independent of `sortOrder`.
+   *
+   * A pinned task keeps its row in its category section as well, so the two
+   * orders are genuinely separate: dragging a pin to the top of the Pinned
+   * section must not also haul it to the top of Work. 0 means "never ranked" —
+   * every row predates this column, and `pinnedTasks()` falls back to
+   * `sortOrder` for ties, which is exactly the order pins had before. Pinning
+   * stamps `max + 1` so a new pin lands at the bottom of the section rather
+   * than jumping into the middle of an order the user arranged by hand.
+   */
+  pinnedOrder: number;
   priority: Priority;
   effort: Effort;
   estimatedMinutes: number | null; // precise time estimate; effort is the derived coarse bucket

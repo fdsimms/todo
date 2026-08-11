@@ -86,6 +86,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   category: null,
   sortOrder: 1,
   pinned: false,
+  pinnedOrder: 0,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -638,38 +639,44 @@ describe('applyCategoryFocus', () => {
     ]);
   });
 
-  // "Later Today" and "Pinned Tasks" aren't categories, so their header only
-  // survives when a row underneath it actually belongs to the focused
-  // category — otherwise it would sit on screen over nothing.
-  it('keeps Later Today and Pinned Tasks headers only when a row under them matches', () => {
-    const pinnedWork = makeTask({ id: 'p1', category: 'Work', pinned: true });
-    const pinnedHome = makeTask({ id: 'p2', category: 'Home', pinned: true });
+  // "Later Today" isn't a category, so its header only survives when a row
+  // underneath it actually belongs to the focused category — otherwise it would
+  // sit on screen over nothing.
+  it('keeps the Later Today header only when a row under it matches', () => {
     const laterWork = makeTask({ id: 'l1', category: 'Work' });
     const items: TodayListItem[] = [
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: pinnedWork },
-      { type: 'pinned-task', task: pinnedHome },
-      { type: 'rest-header' },
       { type: 'header', label: LATER_TODAY_LABEL },
       { type: 'task', task: laterWork },
     ];
 
-    const focused = applyCategoryFocus(items, 'Work');
-    expect(focused).toEqual([
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: pinnedWork },
-      { type: 'header', label: LATER_TODAY_LABEL },
-      { type: 'task', task: laterWork },
-    ]);
+    expect(applyCategoryFocus(items, 'Work')).toEqual(items);
   });
 
-  it('drops the Pinned Tasks header entirely when no pinned row matches', () => {
-    const pinnedHome = makeTask({ id: 'p2', category: 'Home', pinned: true });
+  it('drops the Later Today header entirely when no row under it matches', () => {
+    const laterHome = makeTask({ id: 'l1', category: 'Home' });
     const items: TodayListItem[] = [
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: pinnedHome },
+      { type: 'header', label: LATER_TODAY_LABEL },
+      { type: 'task', task: laterHome },
     ];
     expect(applyCategoryFocus(items, 'Work')).toEqual([]);
+  });
+
+  // A pinned task keeps its ordinary row in its own category section, so focus
+  // treats it like any other row — there is no pinned row kind in this data.
+  // (The pinned block is TodayScreen's list header and never reaches here.)
+  it('keeps a pinned task under its own category like any other row', () => {
+    const pinnedWork = makeTask({ id: 'p1', category: 'Work', pinned: true });
+    const pinnedHome = makeTask({ id: 'p2', category: 'Home', pinned: true });
+    const items: TodayListItem[] = [
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: pinnedWork },
+      { type: 'header', label: 'Home' },
+      { type: 'task', task: pinnedHome },
+    ];
+    expect(applyCategoryFocus(items, 'Work')).toEqual([
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: pinnedWork },
+    ]);
   });
 });
 
@@ -677,10 +684,7 @@ describe('findTaskJumpTarget', () => {
   // The screen's own key scheme (TodayScreen.listItemKey), which is what the
   // returned key has to be usable as.
   const listItemKey = (item: TodayListItem): string =>
-    item.type === 'pinned-header' ? '__pinned-header__'
-    : item.type === 'pinned-task' ? `pin-${item.task.id}`
-    : item.type === 'rest-header' ? '__rest-header__'
-    : item.type === 'header' ? `h-${item.label}`
+    item.type === 'header' ? `h-${item.label}`
     : item.type === 'group' ? `g-${item.group.id}`
     : item.task.id;
 
@@ -692,7 +696,6 @@ describe('findTaskJumpTarget', () => {
       key: 'a',
       category: null,
       groupId: null,
-      inRest: false,
     });
   });
 
@@ -728,37 +731,22 @@ describe('findTaskJumpTarget', () => {
       key: 'g-group-1',
       category: 'Work',
       groupId: 'group-1',
-      inRest: false,
     });
   });
 
-  it('flags a row sitting under "Everything else"', () => {
-    const pinned = makeTask({ id: 'p', pinned: true });
-    const rest = makeTask({ id: 'r' });
+  // A pinned task is still an ordinary row of its own category section — the
+  // pinned block above the list is a second copy, and isn't in this data. So a
+  // jump aims at the row in place, which is where the task actually lives.
+  it('aims at a pinned task\'s row in its own category section', () => {
+    const pinned = makeTask({ id: 'p', category: 'Work', pinned: true });
     const items: TodayListItem[] = [
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: pinned },
-      { type: 'rest-header' },
-      { type: 'task', task: rest },
-    ];
-    expect(find(items, 'r')).toMatchObject({ key: 'r', inRest: true });
-  });
-
-  // A pinned row sits above the divider, so it's never inside the collapsible
-  // section even though the divider is further down the same list.
-  it('does not flag a pinned row as being under "Everything else"', () => {
-    const pinned = makeTask({ id: 'p', pinned: true });
-    const items: TodayListItem[] = [
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: pinned },
-      { type: 'rest-header' },
-      { type: 'task', task: makeTask({ id: 'r' }) },
+      { type: 'header', label: 'Work' },
+      { type: 'task', task: pinned },
     ];
     expect(find(items, 'p')).toEqual({
-      key: 'pin-p',
-      category: null,
+      key: 'p',
+      category: 'Work',
       groupId: null,
-      inRest: false,
     });
   });
 
@@ -827,13 +815,10 @@ describe('sectionTaskIds', () => {
     expect(ids.get('home')).toEqual(['h1']);
   });
 
-  // Neither divider heads a category, and rows above the first header (the
-  // pinned run) belong to no section.
-  it('ignores the pinned and "everything else" dividers', () => {
+  // The header-less loose run at the top of the list belongs to no section, so
+  // nothing can collapse over it.
+  it('ignores rows above the first header', () => {
     const ids = sectionTaskIds([
-      { type: 'pinned-header' },
-      { type: 'pinned-task', task: makeTask({ id: 'p1' }) },
-      { type: 'rest-header' },
       { type: 'task', task: makeTask({ id: 'loose' }) },
       { type: 'header', label: 'work' },
       { type: 'task', task: makeTask({ id: 'w1' }) },

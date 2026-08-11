@@ -522,6 +522,12 @@ export function initDatabase(): void {
     // source. See Recipe.sourceType/sourcePage.
     'ALTER TABLE recipes ADD COLUMN source_type TEXT',
     'ALTER TABLE recipes ADD COLUMN source_page TEXT',
+    // 0 for every existing row, and that needs no backfill to be correct: the
+    // Pinned section sorted by sort_order until now, and pinnedTasks() still
+    // falls back to it for ties. So an install upgrading into this sees its
+    // pins in exactly the order it left them, and only a drag (or a fresh pin,
+    // which stamps max+1) ever writes a non-zero rank. See Task.pinnedOrder.
+    'ALTER TABLE tasks ADD COLUMN pinned_order INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -790,6 +796,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     pinned: Boolean(row.pinned),
+    pinnedOrder: (row.pinned_order as number) ?? 0,
     priority: ((row.priority as number) ?? 0) as Task['priority'],
     effort: ((row.effort as number) ?? 0) as Task['effort'],
     estimatedMinutes: (row.estimated_minutes as number | null) ?? null,
@@ -848,8 +855,8 @@ export function dbInsertTask(task: Task): void {
       previous_streak_count, previous_streak_date, series_defaults, group_id, archived, archived_at, project_id, link_url,
       timed_minutes, timer_elapsed_seconds, target_count, progress_count, series_id, series_month_days, series_repeat_months,
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
-      target_unit, phone_number, email_address, allow_overshoot
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      target_unit, phone_number, email_address, allow_overshoot, pinned_order
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -883,6 +890,7 @@ export function dbInsertTask(task: Task): void {
       task.phoneNumber ?? null,
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
+      task.pinnedOrder,
     ]
   );
 }
@@ -900,7 +908,7 @@ export function dbUpdateTask(task: Task): void {
       archived=?, archived_at=?, project_id=?, link_url=?,
       timed_minutes=?, timer_elapsed_seconds=?, target_count=?, progress_count=?, series_id=?, series_month_days=?, series_repeat_months=?,
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
-      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?
+      target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -935,6 +943,7 @@ export function dbUpdateTask(task: Task): void {
       task.phoneNumber ?? null,
       task.emailAddress ?? null,
       task.allowOvershoot ? 1 : 0,
+      task.pinnedOrder,
       task.id,
     ]
   );
@@ -948,6 +957,14 @@ export function dbBatchUpdateSortOrders(updates: { id: string; sortOrder: number
   db.withTransactionSync(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE tasks SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
+export function dbBatchUpdatePinnedOrders(updates: { id: string; pinnedOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, pinnedOrder } of updates) {
+      db.runSync('UPDATE tasks SET pinned_order = ? WHERE id = ?', [pinnedOrder, id]);
     }
   });
 }

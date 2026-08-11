@@ -106,6 +106,20 @@ interface Props {
   showActions?: boolean;
   /** Narrower than `showActions`: drops just the row's pin button, for lists where pinning (a Today concept) doesn't apply but the link and timer actions still do. */
   showPin?: boolean;
+  /**
+   * Marks this as a *second* row for a task that also renders somewhere else in
+   * the same list — Today's pinned block, which shows a copy of each pinned
+   * task while the original stays in its category section.
+   *
+   * All it does is keep the copy out of the paint-select registry, which is
+   * keyed by task id: two rows registering the same id means the second
+   * overwrites the first, and whichever unmounts first then evicts a row that
+   * is still on screen. Exactly the hazard the drag overlay's floating copy
+   * already opts out of. Everything else about the copy is a normal row — it
+   * completes, swipes and selects like the original, because it *is* the
+   * original task.
+   */
+  duplicateRow?: boolean;
   /** Extra left indent for a group's expanded children, so they read as nested under the group header rather than as ordinary top-level rows. */
   indented?: boolean;
   /** Briefly tints the row to draw the eye to it — a task that was just created, or one jumped to from the new-todos banner. */
@@ -198,6 +212,7 @@ export const TaskItem = React.memo(function TaskItem({
   showGroup = false,
   showActions = true,
   showPin = true,
+  duplicateRow = false,
   indented = false,
   highlighted = false,
   autoComplete = false,
@@ -440,9 +455,10 @@ export const TaskItem = React.memo(function TaskItem({
   const isSpotlighted = useSpotlightLinger(expanded) || collapsing;
   // Lets a paint-select drag find this row by its on-screen position. A no-op
   // on screens whose list isn't wrapped in a PaintSelectionProvider — and for
-  // the floating copy of a row being dragged, which would otherwise take the
-  // real row's registration with it when the drop ends.
-  const paintRowRef = usePaintSelectionRow(isActive ? null : task.id);
+  // any duplicate of a row that's already registered (the floating copy of a
+  // row being dragged, the pinned block's copy), which would otherwise take the
+  // real row's registration with it when it unmounts.
+  const paintRowRef = usePaintSelectionRow(isActive || duplicateRow ? null : task.id);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
 

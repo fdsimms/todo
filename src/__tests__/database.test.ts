@@ -152,6 +152,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   category: null,
   sortOrder: 1,
   pinned: false,
+  pinnedOrder: 0,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -442,6 +443,33 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [t] = dbGetAllTasks();
     expect(t.chainStepOnSchedule).toBe(false);
     expect(t.title).toBe('Renamed');
+  });
+
+  it('round-trips pinnedOrder through both insert and update', () => {
+    // Bound dead last in both statements — the newest column, and so the one
+    // most likely to be left off one of the two placeholder lists. A
+    // misalignment here writes allowOvershoot's value into pinned_order.
+    dbInsertTask(makeTask({ id: 'po', pinned: true, pinnedOrder: 3 }));
+    expect(dbGetAllTasks()[0].pinnedOrder).toBe(3);
+    dbUpdateTask({ ...dbGetAllTasks()[0], pinnedOrder: 7, title: 'Renamed' });
+    const [t] = dbGetAllTasks();
+    expect(t.pinnedOrder).toBe(7);
+    expect(t.title).toBe('Renamed');
+    // The neighbour it would collide with if a placeholder were dropped.
+    expect(t.allowOvershoot).toBe(false);
+  });
+
+  it('defaults pinnedOrder to 0 for a row written before the column existed', () => {
+    // Straight to SQL, omitting pinned_order the way a build predating the
+    // migration did — dbInsertTask always supplies it, so it can't reach this.
+    // 0 is what makes the upgrade a no-op: pinnedTasks falls back to sortOrder
+    // for ties, so an existing install's section reads exactly as it did.
+    mockRawDb
+      .prepare(
+        'INSERT INTO tasks (id, title, notes, completed, created_at, tags, category, sort_order, pinned, priority, effort, recurrence_type, recurrence_interval, recurrence_days, recurrence_from_completion, streak_count, cycle_enabled, cycle_index, cycle_items, vacation_pause, previous_streak_count, progress_count) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      )
+      .run('legacy', 'Old row', '', 0, '2026-01-01T00:00:00.000Z', '[]', null, 1, 1, 0, 0, 'none', 1, '[]', 0, 0, 0, 0, '[]', 0, 0, 0);
+    expect(dbGetAllTasks()[0].pinnedOrder).toBe(0);
   });
 
   it('round-trips phoneNumber through both insert and update', () => {

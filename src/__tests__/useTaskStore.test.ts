@@ -15,6 +15,7 @@ import {
   dbDeleteSubtasks,
   dbClearAllPins,
   dbBatchUpdateSortOrders,
+  dbBatchUpdatePinnedOrders,
   dbBulkDeleteTasks,
   dbBulkSetPriority,
   dbBulkSetDefer,
@@ -61,6 +62,7 @@ jest.mock('../db/database', () => ({
   dbDeleteSubtasks: jest.fn(),
   dbClearAllPins: jest.fn(),
   dbBatchUpdateSortOrders: jest.fn(),
+  dbBatchUpdatePinnedOrders: jest.fn(),
   dbBulkDeleteTasks: jest.fn(),
   dbBulkSetPriority: jest.fn(),
   dbBulkSetDefer: jest.fn(),
@@ -176,6 +178,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   category: null,
   sortOrder: 1,
   pinned: false,
+  pinnedOrder: 0,
   priority: 0,
   effort: 0,
   estimatedMinutes: null,
@@ -2502,6 +2505,119 @@ describe('archivedTasks', () => {
     });
     const ids = useTaskStore.getState().archivedTasks().map(t => t.id);
     expect(ids).toEqual(['a']);
+  });
+});
+
+// ─── pinnedOrder ─────────────────────────────────────────────────────────────
+
+describe('pinned ordering', () => {
+  it('orders pinnedTasks by sortOrder while nothing has been ranked', () => {
+    // Every row starts at pinnedOrder 0 — including every row on a device that
+    // upgraded into the column — so the section must read exactly as it did
+    // before the column existed.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'b', pinned: true, sortOrder: 2 }),
+        makeTask({ id: 'a', pinned: true, sortOrder: 1 }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('appends a newly pinned task to the bottom of the section', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'ranked', pinned: true, pinnedOrder: 1, sortOrder: 99 }),
+        makeTask({ id: 'fresh', pinned: false, sortOrder: 1 }),
+      ],
+    });
+    useTaskStore.getState().togglePin('fresh');
+    // Would sort first on sortOrder alone; the fresh rank is what puts it last.
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['ranked', 'fresh']);
+  });
+
+  it('does not restamp a task that was already pinned', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: true, pinnedOrder: 1 }),
+        makeTask({ id: 'b', pinned: true, pinnedOrder: 2 }),
+      ],
+    });
+    // What the editor does on every save of an already-pinned task.
+    useTaskStore.getState().updateTask('a', { pinned: true, title: 'edited' });
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.pinnedOrder).toBe(1);
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['a', 'b']);
+  });
+
+  it('keeps unpinning free of ranks', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: true, pinnedOrder: 3 })] });
+    useTaskStore.getState().togglePin('a');
+    expect(useTaskStore.getState().pinnedTasks()).toEqual([]);
+  });
+
+  it('gives a bulk pin consecutive ranks, leaving the already-pinned alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'old', pinned: true, pinnedOrder: 1, sortOrder: 50 }),
+        makeTask({ id: 'x', pinned: false, sortOrder: 1 }),
+        makeTask({ id: 'y', pinned: false, sortOrder: 2 }),
+      ],
+    });
+    useTaskStore.getState().bulkTogglePin(['old', 'x', 'y']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'old')?.pinnedOrder).toBe(1);
+    expect(tasks.find(t => t.id === 'x')?.pinnedOrder).toBe(2);
+    expect(tasks.find(t => t.id === 'y')?.pinnedOrder).toBe(3);
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['old', 'x', 'y']);
+  });
+});
+
+// ─── reorderPinnedTasks ──────────────────────────────────────────────────────
+
+describe('reorderPinnedTasks', () => {
+  it('renumbers the section from 1 in the given order', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: true, sortOrder: 1 }),
+        makeTask({ id: 'b', pinned: true, sortOrder: 2 }),
+        makeTask({ id: 'c', pinned: true, sortOrder: 3 }),
+      ],
+    });
+    useTaskStore.getState().reorderPinnedTasks(['c', 'a', 'b']);
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['c', 'a', 'b']);
+    // From 1, so no row is left on the 0 that means "never ranked".
+    expect(useTaskStore.getState().tasks.map(t => t.pinnedOrder).sort()).toEqual([1, 2, 3]);
+  });
+
+  it('leaves sortOrder alone, so the rows keep their place in their categories', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', pinned: true, category: 'Work', sortOrder: 1 }),
+        makeTask({ id: 'b', pinned: true, category: 'Work', sortOrder: 2 }),
+      ],
+    });
+    useTaskStore.getState().reorderPinnedTasks(['b', 'a']);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(1);
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(2);
+  });
+
+  it('persists through one batched write', () => {
+    (dbBatchUpdatePinnedOrders as jest.Mock).mockClear();
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true }), makeTask({ id: 'b', pinned: true })],
+    });
+    useTaskStore.getState().reorderPinnedTasks(['b', 'a']);
+    expect(dbBatchUpdatePinnedOrders).toHaveBeenCalledWith([
+      { id: 'b', pinnedOrder: 1 },
+      { id: 'a', pinnedOrder: 2 },
+    ]);
+  });
+
+  it('is a no-op on an empty list', () => {
+    (dbBatchUpdatePinnedOrders as jest.Mock).mockClear();
+    useTaskStore.getState().reorderPinnedTasks([]);
+    expect(dbBatchUpdatePinnedOrders).not.toHaveBeenCalled();
   });
 });
 
