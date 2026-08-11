@@ -12,6 +12,7 @@ import {
   parsePrepTasks,
   normalizePrepTask,
   resolvePrepTaskDraft,
+  prepTaskDraftsForMeal,
   describeCookHistory,
   applyMeasuredCookTime,
   avgCookMinutes,
@@ -453,6 +454,56 @@ describe('resolvePrepTaskDraft', () => {
       mealDate
     );
     expect(new Date(dueDate).getTime() - new Date(reminderTime!).getTime()).toBe(90 * 60_000);
+  });
+});
+
+describe('prepTaskDraftsForMeal', () => {
+  function prepTask(title: string, overrides: Partial<RecipePrepTask> = {}): RecipePrepTask {
+    return { id: `p-${++seq}`, title, offsetDays: -1, reminderOffsetMinutes: null, ...overrides };
+  }
+
+  const mealDate = new Date(2026, 7, 15);
+
+  it('is empty for a recipe with no prep steps', () => {
+    const r = recipe('Toast');
+    expect(prepTaskDraftsForMeal(r, new Map([[r.id, r]]), mealDate)).toEqual([]);
+  });
+
+  it('resolves each step against the meal date', () => {
+    const r = recipe('Roast', {
+      prepTasks: [prepTask('Defrost the beef', { offsetDays: -2 }), prepTask('Salt it', { offsetDays: 0 })],
+    });
+    const drafts = prepTaskDraftsForMeal(r, new Map([[r.id, r]]), mealDate);
+    expect(drafts.map(d => d.title)).toEqual(['Defrost the beef', 'Salt it']);
+    expect(new Date(drafts[0].dueDate).getDate()).toBe(13);
+    expect(new Date(drafts[1].dueDate).getDate()).toBe(15);
+    expect(drafts[0].reminderTime).toBeNull();
+  });
+
+  it("carries a reminder through from the step's offset", () => {
+    const r = recipe('Roast', { prepTasks: [prepTask('Defrost', { reminderOffsetMinutes: 30 })] });
+    const [draft] = prepTaskDraftsForMeal(r, new Map([[r.id, r]]), mealDate);
+    expect(new Date(draft.dueDate).getTime() - new Date(draft.reminderTime!).getTime()).toBe(30 * 60_000);
+  });
+
+  it("includes a component's steps, anchored on the same meal date", () => {
+    const mash = recipe('Mash', { prepTasks: [prepTask('Boil the potatoes', { offsetDays: -1 })] });
+    const steak = recipe('Steak with mash', {
+      prepTasks: [prepTask('Take the steak out', { offsetDays: 0 })],
+      components: [component(mash.id, 'Mash')],
+    });
+    const drafts = prepTaskDraftsForMeal(steak, new Map([[steak.id, steak], [mash.id, mash]]), mealDate);
+    expect(drafts.map(d => d.title)).toEqual(['Take the steak out', 'Boil the potatoes']);
+    expect(new Date(drafts[1].dueDate).getDate()).toBe(14);
+  });
+
+  it('ignores a component whose recipe is gone', () => {
+    const steak = recipe('Steak with mash', {
+      prepTasks: [prepTask('Take the steak out')],
+      components: [component('missing', 'Mash')],
+    });
+    const drafts = prepTaskDraftsForMeal(steak, new Map([[steak.id, steak]]), mealDate);
+    expect(drafts.map(d => d.title)).toEqual(['Take the steak out']);
   });
 });
 
