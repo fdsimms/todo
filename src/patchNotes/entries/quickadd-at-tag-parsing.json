@@ -1,0 +1,4 @@
+{
+  "message": "Quick add now recognizes \"#tag\" for an existing tag, alongside \"#category\" — the first matching word claims the category, the rest are read as tags",
+  "date": "2026-08-11"
+}
