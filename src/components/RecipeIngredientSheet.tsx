@@ -8,7 +8,12 @@ import {
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, PREP_MAX_LENGTH } from '../types';
+import {
+  GROCERY_NAME_MAX_LENGTH,
+  GROCERY_QUANTITY_MAX_LENGTH,
+  PREP_MAX_LENGTH,
+  RECIPE_SECTION_MAX_LENGTH,
+} from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
@@ -53,6 +58,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const [quantity, setQuantity] = useState('');
   const [prep, setPrep] = useState('');
   const [purpose, setPurpose] = useState('');
+  const [section, setSection] = useState('');
   const [aisle, setAisle] = useState<string | null>(null);
 
   useEffect(() => {
@@ -61,6 +67,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setQuantity(ingredient.quantity);
     setPrep(ingredient.prep ?? '');
     setPurpose(ingredient.purpose ?? '');
+    setSection(ingredient.section ?? '');
     setAisle(ingredient.aisle);
   }, [ingredient]);
 
@@ -74,6 +81,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       quantity: quantity.trim(),
       prep: prep.trim() || null,
       purpose: purpose.trim() || null,
+      section: section.trim() || null,
       aisle,
     });
     onClose();
@@ -172,6 +180,20 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           maxLength={PREP_MAX_LENGTH}
           accessibilityLabel="Purpose"
         />
+        <Text style={styles.groupLabel}>Section</Text>
+        <TextInput
+          style={styles.input}
+          value={section}
+          onChangeText={setSection}
+          placeholder="For the cake, For the frosting…"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={RECIPE_SECTION_MAX_LENGTH}
+          accessibilityLabel="Recipe section"
+        />
+        <Text style={styles.hint}>
+          Groups this with other ingredients under the same heading, for recipes with more
+          than one component. Leave it blank to keep the ingredient ungrouped.
+        </Text>
       </View>
 
       <View style={styles.sectionCard}>

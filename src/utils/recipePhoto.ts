@@ -1,4 +1,5 @@
 import type { RecipeImage } from '../services/aiSuggestions';
+import { generateId } from './id';
 
 /**
  * Getting a photo of a recipe into the shape `extractRecipe` wants.
@@ -160,5 +161,120 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
       status: 'failed',
       message: e instanceof Error && e.message ? e.message : 'That photo could not be read.',
     };
+  }
+}
+
+/**
+ * The picture the user attaches to a recipe — a card/detail image, not a
+ * vision upload. A recipe photo is looked at, not read for text, so it isn't
+ * pinned to `MAX_PHOTO_EDGE`: that ceiling exists to keep an `extractRecipe`
+ * request cheap, and nothing here calls the API.
+ */
+export const MAX_IMAGE_EDGE = 2000;
+
+/** Subdirectory of the document directory recipe images are saved under. */
+const RECIPE_IMAGE_DIR = 'recipe-images';
+
+export interface RecipeImageAttachment {
+  /** file:// URI under the app's document directory — survives a relaunch. */
+  uri: string;
+  width: number;
+  height: number;
+}
+
+/** Same four outcomes as `RecipePhotoResult`, holding a saved file instead of base64. */
+export type RecipeImageResult =
+  | { status: 'ok'; image: RecipeImageAttachment }
+  | { status: 'canceled' }
+  | { status: 'denied'; source: RecipePhotoSource; canAskAgain: boolean }
+  | { status: 'failed'; message: string };
+
+/** The document-directory folder recipe images live in, created on first use. */
+function recipeImageDirectory(): import('expo-file-system').Directory {
+  const { Directory, Paths } = fileSystem();
+  const dir = new Directory(Paths.document, RECIPE_IMAGE_DIR);
+  if (!dir.exists) dir.create({ intermediates: true });
+  return dir;
+}
+
+/**
+ * Takes or picks a photo and saves it into the app's document directory,
+ * sized for display.
+ *
+ * Unlike `pickRecipePhoto` above — which exists to feed the Messages API and
+ * is deliberately never asked to persist anything — this *is* the persistence
+ * path: the file has to survive the app being closed and reopened, so the
+ * downscaled copy `saveAsync` writes to the cache directory is moved into the
+ * document directory rather than read back out and discarded. Base64 is never
+ * requested; nothing here needs the bytes in JS, only the file on disk.
+ */
+export async function pickRecipeImage(source: RecipePhotoSource): Promise<RecipeImageResult> {
+  try {
+    const ImagePicker = imagePicker();
+
+    const permission = source === 'camera'
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      return { status: 'denied', source, canAskAgain: permission.canAskAgain !== false };
+    }
+
+    const options: import('expo-image-picker').ImagePickerOptions = {
+      mediaTypes: ['images'],
+      allowsMultipleSelection: false,
+      // Same reasoning as pickRecipePhoto: a fixed-square crop would slice a
+      // wide plated shot down to its centre.
+      allowsEditing: false,
+      quality: 1,
+      exif: false,
+    };
+    const result = source === 'camera'
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
+
+    if (result.canceled) return { status: 'canceled' };
+    const asset = result.assets?.[0];
+    if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
+
+    const { ImageManipulator, SaveFormat } = imageManipulator();
+    const context = ImageManipulator.manipulate(asset.uri);
+    const target = photoTargetSize(asset.width, asset.height, MAX_IMAGE_EDGE);
+    if (target) context.resize(target);
+
+    const rendered = await context.renderAsync();
+    const saved = await rendered.saveAsync({
+      compress: PHOTO_COMPRESS,
+      format: SaveFormat.JPEG,
+    });
+    if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
+
+    const { File } = fileSystem();
+    const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
+    new File(saved.uri).move(dest);
+
+    return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
+  } catch (e) {
+    return {
+      status: 'failed',
+      message: e instanceof Error && e.message ? e.message : 'That photo could not be read.',
+    };
+  }
+}
+
+/**
+ * Deletes a recipe's saved image file, best effort. Used when the user
+ * replaces or clears a recipe's image (the old file is otherwise an orphan —
+ * nothing else references it) and when the recipe itself is deleted. Same
+ * "not worth failing over" reasoning as `discardTempPhoto`, except this file
+ * is in the document directory, so unlike the cache the OS won't reclaim it
+ * on its own if the delete fails.
+ */
+export function deleteRecipeImage(uri: string | null | undefined): void {
+  if (!uri) return;
+  try {
+    const file = new (fileSystem().File)(uri);
+    if (file.exists) file.delete();
+  } catch {
+    // Best effort — see the note above.
   }
 }
