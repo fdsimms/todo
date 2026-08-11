@@ -70,6 +70,40 @@ describe('initialize', () => {
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().themeMode).toBe('dark');
   });
+
+  // ─── autoRemoveExpiredTasks migration (issue #898) ──────────────────────────
+  // Still read from the same 'autoRemoveExpiredTasks' key the boolean used, so
+  // an existing install's persisted 'true'/'false' has to keep meaning exactly
+  // what it always did once the setting becomes a duration.
+
+  it('defaults autoRemoveExpiredTasks to Never (null) when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().autoRemoveExpiredTasks).toBe(null);
+  });
+
+  it('migrates legacy "true" to Immediately (0)', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'autoRemoveExpiredTasks' ? 'true' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().autoRemoveExpiredTasks).toBe(0);
+  });
+
+  it('migrates legacy "false" to Never (null)', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'autoRemoveExpiredTasks' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().autoRemoveExpiredTasks).toBe(null);
+  });
+
+  it('reads a stored grace period in days', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'autoRemoveExpiredTasks' ? '7' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().autoRemoveExpiredTasks).toBe(7);
+  });
 });
 
 // ─── setDayResetTime ──────────────────────────────────────────────────────────
@@ -196,7 +230,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setThemeMode('light');
     useSettingsStore.getState().setDayResetTime('06:00');
     useSettingsStore.getState().setAfternoonStart('13:00');
-    useSettingsStore.getState().setAutoRemoveExpiredTasks(true);
+    useSettingsStore.getState().setAutoRemoveExpiredTasks(7);
     useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
     useSettingsStore.getState().setHideCategories(true);
 
@@ -211,7 +245,9 @@ describe('resetToDefaults', () => {
     expect(state.nightStart).toBe('21:00');
     expect(state.activeHoursStart).toBe('08:00');
     expect(state.activeHoursEnd).toBe('22:00');
-    expect(state.autoRemoveExpiredTasks).toBe(false);
+    // Deletes tasks unattended, like completedRetentionDays — a reset must not
+    // silently change how aggressively it does that.
+    expect(state.autoRemoveExpiredTasks).toBe(7);
     expect(state.autoArchiveProjectsOnComplete).toBe(false);
     expect(state.hideCategories).toBe(false);
   });
