@@ -17,6 +17,7 @@ import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
+import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -87,7 +88,6 @@ export function MealPlanScreen() {
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const addTask = useTaskStore(s => s.addTask);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const addFromPlan = useGroceryStore(s => s.addFromPlan);
 
   // The day being planned; null when the picker is closed.
   const [planningDay, setPlanningDay] = useState<string | null>(null);
@@ -110,6 +110,10 @@ export function MealPlanScreen() {
       return next;
     });
   };
+
+  // The recipe whose ingredients we're offering to re-add after mark-cooked —
+  // null closes RecipeToListSheet, same on/off pattern as `addingToList`.
+  const [cookedRecipeForList, setCookedRecipeForList] = useState<Recipe | null>(null);
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -161,26 +165,7 @@ export function MealPlanScreen() {
     // A recipe with nothing to re-shop offers nothing — same restraint
     // RecipeDetailScreen's own "Add ingredients to list" already keeps.
     if (!recipe || recipe.ingredients.length === 0) return;
-    Alert.alert(
-      'Marked cooked',
-      `Add ${recipe.name}'s ingredients back to your grocery list?`,
-      [
-        { text: 'Not now', style: 'cancel' },
-        {
-          text: 'Add to list',
-          onPress: () => {
-            addFromPlan(recipe.ingredients.map(i => ({
-              name: i.name,
-              quantity: [i.quantity, i.prep].filter(Boolean).join(', ') || null,
-              aisle: i.aisle,
-              sourceRecipeId: recipe.id,
-              sourceRecipeTitle: recipe.name,
-            })));
-            haptics.success();
-          },
-        },
-      ]
-    );
+    setCookedRecipeForList(recipe);
   };
 
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
@@ -386,6 +371,12 @@ export function MealPlanScreen() {
         weekDays={days}
         onPlan={planSuggestion}
         onClose={() => setSuggestingMeals(false)}
+      />
+
+      <RecipeToListSheet
+        visible={cookedRecipeForList !== null}
+        recipe={cookedRecipeForList}
+        onClose={() => setCookedRecipeForList(null)}
       />
     </View>
   );
