@@ -41,16 +41,19 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const renameRecipe = useRecipeStore(s => s.renameRecipe);
   const setNotes = useRecipeStore(s => s.setNotes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
-  const setSourceName = useRecipeStore(s => s.setSourceName);
+  const setAuthor = useRecipeStore(s => s.setAuthor);
+  const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
 
   const [name, setName] = useState('');
   const [notes, setNotesDraft] = useState('');
   const [url, setUrl] = useState('');
-  const [source, setSource] = useState('');
+  const [author, setAuthorDraft] = useState('');
+  const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
 
@@ -59,9 +62,11 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setName(recipe.name);
     setNotesDraft(recipe.notes);
     setUrl(recipe.sourceUrl ?? '');
-    setSource(recipe.sourceName ?? '');
+    setAuthorDraft(recipe.author ?? '');
+    setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
     setServingsOpen(false);
+    setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
   }, [recipe]);
@@ -77,7 +82,8 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     }
     setNotes(recipe.id, notes);
     setSourceUrl(recipe.id, url);
-    setSourceName(recipe.id, source);
+    setAuthor(recipe.id, author);
+    setSource(recipe.id, source);
     setServings(recipe.id, servings);
     onClose();
   };
@@ -166,19 +172,41 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           </View>
         )}
         <EditorRow
+          icon="person-outline"
+          label="Author"
+          value={author.trim() || undefined}
+          hint="Who it's from — a person, not a publication."
+          expanded={authorOpen}
+          onPress={() => { animateLayout(); setAuthorOpen(v => !v); }}
+          onClear={author.trim() ? () => { setAuthorDraft(''); setAuthorOpen(false); } : undefined}
+        />
+        {authorOpen && (
+          <TextInput
+            style={styles.urlInput}
+            value={author}
+            onChangeText={setAuthorDraft}
+            onSubmitEditing={() => Keyboard.dismiss()}
+            placeholder="Alison Roman…"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={RECIPE_SOURCE_MAX_LENGTH}
+            returnKeyType="done"
+            accessibilityLabel="Recipe author"
+          />
+        )}
+        <EditorRow
           icon="newspaper-outline"
           label="Source"
           value={source.trim() || undefined}
-          hint="Who it's from — a site, a magazine, a cookbook."
+          hint="Where it's from — a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
-          onClear={source.trim() ? () => { setSource(''); setSourceOpen(false); } : undefined}
+          onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}
         />
         {sourceOpen && (
           <TextInput
             style={styles.urlInput}
             value={source}
-            onChangeText={setSource}
+            onChangeText={setSourceDraft}
             onSubmitEditing={() => Keyboard.dismiss()}
             placeholder="NYT Cooking, Bon Appétit…"
             placeholderTextColor={colors.textTertiary}
