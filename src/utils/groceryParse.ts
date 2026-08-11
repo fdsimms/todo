@@ -245,24 +245,56 @@ export function parseGroceryInput(raw: string): { name: string; quantity: string
 // unit whitelist is: it can't eat the name because the name is always
 // everything before the first comma.
 //
-// Deliberately doesn't also try to peel a *leading* prep word ("grated
-// cheddar", "chopped onion"): unlike a trailing clause, a leading modifier is
+// Beyond the trailing clause, a small whitelist below (LEADING_PREP_WORDS)
+// also peels a *leading* prep word ("grated cheddar", "chopped onion") — but
+// only for words curated as unambiguous. In general a leading modifier is
 // sometimes the actual product ("sliced almonds" and "ground beef" are their
 // own shelf items, not "almonds"/"beef" plus a prep note), and guessing wrong
 // there costs the first word of the name — the exact failure the unit
-// whitelist above is built to avoid. That case is left to the AI extractor.
+// whitelist above is built to avoid. Anything not on the whitelist is left to
+// the AI extractor.
 const PREP_SPLIT = /^(.*?),\s*(.+)$/;
+
+// A small, deliberately curated whitelist of leading prep words safe enough
+// to split unconditionally — unlike the general leading-word case above,
+// these essentially never have a standalone-product reading. Explicitly
+// excludes "sliced" and "ground" (per the issue this whitelist came from):
+// "sliced almonds" and "ground beef" are real shelf items, so guessing on
+// those costs the first word of the name, the exact failure this file is
+// built to avoid. Keep this list tight — scope creep here is worse than an
+// incomplete list.
+const LEADING_PREP_WORDS = ['minced', 'chopped', 'diced', 'crushed', 'grated'];
+const LEADING_PREP_SPLIT = new RegExp(
+  `^(${LEADING_PREP_WORDS.join('|')})\\s+(.+)$`,
+  'i',
+);
 
 export function splitPrep(name: string): { name: string; prep: string | null } {
   const trimmed = name.trim();
+
   const match = PREP_SPLIT.exec(trimmed);
-  if (!match) return { name: trimmed, prep: null };
-  const [, core, prep] = match;
-  if (!core.trim()) return { name: trimmed, prep: null };
-  return {
-    name: core.trim(),
-    prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
-  };
+  if (match) {
+    const [, core, prep] = match;
+    if (core.trim()) {
+      return {
+        name: core.trim(),
+        prep: prep.trim().slice(0, PREP_MAX_LENGTH) || null,
+      };
+    }
+  }
+
+  const leading = LEADING_PREP_SPLIT.exec(trimmed);
+  if (leading) {
+    const [, prepWord, rest] = leading;
+    if (rest.trim()) {
+      return {
+        name: rest.trim(),
+        prep: prepWord.toLowerCase().slice(0, PREP_MAX_LENGTH),
+      };
+    }
+  }
+
+  return { name: trimmed, prep: null };
 }
 
 /**

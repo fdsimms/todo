@@ -140,9 +140,13 @@ describe('splitPrep', () => {
     expect(splitPrep('garlic')).toEqual({ name: 'garlic', prep: null });
   });
 
-  it('does not strip a leading prep word — that case is a guess, not a convention match', () => {
-    expect(splitPrep('grated cheddar')).toEqual({ name: 'grated cheddar', prep: null });
+  it('does not strip a leading prep word in general — that case is a guess, not a convention match', () => {
+    expect(splitPrep('sliced almonds')).toEqual({ name: 'sliced almonds', prep: null });
     expect(splitPrep('ground cumin')).toEqual({ name: 'ground cumin', prep: null });
+  });
+
+  it('does strip a leading prep word from the small curated whitelist', () => {
+    expect(splitPrep('grated cheddar')).toEqual({ name: 'cheddar', prep: 'grated' });
   });
 
   it('refuses to empty the name out — a comma right at the start is not a split point', () => {
