@@ -275,6 +275,36 @@ describe('addByName', () => {
     useGroceryStore.getState().addByName('milk');
     expect(useGroceryStore.getState().items[0].checked).toBe(false);
   });
+
+  // Issue #1085: single adds register with the same shake-to-undo queue task
+  // mutations already do.
+  it('registers an undo that deletes the brand-new row it created', () => {
+    seed([]);
+    const item = useGroceryStore.getState().addByName('nduja');
+
+    expect(useGroceryStore.getState().lastAction?.label).toBe('Added "nduja"');
+    useGroceryStore.getState().undoLastAction();
+
+    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(item.id);
+    expect(useGroceryStore.getState().items).toHaveLength(0);
+  });
+
+  it('registers an undo that un-lists a catalog row it re-listed', () => {
+    const parsley = makeItem({ name: 'Parsley', onList: false, inCatalog: true });
+    seed([parsley]);
+    useGroceryStore.getState().addByName('parsley');
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().itemById(parsley.id)!.onList).toBe(false);
+  });
+
+  it('registers no undo for a row that was already on the list', () => {
+    seed([makeItem({ name: 'Milk', onList: true })]);
+    useGroceryStore.getState().addByName('milk');
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
 });
 
 // ─── addManyFromText ─────────────────────────────────────────────────────────
@@ -300,6 +330,22 @@ describe('addManyFromText', () => {
     const { added, alreadyOnList } = useGroceryStore.getState().addManyFromText('milk');
     expect(added).toHaveLength(1);
     expect(alreadyOnList).toHaveLength(0);
+  });
+
+  it('registers one combined undo that removes exactly what the paste added', () => {
+    seed([makeItem({ name: 'Milk', onList: true })]);
+
+    const { added } = useGroceryStore.getState().addManyFromText('milk\neggs\nbread');
+    expect(useGroceryStore.getState().lastAction?.label).toBe('2 items added');
+
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    // The line already on the list (milk) survives untouched; the two lines
+    // this paste actually added are gone.
+    expect(items.map(i => i.name)).toEqual(['milk']);
+    expect(items[0].onList).toBe(true);
+    expect(added.map(i => i.name)).toEqual(['eggs', 'bread']);
   });
 });
 
@@ -583,6 +629,27 @@ describe('list membership', () => {
 
     expect(dbUpdateGroceryItem).toHaveBeenCalledTimes(1);
     expect(useGroceryStore.getState().items.every(i => i.onList)).toBe(true);
+  });
+
+  // Issue #1085: Buy again's bulk re-add registers an undo scoped to exactly
+  // what it added, same as a recipe or a single add.
+  it('addExistingMany registers an undo that puts exactly what it added back off the list', () => {
+    const milk = makeItem({ name: 'Milk', onList: false });
+    const eggs = makeItem({ name: 'Eggs', onList: true });
+    const bread = makeItem({ name: 'Bread', onList: false });
+    seed([milk, eggs, bread]);
+
+    useGroceryStore.getState().addExistingMany([milk.id, eggs.id, bread.id]);
+    expect(useGroceryStore.getState().lastAction?.label).toBe('2 items added');
+
+    useGroceryStore.getState().undoLastAction();
+
+    const byId = (id: string) => useGroceryStore.getState().itemById(id)!;
+    expect(byId(milk.id).onList).toBe(false);
+    expect(byId(bread.id).onList).toBe(false);
+    // Eggs was already on the list before the call and isn't part of what
+    // this action added, so undo leaves it alone.
+    expect(byId(eggs.id).onList).toBe(true);
   });
 
   it('deleteItem is the one real delete', () => {
@@ -1364,6 +1431,36 @@ describe('addFromPlan', () => {
     expect(result.skippedInCart.map(i => i.name)).toEqual(['Garlic']);
     expect(result.alreadyOnList.map(i => i.name)).toEqual(['Onions']);
     expect(result.added.map(i => i.name)).toEqual(['Carrots', 'Thyme']);
+  });
+
+  // Issue #1085: a recipe import registers one combined undo scoped to what
+  // it actually added — the in-cart and already-on-list rows above are
+  // untouched, so undo must leave them exactly as they were too.
+  it('registers an undo that removes exactly the rows this add created', () => {
+    const inCart = makeItem({ name: 'Garlic', onList: true, checked: true });
+    const onList = makeItem({ name: 'Onions', onList: true });
+    const known = makeItem({ name: 'Carrots', onList: false });
+    seed([inCart, onList, known]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Garlic', quantity: '1 bulb', aisle: 'Produce' },
+      { name: 'Onions', quantity: '3', aisle: 'Produce' },
+      { name: 'Carrots', quantity: '500 g', aisle: 'Produce' },
+      { name: 'Thyme', quantity: '1 bunch', aisle: 'Produce' },
+    ]);
+    expect(useGroceryStore.getState().lastAction?.label).toBe('2 items added');
+
+    useGroceryStore.getState().undoLastAction();
+
+    const byName = (name: string) =>
+      useGroceryStore.getState().items.find(i => i.name === name);
+    // Carrots was a catalog row re-listed by this add — undo takes it back off.
+    expect(byName('Carrots')!.onList).toBe(false);
+    // Thyme was a brand-new provisional row — undo deletes it outright.
+    expect(byName('Thyme')).toBeUndefined();
+    // Untouched by this add, so untouched by its undo.
+    expect(byName('Garlic')!.checked).toBe(true);
+    expect(byName('Onions')!.onList).toBe(true);
   });
 
   it('attributes a newly created row to the recipe it came from', () => {
