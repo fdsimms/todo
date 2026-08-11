@@ -9,7 +9,7 @@ import { addWeeks } from 'date-fns/addWeeks';
 import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
-import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { InlineAction } from '../components/InlineAction';
@@ -40,8 +40,9 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { LeftoversCard } from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
+import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
-import { isLiveLeftover, leftoverPartsFor } from '../utils/leftovers';
+import { isLiveLeftover, leftoverPartsFor, mealTitleForLeftover } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -363,6 +364,9 @@ export function MealPlanScreen() {
   const [editingLeftoverId, setEditingLeftoverId] = useState<string | null>(null);
   const [loggingLeftover, setLoggingLeftover] = useState<LeftoverSeed | null>(null);
   const [historyVisible, setHistoryVisible] = useState(false);
+  // The container whose night is being picked, off the fridge card's calendar
+  // button; null closes the sheet.
+  const [planningLeftover, setPlanningLeftover] = useState<Leftover | null>(null);
   const editingLeftover = leftovers.find(l => l.id === editingLeftoverId) ?? null;
 
   useEffect(() => {
@@ -805,6 +809,7 @@ export function MealPlanScreen() {
                 <LeftoversCard
                   leftovers={leftovers}
                   onPress={l => setEditingLeftoverId(l.id)}
+                  onPlan={l => setPlanningLeftover(l)}
                   onAdd={() => setLoggingLeftover({})}
                   onHistory={() => { haptics.tap(); setHistoryVisible(true); }}
                 />
@@ -1052,6 +1057,25 @@ export function MealPlanScreen() {
       {/* Closes itself before handing a row over, so the two sheets are never
           up at once — the history's rows lead into LeftoverSheet, which is
           where reopening and deleting already live. */}
+      {/*
+        Planning a container is the same "pick a night" question planning a
+        recipe is, so it's the same sheet. No `onPlanned`: a leftover has no
+        recipe and therefore no prep steps to offer. The title captures the age
+        at plan time exactly as the picker's own leftover path does — see
+        mealTitleForLeftover for why that isn't resolved live.
+      */}
+      <PlanMealSheet
+        visible={planningLeftover !== null}
+        title={planningLeftover?.title ?? null}
+        onPlan={(dateKey, slot) => planningLeftover ? planMeal({
+          date: dateKey,
+          slot,
+          leftoverId: planningLeftover.id,
+          title: mealTitleForLeftover(planningLeftover),
+        }) : null}
+        onClose={() => setPlanningLeftover(null)}
+      />
+
       <FridgeHistorySheet
         visible={historyVisible}
         leftovers={leftovers}

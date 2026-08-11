@@ -17,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
 import { InlineAction } from './InlineAction';
+import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -61,6 +62,21 @@ interface Props {
 
 /** Enough to scan without virtualizing; the search field reaches the rest. */
 const MAX_ROWS = 30;
+
+/**
+ * The slot the last pick used, remembered for as long as the app is running.
+ *
+ * Dinner is the right *default* — it's what a week plan is mostly about, and
+ * it's what `defaultSlot` says. It was also the only thing this sheet ever
+ * remembered, so someone who plans lunches re-tapped the same chip on every
+ * single open, forever (#1368). Now the default seeds the first open of a
+ * session and each pick moves it on.
+ *
+ * Deliberately module state rather than a setting: it's a guess about what
+ * you're doing right now, not a preference about how the app should behave,
+ * and it should not survive a relaunch into next week's planning session.
+ */
+let lastPickedSlot: MealSlot | null = null;
 
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
@@ -153,7 +169,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    setSlot(defaultSlot);
+    setSlot(lastPickedSlot ?? defaultSlot);
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -207,6 +223,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
   // `onClose` has fired by then.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
+    lastPickedSlot = slot;
     dismiss(() => onPick({ date: dayKey, slot, recipeId, leftoverId: null, title }));
   };
 
@@ -227,6 +244,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
    */
   const pickLeftover = (leftover: Leftover) => {
     haptics.success();
+    lastPickedSlot = slot;
     // Dismiss-then-pick, same as `pick` above and for the same reason.
     dismiss(() => onPick({
       date: dayKey,
@@ -374,15 +392,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPi
 
             {matches.length === 0 && !showFreeText && fridge.length === 0 ? (
               <View style={styles.emptyWrap}>
-                <Ionicons name="restaurant-outline" size={28} color={colors.textTertiary} />
-                <Text style={styles.emptyTitle}>
-                  {query.trim() ? 'No matches' : 'No recipes yet'}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {query.trim()
+                <EmptyState
+                  icon="restaurant-outline"
+                  title={query.trim() ? 'No matches' : 'No recipes yet'}
+                  subtitle={query.trim()
                     ? 'Nothing in your recipe box is called that.'
                     : 'Type what you’re having — you don’t need a recipe to plan a night.'}
-                </Text>
+                />
               </View>
             ) : (
               matches.map((recipe, idx) => (
@@ -551,22 +567,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.sm,
     paddingBottom: spacing.xs,
   },
+  // EmptyState brings its own centring, icon circle and type — this only has
+  // to keep it off the sheet's edges.
   emptyWrap: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  emptySub: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
