@@ -368,6 +368,62 @@ export function suggestShorterCatalogName(name: string, catalogKeys: ReadonlySet
 }
 
 /**
+ * Words that make an "or" a hedge about *how much*, not a choice between two
+ * things: "salt or more to taste", "1 cup or so", "bake 40 minutes or until
+ * golden". Matched against the first word after the "or".
+ */
+const NOT_AN_ALTERNATIVE = new Set([
+  'so', 'more', 'less', 'until', 'to', 'as', 'thereabouts', 'otherwise', 'whatever', 'any',
+]);
+
+/** Beyond this many parts a line is prose, not a choice — see splitAlternativeNames. */
+const MAX_ALTERNATIVES = 4;
+
+/**
+ * "cheddar or manchego" → `['cheddar', 'manchego']`, and null for anything that
+ * isn't a genuine either/or.
+ *
+ * Recipes write alternatives inline constantly ("chicken or vegetable stock",
+ * and "grated cheddar or manchego cheese" turned up verbatim in an imported
+ * recipe), which is a problem specific to this app: `nameKey` is the bridge to
+ * the grocery catalog, so storing that as one line mints a catalog row called
+ * "cheddar or manchego" — a row no real purchase can ever match. Two rows in a
+ * choice group is the fix (see RecipeIngredient.choiceGroup); this is how the
+ * app notices the line wants to be two.
+ *
+ * **It only ever feeds a suggestion the user confirms, and that's load-bearing
+ * rather than timidity.** The split is deliberately verbatim — "chicken or
+ * vegetable stock" comes back as `['chicken', 'vegetable stock']`, not the
+ * `['chicken stock', 'vegetable stock']` a person means. Distributing that
+ * trailing noun is unsafe in general and the counterexample is the same shape:
+ * "butter or olive oil" would become "butter oil". Nothing here can tell those
+ * two apart without knowing what the words mean, so the honest move is to show
+ * the parts and let the user fix the one case that needs it — the same call
+ * splitPrep makes about leading prep words, and the same reason
+ * suggestShorterCatalogName confirms against the catalog rather than guessing.
+ *
+ * Matches "or" only as a whole word, so "oregano" and "orange" are safe.
+ * Deliberately does not split on "/": a slash is a fraction far more often than
+ * a choice here ("1/2 tsp"), and "salt/pepper" usually means both.
+ */
+export function splitAlternativeNames(name: string): string[] | null {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const parts = trimmed.split(/\s+or\s+/i).map(part => part.trim());
+  if (parts.length < 2 || parts.length > MAX_ALTERNATIVES) return null;
+  // Every part has to stand on its own as something to buy.
+  if (parts.some(part => !/[a-z]/i.test(part))) return null;
+  // A hedge about quantity reads exactly like a choice up to this point.
+  if (parts.slice(1).some(part => NOT_AN_ALTERNATIVE.has(part.split(/\s+/)[0].toLowerCase()))) {
+    return null;
+  }
+  // Two spellings of one thing aren't two things to choose between.
+  const keys = parts.map(groceryNameKey);
+  if (new Set(keys).size !== keys.length) return null;
+  return parts;
+}
+
+/**
  * What typing a line into the grocery quick-add field would produce, with the
  * quantity and prep pieces each independently overridable — see
  * `GroceryAddField`'s per-token × button, the whole reason this exists rather

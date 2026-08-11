@@ -539,6 +539,92 @@ describe('addComponent / removeComponent', () => {
   });
 });
 
+describe('splitIngredientAlternatives', () => {
+  const withLine = (name: string, overrides: Partial<RecipeIngredient> = {}) => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i0', name: 'Tomatoes', nameKey: 'tomatoes', quantity: '6', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+        { id: 'i1', name, nameKey: name.toLowerCase(), quantity: '2', aisle: 'Produce', prep: 'sliced', purpose: null, section: 'For the salsa', choiceGroup: null, ...overrides },
+      ],
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('replaces the line with one row per name, in its place', () => {
+    const r = withLine('Serrano or jalapeño');
+
+    expect(useRecipeStore.getState().splitIngredientAlternatives(
+      r.id, 'i1', ['Serrano', 'Jalapeño'], 'Serrano or jalapeño'
+    )).toBe(2);
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.name)).toEqual(['Tomatoes', 'Serrano', 'Jalapeño']);
+    // Each alternative gets a clean catalog key — the whole point of splitting.
+    // (groceryNameKey folds the accent, same as it does for a typed item.)
+    expect(ingredients.map(i => i.nameKey)).toEqual(['tomatoes', 'serrano', 'jalapeno']);
+    expect(ingredients.map(i => i.choiceGroup))
+      .toEqual([null, 'Serrano or jalapeño', 'Serrano or jalapeño']);
+  });
+
+  it('files every new row under the one group, and keeps the slot’s details', () => {
+    const r = withLine('Serrano or jalapeño');
+
+    useRecipeStore.getState().splitIngredientAlternatives(
+      r.id, 'i1', ['Serrano', 'Jalapeño'], 'Pepper'
+    );
+
+    const [, serrano, jalapeno] = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    for (const row of [serrano, jalapeno]) {
+      expect(row.choiceGroup).toBe('Pepper');
+      // Alternatives for one slot inherit what was true of that slot.
+      expect(row.quantity).toBe('2');
+      expect(row.aisle).toBe('Produce');
+      expect(row.prep).toBe('sliced');
+      expect(row.section).toBe('For the salsa');
+    }
+  });
+
+  it('keeps the original id on the first option, so a stored pick still resolves', () => {
+    const r = withLine('Serrano or jalapeño');
+
+    useRecipeStore.getState().splitIngredientAlternatives(r.id, 'i1', ['Serrano', 'Jalapeño'], 'Pepper');
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients[1].id).toBe('i1');
+    expect(ingredients[2].id).not.toBe('i1');
+  });
+
+  it('drops an option the recipe already lists rather than duplicating it', () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i0', name: 'Serrano', nameKey: 'serrano', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+        { id: 'i1', name: 'Serrano or jalapeño', nameKey: 'serrano or jalapeño', quantity: '', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+      ],
+    });
+    seed([r]);
+
+    // Only "Jalapeño" survives, which is a group of one — not a choice, so
+    // nothing is written and the line is left as the user typed it.
+    expect(useRecipeStore.getState().splitIngredientAlternatives(
+      r.id, 'i1', ['Serrano', 'Jalapeño'], 'Pepper'
+    )).toBe(0);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients).toHaveLength(2);
+  });
+
+  it('refuses a blank group, a single name, and unknown ids', () => {
+    const r = withLine('Serrano or jalapeño');
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    expect(useRecipeStore.getState().splitIngredientAlternatives(r.id, 'i1', ['Serrano', 'Jalapeño'], '  ')).toBe(0);
+    expect(useRecipeStore.getState().splitIngredientAlternatives(r.id, 'i1', ['Serrano'], 'Pepper')).toBe(0);
+    expect(useRecipeStore.getState().splitIngredientAlternatives(r.id, 'gone', ['A', 'B'], 'Pepper')).toBe(0);
+    expect(useRecipeStore.getState().splitIngredientAlternatives('gone', 'i1', ['A', 'B'], 'Pepper')).toBe(0);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
 describe('setComponentChoiceGroup / makeComponentDefault', () => {
   // Steak, with mash and roast potatoes both linked — the state the user is in
   // right before saying "these two are alternatives".

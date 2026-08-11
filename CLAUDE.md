@@ -351,6 +351,15 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   each carry a clean `nameKey`, and choosing between them at add time is what puts exactly one in
   the trolley. This is the entire point of the ingredient half — don't "simplify" it back to a
   parsed `or`.
+- **`splitAlternativeNames` (`groceryParse.ts`) notices such a line and *suggests* the split**, in
+  the ingredient sheet, applied by `splitIngredientAlternatives`. **The split is verbatim and must
+  stay a suggestion**: "chicken or vegetable stock" comes back as `['chicken', 'vegetable stock']`,
+  and distributing that trailing noun to fix it is unsafe in exactly the same shape — "butter or
+  olive oil" would become "butter oil". Nothing can tell those apart without knowing what the words
+  mean, so the parts are shown and the user finishes the job. Same call `splitPrep` makes about
+  leading prep words. It matches `or` as a whole word only (so "oregano" is safe), skips quantity
+  hedges ("or so", "or more", "or to taste"), and never splits on `/` — that's a fraction far more
+  often than a choice.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an

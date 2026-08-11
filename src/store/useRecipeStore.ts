@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
-import { TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -121,6 +121,27 @@ interface RecipeStore {
    */
   addStructuredIngredients: (recipeId: string, ingredients: RecipeIngredient[]) => number;
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
+  /**
+   * Turns one "cheddar or manchego" line into that many real ingredient rows,
+   * filed as alternatives of each other — the accept half of the suggestion
+   * splitAlternativeNames makes (see RecipeIngredient.choiceGroup).
+   *
+   * The new rows take the original's place in the list and inherit its
+   * quantity, prep, purpose, section and aisle: they're alternatives for one
+   * slot in the recipe, so whatever was true of that slot is true of each way
+   * of filling it.
+   *
+   * Returns how many rows the line became, and 0 without writing when the split
+   * wouldn't produce a real choice — an unknown recipe or ingredient, fewer
+   * than two names, or names the recipe already carries elsewhere (which would
+   * leave a "group" of one).
+   */
+  splitIngredientAlternatives: (
+    recipeId: string,
+    ingredientId: string,
+    names: readonly string[],
+    choiceGroup: string,
+  ) => number;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
   /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
@@ -427,6 +448,52 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     });
     if (!touched) return;
     save(set, { ...recipe, ingredients });
+  },
+
+  splitIngredientAlternatives(recipeId, ingredientId, names, choiceGroup) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return 0;
+    const index = recipe.ingredients.findIndex(i => i.id === ingredientId);
+    if (index < 0) return 0;
+    const original = recipe.ingredients[index];
+    const group = cleanChoiceGroup(choiceGroup);
+    if (!group) return 0;
+
+    // Every *other* row's key, so a split that would recreate an ingredient the
+    // recipe already lists drops that option rather than duplicating it.
+    const takenKeys = new Set(
+      recipe.ingredients.filter(i => i.id !== ingredientId).map(i => i.nameKey)
+    );
+    const rows: RecipeIngredient[] = [];
+    for (const raw of names) {
+      const name = raw.trim().slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+      if (!name) continue;
+      const nameKey = groceryNameKey(name);
+      if (!nameKey || takenKeys.has(nameKey)) continue;
+      takenKeys.add(nameKey);
+      rows.push({
+        ...original,
+        // The first row keeps the original's id, so anything already pointing
+        // at this line (a meal's stored pick, most of all) still resolves —
+        // and it lands first, which makes it the group's default.
+        id: rows.length === 0 ? original.id : generateId(),
+        name,
+        nameKey,
+        choiceGroup: group,
+      });
+    }
+    // One survivor is not a choice; leave the line exactly as the user wrote it.
+    if (rows.length < 2) return 0;
+
+    save(set, {
+      ...recipe,
+      ingredients: [
+        ...recipe.ingredients.slice(0, index),
+        ...rows,
+        ...recipe.ingredients.slice(index + 1),
+      ],
+    });
+    return rows.length;
   },
 
   removeIngredient(recipeId, ingredientId) {

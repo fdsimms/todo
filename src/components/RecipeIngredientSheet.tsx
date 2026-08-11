@@ -22,7 +22,7 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
-import { suggestShorterCatalogName } from '../utils/groceryParse';
+import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -48,6 +48,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
+  const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
   );
@@ -121,6 +122,26 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // confirmation rather than a guess — see suggestShorterCatalogName.
   const catalogSuggestion = suggestShorterCatalogName(name, catalogKeys);
 
+  // "cheddar or manchego" wants to be two rows in a choice group, not one
+  // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
+  // never applied on its own: the split is verbatim, so "chicken or vegetable
+  // stock" needs a human to finish it.
+  const alternatives = splitAlternativeNames(name);
+
+  const acceptSplit = () => {
+    if (!ingredient || !alternatives) return;
+    // The label defaults to the line as written — the one name guaranteed to
+    // exist, to be unique among this recipe's groups, and to mean something to
+    // whoever typed it. It's a plain text field in the card below if not.
+    const created = splitIngredientAlternatives(
+      recipeId, ingredient.id, alternatives, name.trim()
+    );
+    if (!created) return;
+    haptics.success();
+    animateLayout();
+    onClose();
+  };
+
   return (
     <EditorSheet
       visible={visible}
@@ -149,6 +170,20 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           autoCapitalize="none"
           accessibilityLabel="Ingredient name"
         />
+        {!!alternatives && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptSplit}
+            accessibilityRole="button"
+            accessibilityLabel={`Split into ${alternatives.length} alternatives: ${alternatives.join(', ')}`}
+          >
+            <Text style={styles.suggestionText}>
+              Split into {alternatives.length} alternatives — {alternatives.join(' · ')}? You'll pick
+              one when you add this to your list.
+            </Text>
+          </TouchableOpacity>
+        )}
         {!!catalogSuggestion && (
           <TouchableOpacity
             style={styles.suggestionRow}
