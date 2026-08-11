@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Project, Task } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { isRealCompletion } from '../utils/missed';
+import { useSettingsStore } from './useSettingsStore';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -131,7 +131,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       archived: false,
       archivedAt: null,
       createdAt: new Date().toISOString(),
-      nudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS,
+      // Seeded from the global default at creation time only — changing the
+      // default in Settings later never touches a project already created.
+      nudgeCadenceDays: useSettingsStore.getState().defaultProjectNudgeCadenceDays,
       autoSchedule: false,
       sequential: false,
     };
