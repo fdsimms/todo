@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
@@ -50,6 +50,7 @@ interface RecipeStore {
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
   setServings: (id: string, servings: number | null) => void;
+  setMealType: (id: string, mealType: RecipeMealType | null) => void;
   toggleFavorite: (id: string) => void;
   /**
    * Deliberately doesn't rewrite the recipes that used this one as a component
@@ -137,6 +138,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       author: null,
       source: null,
       servings: null,
+      mealType: null,
       ingredients: [],
       components: [],
       prepTasks: [],
@@ -205,6 +207,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // overshoot, but a restored backup can carry anything.
     const next = servings === null ? null : Math.max(1, Math.min(99, Math.round(servings)));
     save(set, { ...recipe, servings: next });
+  },
+
+  setMealType(id, mealType) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, mealType });
   },
 
   toggleFavorite(id) {

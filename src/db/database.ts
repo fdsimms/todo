@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS } from '../types';
+import type { Task, Category, GroceryItem, ItemShopLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, Shop, TaskGroup, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES } from '../types';
 import { generateId } from '../utils/id';
 import { parseChainItems } from '../utils/chain';
 import { parseRecipeIngredients, parsePrepTasks } from '../utils/recipeUtils';
@@ -449,6 +449,9 @@ export function initDatabase(): void {
     // edited. See Recipe.author/Recipe.source.
     'ALTER TABLE recipes ADD COLUMN author TEXT',
     'ALTER TABLE recipes ADD COLUMN source TEXT',
+    // Null for every existing recipe — nothing predating this shipped had a
+    // meal type to carry. See Recipe.mealType / RecipeMealType (#1104).
+    'ALTER TABLE recipes ADD COLUMN meal_type TEXT',
     // Empty array for every existing recipe — nothing predating this was
     // composed of another recipe. A JSON blob for the reason `ingredients` is
     // one, and a link table would buy nothing here: the only question anyone
@@ -1527,6 +1530,12 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     author: (row.author as string) ?? null,
     source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
+    // Unrecognised reads as null (untagged), not a guessed value — unlike
+    // MealSlot's dinner fallback below, an unset meal type is itself a valid,
+    // common answer, so there's no "safest" one to substitute.
+    mealType: RECIPE_MEAL_TYPES.includes(row.meal_type as RecipeMealType)
+      ? (row.meal_type as RecipeMealType)
+      : null,
     ingredients: parseRecipeIngredients(row.ingredients),
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
@@ -1548,12 +1557,12 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, meal_type, ingredients, components, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.mealType ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
@@ -1564,13 +1573,13 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, ingredients=?, components=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, meal_type=?, ingredients=?, components=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.mealType ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks),
       recipe.favorite ? 1 : 0, recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,

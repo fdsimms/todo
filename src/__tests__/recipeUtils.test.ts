@@ -13,6 +13,8 @@ import {
   normalizePrepTask,
   resolvePrepTaskDraft,
   describeCookHistory,
+  sortRecipesForDisplay,
+  groupRecipesByMealType,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
   suggestRecipesForEmptyNight,
@@ -56,6 +58,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
     components: [],
     prepTasks: [],
@@ -431,6 +434,21 @@ describe('describeRecipe', () => {
     expect(describeRecipe(r, 0)).toBe('1 ingredient');
   });
 
+  it('leads with the meal type when set, ahead of the ingredient count', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], mealType: 'breakfast' })))
+      .toBe('Breakfast · 1 ingredient');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      mealType: 'dessert',
+      servings: 4,
+    }))).toBe('Dessert · 1 ingredient · serves 4');
+  });
+
+  it('omits the meal type phrase when unset', () => {
+    expect(describeRecipe(recipe('K', { ingredients: [ing('Salt')], mealType: null })))
+      .toBe('1 ingredient');
+  });
+
   it('says a composed recipe has parts, right after its own ingredient count', () => {
     const composed = recipe('I', {
       ingredients: [ing('Steak')],
@@ -441,6 +459,53 @@ describe('describeRecipe', () => {
     expect(describeRecipe(recipe('J', {
       components: [component('r-mash', 'Mash'), component('r-gravy', 'Gravy')],
     }))).toBe('0 ingredients · 2 components');
+  });
+});
+
+describe('sortRecipesForDisplay', () => {
+  it('puts favorites first, then sortOrder', () => {
+    const a = recipe('A', { sortOrder: 2, favorite: false });
+    const b = recipe('B', { sortOrder: 1, favorite: true });
+    const c = recipe('C', { sortOrder: 0, favorite: false });
+    expect(sortRecipesForDisplay([a, b, c]).map(r => r.name)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('does not mutate the input array', () => {
+    const list = [recipe('A', { sortOrder: 1 }), recipe('B', { sortOrder: 0 })];
+    const original = [...list];
+    sortRecipesForDisplay(list);
+    expect(list).toEqual(original);
+  });
+});
+
+describe('groupRecipesByMealType', () => {
+  it('groups into RECIPE_MEAL_TYPES order, dropping meal types with nothing in them', () => {
+    const breakfast = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const dessert = recipe('Cake', { mealType: 'dessert', sortOrder: 0 });
+    const dinner = recipe('Stew', { mealType: 'dinner', sortOrder: 0 });
+    const sections = groupRecipesByMealType([dessert, breakfast, dinner]);
+    expect(sections.map(s => s.title)).toEqual(['Breakfast', 'Dinner', 'Dessert']);
+    expect(sections.map(s => s.data.map(r => r.name))).toEqual([['Oatmeal'], ['Stew'], ['Cake']]);
+  });
+
+  it('trails untagged recipes in their own section, after every tagged one', () => {
+    const untagged = recipe('Mystery', { mealType: null, sortOrder: 0 });
+    const lunch = recipe('Salad', { mealType: 'lunch', sortOrder: 0 });
+    const sections = groupRecipesByMealType([untagged, lunch]);
+    expect(sections.map(s => s.title)).toEqual(['Lunch', 'Untagged']);
+    expect(sections[1].mealType).toBeNull();
+    expect(sections[1].data.map(r => r.name)).toEqual(['Mystery']);
+  });
+
+  it('sorts each section favorites-first by sortOrder, same as the flat list', () => {
+    const a = recipe('A', { mealType: 'snack', sortOrder: 2, favorite: false });
+    const b = recipe('B', { mealType: 'snack', sortOrder: 1, favorite: true });
+    const sections = groupRecipesByMealType([a, b]);
+    expect(sections[0].data.map(r => r.name)).toEqual(['B', 'A']);
+  });
+
+  it('returns no sections for an empty recipe list', () => {
+    expect(groupRecipesByMealType([])).toEqual([]);
   });
 });
 

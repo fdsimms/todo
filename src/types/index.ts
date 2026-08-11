@@ -717,6 +717,28 @@ export interface RecipeComponent {
   name: string;
 }
 
+// Which meal of the day a recipe is *for* — a browsing/filtering tag, not a
+// schedule. Deliberately not MealSlot (above, used by MealPlanEntry.slot):
+// that type is a calendar slot for one planned day and has no 'dessert',
+// where this is an intrinsic property of the dish itself — a recipe is
+// breakfast food regardless of which day, if any, it ever gets planned onto.
+// A closed set for the same reason MealSlot is one: a user-defined string
+// list can't be grouped/sorted without a second ordering table (see #1086,
+// which builds that grouping on top of this field).
+export type RecipeMealType = 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'dessert';
+
+// Display order — also the sort key #1086 groups by.
+export const RECIPE_MEAL_TYPES: readonly RecipeMealType[] =
+  ['breakfast', 'lunch', 'dinner', 'snack', 'dessert'];
+
+export const RECIPE_MEAL_TYPE_LABELS: Record<RecipeMealType, string> = {
+  breakfast: 'Breakfast',
+  lunch: 'Lunch',
+  dinner: 'Dinner',
+  snack: 'Snack',
+  dessert: 'Dessert',
+};
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -749,6 +771,9 @@ export interface Recipe {
   // Independent of `author` for the same reason.
   source: string | null;
   servings: number | null;
+  // Null means untagged, not "none of these" — most existing recipes predate
+  // this field and nothing should guess for them. See RecipeMealType above.
+  mealType: RecipeMealType | null;
   ingredients: RecipeIngredient[];
   // The recipes this one is partly made of — see RecipeComponent. Empty for
   // every recipe that isn't composed, which is most of them; the ingredient

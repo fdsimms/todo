@@ -43,6 +43,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients,
     components: [],
     prepTasks: [],

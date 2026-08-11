@@ -1,5 +1,7 @@
-import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
+import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
+  RECIPE_MEAL_TYPES,
+  RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
@@ -221,10 +223,12 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 1 component · 6 likely in pantry · serves 4 · NYT Cooking" —
- * the recipe row's subtitle. `likelyInPantry` is optional and omitted (both the
- * param and, given a falsy count, the phrase) rather than ever rendering "0
- * likely in pantry" — see `countLikelyInPantry`.
+ * "Breakfast · 8 ingredients · 1 component · 6 likely in pantry · serves 4 ·
+ * NYT Cooking" — the recipe row's subtitle. `likelyInPantry` is optional and
+ * omitted (both the param and, given a falsy count, the phrase) rather than
+ * ever rendering "0 likely in pantry" — see `countLikelyInPantry`. The meal
+ * type leads, ahead of the ingredient count, since it's the fact someone
+ * scanning the list is most likely browsing by (see RecipeMealType).
  *
  * The ingredient count is the recipe's *own* lines, never the flattened total,
  * because it has to agree with the list the detail screen puts on screen right
@@ -234,7 +238,9 @@ export function resolvePrepTaskDraft(
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
-  const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  const parts: string[] = [];
+  if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
+  parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
   const components = describeComponents(recipe);
   if (components) parts.push(components);
   if (likelyInPantry) {
@@ -327,6 +333,62 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
+}
+
+/**
+ * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * RecipesScreen has always applied to its flat list, pulled out so
+ * groupRecipesByMealType can give each of its sections the identical order
+ * instead of inventing a second one. A search ranking (rankRecipes) is a
+ * different question — "what matches this text" — so it's never routed
+ * through here.
+ */
+export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
+  return [...recipes].sort((a, b) =>
+    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+  );
+}
+
+export interface RecipeMealTypeSection {
+  /** null is the trailing "Untagged" section — RecipeMealType has no null member of its own. */
+  mealType: RecipeMealType | null;
+  title: string;
+  data: Recipe[];
+}
+
+/**
+ * Groups recipes into sections by RecipeMealType, in RECIPE_MEAL_TYPES' fixed
+ * display order — mirroring how makeCategoryGroups orders Today's category
+ * sections by a fixed list rather than alphabetically or by section size.
+ * Untagged recipes (mealType: null) trail in their own section rather than
+ * leading like Today's header-less loose group, because here there's no drag
+ * to strand a recipe "above": a section list is read top to bottom, and most
+ * existing recipes predate this field, so leading with a wall of "Untagged"
+ * would bury the very grouping the user just asked for.
+ *
+ * A meal type with no recipes is omitted entirely rather than rendered empty,
+ * same as makeCategoryGroups omitting empty categories.
+ */
+export function groupRecipesByMealType(recipes: readonly Recipe[]): RecipeMealTypeSection[] {
+  const byType = new Map<string, Recipe[]>();
+  recipes.forEach(recipe => {
+    const key = recipe.mealType ?? '';
+    if (!byType.has(key)) byType.set(key, []);
+    byType.get(key)!.push(recipe);
+  });
+
+  const sections: RecipeMealTypeSection[] = [];
+  RECIPE_MEAL_TYPES.forEach(mealType => {
+    const list = byType.get(mealType);
+    if (list && list.length > 0) {
+      sections.push({ mealType, title: RECIPE_MEAL_TYPE_LABELS[mealType], data: sortRecipesForDisplay(list) });
+    }
+  });
+  const untagged = byType.get('');
+  if (untagged && untagged.length > 0) {
+    sections.push({ mealType: null, title: 'Untagged', data: sortRecipesForDisplay(untagged) });
+  }
+  return sections;
 }
 
 /** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */

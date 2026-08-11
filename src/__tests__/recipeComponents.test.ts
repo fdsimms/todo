@@ -23,6 +23,7 @@ function ing(name: string): RecipeIngredient {
     quantity: '',
     aisle: null,
     prep: null,
+    section: null,
   };
 }
 
@@ -41,6 +42,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
     components: [],
     prepTasks: [],
