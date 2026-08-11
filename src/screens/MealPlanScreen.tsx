@@ -108,6 +108,9 @@ export function MealPlanScreen() {
     setAnchor(a => addWeeks(a, delta));
   };
 
+  // The sheet itself decides when to close (its own "Done" button, backdrop
+  // tap, swipe) — a pick here just writes the meal and stays open, ready for
+  // the next slot on the same day. See RecipePickerSheet.pick.
   const pick = (pickResult: MealPick) => {
     if (!planningDay) return;
     animateLayout();
@@ -117,7 +120,6 @@ export function MealPlanScreen() {
       recipeId: pickResult.recipeId,
       title: pickResult.title,
     });
-    setPlanningDay(null);
   };
 
   const addPrepTasksForSelected = () => {
