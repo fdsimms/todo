@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the add button's cancel ring sometimes staying visible after dragging it back onto itself to cancel",
+  "date": "2026-08-11"
+}

@@ -1738,25 +1738,31 @@ export function QuickAddModal({
 
           {activePanel === 'link' && (
             <View style={styles.panel}>
-              <View style={styles.presetRow}>
-                {KNOWN_LINK_APPS.map(app => (
-                  <TouchableOpacity
-                    key={app.scheme}
-                    style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
-                    onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
-                    activeOpacity={interaction.activeOpacity}
-                  >
-                    <Ionicons
-                      name={app.icon as never}
-                      size={13}
-                      color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
-                    />
-                    <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
-                      {app.name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {/* A horizontal scroll rather than a wrapping row: KNOWN_LINK_APPS is
+                  long enough that wrapping it full-width turned this panel into a
+                  wall of pills before the URL input was even reached. One row keeps
+                  the panel's height in line with every other quick-add panel. */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.suggestionsScroll}>
+                <View style={styles.linkAppRow}>
+                  {KNOWN_LINK_APPS.map(app => (
+                    <TouchableOpacity
+                      key={app.scheme}
+                      style={[styles.linkAppChip, linkUrl === app.scheme && styles.linkAppChipActive]}
+                      onPress={() => { haptics.tap(); setLinkUrl(app.scheme); setActivePanel(null); }}
+                      activeOpacity={interaction.activeOpacity}
+                    >
+                      <Ionicons
+                        name={app.icon as never}
+                        size={13}
+                        color={linkUrl === app.scheme ? colors.onAccent : colors.textSecondary}
+                      />
+                      <Text style={[styles.linkAppChipText, linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                        {app.name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
               <View style={styles.linkCustomRow}>
                 <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
                 <TextInput
@@ -2406,6 +2412,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   aiChipText: {
     color: colors.purple,
     fontWeight: '600',
+  },
+  linkAppRow: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingBottom: 2,
   },
   linkAppChip: {
     flexDirection: 'row',

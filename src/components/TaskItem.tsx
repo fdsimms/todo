@@ -58,6 +58,10 @@ import { ProgressBar } from './ProgressBar';
 
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
+// Peak scale of the completion circle's pop bounce (see circleScale below).
+// The checkmark glyph nested inside that circle needs to counter-scale by the
+// inverse of this so it never gets rendered past its native rasterized size.
+const CIRCLE_POP_SCALE = 1.35;
 // How long the meter takes to run up to the brim on the unit that meets the
 // target. Slower than a logged unit (duration.fast) — this rise is the payoff,
 // and the pop that follows it waits this out.
@@ -346,6 +350,14 @@ export const TaskItem = React.memo(function TaskItem({
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
   const circleScale = useRef(new Animated.Value(1)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
+  // Counter-scales the checkmark glyph against circleScale's pop, so the
+  // glyph's rendered size never exceeds its native rasterized size even
+  // while the circle around it balloons to CIRCLE_POP_SCALE.
+  const checkGlyphCounterScale = circleScale.interpolate({
+    inputRange: [1, CIRCLE_POP_SCALE],
+    outputRange: [1, 1 / CIRCLE_POP_SCALE],
+    extrapolate: 'clamp',
+  });
   // Crossfades the checkbox glyph into the selection dot (and back) when bulk
   // selection toggles. The circle View itself stays mounted across the swap —
   // LayoutAnimation (see enterSelectionMode/exitSelection in useRowSelection)
@@ -865,7 +877,7 @@ export const TaskItem = React.memo(function TaskItem({
     }
     const sequence = Animated.sequence([
       ...(viaMeter ? [Animated.delay(QUOTA_TOPPING_MS)] : []),
-      Animated.spring(circleScale, { toValue: 1.35, ...animation.spring.snappy, useNativeDriver: true }),
+      Animated.spring(circleScale, { toValue: CIRCLE_POP_SCALE, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.spring(circleScale, { toValue: 1, ...animation.spring.snappy, useNativeDriver: true }),
       Animated.delay(120),
     ]);
@@ -1241,9 +1253,15 @@ export const TaskItem = React.memo(function TaskItem({
               // re-rendering it, so an uncapped overshoot is visibly pixelated.
               // Clamping the *visual* scale at 1 keeps the glyph rendered at its
               // native 12pt size — crisp at rest — while the transform only ever
-              // shrinks it on the way in, never enlarges it.
+              // shrinks it on the way in, never enlarges it. This view sits inside
+              // the circle's own pop (circleScale, up to CIRCLE_POP_SCALE), which
+              // would otherwise stretch the same rasterized glyph further still —
+              // checkGlyphCounterScale cancels exactly that.
               <Animated.View style={{
-                transform: [{ scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) }],
+                transform: [
+                  { scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) },
+                  { scale: checkGlyphCounterScale },
+                ],
               }}>
                 <Ionicons name="checkmark" size={12} color={colors.onAccent} />
               </Animated.View>

@@ -351,6 +351,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    // Without an explicit width, a wrapping row's own width is sized to fit
+    // its content rather than stretched to the sheet's width — so it never
+    // hits a boundary to wrap against and just runs past the card's edge
+    // instead (clipped there by the card's `overflow: hidden`). This row is
+    // usually short enough not to show it, but the monthly day-anchor row
+    // (four pills, one of them long) is wide enough to need the wrap.
+    alignSelf: 'stretch',
   },
   pill: {
     paddingHorizontal: 12, paddingVertical: 5,

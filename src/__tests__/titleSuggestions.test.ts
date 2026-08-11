@@ -170,6 +170,30 @@ describe('suggestTitles', () => {
       const tasks = [done({ title: '   ' })];
       expect(suggestTitles(tasks, 'use')).toEqual([]);
     });
+
+    it('excludes a title that already belongs to a currently open task', () => {
+      const tasks = [
+        done({ id: 'a', title: 'use BOGO ticket', completedAt: '2025-05-01T00:00:00.000Z' }),
+        makeTask({ id: 'b', title: 'use BOGO ticket', completed: false, completedAt: null }),
+      ];
+      expect(suggestTitles(tasks, 'use bogo')).toEqual([]);
+    });
+
+    it('is case-insensitive when matching against an open task title', () => {
+      const tasks = [
+        done({ id: 'a', title: 'use BOGO ticket', completedAt: '2025-05-01T00:00:00.000Z' }),
+        makeTask({ id: 'b', title: 'Use Bogo Ticket', completed: false, completedAt: null }),
+      ];
+      expect(suggestTitles(tasks, 'use bogo')).toEqual([]);
+    });
+
+    it('still suggests a completed title when no open task shares it', () => {
+      const tasks = [
+        done({ id: 'a', title: 'use BOGO ticket', completedAt: '2025-05-01T00:00:00.000Z' }),
+        makeTask({ id: 'b', title: 'walk the dog', completed: false, completedAt: null }),
+      ];
+      expect(suggestTitles(tasks, 'use bogo').map(s => s.title)).toEqual(['use BOGO ticket']);
+    });
   });
 
   describe('completed tasks', () => {

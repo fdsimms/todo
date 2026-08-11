@@ -60,7 +60,11 @@ function matchTitle(title: string, query: string): { score: number; ranges: [num
  * stays short and relevant instead of surfacing near-random titles that
  * merely share letters. The title that exactly equals the query is
  * excluded, so the list empties itself once a suggestion has been tapped
- * into the field.
+ * into the field. A title currently held by an open (incomplete) task is
+ * excluded too — even though only completed titles are matched, a past
+ * completion can share its title with a task that's since been re-added
+ * and is still sitting open, and suggesting that title would just prompt a
+ * duplicate of the task that already exists.
  *
  * A title completed only once is a genuine unknown — it might be about to
  * recur (retyping "use BOGO ticket" a day later, which this feature exists
@@ -75,6 +79,13 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
   if (q.length < MIN_QUERY_LENGTH) return [];
   const qLower = q.toLowerCase();
 
+  const openTitles = new Set<string>();
+  for (const task of tasks) {
+    if (task.parentId || task.completed) continue;
+    const title = task.title.trim();
+    if (title) openTitles.add(title.toLowerCase());
+  }
+
   const byTitle = new Map<string, Candidate>();
 
   for (const task of tasks) {
@@ -85,6 +96,7 @@ export function suggestTitles(tasks: Task[], query: string, limit = 3, now: numb
 
     const key = title.toLowerCase();
     if (key === qLower) continue; // don't suggest exactly what's already typed
+    if (openTitles.has(key)) continue; // already exists as an open task
 
     const match = matchTitle(title, q);
     if (!match) continue;
