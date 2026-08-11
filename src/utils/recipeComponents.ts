@@ -399,6 +399,26 @@ export interface ChoiceOption {
 }
 
 /** One either/or slot: the label, its options, and which one is in force. */
+/**
+ * The active options across a meal's choice groups, for a row that has one
+ * line to say them in — "Roast potatoes", or "Roast potatoes, Green beans".
+ *
+ * Names the *option*, not the group: "Roast potatoes" is what was cooked, and
+ * "Side: roast potatoes" spends half a narrow caption on a label the answer
+ * already implies. A meal with no groups gets an empty string and the caller
+ * renders nothing rather than an empty separator.
+ *
+ * Deliberately not marked as chosen-vs-default. The row is saying what this
+ * meal is, and a default nobody overrode is still what's being cooked — the
+ * distinction only matters inside the picker, where the chips show it.
+ */
+export function describeChoices(groups: readonly ChoiceGroup[]): string {
+  return groups
+    .map(g => g.active.name.trim())
+    .filter(Boolean)
+    .join(', ');
+}
+
 export interface ChoiceGroup {
   /** The recipe carrying the group — the root itself, or a component at any depth. */
   recipe: Recipe;
