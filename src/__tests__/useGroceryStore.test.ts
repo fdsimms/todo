@@ -92,6 +92,7 @@ function makeShop(name: string, overrides: Partial<Shop> = {}): Shop {
     nameKey: groceryNameKey(name),
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
+    excludeFromSuggestions: false,
     ...overrides,
   };
 }

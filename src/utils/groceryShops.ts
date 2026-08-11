@@ -71,13 +71,20 @@ export function shopsForItem(
  * checkbox somebody ticked once would be the app inventing a habit. A tie on
  * count falls through to recency via the sort, so the store you were at most
  * recently wins — which is the more useful answer when both are 3.
+ *
+ * A store flagged `excludeFromSuggestions` never wins here even if it's the
+ * most-bought-at — that flag exists precisely to keep a record-keeping-only
+ * store (Amazon: "it has everything") from being actively recommended.
+ * `shopsForItem` itself stays unfiltered, so the item sheet's full history
+ * still lists it.
  */
 export function primaryShopFor(
   itemId: string,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): Shop | null {
-  const ranked = shopsForItem(itemId, links, shops).filter(s => s.purchaseCount > 0);
+  const ranked = shopsForItem(itemId, links, shops)
+    .filter(s => s.purchaseCount > 0 && !s.shop.excludeFromSuggestions);
   return ranked.length > 0 ? ranked[0].shop : null;
 }
 
@@ -85,13 +92,17 @@ export function primaryShopFor(
  * The one store this item is tied to, or null if it's tied to none or several.
  * An assertion counts here — "only at Costco" is a claim about availability,
  * and the user making it by hand is as good an answer as a trip.
+ *
+ * Same exclusion as primaryShopFor: a store flagged `excludeFromSuggestions`
+ * is dropped before the "is there exactly one" count, so an item otherwise
+ * only linked to Amazon reads as tied to none, not "exclusively Amazon".
  */
 export function exclusiveShopFor(
   itemId: string,
   links: readonly ItemShopLink[],
   shops: readonly Shop[]
 ): Shop | null {
-  const all = shopsForItem(itemId, links, shops);
+  const all = shopsForItem(itemId, links, shops).filter(s => !s.shop.excludeFromSuggestions);
   return all.length === 1 ? all[0].shop : null;
 }
 
