@@ -196,12 +196,23 @@ export function QuickAddModal({
     };
   }, []);
 
-  const dismiss = () => {
+  // `onDone` runs after `onClose`, once the sheet has actually faded out —
+  // callers that also need to change what's on screen behind the sheet (e.g.
+  // switching Today's view to wherever a just-created task landed) pass it
+  // here instead of doing that first. Doing it first used to change the
+  // background while the sheet was still fully visible on top of it: a flash
+  // of the wrong screen, then the sheet vanishing over it a beat later.
+  const dismiss = (onDone?: () => void) => {
     Animated.parallel([
       Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-    ]).start(() => { scaleAnim.setValue(0.95); sheetOpacity.setValue(0); onClose(); });
+    ]).start(() => {
+      scaleAnim.setValue(0.95);
+      sheetOpacity.setValue(0);
+      onClose();
+      onDone?.();
+    });
   };
 
   const [title, setTitle] = useState('');
@@ -608,14 +619,17 @@ export function QuickAddModal({
       ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
     });
-    onCreated?.(task, seedActive);
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
     // (postCreateTask, rendered below) instead of just closing.
     if (newTaskDefaults.openEditorAfterQuickAdd) {
       setPostCreateTask(task);
     }
-    dismiss();
+    // onCreated can switch Today's whole sub-view (Today/Later/Unscheduled/
+    // Inbox) to wherever the new task landed — deferred until the sheet has
+    // finished fading out, so that switch never happens behind a sheet that's
+    // still on screen. See dismiss's onDone.
+    dismiss(() => onCreated?.(task, seedActive));
   };
 
   const handleAdd = () => {
@@ -791,7 +805,7 @@ export function QuickAddModal({
       visible={visible}
       animationType="none"
       transparent
-      onRequestClose={dismiss}
+      onRequestClose={() => dismiss()}
     >
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
         <SafeBlurView
@@ -801,7 +815,7 @@ export function QuickAddModal({
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View style={[styles.sheet, shadows.sheet, { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: Animated.add(translateYAnim, keyboardOffsetAnim) }] }]}>
           {/* Where the button was dropped. Removable: the drop chose a place,

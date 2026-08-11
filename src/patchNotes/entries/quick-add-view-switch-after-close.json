@@ -1,0 +1,4 @@
+{
+  "message": "Quick-adding a task that lands outside the current view (e.g. tomorrow, onto Later) no longer flashes the new view behind the sheet before it closes",
+  "date": "2026-08-11"
+}

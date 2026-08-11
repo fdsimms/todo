@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
@@ -241,29 +242,41 @@ export function SearchScreen() {
         onChangeText={setQuery}
       />
 
-      {showEmpty ? (
-        <EmptyState
-          key="no-results"
-          icon="search-outline"
-          title="No results"
-          subtitle={`No todos match "${query}"`}
-          actionLabel="Create task"
-          onAction={() => setQuickAddVisible(true)}
-          bottomOffset={tabBarHeight}
-        />
-      ) : query.trim().length === 0 ? (
-        <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
-      ) : (
-        <FlatList
-          data={listData}
-          keyExtractor={(item, i) =>
-            item.type === 'sectionHeader' ? `h-${item.label}` : item.result.task.id
-          }
-          renderItem={renderItem}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        />
-      )}
+      {/* EmptyState centers its "Create task" button vertically in whatever
+          height it's given — on iOS that height doesn't shrink for the
+          keyboard on its own, so with the search field still focused (the
+          common case: you typed a query, got no results) the button centered
+          on the full screen height landed underneath the keyboard, out of
+          reach. KeyboardAvoidingView pads the bottom by the keyboard's
+          height, so EmptyState re-centers above it instead. */}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoiding}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        {showEmpty ? (
+          <EmptyState
+            key="no-results"
+            icon="search-outline"
+            title="No results"
+            subtitle={`No todos match "${query}"`}
+            actionLabel="Create task"
+            onAction={() => setQuickAddVisible(true)}
+            bottomOffset={tabBarHeight}
+          />
+        ) : query.trim().length === 0 ? (
+          <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active and completed todos" bottomOffset={tabBarHeight} />
+        ) : (
+          <FlatList
+            data={listData}
+            keyExtractor={(item, i) =>
+              item.type === 'sectionHeader' ? `h-${item.label}` : item.result.task.id
+            }
+            renderItem={renderItem}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          />
+        )}
+      </KeyboardAvoidingView>
 
       <TaskEditor
         visible={editorVisible}
@@ -284,6 +297,7 @@ export function SearchScreen() {
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
+  keyboardAvoiding: { flex: 1 },
 
   searchBar: {
     marginHorizontal: spacing.md,
