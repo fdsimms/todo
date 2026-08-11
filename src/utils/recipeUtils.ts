@@ -281,6 +281,7 @@ export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): 
   }
   const servings = formatServings(recipe);
   if (servings) parts.push(`serves ${servings}`);
+  if (recipe.recipeYield) parts.push(`makes ${recipe.recipeYield}`);
   if (recipe.estimatedMinutes) parts.push(formatDuration(recipe.estimatedMinutes));
   const attribution = describeAttribution(recipe);
   if (attribution) parts.push(attribution);

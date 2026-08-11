@@ -784,6 +784,11 @@ export interface Recipe {
   // servingsMax: 6). null means the recipe isn't a range — just `servings`.
   // Never set without `servings` also set.
   servingsMax: number | null;
+  // What the recipe makes when a person-count doesn't fit — "3 cups", "2
+  // dozen cookies", "1 loaf". Free text, independent of servings/servingsMax
+  // (a dough can have both: "serves 8" and "makes 2 loaves"). null means
+  // nothing was given.
+  recipeYield: string | null;
   // The user-attached photo — a file:// URI under the document directory
   // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
   // Deliberately not base64-in-the-row: a recipe photo is a picture the card

@@ -45,6 +45,7 @@ function recipe(name: string, ingredients: RecipeIngredient[]): Recipe {
     source: null,
     servings: null,
     servingsMax: null,
+    recipeYield: null,
     imagePath: null,
     mealType: null,
     ingredients,

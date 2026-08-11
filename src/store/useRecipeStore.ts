@@ -58,6 +58,8 @@ interface RecipeStore {
    * range, so it's dropped rather than stored as one.
    */
   setServings: (id: string, servings: number | null, servingsMax?: number | null) => void;
+  /** What the recipe makes when a person-count doesn't fit — "3 cups", "2 dozen cookies". */
+  setRecipeYield: (id: string, recipeYield: string | null) => void;
   /**
    * Sets or clears a recipe's attached photo — `uri` is a file already saved
    * by `pickRecipeImage` (src/utils/recipePhoto.ts); this call just records
@@ -180,6 +182,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       source: null,
       servings: null,
       servingsMax: null,
+      recipeYield: null,
       imagePath: null,
       mealType: null,
       ingredients: [],
@@ -260,6 +263,13 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // `servings` or a max that doesn't beat it collapses back to a plain count.
     const nextMax = next !== null && clampedMax !== null && clampedMax > next ? clampedMax : null;
     save(set, { ...recipe, servings: next, servingsMax: nextMax });
+  },
+
+  setRecipeYield(id, recipeYield) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    const clean = cleanRecipeSource(recipeYield ?? '');
+    save(set, { ...recipe, recipeYield: clean || null });
   },
 
   setImage(id, uri) {

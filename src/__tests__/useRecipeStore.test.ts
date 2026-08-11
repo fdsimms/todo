@@ -27,6 +27,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     source: null,
     servings: null,
     servingsMax: null,
+    recipeYield: null,
     imagePath: null,
     mealType: null,
     ingredients: [],
@@ -201,6 +202,20 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setServings(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.servingsMax).toBeNull();
+  });
+
+  it('sets and clears the yield', () => {
+    const r = makeRecipe('Bread');
+    seed([r]);
+
+    useRecipeStore.getState().setRecipeYield(r.id, '  2 loaves  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBe('2 loaves');
+
+    useRecipeStore.getState().setRecipeYield(r.id, '');
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
+
+    useRecipeStore.getState().setRecipeYield(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.recipeYield).toBeNull();
   });
 
   it('sets and clears the meal type', () => {
