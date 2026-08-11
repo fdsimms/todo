@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   Animated,
   PanResponder,
+  ScrollView,
   StyleSheet,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { subDays } from 'date-fns/subDays';
@@ -33,6 +35,9 @@ import {
   keepDaysBetween,
   type LeftoverPart,
 } from '../utils/leftovers';
+
+/** Kept clear above the sheet so its first row never slides under the status bar. */
+const TOP_INSET = 72;
 
 /** How far back "put away" can be nudged from the sheet. */
 const PUT_AWAY_CHOICES = [0, 1, 2, 3] as const;
@@ -130,6 +135,7 @@ export function LeftoverSheet({
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { height: windowHeight } = useWindowDimensions();
 
   const translateY = useRef(new Animated.Value(600)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
@@ -259,12 +265,28 @@ export function LeftoverSheet({
       </Animated.View>
       <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View
+        style={[
+          styles.sheetOuter,
+          { maxHeight: windowHeight - TOP_INSET },
+          { transform: [{ translateY }] },
+        ]}
+      >
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
 
-        <View style={styles.card}>
+        {/* The card scrolls, same as MealEntrySheet's and for the same reason:
+            the parts list grows with the meal's components and the actions
+            below it are conditional, so a composed dish logged from a live row
+            is taller than the sheet can be. */}
+        <ScrollView
+          style={styles.card}
+          contentContainerStyle={styles.cardContent}
+          bounces={false}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={styles.headerRow}>
             <Text style={styles.heading}>
               {editing ? 'In the fridge' : choosing ? 'Log leftovers' : 'Log a leftover'}
@@ -450,7 +472,7 @@ export function LeftoverSheet({
               </TouchableOpacity>
             </>
           )}
-        </View>
+        </ScrollView>
 
         <TouchableOpacity style={styles.cancelCard} onPress={() => dismiss()} activeOpacity={interaction.activeOpacity}>
           <Text style={styles.cancelLabel}>{editing ? 'Done' : 'Cancel'}</Text>
@@ -504,6 +526,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.lg,
     overflow: 'hidden',
     marginBottom: spacing.sm,
+    // See MealEntrySheet's: lets the card give way to the sheet's maxHeight
+    // rather than taking its content's full height and overflowing it.
+    flexShrink: 1,
+  },
+  cardContent: {
     paddingBottom: spacing.sm,
   },
   headerRow: {

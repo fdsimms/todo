@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import {
   cleanMealTitle,
   dayKeyRange,
+  daysWithoutMeal,
   defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
@@ -189,6 +190,47 @@ describe('nextSortOrder', () => {
   it('is scoped to the day, not to the whole plan', () => {
     const entries = [entry('2026-08-04', 'dinner', { sortOrder: 9 })];
     expect(nextSortOrder(entries, '2026-08-05', 'dinner')).toBe(1);
+  });
+});
+
+describe('daysWithoutMeal', () => {
+  // Local dates, not UTC parses — dayKeyOf reads the local calendar day.
+  const week = [
+    new Date(2026, 7, 3), new Date(2026, 7, 4), new Date(2026, 7, 5),
+    new Date(2026, 7, 6), new Date(2026, 7, 7),
+  ];
+
+  it('drops the days that already have that meal', () => {
+    const entries = [entry('2026-08-04', 'dinner'), entry('2026-08-06', 'dinner')];
+    expect(daysWithoutMeal(entries, week, 'dinner').map(d => d.getDate()))
+      .toEqual([3, 5, 7]);
+  });
+
+  it('is scoped to the slot — a planned breakfast leaves the dinner free', () => {
+    const entries = [entry('2026-08-04', 'breakfast')];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(5);
+  });
+
+  it('counts a day once however many things are on it', () => {
+    const entries = [
+      entry('2026-08-04', 'dinner'),
+      entry('2026-08-04', 'dinner', { sortOrder: 2 }),
+    ];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(4);
+  });
+
+  it('ignores entries outside the days it was given', () => {
+    const entries = [entry('2026-07-30', 'dinner')];
+    expect(daysWithoutMeal(entries, week, 'dinner')).toHaveLength(5);
+  });
+
+  it('returns nothing once every night is taken', () => {
+    const entries = week.map((_, i) => entry(`2026-08-0${i + 3}`, 'dinner'));
+    expect(daysWithoutMeal(entries, week, 'dinner')).toEqual([]);
+  });
+
+  it('returns every day for an empty plan', () => {
+    expect(daysWithoutMeal([], week, 'dinner')).toHaveLength(5);
   });
 });
 

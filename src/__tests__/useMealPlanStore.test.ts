@@ -571,6 +571,21 @@ describe('bulkDeleteEntries', () => {
     useMealPlanStore.getState().bulkDeleteEntries([a.id]);
     expect(useMealPlanStore.getState().lastAction).toBeNull();
   });
+
+  // Not registering one isn't enough on its own: the queue outlives the action
+  // that filled it (UNDO_ACTION_MAX_AGE_MS), so a delete that only declined to
+  // set a lastAction would leave the *previous* one armed — and a shake right
+  // after "This can't be undone" would offer to undo something else entirely.
+  it('clears an undo left by an earlier action rather than leaving it armed', () => {
+    const a = entry('2026-08-05', 'dinner');
+    loadWeek([a]);
+    useMealPlanStore.getState().planMeal({ date: '2026-08-06', slot: 'dinner', title: 'Chilli' });
+    expect(useMealPlanStore.getState().lastAction).not.toBeNull();
+
+    useMealPlanStore.getState().bulkDeleteEntries([a.id]);
+
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
 });
 
 describe('bulkMoveEntries', () => {
