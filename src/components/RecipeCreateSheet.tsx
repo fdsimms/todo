@@ -78,7 +78,10 @@ export function RecipeCreateSheet({ visible, onClose, onCreated }: Props) {
   const [accepted, setAccepted] = useState<Set<number>>(new Set());
   const [applyServings, setApplyServings] = useState(true);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  const input = useRecipePhotoSource();
+  // Reachable only via the Recipes add button's "From a photo" item, so the
+  // sheet opens on the Photo tab rather than making that tap feel ignored —
+  // Paste is still one tap away for a recipe that's easier to copy in as text.
+  const input = useRecipePhotoSource('photo');
   const { source, reset: resetInput } = input;
 
   const reset = useCallback(() => {
