@@ -112,7 +112,10 @@ jest.mock('../store/useCategoryStore', () => ({
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: jest.fn(() => ({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' })),
+    getState: jest.fn(() => ({
+      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    })),
   },
 }));
 
@@ -165,6 +168,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   progressCount: 0,
+  allowOvershoot: false,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -257,7 +261,10 @@ beforeEach(() => {
   useProjectStore.setState({ projects: [], initialized: false });
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
-  useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00' });
+  useSettingsStore.getState.mockReturnValue({
+    dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+  });
   // re-register the category store mock after clearAllMocks
   const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
   useCategoryStore.getState.mockReturnValue({
@@ -340,6 +347,76 @@ describe('addTask', () => {
     const task = useTaskStore.getState().addTask({ title: 'Reminder' });
     expect(dbInsertTask).toHaveBeenCalledWith(task);
     expect(scheduleTaskReminder).toHaveBeenCalledWith(task);
+  });
+});
+
+// ─── newTaskFromDraft: Settings' newTaskDefaults ────────────────────────────
+//
+// newTaskFromDraft (addTask's builder, shared with the series builder) is
+// "the one place a Task's defaults are spelled out" — see its comment. These
+// exercise the settings.newTaskDefaults fallback layer it reads: a draft that
+// leaves a field unspecified picks up the setting, one that names a value
+// explicitly is never overridden, and — with no newTaskDefaults configured —
+// today's actual behavior (before this setting existed) is unchanged.
+describe('newTaskFromDraft: newTaskDefaults', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+
+  const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
+    useSettingsStore.getState.mockReturnValue({
+      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      newTaskDefaults,
+    });
+  };
+
+  it('with no newTaskDefaults configured, an omitted field defaults exactly as before this setting existed', () => {
+    withDefaults({ category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'Plain' });
+    expect(task.category).toBeNull();
+    expect(task.priority).toBe(0);
+    expect(task.effort).toBe(0);
+    expect(task.timeSegments).toEqual([]);
+  });
+
+  it('fills an unspecified field from newTaskDefaults', () => {
+    withDefaults({ category: 'Home', priority: 3, effort: 2, timeSegment: 'evening', destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'Defaulted' });
+    expect(task.category).toBe('Home');
+    expect(task.priority).toBe(3);
+    expect(task.effort).toBe(2);
+    expect(task.timeSegments).toEqual(['evening']);
+  });
+
+  it('never overrides a field the draft already named, even when it is a falsy/zero value', () => {
+    withDefaults({ category: 'Home', priority: 3, effort: 2, timeSegment: 'evening', destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({
+      title: 'Explicit',
+      category: 'Work',
+      priority: 0,
+      effort: 0,
+      timeSegments: ['morning'],
+    });
+    expect(task.category).toBe('Work');
+    expect(task.priority).toBe(0);
+    expect(task.effort).toBe(0);
+    expect(task.timeSegments).toEqual(['morning']);
+  });
+
+  it('an explicit category still wins over the default', () => {
+    withDefaults({ category: 'Home', priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false });
+    const task = useTaskStore.getState().addTask({ title: 'x', category: 'Work' });
+    expect(task.category).toBe('Work');
+  });
+
+  it('the series builder (addTaskSeries) picks up the same defaults', () => {
+    withDefaults({ category: 'Errands', priority: 1, effort: 4, timeSegment: 'morning', destination: 'today', openEditorAfterQuickAdd: false });
+    const rows = useTaskStore.getState().addTaskSeries(
+      { title: 'Walk the dog' },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    expect(rows.every(r => r.category === 'Errands')).toBe(true);
+    expect(rows.every(r => r.priority === 1)).toBe(true);
+    expect(rows.every(r => r.effort === 4)).toBe(true);
+    expect(rows.every(r => r.timeSegments && r.timeSegments[0] === 'morning')).toBe(true);
   });
 });
 
@@ -5140,6 +5217,105 @@ describe('quota tasks', () => {
 
       expect(useTaskStore.getState().tasks).toHaveLength(1);
       expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('leaves an allowOvershoot task alone — sweepOvershootQuotas owns it', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+  });
+
+  describe('sweepOvershootQuotas', () => {
+    it('completes a below-target day with the low count, not a miss', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          streakCount: 3,
+          streakDate: new Date(2025, 5, 9).toISOString(),
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(5); // under target(8), kept as the tally
+      expect(done.missedAt).toBeNull(); // not a miss
+      // Not the manual-close streak break rolloverQuotas uses — a normal
+      // completeTask call, so the cadence-based streak advances.
+      expect(done.streakCount).toBe(4);
+    });
+
+    it('completes an overshot day with the high count', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 13, // past the target of 8
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.progressCount).toBe(13); // preserved, not clamped to target
+    });
+
+    it('leaves an allowOvershoot task nobody logged today alone', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 0,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(0);
+    });
+
+    it('leaves an opted-out quota task alone — rolloverQuotas owns it', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(5);
+    });
+
+    it('spawns the next occurrence, same as any other completion', () => {
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          progressCount: 5,
+          dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const tasks = useTaskStore.getState().tasks;
+      expect(tasks).toHaveLength(2);
+      const next = tasks.find(t => t.id !== 'water')!;
+      expect(next.progressCount).toBe(0);
+      expect(next.completed).toBe(false);
     });
   });
 });

@@ -1,5 +1,6 @@
 import type { GroceryItem, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
 import {
+  RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
   RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
@@ -16,7 +17,14 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { formatDuration } from './effort';
-import { describeComponents, flattenRecipeIngredients, recipeMap } from './recipeComponents';
+import {
+  countChoiceAware,
+  describeComponents,
+  flattenRecipeIngredients,
+  flattenRecipePrepTasks,
+  recipeMap,
+  type ChoiceResolution,
+} from './recipeComponents';
 
 // splitPrep lives in groceryParse.ts now — the plain grocery quick-add field
 // runs the same split for its live preview, not just recipe ingredient lines
@@ -75,6 +83,7 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
     section: typeof r.section === 'string' && r.section.trim()
       ? r.section.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
       : null,
+    choiceGroup: cleanChoiceGroup(typeof r.choiceGroup === 'string' ? r.choiceGroup : null),
   };
 }
 
@@ -110,6 +119,7 @@ export function makeIngredient(line: string): RecipeIngredient | null {
     prep,
     purpose: purposeSplit?.purpose ?? null,
     section: null,
+    choiceGroup: null,
   };
 }
 
@@ -236,6 +246,39 @@ export function resolvePrepTaskDraft(
   return { dueDate, reminderTime };
 }
 
+/** One prep step, resolved against a meal date and shaped for addTask. */
+export interface PrepTaskDraft {
+  title: string;
+  dueDate: string;
+  reminderTime: string | null;
+}
+
+/**
+ * Every prep step a meal implies, resolved against the date it's planned for.
+ *
+ * Goes through flattenRecipePrepTasks rather than `recipe.prepTasks`, the same
+ * discipline every shopping read keeps: a dish that is mostly its components
+ * would otherwise look like it needed no prep at all. One place both callers
+ * share — the offer made when the meal is planned, and the entry sheet's "Add
+ * prep tasks" — so the two can't drift on which steps a composed dish has.
+ *
+ * `resolution` carries the meal's own either/or picks (MealPlanEntry.recipeChoices)
+ * so a night having the roast potatoes doesn't get "boil the potatoes" on its
+ * prep list. Omitted at plan time, when nothing has been chosen yet — the
+ * offer that fires right after planning always sees the defaults.
+ */
+export function prepTaskDraftsForMeal(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  mealDate: Date,
+  resolution?: ChoiceResolution
+): PrepTaskDraft[] {
+  return flattenRecipePrepTasks(recipe, recipesById, resolution).map(({ prepTask }) => ({
+    title: prepTask.title,
+    ...resolvePrepTaskDraft(prepTask, mealDate),
+  }));
+}
+
 /**
  * "4" or "4-6" — just the number(s), for callers that want to build their own
  * sentence around it (the editor's collapsed value, the extract preview).
@@ -270,7 +313,9 @@ export function formatServings(recipe: Recipe): string | null {
  * parts.
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
-  const count = recipe.ingredients.length;
+  // Choice-aware, so "serrano or jalapeño" reads as the one pepper a meal of
+  // this actually buys — see countChoiceAware.
+  const count = countChoiceAware(recipe.ingredients);
   const parts: string[] = [];
   if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
   parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
@@ -336,6 +381,18 @@ export function cleanRecipeSource(raw: string): string {
 }
 
 /**
+ * Trims and caps a choice group label, collapsing "no label" to null.
+ *
+ * The whitespace collapse is what makes typing an existing label join that
+ * group rather than start a lookalike beside it — the label *is* the grouping
+ * key (same as an aisle name), so "Side " and "Side" have to be one thing.
+ */
+export function cleanChoiceGroup(raw: string | null | undefined): string | null {
+  const clean = (raw ?? '').trim().replace(/\s+/g, ' ').slice(0, RECIPE_CHOICE_GROUP_MAX_LENGTH).trim();
+  return clean || null;
+}
+
+/**
  * Ranks recipes for the library's search field, mirroring
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
  * searching here behaves the way searching the catalog already does. Favorites
@@ -359,7 +416,12 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
     else if (key.includes(q)) weight = 1;
     // An ingredient match is a real hit — "what can I make with fennel" is the
     // question a recipe box is for — but it must never outrank a name match.
-    else if (flattenRecipeIngredients(recipe, byId).some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
+    // `allOptions` here and nowhere else that shops: an alternative the user
+    // isn't cooking tonight is still an ingredient this recipe can call for, and
+    // hiding it would make a recipe unfindable by a search for the very thing
+    // it's sometimes made of. A result is an invitation to look, not a purchase.
+    else if (flattenRecipeIngredients(recipe, byId, { allOptions: true })
+      .some(f => f.ingredient.nameKey.includes(q))) weight = 0.5;
     if (weight > 0) scored.push({ recipe, weight });
   }
   return scored
@@ -555,6 +617,11 @@ export function scoreRecipeAgainstCatalog(
   // Coverage has to be measured over everything the dish actually needs — a
   // parent with two ingredients of its own would otherwise score as a night's
   // cooking away from ready while its components' shopping list is untouched.
+  //
+  // Resolved to the defaults, deliberately unlike rankRecipes' `allOptions`
+  // search: this is a fraction, and counting every alternative inflates the
+  // denominator with lines that will never be bought, so a recipe offering a
+  // choice would score as less ready than the same recipe without one.
   const ingredients = flattenRecipeIngredients(recipe, recipesById ?? new Map([[recipe.id, recipe]]))
     .map(f => f.ingredient);
   if (ingredients.length === 0) return 0;

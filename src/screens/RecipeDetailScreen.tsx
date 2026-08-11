@@ -34,6 +34,7 @@ import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { ProgressBar } from '../components/ProgressBar';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
+import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -115,6 +116,7 @@ export function RecipeDetailScreen() {
   const [extractVisible, setExtractVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
+  const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -325,6 +327,29 @@ export function RecipeDetailScreen() {
     return headers;
   }, [recipe.ingredients]);
 
+  // The same display-only treatment for choice groups: the *first* row of each
+  // group opens a heading, and is also the group's default (see
+  // RecipeComponent.choiceGroup), so one pass over stored order answers both.
+  // Unlike the ingredient sections above, a group's options need not be
+  // adjacent — the heading opens at the first one and the rest keep their
+  // places, because the list order is what the recipe reads like and reordering
+  // it here would be editing the recipe to draw it.
+  const choiceHeadersOf = (rows: readonly { id: string; choiceGroup: string | null }[]) => {
+    const headers = new Map<string, string>();
+    const defaults = new Set<string>();
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (!row.choiceGroup || seen.has(row.choiceGroup)) continue;
+      seen.add(row.choiceGroup);
+      headers.set(row.id, row.choiceGroup);
+      defaults.add(row.id);
+    }
+    return { headers, defaults };
+  };
+
+  const componentGroups = useMemo(() => choiceHeadersOf(recipe.components), [recipe.components]);
+  const ingredientGroups = useMemo(() => choiceHeadersOf(recipe.ingredients), [recipe.ingredients]);
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -333,9 +358,17 @@ export function RecipeDetailScreen() {
   ) => {
     const selected = selectedIds.has(ingredient.id);
     const sectionHeader = ingredientSectionHeaders.get(ingredient.id);
+    // A line can open both: the section it belongs to, then the either/or slot
+    // it fills within that section.
+    const choiceHeader = ingredientGroups.headers.get(ingredient.id);
+    const choiceGroup = ingredient.choiceGroup;
+    const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
+        {!!choiceHeader && (
+          <Text style={styles.ingredientSectionHeader}>{choiceHeader} · choose one</Text>
+        )}
         <TouchableOpacity
           style={[
             styles.ingredient,
@@ -354,7 +387,8 @@ export function RecipeDetailScreen() {
           accessibilityState={selectionMode ? { checked: selected } : undefined}
           accessibilityLabel={
             [ingredient.section, ingredient.name, ingredient.quantity, ingredient.prep,
-             ingredient.purpose && `for ${ingredient.purpose}`]
+             ingredient.purpose && `for ${ingredient.purpose}`,
+             choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
           accessibilityHint={selectionMode ? 'Double tap to select' : 'Double tap to edit. Long press to reorder.'}
@@ -402,42 +436,63 @@ export function RecipeDetailScreen() {
   const renderComponent = (resolved: ResolvedComponent) => {
     const target = resolved.recipe;
     const label = resolved.name || 'Deleted recipe';
+    const groupHeader = componentGroups.headers.get(resolved.component.id);
+    const group = resolved.component.choiceGroup;
+    const isDefault = componentGroups.defaults.has(resolved.component.id);
     return (
-      <TouchableOpacity
-        key={resolved.component.id}
-        style={styles.ingredient}
-        activeOpacity={target ? interaction.activeOpacity : 1}
-        disabled={!target}
-        onPress={() => {
-          if (!target) return;
-          haptics.tap();
-          // Same-route navigate, exactly as TemplateDetailScreen opens a nested
-          // template: it swaps this screen's params rather than stacking a
-          // second copy, so Back still means "back to the library".
-          (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={target ? `${label}. ${describeRecipe(target)}` : `${label}, no longer in your recipes`}
-        accessibilityHint={target ? 'Double tap to open this recipe.' : undefined}
-      >
-        <View style={styles.ingredientText}>
-          <Text style={[styles.ingredientName, !target && styles.componentBrokenName]} numberOfLines={1}>
-            {label}
-          </Text>
-          <Text style={styles.componentMeta} numberOfLines={1}>
-            {target ? describeRecipe(target) : 'No longer in your recipes'}
-          </Text>
-        </View>
-        {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+      <View key={resolved.component.id}>
+        {!!groupHeader && (
+          <Text style={styles.ingredientSectionHeader}>{groupHeader} · choose one</Text>
+        )}
         <TouchableOpacity
-          onPress={() => confirmRemoveComponent(resolved)}
-          hitSlop={10}
+          style={styles.ingredient}
+          activeOpacity={target ? interaction.activeOpacity : 1}
+          disabled={!target}
+          onPress={() => {
+            if (!target) return;
+            haptics.tap();
+            // Same-route navigate, exactly as TemplateDetailScreen opens a nested
+            // template: it swaps this screen's params rather than stacking a
+            // second copy, so Back still means "back to the library".
+            (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
+          }}
+          // Long press is free on these rows (unlike an ingredient's, which
+          // drags) and is where making this an either/or lives.
+          onLongPress={() => { haptics.impactLight(); setChoiceComponent(resolved); }}
+          delayLongPress={interaction.delayLongPress}
           accessibilityRole="button"
-          accessibilityLabel={`Remove ${label} from this recipe`}
+          accessibilityLabel={
+            [
+              label,
+              group ? (isDefault ? `usual choice for ${group}` : `alternative for ${group}`) : null,
+              target ? describeRecipe(target) : 'no longer in your recipes',
+            ].filter(Boolean).join(', ')
+          }
+          accessibilityHint={
+            target
+              ? 'Double tap to open this recipe. Long press to make it an alternative.'
+              : 'Long press to make it an alternative.'
+          }
         >
-          <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+          <View style={styles.ingredientText}>
+            <Text style={[styles.ingredientName, !target && styles.componentBrokenName]} numberOfLines={1}>
+              {label}
+            </Text>
+            <Text style={styles.componentMeta} numberOfLines={1}>
+              {target ? describeRecipe(target) : 'No longer in your recipes'}
+            </Text>
+          </View>
+          {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+          <TouchableOpacity
+            onPress={() => confirmRemoveComponent(resolved)}
+            hitSlop={10}
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${label} from this recipe`}
+          >
+            <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -680,7 +735,8 @@ export function RecipeDetailScreen() {
           <Text style={styles.hint}>
             Use another recipe as part of this one — the mash that goes with both the steak
             and the salmon. Its ingredients and prep tasks come along, and editing it once
-            updates every meal that uses it.
+            updates every meal that uses it. Long press a component to make it an either/or
+            alternative, like mash or roast potatoes.
           </Text>
         ) : (
           <View style={styles.card}>
@@ -810,6 +866,13 @@ export function RecipeDetailScreen() {
         visible={extractVisible}
         recipe={recipe}
         onClose={() => setExtractVisible(false)}
+      />
+
+      <ComponentChoiceSheet
+        visible={choiceComponent !== null}
+        recipe={recipe}
+        component={choiceComponent}
+        onClose={() => setChoiceComponent(null)}
       />
 
       <RecipeComponentPicker

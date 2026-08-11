@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask } from '../types';
-import { TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -12,6 +12,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
   applyMeasuredCookTime,
+  cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
   ingredientsFromText,
@@ -120,6 +121,27 @@ interface RecipeStore {
    */
   addStructuredIngredients: (recipeId: string, ingredients: RecipeIngredient[]) => number;
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
+  /**
+   * Turns one "cheddar or manchego" line into that many real ingredient rows,
+   * filed as alternatives of each other — the accept half of the suggestion
+   * splitAlternativeNames makes (see RecipeIngredient.choiceGroup).
+   *
+   * The new rows take the original's place in the list and inherit its
+   * quantity, prep, purpose, section and aisle: they're alternatives for one
+   * slot in the recipe, so whatever was true of that slot is true of each way
+   * of filling it.
+   *
+   * Returns how many rows the line became, and 0 without writing when the split
+   * wouldn't produce a real choice — an unknown recipe or ingredient, fewer
+   * than two names, or names the recipe already carries elsewhere (which would
+   * leave a "group" of one).
+   */
+  splitIngredientAlternatives: (
+    recipeId: string,
+    ingredientId: string,
+    names: readonly string[],
+    choiceGroup: string,
+  ) => number;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
   /** Removes several ingredients from one recipe at once — the bulk form of removeIngredient. */
@@ -138,9 +160,29 @@ interface RecipeStore {
    * the user-facing explanation — the same division NestedTemplatePicker and
    * wouldCreateCycle already have.
    */
-  addComponent: (recipeId: string, componentRecipeId: string) => boolean;
+  addComponent: (recipeId: string, componentRecipeId: string, choiceGroup?: string | null) => boolean;
   /** Unlinks by the component's own id, so a broken link can be cleared too. */
   removeComponent: (recipeId: string, componentId: string) => void;
+
+  /**
+   * Files a component under an either/or label, or takes it back out of one
+   * with null — see RecipeComponent.choiceGroup. Trimmed and length-capped
+   * here, so a label arriving from a text field can't differ from the one the
+   * options it's meant to join are stored under.
+   */
+  setComponentChoiceGroup: (recipeId: string, componentId: string, choiceGroup: string | null) => void;
+
+  /**
+   * Makes a component the one its group falls back to, by moving it ahead of
+   * its fellow options — the default *is* first place (see
+   * RecipeComponent.choiceGroup), so this is a reorder rather than a flag.
+   *
+   * It moves the link to where the group's first option currently sits, leaving
+   * every ungrouped component and every other group exactly where they are: the
+   * list is what the recipe reads like, and promoting the roast potatoes should
+   * not shuffle the steak.
+   */
+  makeComponentDefault: (recipeId: string, componentId: string) => void;
 
   /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
   addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
@@ -408,6 +450,52 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, ingredients });
   },
 
+  splitIngredientAlternatives(recipeId, ingredientId, names, choiceGroup) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return 0;
+    const index = recipe.ingredients.findIndex(i => i.id === ingredientId);
+    if (index < 0) return 0;
+    const original = recipe.ingredients[index];
+    const group = cleanChoiceGroup(choiceGroup);
+    if (!group) return 0;
+
+    // Every *other* row's key, so a split that would recreate an ingredient the
+    // recipe already lists drops that option rather than duplicating it.
+    const takenKeys = new Set(
+      recipe.ingredients.filter(i => i.id !== ingredientId).map(i => i.nameKey)
+    );
+    const rows: RecipeIngredient[] = [];
+    for (const raw of names) {
+      const name = raw.trim().slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+      if (!name) continue;
+      const nameKey = groceryNameKey(name);
+      if (!nameKey || takenKeys.has(nameKey)) continue;
+      takenKeys.add(nameKey);
+      rows.push({
+        ...original,
+        // The first row keeps the original's id, so anything already pointing
+        // at this line (a meal's stored pick, most of all) still resolves —
+        // and it lands first, which makes it the group's default.
+        id: rows.length === 0 ? original.id : generateId(),
+        name,
+        nameKey,
+        choiceGroup: group,
+      });
+    }
+    // One survivor is not a choice; leave the line exactly as the user wrote it.
+    if (rows.length < 2) return 0;
+
+    save(set, {
+      ...recipe,
+      ingredients: [
+        ...recipe.ingredients.slice(0, index),
+        ...rows,
+        ...recipe.ingredients.slice(index + 1),
+      ],
+    });
+    return rows.length;
+  },
+
   removeIngredient(recipeId, ingredientId) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
@@ -451,14 +539,17 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, ingredients: [...ordered, ...rest] });
   },
 
-  addComponent(recipeId, componentRecipeId) {
+  addComponent(recipeId, componentRecipeId, choiceGroup = null) {
     const recipes = get().recipes;
     const recipe = recipes.find(r => r.id === recipeId);
     const target = recipes.find(r => r.id === componentRecipeId);
     if (!recipe || !target) return false;
     if (recipe.components.some(c => c.recipeId === componentRecipeId)) return false;
     if (wouldCreateRecipeCycle(recipeMap(recipes), recipeId, componentRecipeId)) return false;
-    save(set, { ...recipe, components: [...recipe.components, makeComponent(target)] });
+    save(set, {
+      ...recipe,
+      components: [...recipe.components, makeComponent(target, cleanChoiceGroup(choiceGroup))],
+    });
     return true;
   },
 
@@ -468,6 +559,28 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const components = recipe.components.filter(c => c.id !== componentId);
     if (components.length === recipe.components.length) return;
     save(set, { ...recipe, components });
+  },
+
+  setComponentChoiceGroup(recipeId, componentId, choiceGroup) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const clean = cleanChoiceGroup(choiceGroup);
+    if (!recipe.components.some(c => c.id === componentId)) return;
+    save(set, {
+      ...recipe,
+      components: recipe.components.map(c => (c.id === componentId ? { ...c, choiceGroup: clean } : c)),
+    });
+  },
+
+  makeComponentDefault(recipeId, componentId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const target = recipe.components.find(c => c.id === componentId);
+    if (!target?.choiceGroup) return;
+    const firstIndex = recipe.components.findIndex(c => c.choiceGroup === target.choiceGroup);
+    if (firstIndex < 0 || recipe.components[firstIndex].id === componentId) return;
+    const rest = recipe.components.filter(c => c.id !== componentId);
+    save(set, { ...recipe, components: [...rest.slice(0, firstIndex), target, ...rest.slice(firstIndex)] });
   },
 
   addPrepTask(recipeId, title) {

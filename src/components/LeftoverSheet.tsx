@@ -232,7 +232,11 @@ export function LeftoverSheet({
             onSubmitEditing={editing ? commitRename : commit}
             placeholder="What's in the container?"
             placeholderTextColor={colors.textTertiary}
-            autoFocus={!editing}
+            // Only when logging fresh with nothing to start from — a seeded
+            // title (from "Log leftovers" on a planned meal) is already a
+            // complete answer, not a draft to type over, so the keyboard
+            // shouldn't summon itself on top of it.
+            autoFocus={!editing && !seed?.title}
             autoCorrect={false}
             returnKeyType={editing ? 'done' : 'go'}
             maxLength={LEFTOVER_NAME_MAX_LENGTH}

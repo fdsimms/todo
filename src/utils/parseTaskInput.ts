@@ -430,7 +430,12 @@ function parseRecurrenceSuffix(text: string, now: Date): ParsedSchedule | null {
       segments = [DAY_PART_SEGMENT[part.part]];
       rest = part.rest;
     }
-    rest = rest.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
+    // "@" is no longer stripped as generic noise here — it has no meaning in
+    // this file (see parseCategoryAndTagsInput below, which uses "#" for
+    // both category and tags) — so a leftover one is left in place and, same
+    // as any other stray character, correctly fails the anchored match below
+    // rather than being silently swallowed.
+    rest = rest.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/\s+/g, ' ').trim();
     schedule = matchRecurrenceCore(rest, now, segments);
   }
   if (!schedule) return null;
@@ -479,7 +484,8 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
       hasTime = true;
     }
   }
-  t = t.replace(/\bat\b/g, ' ').replace(/@/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
+  // Same as above — "@" has no meaning in this file and is no longer stripped as noise.
+  t = t.replace(/\bat\b/g, ' ').replace(/\bin the\b/g, ' ').replace(/,/g, ' ').replace(/\s+/g, ' ').trim();
 
   const datePart = t ? parseDatePart(t, now) : null;
   // Leftover words that aren't a date phrase → this suffix isn't a schedule.
@@ -657,46 +663,90 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
 
-export interface ParsedCategory {
-  /** The matching category's canonical (registered) name, not the typed token. */
-  category: string;
-  /** Input minus the matched "#tag", whitespace collapsed and trimmed. */
+export interface ParsedCategoryAndTags {
+  /** The first token's category, if any matched — a task has one. */
+  category: string | null;
+  /** Every other matching token's canonical tag name, in order, deduplicated. */
+  tags: string[];
+  /** Input minus every matched "#word" token, whitespace collapsed and trimmed. */
   cleanTitle: string;
+  /** Start of the first matched token — drives the tooltip highlight. */
   matchStart: number;
   matchEnd: number;
 }
 
-// A "#" immediately followed by a word — CLAUDE.md's own quick-add example
-// ("pay rent tmrw 5p #home") is a category tag. Matched anywhere in the text,
-// like parseLinkInput/parsePhoneInput, not suffix-anchored.
-const CATEGORY_TAG_PATTERN = /#([a-z][\w-]*)/i;
+// A "#" immediately followed by a word, not itself preceded by a word
+// character (so "C#" doesn't false-positive) — CLAUDE.md's own quick-add
+// example ("pay rent tmrw 5p #home") is a category tag, and the same marker
+// doubles for tags rather than "@tag" getting a second one: "@" is a much
+// more natural fit for a future person-assignment feature, and "#" is
+// already the more universal tag/category marker. Matched anywhere in the
+// text, like parseLinkInput/parsePhoneInput, not suffix-anchored, and
+// globally rather than once, since more than one "#word" can appear.
+const CATEGORY_OR_TAG_TOKEN_PATTERN = /(?<!\w)#([a-z][\w-]*)/gi;
 
 /**
- * Finds a "#category" tag in a quick-add title and, if it names a category
- * that already exists, splits it out — mirroring parseLinkInput's shape.
- * `categories` is passed in rather than read from a store, keeping this
- * module free of any store dependency (see the header note); it's the
- * existing registered names, matched case-insensitively so "#Home" and
- * "#home" both resolve to the one category.
+ * Finds every "#word" token in a quick-add title and, for each one in turn,
+ * tries it against known categories first and known tags second — so
+ * "clean kitchen #home #chores" reads "home" as the category (the first
+ * token to claim that still-open slot) and "chores" as a tag. A task has one
+ * category, so once it's claimed, every further "#word" is only ever tried
+ * as a tag. `categories`/`tags` are passed in rather than read from a store,
+ * keeping this module free of any store dependency (see the header note);
+ * matching is case-insensitive so "#Home" and "#home" both resolve to the
+ * one category.
  *
- * Deliberately doesn't create a category from an unrecognized tag — a typo
- * or an unrelated "#" in the title (e.g. a hashtag someone's pasting) would
- * otherwise silently spawn a new one. Tags/project/stack aren't covered by
- * this symbol; see #1258 for the open question on whether they should be.
+ * Deliberately doesn't create a category or tag from an unrecognized token —
+ * a typo or an unrelated "#" in the title (e.g. a hashtag someone's pasting)
+ * is left as literal text rather than silently minting something new.
  */
-export function parseCategoryInput(input: string, categories: string[]): ParsedCategory | null {
-  const match = input.match(CATEGORY_TAG_PATTERN);
-  if (!match || match.index === undefined) return null;
-  const token = match[1].toLowerCase();
-  const category = categories.find(c => c.toLowerCase() === token);
-  if (!category) return null;
+export function parseCategoryAndTagsInput(
+  input: string,
+  categories: string[],
+  tags: string[]
+): ParsedCategoryAndTags | null {
+  const categoryByLower = new Map(categories.map(c => [c.toLowerCase(), c]));
+  const tagByLower = new Map(tags.map(t => [t.toLowerCase(), t]));
 
-  const matchStart = match.index;
-  const matchEnd = matchStart + match[0].length;
-  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a category tag
+  let category: string | null = null;
+  const matchedTags: string[] = [];
+  const consumed: { start: number; end: number }[] = [];
 
-  return { category, cleanTitle, matchStart, matchEnd };
+  for (const m of input.matchAll(CATEGORY_OR_TAG_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = m[1].toLowerCase();
+    const start = m.index;
+    const end = start + m[0].length;
+
+    if (category === null && categoryByLower.has(token)) {
+      category = categoryByLower.get(token)!;
+      consumed.push({ start, end });
+      continue;
+    }
+    const tagName = tagByLower.get(token);
+    if (tagName) {
+      matchedTags.push(tagName);
+      consumed.push({ start, end });
+    }
+    // else: unrecognized "#word" — leave as literal text
+  }
+
+  if (category === null && matchedTags.length === 0) return null;
+
+  let cleanTitle = input;
+  for (let i = consumed.length - 1; i >= 0; i--) {
+    cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
+  }
+  cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a tag
+
+  return {
+    category,
+    tags: [...new Set(matchedTags)],
+    cleanTitle,
+    matchStart: consumed[0].start,
+    matchEnd: consumed[0].end,
+  };
 }
 
 function joinDayNames(days: number[]): string {

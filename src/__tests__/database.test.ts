@@ -146,6 +146,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceFromCompletion: false,
   targetCount: null,
   targetUnit: null,
+  allowOvershoot: false,
   progressCount: 0,
   tags: [],
   category: null,
@@ -396,6 +397,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         recurrenceFromCompletion: true,
         targetCount: null,
         targetUnit: null,
+        allowOvershoot: false,
         progressCount: 0,
         chainEnabled: true,
         vacationPause: true,
@@ -1743,6 +1745,7 @@ describe('meal plan entries', () => {
       title: `Meal ${mealSeq}`,
       sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
+      recipeChoices: [],
       cookedAt: null,
       leftoverId: null,
       ...overrides,
@@ -1761,6 +1764,19 @@ describe('meal plan entries', () => {
     dbInsertMealPlanEntry(planned);
 
     expect(dbGetMealPlanEntries('2026-08-03', '2026-08-09')).toEqual([planned]);
+  });
+
+  it('round-trips component choices through insert and update, empty for an old row', () => {
+    const planned = makeEntry('2026-08-05', 'dinner', {
+      recipeId: 'r1', title: 'Steak dinner', recipeChoices: ['c-roast'],
+    });
+    dbInsertMealPlanEntry(planned);
+
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeChoices).toEqual(['c-roast']);
+
+    // Back to the default is stored as no answer, and has to survive as one.
+    dbUpdateMealPlanEntry({ ...planned, recipeChoices: [] });
+    expect(dbGetMealPlanEntries('2026-08-05', '2026-08-05')[0].recipeChoices).toEqual([]);
   });
 
   it('stores a free-text meal with a null recipe', () => {
@@ -1945,7 +1961,7 @@ describe('leftovers', () => {
     dbInsertMealPlanEntry({
       id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
       title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
-      cookedAt: null, leftoverId: 'lo-a',
+      cookedAt: null, leftoverId: 'lo-a', recipeChoices: [],
     });
 
     dbDeleteLeftover('lo-a');

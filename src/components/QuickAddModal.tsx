@@ -51,7 +51,7 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryInput } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
 import { format } from 'date-fns/format';
@@ -60,14 +60,18 @@ import { suggestTaskAttributes, describeAIError } from '../services/aiSuggestion
 import { estimateEffort } from '../utils/effortEstimator';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from '../utils/effort';
 import { SuggestedCategorySheet } from './SuggestedCategorySheet';
-import { type TaskDraft } from './TaskEditor';
+import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { ORDINAL_OPTIONS, RECURRENCE_LABELS, onlyNewestWeekday, ordinal } from './RecurrencePicker';
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   onOpenFull: (draft: TaskDraft) => void;
-  /** Which list this was opened from — determines the default due date. Defaults to 'today'. */
+  /**
+   * Which list this was opened from — determines the default due date.
+   * Omit to fall back to Settings' newTaskDefaults.destination (Today/Inbox/
+   * Unscheduled) — see the `visible` effect below.
+   */
   context?: 'today' | 'later' | 'inbox' | 'unscheduled';
   /**
    * Called right after a new task is created (not on the "resume archived"
@@ -106,6 +110,16 @@ function linkLabel(url: string): string {
   return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
 }
 
+/** Tooltip label for a "#word" match — category, tag count/name, or both joined. */
+function categoryTagsLabel(parsed: ParsedCategoryAndTags, categories: Parameters<typeof categoryLabel>[1]): string {
+  const parts: string[] = [];
+  if (parsed.category) parts.push(categoryLabel(parsed.category, categories));
+  if (parsed.tags.length > 0) {
+    parts.push(parsed.tags.length > 1 ? `${parsed.tags.length} tags` : `#${parsed.tags[0]}`);
+  }
+  return parts.join(' + ');
+}
+
 const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { key: 'morning', label: 'Morning', icon: 'sunny-outline' },
   { key: 'afternoon', label: 'Afternoon', icon: 'partly-sunny-outline' },
@@ -123,7 +137,7 @@ const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]
 
 
 export function QuickAddModal({
-  visible, onClose, onOpenFull, context = 'today', onCreated, onResumed, seed, seedLabel,
+  visible, onClose, onOpenFull, context, onCreated, onResumed, seed, seedLabel,
   initialType = 'task', initialTitle,
 }: Props) {
   const addTask = useTaskStore(s => s.addTask);
@@ -135,6 +149,14 @@ export function QuickAddModal({
   const tasks = useTaskStore(s => s.tasks);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  // Which list this actually lands in: the caller's explicit choice (a
+  // screen's current sub-view, a project's "unscheduled" drop) if it named
+  // one, else Settings' destination default.
+  const effectiveContext = context ?? newTaskDefaults.destination;
+  // Holds the task created by this sheet while its editor is open — only used
+  // when newTaskDefaults.openEditorAfterQuickAdd is on (see createTask below).
+  const [postCreateTask, setPostCreateTask] = useState<Task | null>(null);
   const colors = useColors();
   const { isDark, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -236,21 +258,21 @@ export function QuickAddModal({
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle ?? '');
-      setPriority(0);
-      setEffort(0);
+      setPriority(newTaskDefaults.priority ?? 0);
+      setEffort(newTaskDefaults.effort ?? 0);
       setEstimatedMinutes(null);
       setCustomEffortText('');
       setEffortNote(null);
       setDueDate(
-        context === 'later' ? getLogicalTomorrow(dayResetTime)
-        : context === 'inbox' || context === 'unscheduled' ? null
+        effectiveContext === 'later' ? getLogicalTomorrow(dayResetTime)
+        : effectiveContext === 'inbox' || effectiveContext === 'unscheduled' ? null
         : getLogicalToday(dayResetTime)
       );
-      setTimeSegments([]);
+      setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
       setTags([]);
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
-      setCategory(seedRef.current?.category ?? null);
+      setCategory(seedRef.current?.category ?? newTaskDefaults.category);
       setSeedActive(!!seedRef.current);
       setLinkUrl(null);
       setPhoneNumber(null);
@@ -282,6 +304,7 @@ export function QuickAddModal({
       setWhenPickerVisible(false);
       setAiLoading(false);
       setPendingCategory(null);
+      setPostCreateTask(null);
       scaleAnim.setValue(0.95);
       translateYAnim.setValue(16);
       sheetOpacity.setValue(0);
@@ -297,7 +320,7 @@ export function QuickAddModal({
       // animation rather than after it, so the keyboard is up sooner.
       inputRef.current?.focus();
     }
-  }, [visible, context, initialType, initialTitle]);
+  }, [visible, effectiveContext, initialType, initialTitle]);
 
   // Natural-language scheduling: detect a trailing date/recurrence phrase in
   // the title ("go for a run on tuesday", "water plants every 3 days"). The
@@ -307,25 +330,29 @@ export function QuickAddModal({
     () => (title.trim() ? parseTaskInput(title, getLogicalNow(dayResetTime)) : null),
     [title, dayResetTime]
   );
-  // "pay rent tmrw #home" — a "#tag" naming an existing category. Same single
-  // tooltip slot, checked right after the schedule phrase (and before
-  // link/phone/duration below) so a trailing tag that blocks the
-  // suffix-anchored schedule match — the phrase has to reach the true end of
-  // the title — doesn't leave both undetected: this fires instead, and once
-  // the tag is stripped the schedule phrase parses cleanly on the next
-  // keystroke or tap. Only matches a tag that names a real category, so a
-  // stray "#" elsewhere in the title never lights it up.
-  const categoryParsed = useMemo(
-    () => (!parsed && title.trim() ? parseCategoryInput(title, categories.map(c => c.name)) : null),
-    [title, parsed, categories]
+  // "pay rent tmrw #home #errand" — one or more "#word" tokens, the first
+  // naming a category and the rest naming tags (see
+  // parseCategoryAndTagsInput for the priority rule). Same single tooltip
+  // slot, checked right after the schedule phrase (and before link/phone/
+  // duration below) so a trailing token that blocks the suffix-anchored
+  // schedule match — the phrase has to reach the true end of the title —
+  // doesn't leave both undetected: this fires instead, and once the token is
+  // stripped the schedule phrase parses cleanly on the next keystroke or tap.
+  // Only matches tokens that name a real category/tag, so a stray "#"
+  // elsewhere in the title never lights it up.
+  const categoryTagsParsed = useMemo(
+    () => (!parsed && title.trim()
+      ? parseCategoryAndTagsInput(title, categories.map(c => c.name), allTags)
+      : null),
+    [title, parsed, categories, allTags]
   );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase or category tag matched, so the tooltips never compete for the
-  // same slot.
+  // phrase or category/tag token matched, so the tooltips never compete for
+  // the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryParsed]
+    () => (!parsed && !categoryTagsParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -333,27 +360,27 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
-  // tooltip slot, checked last, so a schedule, category tag, or link phrase
-  // always wins.
+  // tooltip slot, checked last, so a schedule, category/tag token, or link
+  // phrase always wins.
   //
   // Only offered from the plain type, because accepting it switches the sheet
   // into Timed: it's how someone who has never picked a type discovers there
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryParsed, linkParsed, phoneParsed, type]
+    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, type]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
-    : categoryParsed
+    : categoryTagsParsed
       ? {
-          matchStart: categoryParsed.matchStart,
-          matchedText: title.slice(categoryParsed.matchStart, categoryParsed.matchEnd),
+          matchStart: categoryTagsParsed.matchStart,
+          matchedText: title.slice(categoryTagsParsed.matchStart, categoryTagsParsed.matchEnd),
         }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
@@ -425,13 +452,16 @@ export function QuickAddModal({
     setRecurrenceFromCompletion(parsed.schedule.recurrenceFromCompletion ?? false);
   };
 
-  // Apply the detected "#category" tag and strip it from the title.
-  const applyCategory = () => {
-    if (!categoryParsed) return;
+  // Apply the detected "#category"/"#tag" tokens and strip them from the title.
+  const applyCategoryTags = () => {
+    if (!categoryTagsParsed) return;
     haptics.success();
     animateLayout();
-    setTitle(categoryParsed.cleanTitle);
-    setCategory(categoryParsed.category);
+    setTitle(categoryTagsParsed.cleanTitle);
+    if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
+    if (categoryTagsParsed.tags.length > 0) {
+      setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
+    }
   };
 
   // Apply the detected link and strip it from the title.
@@ -579,6 +609,12 @@ export function QuickAddModal({
       ...(seedActive && seed?.pinned ? { pinned: true } : {}),
     });
     onCreated?.(task, seedActive);
+    // Files the task exactly as before either way; the setting only decides
+    // whether the sheet hands off straight into the full editor for it
+    // (postCreateTask, rendered below) instead of just closing.
+    if (newTaskDefaults.openEditorAfterQuickAdd) {
+      setPostCreateTask(task);
+    }
     dismiss();
   };
 
@@ -750,6 +786,7 @@ export function QuickAddModal({
   const suggestedTags = allTags.filter(t => !tags.includes(t)).slice(0, 8);
 
   return (
+    <>
     <Modal
       visible={visible}
       animationType="none"
@@ -915,7 +952,7 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryParsed ? applyCategory : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
+                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : applyDuration}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
@@ -924,8 +961,8 @@ export function QuickAddModal({
                         ? (parsed.schedule.recurrenceType !== 'none'
                             ? 'repeat'
                             : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
-                        : categoryParsed
-                          ? 'pricetag-outline'
+                        : categoryTagsParsed
+                          ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
                           : linkParsed
                             ? 'link-outline'
                             : phoneParsed
@@ -938,8 +975,8 @@ export function QuickAddModal({
                   <Text style={styles.tooltipText}>
                     {parsed
                       ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                      : categoryParsed
-                        ? categoryLabel(categoryParsed.category, categories)
+                      : categoryTagsParsed
+                        ? categoryTagsLabel(categoryTagsParsed, categories)
                         : linkParsed
                           ? linkLabel(linkParsed.url)
                           : phoneParsed
@@ -1818,7 +1855,15 @@ export function QuickAddModal({
       />
       <NumberPadAccessory />
     </Modal>
-
+    {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
+        sibling of the sheet above rather than something rendered inside it,
+        so it stays mounted (and visible) once the sheet has closed. */}
+    <TaskEditor
+      visible={postCreateTask !== null}
+      task={postCreateTask}
+      onClose={() => setPostCreateTask(null)}
+    />
+    </>
   );
 }
 

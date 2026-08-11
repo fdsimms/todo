@@ -82,7 +82,8 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 }
 
 // The time-of-day a brand-new task starts with: its own if the draft named
-// one, else its category's default (Category.defaultTimeSegments).
+// one, else its category's default (Category.defaultTimeSegments), else
+// Settings' newTaskDefaults.timeSegment.
 //
 // An empty draft array counts as "didn't name one" rather than as an explicit
 // "no segment", because every editor sends timeSegments unconditionally from
@@ -93,28 +94,38 @@ function captureField<K extends keyof Task>(target: Partial<Task>, source: Task,
 // Creation only, and the resolved value is written onto the row like any
 // other: after this the task's own timeSegments are what everything reads, so
 // clearing the category's default never moves a task that already exists.
-function resolveTimeSegments(draft: Partial<TaskDraft>): TimeOfDay[] {
+function resolveTimeSegments(draft: Partial<TaskDraft>, defaultSegment: TimeOfDay | null): TimeOfDay[] {
   if (draft.timeSegments && draft.timeSegments.length > 0) return draft.timeSegments;
-  if (!draft.category) return draft.timeSegments ?? [];
-  const cat = useCategoryStore.getState().getCategoryByName(draft.category);
-  return cat?.defaultTimeSegments.length ? [...cat.defaultTimeSegments] : (draft.timeSegments ?? []);
+  if (draft.category) {
+    const cat = useCategoryStore.getState().getCategoryByName(draft.category);
+    if (cat?.defaultTimeSegments.length) return [...cat.defaultTimeSegments];
+  }
+  if (defaultSegment) return [defaultSegment];
+  return draft.timeSegments ?? [];
 }
 
 // The one place a Task's defaults are spelled out. Shared by addTask and the
 // dated-series builder below so a new field can't end up defaulted in one
-// path and undefined in the other.
+// path and undefined in the other. Settings' newTaskDefaults (category,
+// priority, effort, timeSegment) is read here for the same reason — a
+// fallback under whatever the draft already named, never an override of it.
 //
 // `seedFromCategory` is off by default because this is also the *clone*
 // builder: buildSeriesRow feeds it an existing row when a series is
 // reconciled or rolls over, and there an empty timeSegments is the source
 // row's deliberate answer, not an unanswered question. Only the two paths
-// where a person is creating a task from scratch turn it on.
+// where a person is creating a task from scratch turn it on. The category
+// and priority/effort defaults below apply regardless of seedFromCategory —
+// unlike timeSegments, a cloned series row already carries its own category/
+// priority/effort explicitly (spread from the source row), so the ?? never
+// fires on a clone; it's only ever a fallback for an unanswered field.
 function newTaskFromDraft(
   draft: Partial<TaskDraft>,
   now: string,
   sortOrder: number,
   seedFromCategory = false,
 ): Task {
+  const defaults = useSettingsStore.getState().newTaskDefaults;
   return {
     id: generateId(),
     title: draft.title ?? '',
@@ -130,7 +141,7 @@ function newTaskFromDraft(
     deadlineOffsetDays: draft.deadlineOffsetDays ?? null,
     deadlineMonthDay: draft.deadlineMonthDay ?? null,
     deferUntil: draft.deferUntil ?? null,
-    timeSegments: seedFromCategory ? resolveTimeSegments(draft) : (draft.timeSegments ?? []),
+    timeSegments: seedFromCategory ? resolveTimeSegments(draft, defaults.timeSegment) : (draft.timeSegments ?? []),
     windowStart: draft.windowStart ?? null,
     windowEnd: draft.windowEnd ?? null,
     recurrenceType: draft.recurrenceType ?? 'none',
@@ -144,12 +155,13 @@ function newTaskFromDraft(
     targetCount: draft.targetCount ?? null,
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
+    allowOvershoot: draft.allowOvershoot ?? false,
     tags: draft.tags ?? [],
-    category: draft.category ?? null,
+    category: draft.category ?? defaults.category,
     sortOrder,
     pinned: draft.pinned ?? false,
-    priority: draft.priority ?? 0,
-    effort: draft.effort ?? 0,
+    priority: draft.priority ?? defaults.priority ?? 0,
+    effort: draft.effort ?? defaults.effort ?? 0,
     estimatedMinutes: draft.estimatedMinutes ?? null,
     streakCount: 0,
     streakDate: null,
@@ -516,6 +528,8 @@ interface TaskStore {
   holdQuotaOnToday: (id: string) => void;
   releaseQuotaHold: (id: string) => void;
   rolloverQuotas: () => void;
+  /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
+  sweepOvershootQuotas: () => void;
   deferTask: (id: string, until: Date) => void;
   // Applies a batch of approved "lighten this day" moves (see
   // utils/deloadPlan) under one undo entry — each move carries its own field
@@ -1349,7 +1363,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // than being logged as a partial (see isQuotaPartial). A miss keeps
       // whatever count it actually reached — that's the record of the day, the
       // same way rolloverQuotas leaves a partial alone.
-      progressCount: isQuotaTask(task) && !missed ? task.targetCount! : task.progressCount,
+      //
+      // allowOvershoot is the one exception: its whole point is a tally that
+      // can land over, at, or under target, so clamping it here would erase
+      // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
+      progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -1763,6 +1781,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.recurrenceType !== 'none' &&
       // Vacation-paused tasks are protected from streak loss by design.
       !isHiddenForVacation(t) &&
+      // allowOvershoot tasks get their own sweep (sweepOvershootQuotas, below)
+      // that goes through completeTask so an overshot count survives — this
+      // manual close always writes progressCount as-is but forces
+      // streakCount to 0, which is right for a shortfall but wrong for a
+      // task that actually met or beat its target.
+      !t.allowOvershoot &&
       t.dueDate !== null &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
@@ -1825,6 +1849,45 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({
       tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
     }));
+  },
+
+  // Closes out allowOvershoot quota tasks whose day has ended — the opt-in
+  // counterpart to rolloverQuotas above, kept separate because the two need
+  // different completion paths. rolloverQuotas' manual close forces
+  // streakCount to 0 unconditionally, which is right for a task that's
+  // simply been abandoned but wrong here: an allowOvershoot completion is
+  // never a miss (see below), so it should advance the streak exactly as any
+  // other non-missed completeTask call does, on the recurrence's normal
+  // cadence check, regardless of whether the tally landed under, at, or over
+  // target. Routing it through completeTask gets that for free, plus the
+  // recurrence spawn and Logbook entry every other completion gets. See the
+  // allowOvershoot branch on completeTask's progressCount line for why the
+  // tally itself survives uncapped.
+  //
+  // Gated on progressCount > 0 — deliberately, and unlike rolloverQuotas
+  // above. A target the user never touched today isn't "done with 0 of 12",
+  // it's simply not due yet resolved, so it's left overdue like any other
+  // undone task rather than manufactured into a completion record nobody
+  // asked for.
+  //
+  // Never passes { missed: true }: the user opted into "let this ride to
+  // end of day" for this specific task, a deliberate choice to defer
+  // judgment on the exact count, not a signal they expect to be marked as
+  // having failed it (see CLAUDE.md).
+  sweepOvershootQuotas() {
+    const { dayResetTime } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const stale = get().tasks.filter(t =>
+      t.allowOvershoot &&
+      isQuotaTask(t) &&
+      !t.completed &&
+      !t.archived &&
+      t.progressCount > 0 &&
+      !isHiddenForVacation(t) &&
+      t.dueDate !== null &&
+      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+    );
+    stale.forEach(t => get().completeTask(t.id));
   },
 
   deferTask(id, until) {
@@ -2217,6 +2280,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       targetUnit: null,
+      allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,
@@ -2347,6 +2411,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       targetCount: null,
       progressCount: 0,
       targetUnit: null,
+      allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
       chainEnabled: false,

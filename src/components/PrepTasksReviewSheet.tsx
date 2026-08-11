@@ -15,7 +15,7 @@ import {
   type Colors,
 } from '../theme';
 import { formatOffsetLabel } from '../utils/templateUtils';
-import { flattenRecipePrepTasks, type FlatPrepTask } from '../utils/recipeComponents';
+import { flattenRecipePrepTasks, type ChoiceResolution, type FlatPrepTask } from '../utils/recipeComponents';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { haptics } from '../utils/haptics';
 
@@ -25,6 +25,8 @@ interface Props {
   visible: boolean;
   recipe: Recipe | null;
   recipesById: ReadonlyMap<string, Recipe>;
+  /** The meal's own either/or picks, so an unchosen alternative's prep steps don't appear. */
+  resolution?: ChoiceResolution;
   onClose: () => void;
   /** Only the checked prep tasks — the caller adds them as real tasks. */
   onAdd: (prepTasks: FlatPrepTask[]) => void;
@@ -38,13 +40,13 @@ interface Props {
  * ingredients. Every task starts ticked, so a tap on "Add prep tasks" with
  * nothing unchecked behaves exactly as the old blind add did.
  */
-export function PrepTasksReviewSheet({ visible, recipe, recipesById, onClose, onAdd }: Props) {
+export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution, onClose, onAdd }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const prepTasks = useMemo(
-    () => (recipe ? flattenRecipePrepTasks(recipe, recipesById) : []),
-    [recipe, recipesById]
+    () => (recipe ? flattenRecipePrepTasks(recipe, recipesById, resolution) : []),
+    [recipe, recipesById, resolution]
   );
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());

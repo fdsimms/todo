@@ -93,7 +93,7 @@ export function MealSlotRow({ entry, title, hasRecipe, showSlot, onPress, onMark
         )}
       </View>
       <View style={styles.info}>
-        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+        <Text style={styles.title} numberOfLines={2}>{title}</Text>
         {showSlot && <Text style={styles.slot}>{slotLabel(entry.slot)}</Text>}
       </View>
       <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />

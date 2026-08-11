@@ -35,8 +35,19 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
-import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
-import { flattenRecipeIngredients, flattenRecipePrepTasks, type FlatPrepTask } from '../utils/recipeComponents';
+import {
+  prepTaskDraftsForMeal,
+  resolvePrepTaskDraft,
+  suggestRecipesForEmptyNight,
+  type PrepTaskDraft,
+} from '../utils/recipeUtils';
+import {
+  applyChoice,
+  recipeChoiceGroups,
+  flattenRecipeIngredients,
+  flattenRecipePrepTasks,
+  type FlatPrepTask,
+} from '../utils/recipeComponents';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -87,6 +98,7 @@ export function MealPlanScreen() {
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const markEntryCooked = useMealPlanStore(s => s.markCooked);
+  const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
@@ -128,7 +140,10 @@ export function MealPlanScreen() {
 
   // The recipe whose ingredients we're offering to re-add after mark-cooked —
   // null closes RecipeToListSheet, same on/off pattern as `addingToList`.
-  const [cookedRecipeForList, setCookedRecipeForList] = useState<Recipe | null>(null);
+  // Carries the entry's picks alongside the recipe: you cooked the roast
+  // potatoes, so the re-shop offers the roast potatoes' lines.
+  const [cookedRecipeForList, setCookedRecipeForList] =
+    useState<{ recipe: Recipe; choices: string[] } | null>(null);
 
   // The leftover sheet's two modes, held apart so opening one can't leave the
   // other's state behind: an id for editing a row, a seed for logging a new
@@ -156,13 +171,19 @@ export function MealPlanScreen() {
   const pick = (pickResult: MealPick) => {
     if (!planningDay) return;
     animateLayout();
-    planMeal({
+    const entry = planMeal({
       date: planningDay,
       slot: pickResult.slot,
       recipeId: pickResult.recipeId,
       leftoverId: pickResult.leftoverId,
       title: pickResult.title,
     });
+    if (entry) offerPrepTasks(entry);
+  };
+
+  const addPrepTaskDrafts = (drafts: PrepTaskDraft[]) => {
+    drafts.forEach(({ title, dueDate, reminderTime }) => addTask({ title, dueDate, reminderTime }));
+    haptics.success();
   };
 
   // Components' prep steps come along with their ingredients — "boil the
@@ -185,6 +206,41 @@ export function MealPlanScreen() {
     });
     haptics.success();
     Alert.alert('Prep tasks added', `Added ${chosen.length} to your tasks.`);
+  };
+
+  /**
+   * The ask at plan time. Prep steps are the part of a recipe that has to
+   * happen before the day it's cooked — "get the beef out of the freezer" is
+   * no use once you're at the hob — so the moment the meal lands on a date is
+   * both the first moment those days can be worked out and the last one where
+   * they're all still ahead of you. Leaving it to the entry sheet's action
+   * means the dish is remembered but the defrosting isn't.
+   *
+   * An offer, not something planning does by itself — the same restraint
+   * mark-cooked keeps about leftovers, and for the same reason: plenty of
+   * prep steps are ones the user does from memory and doesn't want a task for.
+   * A meal with no prep steps (and a leftover or a typed-in title, which have
+   * no recipe to have any) asks nothing at all, so most picks are unchanged.
+   */
+  const offerPrepTasks = (entry: MealPlanEntry) => {
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+    if (!recipe) return;
+    // A freshly planned entry has never had a choice made against it (see
+    // planMeal), so this always resolves to the defaults — same as leaving
+    // `resolution` off.
+    const drafts = prepTaskDraftsForMeal(
+      recipe, recipesById, dayKeyToDate(entry.date), { chosen: entry.recipeChoices }
+    );
+    if (drafts.length === 0) return;
+    const one = drafts.length === 1;
+    Alert.alert(
+      'Add prep tasks?',
+      `${recipe.name} has ${drafts.length} prep step${one ? '' : 's'}. Add ${one ? 'it' : 'them'} to your tasks?`,
+      [
+        { text: 'Not now', style: 'cancel' },
+        { text: 'Add', onPress: () => addPrepTaskDrafts(drafts) },
+      ]
+    );
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
@@ -217,8 +273,8 @@ export function MealPlanScreen() {
     // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
     // counted the same way: a dish whose ingredients all live on its
     // components still has a shop.
-    if (!recipe || flattenRecipeIngredients(recipe, recipesById).length === 0) return;
-    setCookedRecipeForList(recipe);
+    if (!recipe || flattenRecipeIngredients(recipe, recipesById, { chosen: entry.recipeChoices }).length === 0) return;
+    setCookedRecipeForList({ recipe, choices: entry.recipeChoices });
   };
 
   /**
@@ -333,9 +389,17 @@ export function MealPlanScreen() {
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
   const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
+  const selectedResolution = { chosen: selected?.recipeChoices ?? [] };
   const selectedPrepTaskCount = selectedRecipe
-    ? flattenRecipePrepTasks(selectedRecipe, recipesById).length
+    ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
+
+  // The either/or slots this meal has to answer, read under its own current
+  // answers — so a choice nested inside the chosen option appears and one
+  // inside the option it replaced doesn't.
+  const selectedChoiceGroups = selectedRecipe
+    ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
+    : [];
 
   // Offline "what can I make from what I've got" — only worth computing once
   // there's an empty week to fill, and re-ranked each time the sheet reopens
@@ -347,7 +411,8 @@ export function MealPlanScreen() {
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
-    planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
+    const entry = planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
+    if (entry) offerPrepTasks(entry);
   };
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
@@ -447,6 +512,14 @@ export function MealPlanScreen() {
             ? newTitle => renameEntry(selected.id, newTitle)
             : undefined
         }
+        choiceGroups={selectedChoiceGroups}
+        onChoose={(group, componentId) => {
+          if (!selected) return;
+          setRecipeChoices(
+            selected.id,
+            applyChoice(selected.recipeChoices, group, componentId)
+          );
+        }}
         onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
@@ -491,8 +564,9 @@ export function MealPlanScreen() {
 
       <RecipeToListSheet
         visible={cookedRecipeForList !== null}
-        recipe={cookedRecipeForList}
+        recipe={cookedRecipeForList?.recipe ?? null}
         recipesById={recipesById}
+        initialChoices={cookedRecipeForList?.choices}
         onClose={() => setCookedRecipeForList(null)}
       />
 
@@ -500,6 +574,7 @@ export function MealPlanScreen() {
         visible={reviewingPrepTasksFor !== null}
         recipe={reviewingRecipe}
         recipesById={recipesById}
+        resolution={{ chosen: reviewingEntry?.recipeChoices ?? [] }}
         onAdd={addChosenPrepTasks}
         onClose={() => setReviewingPrepTasksFor(null)}
       />

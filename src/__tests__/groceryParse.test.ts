@@ -3,6 +3,7 @@ import {
   parseGroceryInput,
   splitPrep,
   splitPurpose,
+  splitAlternativeNames,
   suggestShorterCatalogName,
   resolveGroceryTokens,
   splitGroceryLines,
@@ -468,5 +469,50 @@ describe('splitGroceryLines', () => {
 
   it('returns nothing for an empty paste', () => {
     expect(splitGroceryLines('\n\n  \n')).toEqual([]);
+  });
+});
+
+describe('splitAlternativeNames', () => {
+  it('splits a genuine either/or', () => {
+    expect(splitAlternativeNames('cheddar or manchego')).toEqual(['cheddar', 'manchego']);
+    expect(splitAlternativeNames('Serrano or Jalapeño')).toEqual(['Serrano', 'Jalapeño']);
+    expect(splitAlternativeNames('a or b or c')).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is case-insensitive and tolerates extra spacing', () => {
+    expect(splitAlternativeNames('cheddar OR manchego')).toEqual(['cheddar', 'manchego']);
+    expect(splitAlternativeNames('cheddar   or   manchego')).toEqual(['cheddar', 'manchego']);
+  });
+
+  it('only matches "or" as a whole word', () => {
+    expect(splitAlternativeNames('oregano')).toBeNull();
+    expect(splitAlternativeNames('orange juice')).toBeNull();
+    expect(splitAlternativeNames('cornstarch')).toBeNull();
+  });
+
+  it('declines a hedge about quantity', () => {
+    expect(splitAlternativeNames('salt or more to taste')).toBeNull();
+    expect(splitAlternativeNames('1 cup or so')).toBeNull();
+    expect(splitAlternativeNames('butter or as needed')).toBeNull();
+    expect(splitAlternativeNames('bake or until golden')).toBeNull();
+  });
+
+  it('declines anything that isn’t two real names', () => {
+    expect(splitAlternativeNames('')).toBeNull();
+    expect(splitAlternativeNames('garlic')).toBeNull();
+    expect(splitAlternativeNames('or garlic')).toBeNull();
+    expect(splitAlternativeNames('garlic or')).toBeNull();
+    expect(splitAlternativeNames('garlic or 2')).toBeNull();
+    // Two spellings of one thing are not a choice.
+    expect(splitAlternativeNames('Garlic or garlic')).toBeNull();
+    // Past a few parts it's prose, not an either/or.
+    expect(splitAlternativeNames('a or b or c or d or e')).toBeNull();
+  });
+
+  it('splits verbatim rather than guessing at a shared noun', () => {
+    // The user fixes this one in the sheet — see the note on the function for
+    // why "butter or olive oil" makes distributing the trailing word unsafe.
+    expect(splitAlternativeNames('chicken or vegetable stock')).toEqual(['chicken', 'vegetable stock']);
+    expect(splitAlternativeNames('butter or olive oil')).toEqual(['butter', 'olive oil']);
   });
 });
