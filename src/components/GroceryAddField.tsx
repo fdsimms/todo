@@ -21,7 +21,7 @@ import {
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { rankGrocerySuggestions } from '../utils/grocerySuggest';
-import { resolveGroceryTokens } from '../utils/groceryParse';
+import { resolveGroceryTokens, splitAlternativeNames } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem } from '../types';
@@ -65,6 +65,8 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const items = useGroceryStore(s => s.items);
   const addByName = useGroceryStore(s => s.addByName);
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
+  const setLastAction = useGroceryStore(s => s.setLastAction);
+  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
 
   const [text, setText] = useState('');
   const [focused, setFocused] = useState(false);
@@ -88,6 +90,40 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     if (!trimmed) return null;
     return resolveGroceryTokens(trimmed, { quantity: rejectedQuantity, prep: rejectedPrep });
   }, [text, rejectedQuantity, rejectedPrep]);
+
+  // "pepper or thyme" wants to be two rows on the list, not one catalog entry
+  // nothing can ever match — see splitAlternativeNames. Unlike the recipe
+  // ingredient sheet, a plain grocery item has no choiceGroup to hold "pick
+  // one when you shop": there's no dish decision to defer, so accepting the
+  // split just adds both. Offered, never applied on its own, for the same
+  // reason the recipe sheet holds off — the split is verbatim.
+  const alternatives = useMemo(
+    () => (tokens ? splitAlternativeNames(tokens.name) : null),
+    [tokens]
+  );
+
+  const acceptAlternatives = useCallback(() => {
+    if (!alternatives) return;
+    animateLayout();
+    const addedItems = alternatives.map(part =>
+      addByName(part, { name: part, quantity: tokens?.quantityAccepted ? tokens.quantity : null }, undefined, {
+        registerUndo: false,
+      })
+    );
+    haptics.success();
+    setText('');
+    setStatus(null);
+    setRejectedQuantity(null);
+    setRejectedPrep(null);
+    // One combined undo, same reason addManyFromText combines its per-line
+    // ones — otherwise only the last of the two rows would be undoable.
+    const addedIds = addedItems.map(i => i.id);
+    setLastAction({
+      label: `${addedItems.length} items added`,
+      undo: () => removeFromListMany(addedIds),
+    });
+    onAdded?.(addedItems);
+  }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded]);
 
   const commit = useCallback(
     (raw: string, override?: { name: string; quantity: string | null }) => {
@@ -236,6 +272,23 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
         </View>
       )}
 
+      {/* "pepper or thyme" wants to be two rows, not one catalog entry nothing
+          can ever match — see splitAlternativeNames. Offered rather than
+          applied on its own, since the split is verbatim. */}
+      {!!alternatives && (
+        <TouchableOpacity
+          style={styles.altSuggestion}
+          activeOpacity={interaction.activeOpacity}
+          onPress={acceptAlternatives}
+          accessibilityRole="button"
+          accessibilityLabel={`Add ${alternatives.length} items instead: ${alternatives.join(', ')}`}
+        >
+          <Text style={styles.altSuggestionText}>
+            Add {alternatives.length} items — {alternatives.join(' · ')}?
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {!!status && <Text style={styles.status}>{status}</Text>}
 
       {suggestions.length > 0 && (
@@ -300,6 +353,18 @@ function makeStyles(colors: Colors) {
       // row height instead.
       height: 48,
       padding: 0,
+    },
+    altSuggestion: {
+      backgroundColor: colors.accentSubtle,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginLeft: spacing.xs,
+    },
+    altSuggestionText: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.medium,
+      color: colors.accent,
     },
     status: {
       fontSize: font.sm,
