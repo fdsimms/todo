@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -56,6 +56,7 @@ export function RecipeDetailScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const [draft, setDraft] = useState('');
+  const draftInputRef = useRef<TextInput>(null);
   const [prepDraft, setPrepDraft] = useState('');
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
@@ -94,6 +95,13 @@ export function RecipeDetailScreen() {
     setDraft('');
     if (added > 0) haptics.tap();
     else haptics.warning();
+    // Keep the keyboard up so adding several ingredients in a row doesn't
+    // need a re-tap of the field each time — see the chain-step add input
+    // in TaskEditor for the same pattern. The short delay lets the field's
+    // own submit-triggered blur settle before we pull focus back.
+    setTimeout(() => {
+      draftInputRef.current?.focus();
+    }, 50);
   };
 
   const addToList = () => {
@@ -261,6 +269,7 @@ export function RecipeDetailScreen() {
 
         <View style={styles.addRow}>
           <TextInput
+            ref={draftInputRef}
             style={styles.addInput}
             value={draft}
             onChangeText={setDraft}
@@ -269,7 +278,6 @@ export function RecipeDetailScreen() {
             placeholderTextColor={colors.textTertiary}
             maxLength={GROCERY_NAME_MAX_LENGTH * 4}
             multiline
-            blurOnSubmit
             returnKeyType="done"
             autoCapitalize="none"
             accessibilityLabel="Add an ingredient"
