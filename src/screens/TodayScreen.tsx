@@ -93,9 +93,10 @@ import { ProjectNudgeBanner } from '../components/ProjectNudgeBanner';
 import { findProjectStalls } from '../utils/projectPull';
 import { useProjectStore } from '../store/useProjectStore';
 import { TodayMealPlanSection } from '../components/TodayMealPlanSection';
+import { TodayMealStrip } from '../components/TodayMealStrip';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
+import { selectTodayMealEntries, recipeIndex, uncookedEntries } from '../utils/mealPlan';
 import { dayKeyOf } from '../utils/dateUtils';
 import {
   SpotlightOverlay,
@@ -2016,6 +2017,14 @@ export function TodayScreen() {
   const openMealPlan = useCallback(() => {
     navigation.navigate('MealPlan' as never);
   }, [navigation]);
+  const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
+  // What the strip shows: only what's still to be eaten, so the line empties
+  // as the day goes and disappears once everything's cooked. The block
+  // deliberately keeps the cooked ones — see uncookedEntries.
+  const todayMealStripEntries = useMemo(
+    () => (todayMealEntries ? uncookedEntries(todayMealEntries) : null),
+    [todayMealEntries]
+  );
 
   const laterSections = useMemo(() => computeLaterSections(deferredTasks), [deferredTasks]);
 
@@ -2207,7 +2216,21 @@ export function TodayScreen() {
           />
         )}
 
-        {viewMode === 'today' && todayMealEntries && todayMealEntries.length > 0 && (
+        {/*
+          Two shapes for one thing, picked by `mealsOnToday` (default `strip`).
+          The strip additionally drops what's been cooked, which is why it reads
+          its own array rather than filtering inline.
+        */}
+        {viewMode === 'today' && mealsOnToday === 'strip'
+          && todayMealStripEntries && todayMealStripEntries.length > 0 && (
+          <TodayMealStrip
+            entries={todayMealStripEntries}
+            recipesById={recipesById}
+            onOpen={openMealPlan}
+          />
+        )}
+
+        {viewMode === 'today' && mealsOnToday === 'block' && todayMealEntries && todayMealEntries.length > 0 && (
           <TodayMealPlanSection
             entries={todayMealEntries}
             recipesById={recipesById}

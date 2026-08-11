@@ -98,6 +98,7 @@ const BASE: Task = {
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  mealEntryId: null,
   pendingImport: null,
 };
 

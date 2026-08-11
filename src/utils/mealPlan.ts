@@ -152,6 +152,10 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt'>;
  *   cook the dish — the roast potatoes, the double batch — and repeating the
  *   week is repeating those too. This is the whole reason a copy beats
  *   re-planning by hand.
+ * - **`cookTask` carries**, for the same reason and unlike `cookedAt`: it says
+ *   whether *this meal* is one you want reminding about, which is a fact about
+ *   how you cook the dish rather than a record of a night that happened. A
+ *   week copied forward re-spawns the cook tasks, which is the point.
  *
  * `sortOrder` carries as well, so two things on one dinner keep their order
  * relative to each other.
@@ -172,6 +176,7 @@ export function weekCopyDrafts(
       leftoverId: null,
       recipeChoices: [...e.recipeChoices],
       recipeScale: e.recipeScale,
+      cookTask: e.cookTask,
     }));
 }
 
@@ -296,6 +301,27 @@ export function selectTodayMealEntries(
 ): MealPlanEntry[] | null {
   if (!rangeStart || !rangeEnd || !isKeyInRange(todayKey, rangeStart, rangeEnd)) return null;
   return entriesForDay(entries, todayKey);
+}
+
+/**
+ * What's left to eat today — the strip's contents (#1402).
+ *
+ * **The strip empties as the day is eaten, and the full block deliberately
+ * doesn't.** They're answering different questions: the block is the day's
+ * plan, where a cooked meal keeps its place and wears a tick because seeing
+ * what you've had is half of what a plan is for. The strip is one line of
+ * remaining type sitting above the task list, and a line that still reads
+ * "Quest protein shake" at nine at night is stale — it's spending the screen's
+ * scarcest row on a decision already made. So this filters, and once the last
+ * meal is ticked the strip renders nothing at all and the list starts at the
+ * top of the screen.
+ *
+ * Cooked-ness is the filter rather than the clock, deliberately: the app can't
+ * know when you ate, only that you said you had, and a time-based rule would
+ * hide a dinner nobody has cooked yet at some hour it picked for them.
+ */
+export function uncookedEntries(entries: readonly MealPlanEntry[]): MealPlanEntry[] {
+  return entries.filter(e => !e.cookedAt);
 }
 
 /**

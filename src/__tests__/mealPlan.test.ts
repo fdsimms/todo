@@ -49,6 +49,7 @@ function entry(
     leftoverId: null,
     recipeChoices: [],
     recipeScale: 1,
+    cookTask: null,
     ...overrides,
   };
 }

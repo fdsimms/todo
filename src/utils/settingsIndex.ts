@@ -142,6 +142,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['finished', 'complete'] },
   { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',
     keywords: ['nudge me', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
+  { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
+    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'strip', 'block'] },
+  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Cook tasks', section: 'Meals on Today',
+    keywords: ['meal plan', 'recipe', 'dinner', 'auto'] },
+  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File cook tasks under', section: 'Meals on Today',
+    keywords: ['category', 'meal plan', 'kitchen'] },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
