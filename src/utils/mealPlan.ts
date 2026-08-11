@@ -1,3 +1,4 @@
+import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import { subDays } from 'date-fns/subDays';
 import { isSameDay } from 'date-fns/isSameDay';
@@ -121,6 +122,23 @@ export function daysWithoutMeal(
 ): Date[] {
   const taken = new Set(entries.filter(e => e.slot === slot).map(e => e.date));
   return days.filter(d => !taken.has(dayKeyOf(d)));
+}
+
+/**
+ * `count` days starting today — the nights a "plan this" picker offers when it
+ * is reached from somewhere that has no week on screen (a recipe).
+ *
+ * Deliberately a rolling window rather than `buildWeekDays`. The meal plan's
+ * own chip rows show the calendar week because that is what the screen behind
+ * them is showing, and moving a meal is a fact about that week. A recipe has no
+ * such context, and a calendar week reached on a Friday is five days of past
+ * with two of future — the useful answer from a recipe is "the next week of
+ * dinners", which is what this returns.
+ */
+export function upcomingDays(from: Date = new Date(), count = 7): Date[] {
+  const start = new Date(from);
+  start.setHours(12, 0, 0, 0);
+  return Array.from({ length: Math.max(0, count) }, (_, i) => addDays(start, i));
 }
 
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
