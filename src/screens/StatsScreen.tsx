@@ -23,7 +23,7 @@ import { spacing, font, fontWeight, radius, animation, type Colors } from '../th
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { timeTrackedSummary, onTimeSummary, estimateAccuracy } from '../utils/stats';
-import { isRealCompletion } from '../utils/missed';
+import { isRealCompletion, mostMissed } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
@@ -250,6 +250,8 @@ export function StatsScreen() {
   // Non-recurring tasks completed more than once — the "instances" of a task
   // that isn't formally recurring (e.g. re-adding one via title autosuggest).
   const repeated = useMemo(() => getRepeatedInstances(tasks).slice(0, 10), [tasks]);
+
+  const missed = useMemo(() => mostMissed(tasks).slice(0, 10), [tasks]);
 
   const timeTracked = useMemo(() => timeTrackedSummary(tasks), [tasks]);
   const accuracy = useMemo(() => estimateAccuracy(tasks), [tasks]);
@@ -520,6 +522,31 @@ export function StatsScreen() {
                     <View style={styles.badge}>
                       <Ionicons name="repeat" size={13} color={colors.accent} />
                       <Text style={[styles.badgeText, { color: colors.accent }]}>{g.count}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/* Recurring tasks most often marked missed rather than done */}
+          {missed.length > 0 && (
+            <StaggerIn index={9}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>MOST MISSED</Text>
+              <View style={styles.card}>
+                {missed.map((g, i) => (
+                  <View key={g.key} style={[styles.row, i < missed.length - 1 && styles.rowBorder]}>
+                    <View style={styles.instanceMain}>
+                      <Text style={styles.instanceTitle} numberOfLines={1}>{g.title}</Text>
+                      <Text style={styles.instanceMeta}>
+                        Last missed {format(new Date(g.lastMissedAt), 'MMM d')}
+                      </Text>
+                    </View>
+                    <View style={styles.badge}>
+                      <Ionicons name="close-circle" size={13} color={colors.red} />
+                      <Text style={[styles.badgeText, { color: colors.red }]}>{g.count}</Text>
                     </View>
                   </View>
                 ))}
