@@ -48,6 +48,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     estimatedMinutes: raw.estimatedMinutes ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
+    chainIndex: raw.chainIndex ?? 0,
     subtasks: raw.subtasks ?? [],
     groupId: raw.groupId ?? null,
     refTemplateId: raw.refTemplateId ?? null,
@@ -116,6 +117,12 @@ export function buildDraftsFromTemplate(
       estimatedMinutes: item.estimatedMinutes,
       chainEnabled: item.chainEnabled,
       chainItems: item.chainItems.map(c => ({ ...c })),
+      // Clamped rather than trusted verbatim: chainItems can have shrunk (a
+      // step deleted) since chainIndex was last set, same as TaskEditor's own
+      // delete handler re-clamps the current task's chainIndex.
+      chainIndex: item.chainItems.length > 0
+        ? Math.min(item.chainIndex, item.chainItems.length - 1)
+        : 0,
     };
   });
 }

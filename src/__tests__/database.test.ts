@@ -1059,6 +1059,7 @@ describe('Templates', () => {
     estimatedMinutes: null,
     chainEnabled: false,
     chainItems: [],
+    chainIndex: 0,
     subtasks: [],
     groupId: null,
     refTemplateId: null,

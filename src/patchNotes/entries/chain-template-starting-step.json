@@ -1,0 +1,4 @@
+{
+  "message": "Templates can now set which step a chain starts on, so a task created from the template can pick up mid-routine instead of always starting at step one.",
+  "date": "2026-08-11"
+}
