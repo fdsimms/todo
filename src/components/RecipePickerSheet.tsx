@@ -33,6 +33,15 @@ import { freshnessColor } from './LeftoversCard';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealSlot } from '../types';
 
 export interface MealPick {
+  /**
+   * The day key this pick is for, handed back rather than re-read by the
+   * caller — the sheet now dismisses *before* the pick lands (see `pick`), and
+   * by then the caller's own "which day is being planned" state has been
+   * cleared by `onClose`. Carrying it makes the handler independent of state
+   * the dismissal just took away, the same reasoning LeftoverSheet's `commit`
+   * gives for its own ordering.
+   */
+  date: string;
   slot: MealSlot;
   recipeId: string | null;
   /** Set when the plan is a tracked leftover. Null for a recipe or free text. */
@@ -42,6 +51,8 @@ export interface MealPick {
 
 interface Props {
   visible: boolean;
+  /** The day being planned, as a `YYYY-MM-DD` key — handed back on every MealPick. */
+  dayKey: string;
   /** "Tue 5 Aug" — names the day being planned, so the sheet doesn't need the calendar. */
   dayLabel: string;
   defaultSlot: MealSlot;
@@ -81,7 +92,7 @@ const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
  * MealPlanScreen's markCooked), not here before it's been eaten. See
  * Leftover.finishedAt.
  */
-export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onClose }: Props) {
+export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, onPick, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -185,10 +196,19 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
   //
   // A pick closes the sheet — tapping a recipe/preset/free-text row with no
   // other feedback than a haptic otherwise reads as if nothing happened.
+  //
+  // **The dismissal runs first and the pick rides on it**, rather than the
+  // other way round, because planning a meal can raise an Alert (the "Add prep
+  // tasks?" offer) and a native alert presented from underneath a Modal that is
+  // still on screen, mid-dismissal, is the classic "already presenting" case on
+  // iOS. This is the same `dismiss(after)` shape MealEntrySheet uses for every
+  // one of its actions, including the one that raises an alert of its own
+  // ("was that the last of it?"), so the ordering that already works elsewhere
+  // is the one used here too. Callers get the day back on the MealPick because
+  // `onClose` has fired by then.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
-    onPick({ slot, recipeId, leftoverId: null, title });
-    dismiss();
+    dismiss(() => onPick({ date: dayKey, slot, recipeId, leftoverId: null, title }));
   };
 
   /**
@@ -208,13 +228,14 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
    */
   const pickLeftover = (leftover: Leftover) => {
     haptics.success();
-    onPick({
+    // Dismiss-then-pick, same as `pick` above and for the same reason.
+    dismiss(() => onPick({
+      date: dayKey,
       slot,
       recipeId: null,
       leftoverId: leftover.id,
       title: mealTitleForLeftover(leftover),
-    });
-    dismiss();
+    }));
   };
 
   return (

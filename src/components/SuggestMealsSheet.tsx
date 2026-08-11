@@ -33,7 +33,16 @@ interface Props {
    * a caller that hasn't computed it yet degrades to the pre-#1103 row.
    */
   pantryByRecipeId?: ReadonlyMap<string, PantryCoverage>;
-  weekDays: Date[];
+  /**
+   * The nights an acceptance may land on, in the order they should be filled —
+   * `daysWithoutMeal(entries, days, 'dinner')` at the moment the sheet opened.
+   *
+   * Deliberately not "the week": this sheet lands each acceptance on the next
+   * day in this list without consulting the plan, so a list holding nights that
+   * are already spoken for would quietly double-book them. Captured at open by
+   * the caller, so accepting one suggestion can't renumber the rest mid-flow.
+   */
+  openDays: Date[];
   /**
    * #1063's gate, decided by the caller: `!!anthropicApiKey`. False (the
    * default) and this sheet is exactly the offline one it was before — no
@@ -51,9 +60,15 @@ interface Props {
 }
 
 /**
- * "What can I make from what I've got" for an empty week — offline, ranked by
- * scoreRecipeAgainstCatalog (catalog coverage, nudged by how recently the
- * recipe itself was last cooked — #1103), no API key involved.
+ * "What can I make from what I've got" for the nights still free — offline,
+ * ranked by scoreRecipeAgainstCatalog (catalog coverage, nudged by how
+ * recently the recipe itself was last cooked — #1103), no API key involved.
+ *
+ * **The list it opens with is the list it keeps.** The caller captures both the
+ * ranking and `openDays` at open time, because accepting a suggestion changes
+ * the week this sheet was derived from — a live-derived list re-ranked (or,
+ * as it once did, emptied) itself under the finger that had just tapped it,
+ * which took the row's own "Planned for Thursday" confirmation with it.
  *
  * Since #1063 it has a second, optional half: **AI-invented** meal ideas, for
  * when the offline ranking has little or nothing to offer. The two never mix
@@ -81,7 +96,7 @@ interface Props {
  * one-off free-text entry that has to be invented again next month.
  */
 export function SuggestMealsSheet({
-  visible, recipes, pantryByRecipeId, weekDays,
+  visible, recipes, pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, slotsToFill,
   onPlan, onClose,
 }: Props) {
@@ -118,8 +133,20 @@ export function SuggestMealsSheet({
     setIdeaError(null);
   }, [visible]);
 
-  /** The next still-empty dinner of the week, in week order. */
-  const nextDay = () => weekDays[plannedCount % weekDays.length];
+  /**
+   * The next free night, in order — undefined once they're all taken.
+   *
+   * Walks off the end rather than wrapping with a modulo. Wrapping was
+   * harmless while this was handed the whole week (you had to accept eight
+   * suggestions to see it), but `openDays` holds only the nights that were
+   * actually free, so a week with two of them would put the third acceptance
+   * back onto the first — silently double-booking a dinner the sheet had
+   * already filled.
+   */
+  const nextDay = (): Date | undefined => openDays[plannedCount];
+
+  /** Every night this sheet was given is now spoken for. */
+  const nightsFull = plannedCount >= openDays.length;
 
   const markPlanned = (key: string, day: Date) => {
     setLandedOn(prev => new Map(prev).set(key, day));
@@ -127,8 +154,9 @@ export function SuggestMealsSheet({
   };
 
   const acceptRecipe = (recipe: Recipe) => {
-    if (landedOn.has(recipe.id) || weekDays.length === 0) return;
+    if (landedOn.has(recipe.id) || nightsFull) return;
     const day = nextDay();
+    if (!day) return;
     haptics.success();
     onPlan(recipe, dayKeyOf(day));
     markPlanned(recipe.id, day);
@@ -142,7 +170,7 @@ export function SuggestMealsSheet({
       const result = await suggestMealIdeas(
         [...(plannedTitles ?? [])],
         [...(recentTitles ?? [])],
-        slotsToFill ?? weekDays.length,
+        slotsToFill ?? openDays.length,
         hints,
       );
       // The service dedupes against the context it was given; the recipe box
@@ -157,7 +185,7 @@ export function SuggestMealsSheet({
     } finally {
       setGenerating(false);
     }
-  }, [plannedTitles, recentTitles, allRecipes, slotsToFill, weekDays.length, hints]);
+  }, [plannedTitles, recentTitles, allRecipes, slotsToFill, openDays.length, hints]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();
@@ -172,7 +200,7 @@ export function SuggestMealsSheet({
    * saved would leave an entry pointing at nothing.
    */
   const acceptIdea = async (idea: MealIdea) => {
-    if (savingIdeaId || landedOn.has(idea.id) || weekDays.length === 0) return;
+    if (savingIdeaId || landedOn.has(idea.id) || nightsFull) return;
     setSavingIdeaId(idea.id);
     setIdeaError(null);
     try {
@@ -192,7 +220,15 @@ export function SuggestMealsSheet({
         return;
       }
       if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
+      // Re-checked after the await rather than trusting the guard at the top:
+      // the drafting call is slow enough for the user to have accepted another
+      // idea meanwhile, and the recipe is saved either way — an idea that
+      // arrives to find no night left is still in the box to plan by hand.
       const day = nextDay();
+      if (!day) {
+        setIdeaError({ id: idea.id, message: 'Saved to your recipe box — no free dinner left this week.' });
+        return;
+      }
       haptics.success();
       onPlan(recipe, dayKeyOf(day));
       markPlanned(idea.id, day);
@@ -215,14 +251,17 @@ export function SuggestMealsSheet({
     const pantryKnown = !!coverage && coverage.catalogMatches > 0;
     const cookHistory = describeCookHistory(recipe);
     const signalsLabel = [cookHistory, pantryLabel].filter(Boolean).join('. ');
+    // Unactionable once every night is filled, rather than a tap that quietly
+    // does nothing — the caption below the intro says why.
+    const spent = !!landedDay || nightsFull;
     return (
       <TouchableOpacity
         style={[styles.row, !!landedDay && styles.rowDone]}
         activeOpacity={interaction.activeOpacity}
         onPress={() => acceptRecipe(recipe)}
-        disabled={!!landedDay}
+        disabled={spent}
         accessibilityRole="button"
-        accessibilityState={{ disabled: !!landedDay }}
+        accessibilityState={{ disabled: spent }}
         accessibilityLabel={landedDay
           ? `${recipe.name}, planned for ${format(landedDay, 'EEEE')}`
           : `Plan ${recipe.name}. ${describeRecipe(recipe)}${signalsLabel ? `. ${signalsLabel}` : ''}`}
@@ -303,12 +342,17 @@ export function SuggestMealsSheet({
             <TouchableOpacity
               onPress={() => acceptIdea(idea)}
               activeOpacity={interaction.activeOpacity}
-              disabled={!!savingIdeaId}
+              disabled={!!savingIdeaId || nightsFull}
               accessibilityRole="button"
+              accessibilityState={{ disabled: !!savingIdeaId || nightsFull }}
               accessibilityLabel={`Plan ${idea.title} and add it to your recipe box`}
               hitSlop={8}
             >
-              <Ionicons name="add-circle-outline" size={iconSize.md} color={colors.purple} />
+              <Ionicons
+                name="add-circle-outline"
+                size={iconSize.md}
+                color={nightsFull ? colors.textTertiary : colors.purple}
+              />
             </TouchableOpacity>
           </View>
         )}
@@ -407,7 +451,14 @@ export function SuggestMealsSheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
-            {recipes.length > 0 && (
+            {nightsFull ? (
+              // Says why the rows have gone quiet. Reachable two ways: the
+              // sheet filled the last free night itself, or it was opened on a
+              // week that only had room for the ideas already accepted.
+              <Text style={styles.intro}>
+                Every dinner this week is planned now. Take one off the week to make room for another.
+              </Text>
+            ) : recipes.length > 0 && (
               <Text style={styles.intro}>
                 Made from what's already in your grocery catalog — tap one to plan it.
               </Text>

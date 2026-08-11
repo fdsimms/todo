@@ -68,6 +68,7 @@ import {
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
+  daysWithoutMeal,
   defaultPlanningDay,
   describeAddedToList,
   describeWeekPlan,
@@ -230,7 +231,14 @@ export function MealPlanScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
   const [addingToList, setAddingToList] = useState(false);
-  const [suggestingMeals, setSuggestingMeals] = useState(false);
+  // What the suggestion shelf was opened with — the ranked recipes and the
+  // nights they may land on, captured at open rather than re-read while it's
+  // up. Held as a snapshot for the same reason `cookedRecipeForList` and
+  // `loggingLeftover` are: accepting a suggestion changes the week, and a
+  // sheet whose contents are recomputed from the week rewrites itself under
+  // the finger that just tapped it. Null closes it.
+  const [suggesting, setSuggesting] =
+    useState<{ recipes: Recipe[]; days: Date[] } | null>(null);
   // Per-day collapse, local-only — every day starts expanded, and folding one
   // away is just less to scroll past, not a decision worth persisting.
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
@@ -366,14 +374,16 @@ export function MealPlanScreen() {
     setAnchor(a => addWeeks(a, delta));
   };
 
-  // The sheet itself decides when to close (its own "Done" button, backdrop
-  // tap, swipe) — a pick here just writes the meal and stays open, ready for
-  // the next slot on the same day. See RecipePickerSheet.pick.
+  // A pick arrives *after* the sheet has closed itself — see
+  // RecipePickerSheet.pick, which dismisses first so the prep-task alert below
+  // isn't raised from underneath a live Modal. `planningDay` has been cleared
+  // by then, which is why the day rides along on the pick rather than being
+  // read back off screen state here.
   const pick = (pickResult: MealPick) => {
-    if (!planningDay) return;
+    if (!pickResult.date) return;
     animateLayout();
     const entry = planMeal({
-      date: planningDay,
+      date: pickResult.date,
       slot: pickResult.slot,
       recipeId: pickResult.recipeId,
       leftoverId: pickResult.leftoverId,
@@ -661,7 +671,13 @@ export function MealPlanScreen() {
         </DayDropTargetRow>
       </FabDropZone>
     );
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection]);
+    // `leftovers` is not referenced in the JSX above and still belongs here:
+    // the row's mark-cooked badge calls markCooked, which reads the fridge to
+    // decide whether to ask "was that the last of it?". Left out, a container
+    // closed from the fridge card while this list stayed mounted is still live
+    // to this closure, and the badge asks about a leftover that's already been
+    // finished. Don't prune it as unused.
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, leftovers]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -683,12 +699,26 @@ export function MealPlanScreen() {
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
 
-  // Offline "what can I make from what I've got" — only worth computing once
-  // there's an empty week to fill, and re-ranked each time the sheet reopens
-  // by staying a plain memo rather than sheet-local state.
-  const emptyWeekSuggestions = useMemo(
-    () => entries.length === 0 ? suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5) : [],
-    [entries.length, recipes, groceryItems]
+  // The nights this week still has room for. Both the gate on the shelf below
+  // and the days it may plan onto — see daysWithoutMeal for why those have to
+  // be the same answer.
+  const openDinnerDays = useMemo(
+    () => daysWithoutMeal(entries, days, 'dinner'),
+    [entries, days]
+  );
+
+  // Offline "what can I make from what I've got", ranked over the recipe box
+  // and the grocery catalog.
+  //
+  // **Deliberately independent of what's already planned.** It used to be
+  // `entries.length === 0 ? rank(...) : []`, which made the ranking collapse to
+  // nothing the moment the week held anything — including the moment the user
+  // accepted the sheet's own first suggestion, which emptied the list they were
+  // reading out from under them mid-flow. The week decides whether the shelf is
+  // *offered* (canSuggestMeals), never what is on it.
+  const mealSuggestions = useMemo(
+    () => suggestRecipesForEmptyNight(recipes, groceryItems, new Date(), 5),
+    [recipes, groceryItems]
   );
 
   // The visible half of #1103's pantry signal — computed only for the
@@ -697,18 +727,22 @@ export function MealPlanScreen() {
   const suggestionPantryCoverage = useMemo(() => {
     const byId = recipeMap(recipes);
     const map = new Map<string, PantryCoverage>();
-    for (const recipe of emptyWeekSuggestions) {
+    for (const recipe of mealSuggestions) {
       map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId));
     }
     return map;
-  }, [emptyWeekSuggestions, recipes, groceryItems]);
+  }, [mealSuggestions, recipes, groceryItems]);
 
-  // The shelf still opens on an empty week the offline ranking can't fill, so
-  // long as there's a key for the generation half to use (#1063) — that empty
-  // week is exactly the case AI ideas exist for. With no key the condition is
-  // unchanged: nothing to rank, no button.
-  const canSuggestMeals = emptyWeekSuggestions.length > 0
-    || (!!anthropicApiKey && entries.length === 0);
+  // Offered whenever there's a night to fill and something to fill it with —
+  // a ranked recipe, or a key for the generation half to invent one (#1063).
+  //
+  // The gate used to demand a *completely* empty week, which hid the shelf for
+  // the whole of the job it exists for: someone who has planned Monday and
+  // wants help with the other six nights is exactly the person asking. A week
+  // with every dinner spoken for still offers nothing, since there is nowhere
+  // for an acceptance to land.
+  const canSuggestMeals = openDinnerDays.length > 0
+    && (mealSuggestions.length > 0 || !!anthropicApiKey);
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -811,7 +845,10 @@ export function MealPlanScreen() {
                     label="Suggest meals"
                     icon="restaurant-outline"
                     variant="neutral"
-                    onPress={() => { haptics.tap(); setSuggestingMeals(true); }}
+                    onPress={() => {
+                      haptics.tap();
+                      setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
+                    }}
                     accessibilityLabel="Suggest meals made from what's in your grocery catalog"
                     style={styles.suggestMeals}
                   />
@@ -905,6 +942,7 @@ export function MealPlanScreen() {
 
       <RecipePickerSheet
         visible={planningDay !== null}
+        dayKey={planningDay ?? ''}
         dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
         // Dinner is what a week plan is mostly about, and it's the slot a tap
         // means when the user didn't say. The chips are right there to say
@@ -974,16 +1012,16 @@ export function MealPlanScreen() {
       )}
 
       <SuggestMealsSheet
-        visible={suggestingMeals}
-        recipes={emptyWeekSuggestions}
+        visible={suggesting !== null}
+        recipes={suggesting?.recipes ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
-        weekDays={days}
+        openDays={suggesting?.days ?? []}
         aiIdeasEnabled={!!anthropicApiKey}
         plannedTitles={plannedMealTitles}
         recentTitles={recentMealTitles}
-        slotsToFill={days.length}
+        slotsToFill={suggesting?.days.length ?? 0}
         onPlan={planSuggestion}
-        onClose={() => setSuggestingMeals(false)}
+        onClose={() => setSuggesting(null)}
       />
 
       <RecipeToListSheet

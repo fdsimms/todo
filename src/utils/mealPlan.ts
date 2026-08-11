@@ -99,6 +99,30 @@ export function nextSortOrder(
     .reduce((max, e) => Math.max(max, e.sortOrder), 0) + 1;
 }
 
+/**
+ * The days out of `days` with nothing planned in `slot` yet.
+ *
+ * Two jobs, and they have to be the same answer or the second one goes wrong:
+ * it gates the "Suggest meals" shelf (a week with no free dinner has nothing
+ * to suggest *into*), and it is the set of days that shelf may actually plan
+ * onto. `SuggestMealsSheet` lands each acceptance on the next day it was
+ * given, in order, with no knowledge of the plan — so handing it the whole
+ * week would drop a second dinner onto a night that already had one.
+ *
+ * Scoped to a slot rather than to the day as a whole: a day holding only a
+ * planned breakfast still wants a dinner suggestion, and "two things on one
+ * dinner" being legal (see MealPlanEntry.sortOrder) is about the user saying
+ * so deliberately, not about a suggestion shelf filling a slot twice.
+ */
+export function daysWithoutMeal(
+  entries: readonly MealPlanEntry[],
+  days: readonly Date[],
+  slot: MealSlot
+): Date[] {
+  const taken = new Set(entries.filter(e => e.slot === slot).map(e => e.date));
+  return days.filter(d => !taken.has(dayKeyOf(d)));
+}
+
 /** Where one entry lands in a bulk move — see resolveBulkMoveTargets. */
 export interface BulkMoveTarget {
   id: string;
