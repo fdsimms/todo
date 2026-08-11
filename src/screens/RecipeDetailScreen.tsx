@@ -475,7 +475,13 @@ export function RecipeDetailScreen() {
   // A component row opens the recipe it points at, so the shared part is one
   // tap from the dish that uses it — editing it there is the whole feature.
   // A link whose recipe is gone can't be opened, only removed.
-  const renderComponent = (resolved: ResolvedComponent) => {
+  //
+  // `marker` renders the same row as it appears inside the Ingredients card
+  // (see below) rather than in its own Components section: a leading badge
+  // instead of no icon, and no remove-× — removing a component stays a
+  // Components-section-only action, so there's exactly one place to do it,
+  // even though there are now two places to *see* it.
+  const renderComponent = (resolved: ResolvedComponent, marker = false) => {
     const target = resolved.recipe;
     const label = resolved.name || 'Deleted recipe';
     const groupHeader = componentGroups.headers.get(resolved.component.id);
@@ -505,6 +511,7 @@ export function RecipeDetailScreen() {
           accessibilityRole="button"
           accessibilityLabel={
             [
+              marker ? 'Component' : null,
               label,
               group ? (isDefault ? `usual choice for ${group}` : `alternative for ${group}`) : null,
               target ? describeRecipe(target) : 'no longer in your recipes',
@@ -516,6 +523,11 @@ export function RecipeDetailScreen() {
               : 'Long press to make it an alternative.'
           }
         >
+          {marker && (
+            <View style={styles.componentMarker}>
+              <Ionicons name="restaurant-outline" size={12} color={colors.accent} />
+            </View>
+          )}
           <View style={styles.ingredientText}>
             <Text style={[styles.ingredientName, !target && styles.componentBrokenName]} numberOfLines={1}>
               {label}
@@ -525,14 +537,16 @@ export function RecipeDetailScreen() {
             </Text>
           </View>
           {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
-          <TouchableOpacity
-            onPress={() => confirmRemoveComponent(resolved)}
-            hitSlop={10}
-            accessibilityRole="button"
-            accessibilityLabel={`Remove ${label} from this recipe`}
-          >
-            <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
-          </TouchableOpacity>
+          {!marker && (
+            <TouchableOpacity
+              onPress={() => confirmRemoveComponent(resolved)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${label} from this recipe`}
+            >
+              <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          )}
         </TouchableOpacity>
       </View>
     );
@@ -633,32 +647,38 @@ export function RecipeDetailScreen() {
         keyboardShouldPersistTaps="handled"
         {...keyboardScroll.props}
       >
-        <TouchableOpacity
-          style={styles.hero}
-          activeOpacity={interaction.activeOpacity}
-          onPress={openImagePicker}
-          disabled={pickingImage}
-          accessibilityRole="button"
-          accessibilityLabel={recipe.imagePath ? 'Change recipe photo' : 'Add a recipe photo'}
-        >
-          {recipe.imagePath ? (
+        {recipe.imagePath ? (
+          <TouchableOpacity
+            style={styles.hero}
+            activeOpacity={interaction.activeOpacity}
+            onPress={openImagePicker}
+            disabled={pickingImage}
+            accessibilityRole="button"
+            accessibilityLabel="Change recipe photo"
+          >
             <Image
               source={{ uri: recipe.imagePath }}
               style={styles.heroImage}
               resizeMode="cover"
               accessibilityIgnoresInvertColors
             />
-          ) : pickingImage ? (
-            <View style={styles.heroPlaceholder}>
-              <ActivityIndicator color={colors.accent} />
-            </View>
-          ) : (
-            <View style={styles.heroPlaceholder}>
-              <Ionicons name="camera-outline" size={iconSize.lg} color={colors.textTertiary} />
-              <Text style={styles.heroPlaceholderText}>Add a photo</Text>
-            </View>
-          )}
-        </TouchableOpacity>
+          </TouchableOpacity>
+        ) : pickingImage ? (
+          <View style={styles.heroEmptyRow}>
+            <ActivityIndicator color={colors.accent} />
+          </View>
+        ) : (
+          // A small pill, not the full-width hero a photo gets once there is
+          // one — a photo is optional, and the big empty box this used to be
+          // read as the app expecting one. Same treatment "Add a component"
+          // gets further down this screen.
+          <InlineAction
+            icon="camera-outline"
+            label="Add a photo"
+            variant="neutral"
+            onPress={openImagePicker}
+          />
+        )}
 
         <Text style={styles.summary}>{describeRecipe(recipe)}</Text>
         {/* Chips rather than another clause in the summary line above: tags are
@@ -713,19 +733,31 @@ export function RecipeDetailScreen() {
 
         <Text style={styles.sectionLabel}>Ingredients</Text>
 
-        {recipe.ingredients.length === 0 ? (
+        {recipe.ingredients.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
             keeps the quantity out of the name so the list stays tidy.
           </Text>
         ) : (
           <View style={styles.card}>
-            <SortableList
-              data={recipe.ingredients}
-              onReorder={next => reorderIngredients(recipe.id, next.map(i => i.id))}
-              onDragStateChange={setDragging}
-              renderItem={renderIngredient}
-            />
+            {recipe.ingredients.length > 0 && (
+              <SortableList
+                data={recipe.ingredients}
+                onReorder={next => reorderIngredients(recipe.id, next.map(i => i.id))}
+                onDragStateChange={setDragging}
+                renderItem={renderIngredient}
+              />
+            )}
+            {/* Marked so a shared part reads as part of this recipe from the
+                first list you'd check, not only several scrolls down in its
+                own Components section (which stays the place to remove one or
+                set a choice-group default). */}
+            {components.length > 0 && (
+              <>
+                <Text style={styles.ingredientSectionHeader}>Components</Text>
+                {components.map(resolved => renderComponent(resolved, true))}
+              </>
+            )}
           </View>
         )}
 
@@ -767,7 +799,7 @@ export function RecipeDetailScreen() {
           </Text>
         ) : (
           <View style={styles.card}>
-            {components.map(renderComponent)}
+            {components.map(resolved => renderComponent(resolved))}
           </View>
         )}
 
@@ -942,15 +974,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  heroPlaceholder: {
-    flex: 1,
-    alignItems: 'center',
+  // Matches InlineAction's own minHeight, so the "Add a photo" pill doesn't
+  // jump in height for the moment it's swapped for a spinner mid-pick.
+  heroEmptyRow: {
+    minHeight: 32,
     justifyContent: 'center',
-    gap: spacing.xs,
-  },
-  heroPlaceholderText: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
+    paddingHorizontal: spacing.xs,
   },
   summary: {
     color: colors.textSecondary,
@@ -1050,6 +1079,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   componentBrokenName: {
     color: colors.textTertiary,
+  },
+  // The badge that marks a component row where it's embedded in the
+  // Ingredients card — same restaurant-outline glyph RecipeComponentPicker
+  // uses for "this represents a recipe", shrunk to sit inline in a row this
+  // dense. Sits at the row's top edge like ingredientSelect, for the same
+  // flex-start reason.
+  componentMarker: {
+    width: 20,
+    height: 20,
+    borderRadius: radius.sm,
+    backgroundColor: colors.accentSubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   // ingredientPrep's twin without the italic: a component's subtitle is a
   // summary of another recipe, not a prep clause on this one.
