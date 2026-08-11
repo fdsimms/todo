@@ -538,6 +538,106 @@ describe('setCooked', () => {
   });
 });
 
+describe('copyWeek', () => {
+  it('writes the source week onto the target, shifted', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-08-05', 'dinner', { title: 'Ragù', recipeId: 'r1' }),
+      entry('2026-08-07', 'lunch', { title: 'Soup' }),
+    ]);
+
+    const n = useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+
+    expect(n).toBe(2);
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls.map(c => c[0]);
+    expect(written.map(e => [e.date, e.slot, e.title])).toEqual([
+      ['2026-08-12', 'dinner', 'Ragù'],
+      ['2026-08-14', 'lunch', 'Soup'],
+    ]);
+  });
+
+  it('gives every copy its own id rather than reusing the source row', () => {
+    loadWeek();
+    const source = entry('2026-08-05', 'dinner');
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([source]);
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10');
+
+    const written = (dbInsertMealPlanEntry as jest.Mock).mock.calls[0][0];
+    expect(written.id).not.toBe(source.id);
+  });
+
+  it('writes nothing and reports zero for an empty source week', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+
+    expect(useMealPlanStore.getState().copyWeek('2026-08-03', '2026-08-10')).toBe(0);
+    expect(dbInsertMealPlanEntry).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
+  it('holds the copies in memory when they land in the loaded window', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-07-30', 'dinner')]);
+
+    // 27 Jul → 3 Aug, i.e. into the week loadWeek loaded.
+    useMealPlanStore.getState().copyWeek('2026-07-27', '2026-08-03');
+
+    expect(getEntries().map(e => e.date)).toEqual(['2026-08-06']);
+  });
+
+  // Same range-scoping invariant every other write here keeps.
+  it('writes outside the loaded window without holding it', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-05', 'dinner')]);
+
+    useMealPlanStore.getState().copyWeek('2026-08-03', '2026-09-14');
+
+    expect(dbInsertMealPlanEntry).toHaveBeenCalledTimes(1);
+    expect(getEntries()).toEqual([]);
+  });
+
+  // One action, one undo — a copy that took seven shakes to unpick would be
+  // worse than no undo at all.
+  it('undoes the whole copy in one go', () => {
+    loadWeek();
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-07-30', 'dinner'),
+      entry('2026-07-31', 'dinner'),
+    ]);
+    useMealPlanStore.getState().copyWeek('2026-07-27', '2026-08-03');
+    expect(getEntries()).toHaveLength(2);
+
+    useMealPlanStore.getState().undoLastAction();
+
+    expect(getEntries()).toEqual([]);
+    expect(dbDeleteMealPlanEntry).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('findPlannedWeekBefore', () => {
+  it('finds the most recent week that has anything in it', () => {
+    (dbGetMealPlanEntries as jest.Mock)
+      .mockReturnValueOnce([])                              // 1 week back
+      .mockReturnValueOnce([entry('2026-07-29', 'dinner')]); // 2 weeks back
+
+    expect(useMealPlanStore.getState().findPlannedWeekBefore('2026-08-10', 4))
+      .toBe('2026-07-27');
+  });
+
+  it('takes last week when last week has something', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-05', 'dinner')]);
+    expect(useMealPlanStore.getState().findPlannedWeekBefore('2026-08-10', 4))
+      .toBe('2026-08-03');
+  });
+
+  it('gives up rather than searching forever', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([]);
+    expect(useMealPlanStore.getState().findPlannedWeekBefore('2026-08-10', 4)).toBeNull();
+    expect(dbGetMealPlanEntries).toHaveBeenCalledTimes(4);
+  });
+});
+
 describe('purgeOldEntries', () => {
   it('reports what the delete took', () => {
     (dbPurgeOldMealPlanEntries as jest.Mock).mockReturnValue(4);

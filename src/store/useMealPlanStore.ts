@@ -17,8 +17,12 @@ import {
   mealPlanPurgeCutoffKey,
   nextSortOrder,
   resolveBulkMoveTargets,
+  shiftDayKey,
   sortMealEntries,
+  weekCopyDrafts,
 } from '../utils/mealPlan';
+import { dayKeyToDate } from '../utils/dateUtils';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 
 /**
  * Mirrors useTaskStore/useGroceryStore's UndoableAction — see
@@ -221,6 +225,35 @@ interface MealPlanStore {
   addedToListAt: Record<string, string>;
   /** Stamps `weekStartKey` with now, for the week header's "Added to list on X" line. */
   stampAddedToList: (weekStartKey: string) => void;
+
+  /**
+   * Copies a whole week onto another one, shifting every entry by the gap
+   * between the two week starts. Returns how many rows were written.
+   *
+   * Reads the source out of SQLite rather than out of `entries`: the week
+   * being copied *from* is by definition not the one on screen, so it is
+   * never the loaded window. What carries and what doesn't is
+   * `weekCopyDrafts`' call, not this one's.
+   *
+   * One `lastAction` for the whole copy, removing every row it wrote — the
+   * same "one action, one undo" the bulk methods keep. A copy that had to be
+   * undone seven times would be worse than no undo at all.
+   */
+  copyWeek: (fromStartKey: string, toStartKey: string) => number;
+
+  /**
+   * The start of the most recent week at or before `beforeStartKey` that has
+   * anything planned in it, looking back at most `maxWeeksBack` weeks — or
+   * null if they're all empty.
+   *
+   * Searches rather than assuming "last week", because a week that was itself
+   * empty is nothing to copy: someone who plans fortnightly, or who is coming
+   * back after a holiday, would otherwise be offered a copy of nothing. The
+   * caller names whatever this finds (see describeWeekRange), so the offer
+   * always says which week it means rather than saying "last week" and being
+   * wrong.
+   */
+  findPlannedWeekBefore: (beforeStartKey: string, maxWeeksBack: number) => string | null;
 
   /** Enforces the 180-day horizon. Returns how many rows went. */
   purgeOldEntries: () => number;
@@ -516,6 +549,39 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const next = { ...get().addedToListAt, [weekStartKey]: new Date().toISOString() };
     dbSetMealPlanAddedToList(next);
     set({ addedToListAt: next });
+  },
+
+  copyWeek(fromStartKey, toStartKey) {
+    const source = dbGetMealPlanEntries(fromStartKey, shiftDayKey(fromStartKey, 6));
+    const shift = differenceInCalendarDays(dayKeyToDate(toStartKey), dayKeyToDate(fromStartKey));
+    const drafts = weekCopyDrafts(source, shift);
+    if (drafts.length === 0) return 0;
+
+    const created: MealPlanEntry[] = drafts.map(draft => ({
+      ...draft,
+      id: generateId(),
+      createdAt: new Date().toISOString(),
+    }));
+    created.forEach(dbInsertMealPlanEntry);
+    created.forEach(entry => patchInRange(set, get, entry));
+
+    const ids = new Set(created.map(e => e.id));
+    get().setLastAction({
+      label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
+      undo: () => {
+        created.forEach(e => dbDeleteMealPlanEntry(e.id));
+        set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
+      },
+    });
+    return created.length;
+  },
+
+  findPlannedWeekBefore(beforeStartKey, maxWeeksBack) {
+    for (let back = 1; back <= maxWeeksBack; back += 1) {
+      const start = shiftDayKey(beforeStartKey, -7 * back);
+      if (dbGetMealPlanEntries(start, shiftDayKey(start, 6)).length > 0) return start;
+    }
+    return null;
   },
 
   purgeOldEntries() {
