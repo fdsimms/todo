@@ -180,6 +180,9 @@ export interface Task {
   // a fixed date, and gets recomputed against the new dueDate every time a
   // recurring task spawns its next occurrence (see completeTask). Null means
   // `deadline` is a one-off fixed date that doesn't carry forward.
+  // Signed: positive lands before the due date, negative after it ("due the
+  // 1st, has to clear by the 10th"). Never 0 — the editor picks the direction
+  // with a pill and steps the magnitude, so there's no zero to step through.
   deadlineOffsetDays: number | null;
   // Alternative to deadlineOffsetDays for monthly recurrence: pins `deadline`
   // to a fixed day-of-month within the due date's own month instead of N days

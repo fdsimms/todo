@@ -31,11 +31,9 @@ import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { PlanRecipeSheet } from '../components/PlanRecipeSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
 import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
-import { usePlanMeal } from '../hooks/usePlanMeal';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -126,8 +124,6 @@ export function RecipeDetailScreen() {
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
-  const [planVisible, setPlanVisible] = useState(false);
-  const { planRecipe, offerPrepTasks } = usePlanMeal();
   const [extractVisible, setExtractVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
@@ -861,21 +857,6 @@ export function RecipeDetailScreen() {
           to the list isn't something you're doing mid-selection anyway. */}
       {!selectionMode && (
         <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-          {/* Planning and shopping are peers here — the two things you do
-              having decided to cook something — so they share the footer rather
-              than one of them going up into an already-crowded header. Plan is
-              the quieter of the two: the list is what this screen has always
-              been for, and shopping is the step that can't be undone by a tap. */}
-          <TouchableOpacity
-            style={styles.secondary}
-            activeOpacity={interaction.activeOpacity}
-            onPress={() => { haptics.tap(); setPlanVisible(true); }}
-            accessibilityRole="button"
-            accessibilityLabel={`Plan ${recipe.name} onto a day`}
-          >
-            <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
-            <Text style={styles.secondaryText}>Plan</Text>
-          </TouchableOpacity>
           <TouchableOpacity
             style={[styles.primary, shoppableCount === 0 && styles.primaryOff]}
             activeOpacity={interaction.activeOpacity}
@@ -931,15 +912,6 @@ export function RecipeDetailScreen() {
         recipeId={recipe.id}
         prepTask={editingPrepTask}
         onClose={() => setEditingPrepTask(null)}
-      />
-
-      <PlanRecipeSheet
-        visible={planVisible}
-        recipe={recipe}
-        onPlan={planRecipe}
-        // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
-        onPlanned={offerPrepTasks}
-        onClose={() => setPlanVisible(false)}
       />
 
       <RecipeToListSheet
@@ -1160,33 +1132,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     maxHeight: 140,
   },
   footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.separator,
     backgroundColor: colors.bg,
   },
-  secondary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    paddingVertical: 14,
-    paddingHorizontal: spacing.md,
-  },
-  secondaryText: {
-    color: colors.accent,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
   primary: {
-    // Takes the rest of the row beside Plan.
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
