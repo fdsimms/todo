@@ -405,6 +405,12 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   leading prep words. It matches `or` as a whole word only (so "oregano" is safe), skips quantity
   hedges ("or so", "or more", "or to taste"), and never splits on `/` — that's a fraction far more
   often than a choice.
+- **The nudge lives on the ingredient row, the confirm stays in the sheet.** A recipe's ingredient
+  row shows a `Split into N…` pill when the parser sees a choice in it (`RecipeDetailScreen`), and
+  pressing it only *opens* `RecipeIngredientSheet` — hence the ellipsis. That's deliberate, not a
+  missing shortcut: what a person has to check is the parts, which a row can't show without
+  truncating them, so there's exactly one place the split is accepted. Suppressed on a row already
+  filed under a `choiceGroup`, which is the app asking for something the user has already done.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an

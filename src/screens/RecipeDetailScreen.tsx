@@ -25,6 +25,7 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
+import { PressableScale } from '../components/PressableScale';
 import { SortableList } from '../components/SortableList';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
@@ -68,7 +69,7 @@ import {
   type ResolvedComponent,
 } from '../utils/recipeComponents';
 import { formatOffsetLabel } from '../utils/templateUtils';
-import { splitGroceryLines } from '../utils/groceryParse';
+import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
 type RootStackParamList = {
   RecipeDetail: { recipeId: string };
@@ -415,6 +416,24 @@ export function RecipeDetailScreen() {
   const componentGroups = useMemo(() => choiceHeadersOf(recipe.components), [recipe.components]);
   const ingredientGroups = useMemo(() => choiceHeadersOf(recipe.ingredients), [recipe.ingredients]);
 
+  // Lines the app can see wanting to be two — "corn tortillas or flour
+  // tortillas" — so the row can say so. Without this the suggestion existed
+  // only inside RecipeIngredientSheet, which is to say only for someone who
+  // already suspected it was there.
+  //
+  // A row already filed under a choice group is skipped: it sits under a
+  // "choose one" header, so nudging it to become a choice reads as the app
+  // not having noticed what the user just did.
+  const splittableCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ing of recipe.ingredients) {
+      if (ing.choiceGroup) continue;
+      const parts = splitAlternativeNames(ing.name);
+      if (parts) counts.set(ing.id, parts.length);
+    }
+    return counts;
+  }, [recipe.ingredients]);
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -434,6 +453,7 @@ export function RecipeDetailScreen() {
     const choiceHeader = ingredientGroups.headers.get(ingredient.id);
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
+    const splitInto = splittableCounts.get(ingredient.id);
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
@@ -479,6 +499,24 @@ export function RecipeDetailScreen() {
               <Text style={styles.ingredientPrep}>
                 {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`].filter(Boolean).join(' · ')}
               </Text>
+            )}
+            {/* A signpost, not a second place to accept: it opens the same
+                sheet the suggestion has always lived in — hence the ellipsis
+                — so the split is confirmed against the actual parts in
+                exactly one place, the way removing a component stays a
+                Components-section action. Hidden while selecting, like the
+                remove ×, since the row's press means something else then. */}
+            {!!splitInto && !selectionMode && (
+              <PressableScale
+                style={styles.splitPill}
+                haptic
+                onPress={() => setEditingIngredient(ingredient)}
+                accessibilityLabel={`Split ${ingredient.name} into alternatives`}
+                accessibilityHint="Double tap to review the split"
+              >
+                <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
+              </PressableScale>
             )}
           </View>
           {!!scaledQuantity && (
@@ -1156,6 +1194,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontStyle: 'italic',
+  },
+  // Tinted pill rather than a line of accent text, because it is a control and
+  // controls in this app get a shape (see the InlineAction note in CLAUDE.md).
+  // alignSelf keeps it the width of its label — stretched to the row it would
+  // read as a banner across the ingredient rather than a chip hanging off it.
+  splitPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.sm,
+    paddingVertical: 2,
+    paddingLeft: spacing.xs + 2,
+    paddingRight: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  splitPillText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   componentBrokenName: {
     color: colors.textTertiary,

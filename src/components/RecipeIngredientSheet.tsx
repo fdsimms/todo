@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -18,7 +19,7 @@ import {
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
@@ -179,10 +180,20 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             accessibilityRole="button"
             accessibilityLabel={`Split into ${alternatives.length} alternatives: ${alternatives.join(', ')}`}
           >
-            <Text style={styles.suggestionText}>
-              Split into {alternatives.length} alternatives — {alternatives.join(' · ')}? You'll pick
-              one when you add this to your list.
-            </Text>
+            <Ionicons name="git-branch-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>
+                Split into {alternatives.length} alternatives?
+              </Text>
+              {/* The parts, verbatim and up front: this is the half a person
+                  has to check, since the split can't distribute a trailing
+                  noun ("chicken or vegetable stock") — see
+                  splitAlternativeNames. */}
+              <Text style={styles.suggestionDetail}>{alternatives.join('  ·  ')}</Text>
+              <Text style={styles.suggestionDetail}>
+                You'll pick one when you add this to your list.
+              </Text>
+            </View>
           </TouchableOpacity>
         )}
         {!!catalogSuggestion && (
@@ -193,9 +204,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             accessibilityRole="button"
             accessibilityLabel={`Use "${catalogSuggestion}" instead — it's already in your catalog`}
           >
-            <Text style={styles.suggestionText}>
-              Did you mean “{catalogSuggestion}”? Already in your catalog.
-            </Text>
+            <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>Did you mean “{catalogSuggestion}”?</Text>
+              <Text style={styles.suggestionDetail}>Already in your catalog.</Text>
+            </View>
           </TouchableOpacity>
         )}
       </View>
@@ -386,12 +399,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // A box height, never lineHeight — see the TextInput note in CLAUDE.md.
     minHeight: 36,
   },
+  // A card rather than the line of bare accent text these used to be: both are
+  // buttons, and an action in this app gets a shape — as a link-coloured
+  // paragraph under a text field, the offer read as a caption about the field
+  // and went unpressed. See CLAUDE.md's note on bare accent text.
   suggestionRow: {
-    paddingBottom: spacing.xs,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.md,
+    padding: spacing.sm,
+    marginTop: spacing.xs,
   },
-  suggestionText: {
+  suggestionBody: {
+    flex: 1,
+    gap: 1,
+  },
+  suggestionTitle: {
     color: colors.accent,
     fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+  },
+  suggestionDetail: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
   },
   pillRow: {
     flexDirection: 'row',
