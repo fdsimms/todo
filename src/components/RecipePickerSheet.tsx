@@ -21,13 +21,21 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
 import { slotLabel } from '../utils/mealPlan';
-import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type MealSlot } from '../types';
+import { describeLeftover, freshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
+// The colour ladder lives with the card that established it rather than in
+// utils/leftovers, which is deliberately store- and theme-free so jest's node
+// env can reach it without loading a renderer.
+import { freshnessColor } from './LeftoversCard';
+import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealSlot } from '../types';
 
 export interface MealPick {
   slot: MealSlot;
   recipeId: string | null;
+  /** Set when the plan is a tracked leftover. Null for a recipe or free text. */
+  leftoverId: string | null;
   title: string;
 }
 
@@ -48,17 +56,28 @@ const TOP_INSET = 72;
 
 /** Quick-pick shortcuts for the free-text plan — the non-recipe nights that come up
  * often enough to skip typing. Tapping one commits it exactly like tapping a recipe
- * row does; picking any of these is already a complete answer, not a draft to edit. */
+ * row does; picking any of these is already a complete answer, not a draft to edit.
+ *
+ * "Leftovers" survives the arrival of the leftovers tracker rather than being
+ * replaced by it: plenty of leftovers were never logged, and a night planned as
+ * the bare word is still a complete answer. The tracked ones are offered *above*
+ * it as their own rows — the generic chip is the floor, not the only option. */
 const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
 
 /**
- * Puts something on a night: a recipe from the box, or whatever the user types.
+ * Puts something on a night: a recipe from the box, a tracked leftover out of
+ * the fridge, or whatever the user types.
  *
  * **The free-text half is not a fallback.** "Leftovers" and "out" are real
  * answers, so the typed name is offered as its own row at the top of the list
  * rather than hidden behind a mode switch — an entry made that way holds its
  * place on the week and counts toward the header's total exactly like a
  * recipe-backed one does (see MealPlanEntry.recipeId).
+ *
+ * **Picking a leftover does not use it up.** A big pot feeds two dinners, so
+ * planning against one leaves it in the fridge and only the offer below the
+ * header — dismissible, never blocking, gone the moment anything else is picked
+ * — can close it out. See Leftover.finishedAt.
  */
 export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onClose }: Props) {
   const colors = useColors();
@@ -67,10 +86,28 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
   const { height: windowHeight } = useWindowDimensions();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
+  const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   const [query, setQuery] = useState('');
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
+  /**
+   * The leftover the last pick used, while the "was that the last of it?" offer
+   * is still standing. Cleared by answering it, dismissing it, picking anything
+   * else, or closing the sheet — it is about one tap, not a mode.
+   */
+  const [justPicked, setJustPicked] = useState<Leftover | null>(null);
 
   const typed = cleanRecipeName(query);
+
+  // Matched on a plain substring rather than through rankRecipes: the fridge
+  // holds a handful of rows the user put there this week, so there is nothing
+  // for a ranker to disambiguate, and a fuzzy match would put a leftover under
+  // a query that was clearly reaching for a recipe.
+  const fridge = useMemo(() => {
+    const live = liveLeftovers(leftovers);
+    const q = query.trim().toLowerCase();
+    return q ? live.filter(l => l.title.toLowerCase().includes(q)) : live;
+  }, [leftovers, query]);
   const matches = useMemo(() => {
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
@@ -112,6 +149,7 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
     if (!visible) return;
     setQuery('');
     setSlot(defaultSlot);
+    setJustPicked(null);
     translateY.setValue(600);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
@@ -159,9 +197,36 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
   // dismisses now.
   const pick = (recipeId: string | null, title: string) => {
     haptics.success();
-    onPick({ slot, recipeId, title });
+    onPick({ slot, recipeId, leftoverId: null, title });
     setQuery('');
     setSlot(defaultSlot);
+    setJustPicked(null);
+  };
+
+  /**
+   * Plans a tracked leftover onto the night, and *only* that — the container
+   * stays in the fridge with its clock running.
+   *
+   * The title captures the age at plan time (mealTitleForLeftover) rather than
+   * resolving it live like a recipe name does, because "2 days old" is a fact
+   * about the night this was planned for, not about the dish.
+   *
+   * `recipeId` stays null even when the leftover knows which recipe made it —
+   * the two backings are mutually exclusive on purpose. Carrying both would
+   * hand titleForEntry a recipe to resolve, and the live recipe name winning is
+   * exactly what would strip the age back off the row.
+   */
+  const pickLeftover = (leftover: Leftover) => {
+    haptics.success();
+    onPick({
+      slot,
+      recipeId: null,
+      leftoverId: leftover.id,
+      title: mealTitleForLeftover(leftover),
+    });
+    setQuery('');
+    setSlot(defaultSlot);
+    setJustPicked(leftover);
   };
 
   return (
@@ -197,6 +262,43 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
           <Text style={styles.sheetHint}>
             Pick a recipe, or type whatever it is — “leftovers” is a plan too.
           </Text>
+
+          {/* The cheap version of "how much is left", asked at the one moment
+              the answer is free. It is an offer, not a question: ignoring it
+              leaves the container in the fridge, which is the right default
+              because most meals off a leftover don't finish it. Deliberately
+              not an Alert — a modal on top of a sheet the user is still
+              planning in would make picking a leftover cost more than picking
+              anything else, which is how a feature gets avoided. */}
+          {justPicked && (
+            <View style={styles.lastOfItStrip}>
+              <Text style={styles.lastOfItText} numberOfLines={2}>
+                {`Planned ${justPicked.title}. Was that the last of it?`}
+              </Text>
+              <TouchableOpacity
+                style={styles.lastOfItButton}
+                onPress={() => {
+                  haptics.success();
+                  finishLeftover(justPicked.id, 'eaten');
+                  setJustPicked(null);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Yes, ${justPicked.title} is finished`}
+              >
+                <Text style={styles.lastOfItButtonText}>Finished it</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => { haptics.tap(); setJustPicked(null); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Not the last of it"
+              >
+                <Ionicons name="close" size={15} color={colors.textTertiary} />
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={styles.chips}>
             {MEAL_SLOTS.map(s => {
@@ -268,7 +370,44 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
               </TouchableOpacity>
             )}
 
-            {matches.length === 0 && !showFreeText ? (
+            {/* Above the recipes on purpose: what's already cooked and going off
+                is the answer the user should reach for first, and it's the only
+                one with a deadline attached. */}
+            {fridge.length > 0 && (
+              <>
+                {showFreeText && <View style={styles.inlineSep} />}
+                <Text style={styles.listSection}>In the fridge</Text>
+                {fridge.map((leftover, idx) => {
+                  const tint = freshnessColor(freshnessOf(leftover), colors);
+                  return (
+                    <React.Fragment key={leftover.id}>
+                      {idx > 0 && <View style={styles.inlineSep} />}
+                      <TouchableOpacity
+                        style={styles.row}
+                        onPress={() => pickLeftover(leftover)}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Plan ${leftover.title}. ${describeLeftover(leftover)}`}
+                      >
+                        <View style={[styles.rowIcon, { backgroundColor: colors.bgTertiary }]}>
+                          <Ionicons name="snow-outline" size={16} color={tint} />
+                        </View>
+                        <View style={styles.rowInfo}>
+                          <Text style={styles.rowName} numberOfLines={1}>{leftover.title}</Text>
+                          <Text style={[styles.rowHint, { color: tint }]} numberOfLines={1}>
+                            {describeLeftover(leftover)}
+                          </Text>
+                        </View>
+                        <Ionicons name="add" size={16} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                    </React.Fragment>
+                  );
+                })}
+                {matches.length > 0 && <Text style={styles.listSection}>Recipes</Text>}
+              </>
+            )}
+
+            {matches.length === 0 && !showFreeText && fridge.length === 0 ? (
               <View style={styles.emptyWrap}>
                 <Ionicons name="restaurant-outline" size={28} color={colors.textTertiary} />
                 <Text style={styles.emptyTitle}>
@@ -283,7 +422,10 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
             ) : (
               matches.map((recipe, idx) => (
                 <React.Fragment key={recipe.id}>
-                  {(idx > 0 || showFreeText) && <View style={styles.inlineSep} />}
+                  {/* The "Recipes" caption already separates this run from the
+                      fridge above it, so the first row only takes a rule when
+                      it's butting straight up against the free-text one. */}
+                  {(idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
                   <TouchableOpacity
                     style={styles.row}
                     onPress={() => pick(recipe.id, recipe.name)}
@@ -363,6 +505,33 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: 2,
     paddingBottom: spacing.sm,
+  },
+  lastOfItStrip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  lastOfItText: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+  },
+  lastOfItButton: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent,
+  },
+  lastOfItButtonText: {
+    color: colors.onAccent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   chips: {
     flexDirection: 'row',
@@ -447,6 +616,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
+  },
+  listSection: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   emptyWrap: {
     alignItems: 'center',

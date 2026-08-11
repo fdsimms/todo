@@ -850,7 +850,124 @@ export interface MealPlanEntry {
    * Recipe.cookCount), so a purged entry never un-counts a cooking.
    */
   cookedAt: string | null;
+  /**
+   * The tracked leftover this meal is eating, if the user picked one instead of
+   * a recipe or free text. Mutually exclusive with `recipeId` in practice —
+   * both pickers commit through the same MealPick — but not enforced in the
+   * schema, because a row that somehow carried both should still render rather
+   * than be rejected.
+   *
+   * Same resolve-or-shrug, no-cascade contract as `recipeId`: finishing or
+   * deleting a leftover must not blank last Tuesday, and `title` is the
+   * captured fallback. **Pointing at a leftover is not eating all of it** — see
+   * Leftover.finishedAt for why the two states are separate.
+   */
+  leftoverId: string | null;
 }
+
+/**
+ * Something cooked that's now sitting in the fridge, with a clock on it.
+ *
+ * Its own row rather than a GroceryItem or a Recipe, because it is neither: a
+ * grocery item is a forever-row with a purchase count, an aisle and a shop, all
+ * meaningless here, and its identity is a `nameKey` — but "leftover chilli" made
+ * twice in one week is two containers with two different clocks, so the name
+ * can't be the identity. A recipe is a reusable document; this is one perishable
+ * instance of having cooked one. And it is deliberately not a field on the
+ * MealPlanEntry it came from either: a leftover outlives the meal that made it,
+ * gets eaten across several later meals, and can be logged with no planned meal
+ * behind it at all.
+ *
+ * **It is also not a Task**, for the reasons MealPlanEntry gives — and one more:
+ * a reminder *Task* for "use up the chilli" is #1106's job (expiry-driven tasks
+ * for perishable groceries), which doesn't exist yet. This row carries the dates
+ * that mechanism would need, and the nudge here stays in-app, so that when #1106
+ * ships there is one reminder-task path to join rather than a second to unpick.
+ */
+export interface Leftover {
+  id: string;
+  /** What's in the container. Captured, not derived — see recipeId. */
+  title: string;
+  /**
+   * The recipe it was made from, when it was logged off a cooked meal. Null for
+   * anything logged by hand, which is a first-class answer: half a takeaway is a
+   * leftover and has no recipe. Resolve-or-shrug with no cascade, exactly like
+   * MealPlanEntry.recipeId — `title` is what actually renders.
+   */
+  recipeId: string | null;
+  /** The planned meal it was logged from, if any. Same no-cascade contract. */
+  sourceEntryId: string | null;
+  /** ISO instant it went in the fridge. Age is counted in *calendar* days off this. */
+  storedAt: string;
+  /**
+   * A `YYYY-MM-DD` local day key — the day it should be eaten or thrown out by.
+   *
+   * Stored as the resolved day rather than as a "keep for 4 days" number, for
+   * the reason #1106 gives for preferring a real expiry date to a perishable
+   * flag: an absolute day can drive *when* to nudge, and editing the stored-on
+   * date later doesn't silently drag the deadline with it. The editor still
+   * talks in days and converts (see keepUntilKeyFor / keepDaysBetween).
+   */
+  keepUntil: string;
+  /**
+   * ISO instant the container was emptied or binned; null while it's still in
+   * the fridge. **This is not set by planning a meal against it** — a pot of
+   * soup feeds two dinners, so "used for a meal" and "no longer tracked" are
+   * separate states and only an explicit action closes this one out.
+   */
+  finishedAt: string | null;
+  /** Which ending it got. Null exactly while `finishedAt` is null. */
+  outcome: LeftoverOutcome | null;
+  createdAt: string;
+}
+
+/**
+ * How a leftover ended. Recorded because "we ate it" and "it went off" are the
+ * two things the whole feature is trying to tell apart, and a single
+ * finished-flag would throw that away at the moment it's cheapest to capture.
+ */
+export type LeftoverOutcome = 'eaten' | 'tossed';
+
+/**
+ * How close to its keep-until day a leftover is. Four states rather than a
+ * boolean because the nudge has to arrive *before* the waste, and "one day
+ * left" and "three days past" are not the same message.
+ */
+export type LeftoverFreshness = 'fresh' | 'soon' | 'due' | 'over';
+
+// A container label, not a title — same reasoning as RECIPE_NAME_MAX_LENGTH,
+// and the same number, since a leftover's name usually *is* a recipe's.
+export const LEFTOVER_NAME_MAX_LENGTH = RECIPE_NAME_MAX_LENGTH;
+
+/**
+ * The keep-for window a freshly logged leftover starts with.
+ *
+ * Three or four days is the usual food-safety advice for cooked leftovers, and
+ * this app rounds toward the cautious end. It's a starting point the stepper
+ * moves, never a rule — see LEFTOVER_KEEP_DAYS_MAX.
+ */
+export const LEFTOVER_KEEP_DAYS_DEFAULT = 3;
+/** Same day it was made — for something that genuinely won't last the night. */
+export const LEFTOVER_KEEP_DAYS_MIN = 0;
+/**
+ * The ceiling on the keep-for stepper. Generous on purpose: a frozen portion is
+ * a real leftover, and CountStepper exists precisely so a ceiling nobody asked
+ * for doesn't make a legitimate answer unsayable.
+ */
+export const LEFTOVER_KEEP_DAYS_MAX = 90;
+
+/**
+ * How long a *closed-out* leftover is kept, in days.
+ *
+ * Same disease the meal plan prune exists for — one row per container forever —
+ * and deliberately a much shorter window, because a finished leftover has no
+ * Logbook, no stats and nothing pointing at it once its meal entries have aged
+ * out. A leftover that is still *live* is never purged however old it is: an
+ * eight-week-old container nobody closed out is exactly what this feature is
+ * for, and quietly deleting it would be the app taking the user's side of the
+ * conversation.
+ */
+export const LEFTOVER_RETENTION_DAYS = 60;
 
 /**
  * How long a planned meal is kept, in days.

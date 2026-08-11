@@ -23,6 +23,8 @@ export interface MealPlanDraft {
   slot: MealSlot;
   /** Null for a free-text meal — a first-class answer, not a skipped step. */
   recipeId?: string | null;
+  /** Set when the plan is "eat the chilli that's in the fridge". Null otherwise. */
+  leftoverId?: string | null;
   title: string;
 }
 
@@ -155,6 +157,11 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       ),
       createdAt: new Date().toISOString(),
       cookedAt: null,
+      // Planning against a leftover deliberately does *not* close it out — see
+      // Leftover.finishedAt. Nothing here touches the leftover store at all;
+      // the "was that the last of it?" offer is the picker's, and it's an
+      // offer.
+      leftoverId: draft.leftoverId ?? null,
     };
 
     dbInsertMealPlanEntry(entry);
@@ -187,7 +194,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
   renameEntry(id, title) {
     const entry = get().entries.find(e => e.id === id);
-    if (!entry || entry.recipeId) return;
+    // A backed entry's title says what it's backed by — a recipe's live name, or
+    // the leftover-and-its-age captured at plan time — so neither is
+    // independently editable here. Free text is the only thing this renames.
+    if (!entry || entry.recipeId || entry.leftoverId) return;
     const cleaned = cleanMealTitle(title);
     if (!cleaned || cleaned === entry.title) return;
     const renamed: MealPlanEntry = { ...entry, title: cleaned };

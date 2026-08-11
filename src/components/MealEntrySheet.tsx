@@ -40,6 +40,17 @@ interface Props {
   onOpenRecipe?: () => void;
   /** Present only while the entry's recipe still resolves and has prep tasks. */
   onAddPrepTasks?: () => void;
+  /**
+   * Present unless this entry is already eating a tracked leftover — logging a
+   * leftover *of* a leftover is the one case where the offer is noise.
+   */
+  onLogLeftovers?: () => void;
+  /**
+   * Present only when this entry is eating a tracked leftover that's still in
+   * the fridge. The separate later action the picker's "was that the last of
+   * it?" offer is the cheap version of — see Leftover.finishedAt.
+   */
+  onFinishLeftover?: () => void;
   onClose: () => void;
 }
 
@@ -57,7 +68,8 @@ interface Props {
  * to Thursday *and* making it lunch is two taps rather than two round trips.
  */
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onRename, onMarkCooked, onOpenRecipe, onAddPrepTasks, onClose,
+  visible, entry, title, weekDays, onMove, onRemove, onRename, onMarkCooked, onOpenRecipe,
+  onAddPrepTasks, onLogLeftovers, onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -254,6 +266,42 @@ export function MealEntrySheet({
                   <Ionicons name="alarm-outline" size={16} color={colors.accent} />
                 </View>
                 <Text style={[styles.actionText, { color: colors.accent }]}>Add prep tasks</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {!!onLogLeftovers && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.tap(); dismiss(onLogLeftovers); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Log leftovers from this meal"
+              >
+                <View style={styles.actionIcon}>
+                  <Ionicons name="snow-outline" size={16} color={colors.accent} />
+                </View>
+                <Text style={[styles.actionText, { color: colors.accent }]}>Log leftovers</Text>
+              </TouchableOpacity>
+            </>
+          )}
+
+          {!!onFinishLeftover && (
+            <>
+              <View style={styles.sep} />
+              <TouchableOpacity
+                style={styles.action}
+                onPress={() => { haptics.success(); dismiss(onFinishLeftover); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Mark the leftover this meal used as finished"
+              >
+                <View style={styles.actionIcon}>
+                  <Ionicons name="checkmark-done-outline" size={16} color={colors.green} />
+                </View>
+                <Text style={[styles.actionText, { color: colors.green }]}>Finished the leftovers</Text>
               </TouchableOpacity>
             </>
           )}
