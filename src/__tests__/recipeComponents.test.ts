@@ -23,6 +23,7 @@ function ing(name: string): RecipeIngredient {
     quantity: '',
     aisle: null,
     prep: null,
+    purpose: null,
     section: null,
   };
 }

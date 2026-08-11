@@ -101,7 +101,11 @@ export function plannedIngredientsForRecipe(
   return flattenRecipeIngredients(recipe, recipesById).map(flat => ({
     name: flat.ingredient.name,
     nameKey: flat.ingredient.nameKey,
-    quantity: [flat.ingredient.quantity, flat.ingredient.prep].filter(Boolean).join(', '),
+    quantity: [
+      flat.ingredient.quantity,
+      flat.ingredient.prep,
+      flat.ingredient.purpose ? `for ${flat.ingredient.purpose}` : null,
+    ].filter(Boolean).join(', '),
     aisle: flat.ingredient.aisle,
     // The recipe the line is written on, so a row merged from a parent and one
     // of its parts says which parts want it — see ClassifiedIngredient.sources.
