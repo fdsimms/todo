@@ -68,6 +68,15 @@ export interface ParsedSchedule {
   recurrenceEndDate?: string | null;
   recurrenceCount?: number | null;
   recurrenceFromCompletion?: boolean;
+  /**
+   * Set only for a one-off suffix introduced by "by"/"due" ("return fiddle
+   * by friday") — "on" reads as "this is the day it shows up" and stays a
+   * plain dueDate, but "by"/"due" reads as a target to hit, so it's mirrored
+   * onto the separate Deadline field (same day, noon) alongside dueDate
+   * rather than instead of it: the task still shows up scheduled, and also
+   * carries the countdown badge.
+   */
+  deadline?: Date;
 }
 
 export interface ParsedTaskInput {
@@ -452,7 +461,9 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
 
   // One-off date phrase: optional connector, then mirror parseNaturalDate's
   // pipeline but map clock times / day parts to visibility segments.
-  let t = text.replace(/^(?:on|by|due)\s+/, '');
+  const connector = text.match(/^(on|by|due)\s+/);
+  const isDeadlinePhrasing = connector != null && connector[1] !== 'on';
+  let t = connector ? text.slice(connector[0].length) : text;
   let segments: TimeOfDay[] = [];
   let hasTime = false;
   const clock = extractTime(t);
@@ -488,6 +499,7 @@ function parseSuffix(text: string, now: Date, singleWord: boolean): ParsedSchedu
 
   return {
     dueDate: due,
+    deadline: isDeadlinePhrasing ? due : undefined,
     timeSegments: segments,
     recurrenceType: 'none',
     recurrenceInterval: 1,
@@ -645,6 +657,48 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedCategory {
+  /** The matching category's canonical (registered) name, not the typed token. */
+  category: string;
+  /** Input minus the matched "#tag", whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// A "#" immediately followed by a word — CLAUDE.md's own quick-add example
+// ("pay rent tmrw 5p #home") is a category tag. Matched anywhere in the text,
+// like parseLinkInput/parsePhoneInput, not suffix-anchored.
+const CATEGORY_TAG_PATTERN = /#([a-z][\w-]*)/i;
+
+/**
+ * Finds a "#category" tag in a quick-add title and, if it names a category
+ * that already exists, splits it out — mirroring parseLinkInput's shape.
+ * `categories` is passed in rather than read from a store, keeping this
+ * module free of any store dependency (see the header note); it's the
+ * existing registered names, matched case-insensitively so "#Home" and
+ * "#home" both resolve to the one category.
+ *
+ * Deliberately doesn't create a category from an unrecognized tag — a typo
+ * or an unrelated "#" in the title (e.g. a hashtag someone's pasting) would
+ * otherwise silently spawn a new one. Tags/project/stack aren't covered by
+ * this symbol; see #1258 for the open question on whether they should be.
+ */
+export function parseCategoryInput(input: string, categories: string[]): ParsedCategory | null {
+  const match = input.match(CATEGORY_TAG_PATTERN);
+  if (!match || match.index === undefined) return null;
+  const token = match[1].toLowerCase();
+  const category = categories.find(c => c.toLowerCase() === token);
+  if (!category) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a category tag
+
+  return { category, cleanTitle, matchStart, matchEnd };
+}
+
 function joinDayNames(days: number[]): string {
   if (days.length === 1) return DAY_NAMES_FULL[days[0]];
   const names = days.map(d => DAY_NAMES_SHORT[d]);
@@ -711,6 +765,10 @@ export function describeSchedule(s: ParsedSchedule, now: Date = new Date()): str
         : isSameDay(d, addDays(startOfDay(now), 1))
           ? 'Tomorrow'
           : format(d, 'EEE, MMM d');
+      // "by"/"due" phrasing sets a deadline alongside the date — say so, so
+      // accepting the chip doesn't silently add a field the label never
+      // mentioned.
+      if (s.deadline) label = `${label} · Deadline`;
     }
   }
   if (s.timeSegments.length > 0) label += ` · ${s.timeSegments[0]}`;
