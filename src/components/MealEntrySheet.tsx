@@ -19,6 +19,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
+import { InlineAction } from './InlineAction';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
@@ -32,6 +33,12 @@ interface Props {
   /** The week on screen — the days "Move to…" offers. */
   weekDays: Date[];
   onMove: (to: { date?: string; slot?: MealSlot }) => void;
+  /**
+   * Opens a full date picker for this meal — the way out of the week the chips
+   * show. The caller dismisses this sheet first and hosts the picker itself,
+   * since two modals can't be up at once.
+   */
+  onMoveFurther?: () => void;
   onRemove: () => void;
   /**
    * Present only for a free-text entry (no recipeId) — a recipe-backed
@@ -107,7 +114,7 @@ interface Props {
 const TOP_INSET = 72;
 
 export function MealEntrySheet({
-  visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
+  visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
   onScale, baseServings, baseServingsMax, onSetCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
   onFinishLeftover, onClose,
 }: Props) {
@@ -297,6 +304,25 @@ export function MealEntrySheet({
               );
             })}
           </View>
+
+          {/*
+            The way past the seven chips. They're deliberately a week — see the
+            note above on why this isn't a drag — but a week was also the hard
+            ceiling: moving one meal to next Tuesday meant selecting it as a
+            "bulk" of one, because only the bulk bar had a calendar (#1364).
+            A chip row for the common case, an escape hatch for the rest.
+          */}
+          {!!onMoveFurther && (
+            <View style={styles.furtherRow}>
+              <InlineAction
+                label="Another date…"
+                icon="calendar-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); dismiss(onMoveFurther); }}
+                accessibilityLabel="Move this meal to a date outside this week"
+              />
+            </View>
+          )}
 
           <Text style={styles.label}>Meal</Text>
           <View style={[styles.chips, styles.chipsLast]}>
@@ -521,6 +547,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipsLast: {
     marginBottom: spacing.md,
+  },
+  furtherRow: {
+    flexDirection: 'row',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   dayChip: {
     flex: 1,

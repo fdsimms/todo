@@ -14,6 +14,11 @@ interface Props {
   title: string;
   /** Whether `entry.recipeId` still points at a recipe that exists. */
   hasRecipe: boolean;
+  /**
+   * Which side this meal is having — describeChoices' answer, or empty for the
+   * many meals that pose no either/or.
+   */
+  choices?: string;
   onPress: () => void;
   /**
    * Ticks the entry off, or back on — the same shortcut a task row's checkbox
@@ -54,7 +59,7 @@ interface Props {
  * absence a reader is expected to infer.
  */
 export function MealSlotRow({
-  entry, title, hasRecipe, onPress, onToggleCooked, selectionMode, selected,
+  entry, title, hasRecipe, choices, onPress, onToggleCooked, selectionMode, selected,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -182,5 +187,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  // Nested in the slot caption rather than a third line: the row is already
+  // two lines and this is a qualifier on the meal, not a fact of its own.
+  choices: {
+    color: colors.textTertiary,
+    fontWeight: fontWeight.regular,
+    letterSpacing: 0,
+    textTransform: 'none',
   },
 });

@@ -14,6 +14,7 @@ import {
   activeComponents,
   activeIngredients,
   countChoiceAware,
+  describeChoices,
   recipeChoiceGroups,
   applyChoice,
   parseRecipeChoices,
@@ -438,6 +439,42 @@ describe('choice groups', () => {
         .toEqual(['Boil the potatoes']);
       expect(flattenRecipePrepTasks(steak, byId, { chosen: [steak.components[1].id] })
         .map(f => f.prepTask.title)).toEqual(['Heat the oven']);
+    });
+  });
+
+  describe('describeChoices', () => {
+    it('names the active option', () => {
+      const { steak, byId } = library();
+      expect(describeChoices(recipeChoiceGroups(steak, byId))).toBe('Mash');
+    });
+
+    it('follows the pick', () => {
+      const { steak, byId } = library();
+      const roastId = steak.components[2].id;
+      expect(describeChoices(recipeChoiceGroups(steak, byId, { chosen: [roastId] })))
+        .toBe('Roast potatoes');
+    });
+
+    it('joins several groups in order', () => {
+      const groups = [
+        { active: { name: 'Roast potatoes' } },
+        { active: { name: 'Green beans' } },
+      ] as unknown as Parameters<typeof describeChoices>[0];
+      expect(describeChoices(groups)).toBe('Roast potatoes, Green beans');
+    });
+
+    // A meal with no either/or renders no caption at all, rather than a
+    // dangling separator.
+    it('is empty for a recipe with no groups', () => {
+      expect(describeChoices([])).toBe('');
+    });
+
+    it('drops an option whose name is blank rather than leaving a gap', () => {
+      const groups = [
+        { active: { name: '  ' } },
+        { active: { name: 'Mash' } },
+      ] as unknown as Parameters<typeof describeChoices>[0];
+      expect(describeChoices(groups)).toBe('Mash');
     });
   });
 

@@ -61,6 +61,7 @@ import {
 import { recentlyCookedTitles } from '../utils/mealIdeas';
 import {
   applyChoice,
+  describeChoices,
   recipeChoiceGroups,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
@@ -284,6 +285,9 @@ export function MealPlanScreen() {
   } = useRowSelection();
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [bulkMoveVisible, setBulkMoveVisible] = useState(false);
+  // The entry whose date is being picked outside this week (#1364) — held by
+  // id, since MealEntrySheet has closed by the time the calendar is up.
+  const [movingFurtherId, setMovingFurtherId] = useState<string | null>(null);
   const [bulkReplaceVisible, setBulkReplaceVisible] = useState(false);
 
   const toggleDayCollapse = (key: string) => {
@@ -612,6 +616,16 @@ export function MealPlanScreen() {
   const couldHaveLeftovers = (entry: MealPlanEntry) =>
     !!entry.cookedAt || entry.date <= dayKeyOf(new Date());
 
+  /**
+   * What a row says about the either/or this meal answers. Empty for the many
+   * meals that pose none, which is the common path and costs a map lookup.
+   */
+  const describeEntryChoices = useCallback((entry: MealPlanEntry): string => {
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+    if (!recipe || recipe.components.length === 0) return '';
+    return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: entry.recipeChoices }));
+  }, [recipesById]);
+
   const renderDay = useCallback(({ item: day }: { item: Date }) => {
     const key = dayKeyOf(day);
     const dayEntries = entriesForDay(entries, key);
@@ -672,6 +686,7 @@ export function MealPlanScreen() {
                         entry={entry}
                         title={titleForEntry(entry, recipesById)}
                         hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                        choices={describeEntryChoices(entry)}
                         onPress={() => {
                           if (selectionMode) toggleSelection(entry.id);
                           else { haptics.tap(); setSelectedId(entry.id); }
@@ -697,7 +712,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, leftovers]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, leftovers, describeEntryChoices]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -1039,12 +1054,34 @@ export function MealPlanScreen() {
         onClose={() => setPlanningDay(null)}
       />
 
+      {/*
+        The way past the sheet's seven day chips. It opens after that sheet has
+        gone — two modals can't be up at once — and lands on the same
+        CalendarPicker the bulk move uses, natural language included.
+      */}
+      <CalendarPicker
+        visible={movingFurtherId !== null}
+        value={null}
+        mode="date"
+        title="Move to"
+        nlEnabled
+        onConfirm={date => {
+          if (movingFurtherId) {
+            animateLayout();
+            moveEntry(movingFurtherId, { date: dayKeyOf(date) });
+          }
+          setMovingFurtherId(null);
+        }}
+        onCancel={() => setMovingFurtherId(null)}
+      />
+
       <MealEntrySheet
         visible={selected !== null}
         entry={selected}
         title={selected ? titleForEntry(selected, recipesById) : ''}
         weekDays={days}
         onMove={to => selected && moveEntry(selected.id, to)}
+        onMoveFurther={selected ? () => setMovingFurtherId(selected.id) : undefined}
         onRemove={() => {
           if (!selected) return;
           animateLayout();

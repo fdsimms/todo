@@ -6,6 +6,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { titleForEntry } from '../utils/mealPlan';
+import { describeChoices, recipeChoiceGroups } from '../utils/recipeComponents';
 import { MealSlotRow } from './MealSlotRow';
 
 interface Props {
@@ -59,6 +60,14 @@ export function TodayMealPlanSection({ entries, recipesById, onOpen }: Props) {
 
   if (entries.length === 0) return null;
 
+  // Same caption the meal plan's own rows carry — a row that reads differently
+  // in the two places it appears is worse than one that reads plainly in both.
+  const choicesFor = (mealEntry: MealPlanEntry): string => {
+    const recipe = mealEntry.recipeId ? recipesById.get(mealEntry.recipeId) : undefined;
+    if (!recipe || recipe.components.length === 0) return '';
+    return describeChoices(recipeChoiceGroups(recipe, recipesById, { chosen: mealEntry.recipeChoices }));
+  };
+
   const handleOpen = () => {
     haptics.tap();
     onOpen();
@@ -86,6 +95,7 @@ export function TodayMealPlanSection({ entries, recipesById, onOpen }: Props) {
               entry={mealEntry}
               title={titleForEntry(mealEntry, recipesById)}
               hasRecipe={!!mealEntry.recipeId && recipesById.has(mealEntry.recipeId)}
+              choices={choicesFor(mealEntry)}
               onPress={handleOpen}
             />
           </React.Fragment>
