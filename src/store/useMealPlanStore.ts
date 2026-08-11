@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import type { MealPlanEntry, MealSlot } from '../types';
+import type { MealPlanEntry, MealSlot, Task } from '../types';
 import {
   dbGetMealPlanEntries,
+  dbGetMealPlanEntry,
   dbInsertMealPlanEntry,
   dbUpdateMealPlanEntry,
   dbDeleteMealPlanEntry,
@@ -9,6 +10,15 @@ import {
   dbGetMealPlanAddedToList,
   dbSetMealPlanAddedToList,
 } from '../db/database';
+// useTaskStore imports this module back (its initialize() fans out to every
+// store), so these two form an import cycle. It's inert: neither module touches
+// the other while it's being evaluated — every reference below is inside an
+// action body, by which time both have finished loading. Same shape as
+// useGroceryStore reaching into useRecipeStore.
+import { useTaskStore } from './useTaskStore';
+import { useSettingsStore } from './useSettingsStore';
+import { useRecipeStore } from './useRecipeStore';
+import { cookTaskDraft, cookTaskFields, cookTaskNeedsUpdate, wantsCookTask } from '../utils/mealTasks';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import {
@@ -45,6 +55,12 @@ export interface MealPlanDraft {
   /** Set when the plan is "eat the chilli that's in the fridge". Null otherwise. */
   leftoverId?: string | null;
   title: string;
+  /**
+   * An explicit answer to "does this one get a Cook task?", for the callers
+   * that have one at plan time. Omitted (or null) leaves it to the setting —
+   * see MealPlanEntry.cookTask.
+   */
+  cookTask?: boolean | null;
 }
 
 /**
@@ -145,6 +161,41 @@ interface MealPlanStore {
    * caller knows they were one action. See MealPlanScreen's setCooked.
    */
   setCooked: (id: string, cooked: boolean) => void;
+
+  /**
+   * Says whether this meal gets a "Cook X" task, or hands the decision back to
+   * the `mealCookTasks` setting with `null` (#1402).
+   *
+   * Writes the flag and then reconciles, so the task appears or disappears on
+   * the same tap. The one caller that passes `false` without the user having
+   * touched a toggle is `useTaskStore.deleteTask` — deleting the task *is* the
+   * user saying no to it, and recording that is what stops the next edit to
+   * this meal reconciling it straight back.
+   */
+  setCookTask: (id: string, value: boolean | null) => void;
+
+  /**
+   * The reverse leg of the cook-task link: the meal plan's half of "the user
+   * ticked the Cook task off on Today" (#1402).
+   *
+   * Stamps `cookedAt` and bumps the recipe's counters together, returning an
+   * undo that reverses both — the same pairing, and the same asymmetry about
+   * counters, that MealPlanScreen's own `setCooked` composes by hand (see its
+   * doc comment: undo restores `lastCookedAt`, a plain un-tick never does).
+   * It lives here rather than in useTaskStore because the pairing is a fact
+   * about meals, and returns the undo rather than registering one because the
+   * task's completion is the action the user actually took — useTaskStore owns
+   * that undo and folds this into it.
+   *
+   * Resolves the entry through SQLite when it isn't in the loaded window,
+   * which is the normal case: ticking a cook task off on Today says nothing
+   * about which week Meal plan happens to have open, and on a cold start it
+   * has none.
+   *
+   * Returns null when there was nothing to do — no such entry, or it already
+   * says what's being asked — so the caller stores no undo for a no-op.
+   */
+  setCookedFromTask: (id: string, cooked: boolean) => (() => void) | null;
 
   /**
    * The bulk-selection actions (#1110) — mirrors of planMeal/moveEntry/
@@ -338,13 +389,19 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // As written, for the same reason: how much of it you're making is a
       // question a plan is allowed not to have answered.
       recipeScale: 1,
+      // Unanswered, so the setting decides — see MealPlanEntry.cookTask. The
+      // picker can pass an explicit answer, which is how "add a cook task" is
+      // said at plan time.
+      cookTask: draft.cookTask ?? null,
     };
 
     dbInsertMealPlanEntry(entry);
     patchInRange(set, get, entry);
+    reconcileCookTask(entry);
     get().setLastAction({
       label: `Planned "${entry.title}"`,
       undo: () => {
+        dropCookTask(entry.id);
         dbDeleteMealPlanEntry(entry.id);
         set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
       },
@@ -368,18 +425,26 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     dbUpdateMealPlanEntry(moved);
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
     patchInRange(set, get, moved);
+    // Moving the meal moves its cook task: the day and the slot are two of the
+    // three fields the entry owns on it.
+    reconcileCookTask(moved);
     get().setLastAction({
       label: `Moved "${entry.title}"`,
       undo: () => {
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
         patchInRange(set, get, entry);
+        reconcileCookTask(entry);
       },
     });
   },
 
   removeEntry(id) {
     const entry = get().entries.find(e => e.id === id);
+    // Before the row goes: the meal is the only thing that knows this task was
+    // its. A cook task already completed is left alone — it's history now, the
+    // same call deleteGroup makes about a stack's past occurrences.
+    dropCookTask(id);
     dbDeleteMealPlanEntry(id);
     set(s => ({ entries: s.entries.filter(e => e.id !== id) }));
     if (entry) {
@@ -388,6 +453,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         undo: () => {
           dbInsertMealPlanEntry(entry);
           patchInRange(set, get, entry);
+          reconcileCookTask(entry);
         },
       });
     }
@@ -404,12 +470,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const renamed: MealPlanEntry = { ...entry, title: cleaned };
     dbUpdateMealPlanEntry(renamed);
     set(s => ({ entries: s.entries.map(e => e.id === id ? renamed : e) }));
+    reconcileCookTask(renamed);
     // The only single-entry mutation here that used to write without one.
     get().setLastAction({
       label: `Renamed "${entry.title}"`,
       undo: () => {
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: s.entries.map(e => e.id === id ? entry : e) }));
+        reconcileCookTask(entry);
       },
     });
   },
@@ -433,16 +501,55 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   },
 
   setCooked(id, cooked) {
-    const entry = get().entries.find(e => e.id === id);
+    // Resolved through SQLite when it isn't in the loaded window. The `.map`
+    // below is then a no-op, which is exactly right: an entry outside the
+    // window has no business being added to `entries` (see patchInRange), and
+    // the next loadRange reads the written row.
+    const entry = resolveEntry(get, id);
     if (!entry || !!entry.cookedAt === cooked) return;
     const next: MealPlanEntry = { ...entry, cookedAt: cooked ? new Date().toISOString() : null };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // Ticking the meal ticks its task, and un-ticking un-ticks it. The
+    // ping-pong this would otherwise cause is broken by the guard above plus
+    // the one in completeTask: whichever side moves first has already written
+    // its own state by the time the other calls back, so the callee returns
+    // early. Don't remove either guard.
+    syncCookTaskCompletion(id, cooked);
+  },
+
+  setCookTask(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || entry.cookTask === value) return;
+    const next: MealPlanEntry = { ...entry, cookTask: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    reconcileCookTask(next);
+  },
+
+  setCookedFromTask(id, cooked) {
+    const entry = resolveEntry(get, id);
+    if (!entry || !!entry.cookedAt === cooked) return null;
+
+    get().setCooked(id, cooked);
+
+    // Only a cooking bumps the recipe, exactly as MealPlanScreen's setCooked
+    // has it — un-ticking is "not cooked now", and cookCount only ever rises.
+    const recipe = cooked && entry.recipeId
+      ? useRecipeStore.getState().recipes.find(r => r.id === entry.recipeId)
+      : undefined;
+    const before = recipe ? useRecipeStore.getState().markCooked(recipe.id) : null;
+
+    return () => {
+      get().setCooked(id, !cooked);
+      if (recipe && before) useRecipeStore.getState().restoreCookStats(recipe.id, before);
+    };
   },
 
   bulkDeleteEntries(ids) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
+    ids.forEach(dropCookTask);
     ids.forEach(id => dbDeleteMealPlanEntry(id));
     // lastAction: null — see the doc comment. The delete registers no undo of
     // its own *and* takes the slot away from whatever was in it, so a shake
@@ -477,6 +584,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const movedIds = new Set(moved.map(e => e.id));
     set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
     moved.forEach(entry => patchInRange(set, get, entry));
+    moved.forEach(reconcileCookTask);
 
     get().setLastAction({
       label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved`,
@@ -484,6 +592,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         originals.forEach(dbUpdateMealPlanEntry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
         originals.forEach(entry => patchInRange(set, get, entry));
+        originals.forEach(reconcileCookTask);
       },
     });
   },
@@ -505,6 +614,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+    // Retitles the cook tasks, and can create or remove them outright: swapping
+    // a free-text night for a recipe is exactly the change that makes a meal
+    // qualify. `cookTask` is deliberately kept by the replace (see the note on
+    // recipeScale surviving a swap for the same reason), so an explicit
+    // per-meal answer isn't quietly undone by changing what's cooked.
+    updated.forEach(reconcileCookTask);
 
     get().setLastAction({
       label: `${updated.length} meal${updated.length === 1 ? '' : 's'} replaced`,
@@ -512,6 +627,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(dbUpdateMealPlanEntry);
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
+        toUpdate.forEach(reconcileCookTask);
       },
     });
   },
@@ -529,6 +645,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     updated.forEach(dbUpdateMealPlanEntry);
     const byId = new Map(updated.map(e => [e.id, e]));
     set(s => ({ entries: s.entries.map(e => byId.get(e.id) ?? e) }));
+    updated.forEach(e => syncCookTaskCompletion(e.id, cooked));
 
     // Restores each entry's own original cookedAt, not just the opposite of
     // `cooked` — same reasoning as bulkMoveEntries' `originals`. Never touches
@@ -541,6 +658,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         toUpdate.forEach(dbUpdateMealPlanEntry);
         const originalById = new Map(toUpdate.map(e => [e.id, e]));
         set(s => ({ entries: s.entries.map(e => originalById.get(e.id) ?? e) }));
+        toUpdate.forEach(e => syncCookTaskCompletion(e.id, !!e.cookedAt));
       },
     });
   },
@@ -564,11 +682,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     }));
     created.forEach(dbInsertMealPlanEntry);
     created.forEach(entry => patchInRange(set, get, entry));
+    created.forEach(reconcileCookTask);
 
     const ids = new Set(created.map(e => e.id));
     get().setLastAction({
       label: `Copied ${created.length} meal${created.length === 1 ? '' : 's'}`,
       undo: () => {
+        created.forEach(e => dropCookTask(e.id));
         created.forEach(e => dbDeleteMealPlanEntry(e.id));
         set(s => ({ entries: s.entries.filter(e => !ids.has(e.id)) }));
       },
@@ -623,4 +743,103 @@ function patchInRange(
   const { rangeStart, rangeEnd } = get();
   if (!rangeStart || !rangeEnd || !isKeyInRange(entry.date, rangeStart, rangeEnd)) return;
   set(s => ({ entries: sortMealEntries([...s.entries, entry]) }));
+}
+
+/**
+ * One entry by id, from the loaded window if it's there and from SQLite if it
+ * isn't.
+ *
+ * Every other read in this store is deliberately window-scoped, and stays that
+ * way. This exists for the cook-task link alone, which is inherently
+ * cross-screen: a task ticked off on Today knows its entry's id and nothing
+ * about which week Meal plan has open — usually none at all, since the store
+ * only loads a range once that screen has been visited.
+ */
+function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | null {
+  return get().entries.find(e => e.id === id) ?? dbGetMealPlanEntry(id);
+}
+
+// ─── Cook tasks (#1402) ─────────────────────────────────────────────────────
+//
+// The meal plan is the master and the task is the replica; these three helpers
+// are every write that crosses the line. The projection rules themselves —
+// which meals qualify, what the task says, which fields the meal owns — are in
+// utils/mealTasks so jest can reach them.
+
+/** This meal's live cook task, if it has one. */
+function liveCookTaskFor(entryId: string): Task | undefined {
+  return useTaskStore
+    .getState()
+    .tasks.find(t => t.mealEntryId === entryId && !t.completed && !t.archived);
+}
+
+/**
+ * Brings this meal's cook task into line: creates it, updates it, or removes
+ * it, depending on what the meal now says.
+ *
+ * **A cooked meal is left entirely alone.** Its task has either been ticked
+ * (that's what cooked it) or is deliberately outstanding, and either way the
+ * night has happened — re-dating or re-titling the task at that point edits
+ * history. This is also what stops a completed cook task from being replaced
+ * by a fresh one on the next edit.
+ *
+ * **It never spawns a second task for one meal**, even when the existing one
+ * is completed or archived: the check for "does one already exist" is
+ * deliberately wider than the one for "which one do I update". A meal that
+ * gained a duplicate cook task on every edit is the failure mode the old,
+ * unlinked prep tasks actually had.
+ */
+function reconcileCookTask(entry: MealPlanEntry): void {
+  if (entry.cookedAt) return;
+
+  const { tasks, addTask, updateTask, deleteTask } = useTaskStore.getState();
+  const existing = liveCookTaskFor(entry.id);
+  const wanted = wantsCookTask(entry, useSettingsStore.getState().mealCookTasks);
+
+  if (!wanted) {
+    // Only the live one goes. A completed cook task is a record of a thing
+    // that was done, and turning the option off is not a claim it wasn't.
+    if (existing) deleteTask(existing.id);
+    return;
+  }
+
+  if (existing) {
+    if (cookTaskNeedsUpdate(existing, entry)) updateTask(existing.id, cookTaskFields(entry));
+    return;
+  }
+
+  if (tasks.some(t => t.mealEntryId === entry.id)) return;
+  addTask(cookTaskDraft(entry));
+}
+
+/**
+ * Drops this meal's cook task because the meal itself is going.
+ *
+ * Deliberately not `reconcileCookTask` with the flag off: that records an
+ * opt-out, which is meaningless for a row about to stop existing, and it would
+ * also skip the delete entirely for an entry that had already been cooked.
+ * Completed cook tasks stay either way — deleting a meal must not erase the
+ * Logbook, the same rule deleteGroup keeps for a stack's history.
+ */
+function dropCookTask(entryId: string): void {
+  const existing = liveCookTaskFor(entryId);
+  if (existing) useTaskStore.getState().deleteTask(existing.id);
+}
+
+/**
+ * Ticks this meal's cook task off, or back on, to match the meal.
+ *
+ * The other half of the loop-breaking pair described on `setCooked`: both
+ * `completeTask` and `uncompleteTask` return early when the task is already in
+ * the state being asked for, so the call back into this store is a no-op.
+ */
+function syncCookTaskCompletion(entryId: string, cooked: boolean): void {
+  const { tasks, completeTask, uncompleteTask } = useTaskStore.getState();
+  if (cooked) {
+    const live = liveCookTaskFor(entryId);
+    if (live) completeTask(live.id);
+    return;
+  }
+  const done = tasks.find(t => t.mealEntryId === entryId && t.completed && !t.archived);
+  if (done) uncompleteTask(done.id);
 }

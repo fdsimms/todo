@@ -35,6 +35,29 @@ export type WeekStart = 0 | 1;
 export type FabHand = 'right' | 'left';
 
 /**
+ * How much of the day's meal plan Today shows (#1402).
+ *
+ * `block` is what shipped first: a bold caption over a tray of full meal rows,
+ * above every task. It turned out to read as though meal planning were the
+ * point of the Today screen — it was the largest type on the page after the
+ * word "Today", and it sat above the first task at any hour of the day.
+ *
+ * `strip` is one line of the meals still to come, and is the default: it keeps
+ * the glance ("what am I eating today") that the block was wanted for, at
+ * about a quarter of the height, and empties itself as the day is eaten. An
+ * install upgrading into this changes appearance without being asked, which is
+ * unusual here — but the block is the thing being fixed, so leaving it as the
+ * default would ship the fix switched off.
+ *
+ * `off` is for someone who plans meals and doesn't want them on Today at all;
+ * with cook tasks on (see `mealCookTasks`) the meals that are *work* still
+ * reach the list, so this isn't the same as turning the feature off.
+ */
+export type MealsOnToday = 'block' | 'strip' | 'off';
+
+const MEALS_ON_TODAY: MealsOnToday[] = ['block', 'strip', 'off'];
+
+/**
  * What a *new* task starts with, applied by `newTaskFromDraft`
  * (`src/store/useTaskStore.ts`) — the one place a Task's defaults are
  * spelled out — so `addTask` and the dated-series builder (`addTaskSeries`/
@@ -165,6 +188,13 @@ interface SettingsStore {
   // time, and "30 minutes before the day reset" is not a useful reminder.
   defaultReminderLeadMinutes: number | null;
   hideCategories: boolean; // Today's "Hide categories" display option, in Sort & Filter
+  mealsOnToday: MealsOnToday;
+  // Whether planning a meal also puts a "Cook X" task on the day it's planned
+  // for. On by default, but deliberately with no backfill — only meals planned
+  // from here on get one — so an install upgrading into this sees nothing
+  // appear in a list it didn't ask to have changed. The per-meal override and
+  // the rules for which meals qualify live in src/utils/mealTasks.ts.
+  mealCookTasks: boolean;
   // Pulling tasks out of the Reminders app and into the Inbox — the app's voice
   // capture story, since Siri needs no app name to add a reminder. Off by
   // default and never inferred: importing *deletes* the reminder, so it only
@@ -252,6 +282,8 @@ interface SettingsStore {
   setFabHand: (hand: FabHand) => void;
   setHapticsEnabled: (on: boolean) => void;
   setShakeToUndoEnabled: (on: boolean) => void;
+  setMealsOnToday: (mode: MealsOnToday) => void;
+  setMealCookTasks: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
   setFilterPriorities: (priorities: Priority[]) => void;
   setFilterEfforts: (efforts: Effort[]) => void;
@@ -305,6 +337,8 @@ const DEFAULT_SETTINGS = {
   dailyAgendaTime: '08:00',
   autoArchiveProjectsOnComplete: false,
   hideCategories: false,
+  mealsOnToday: 'strip' as MealsOnToday,
+  mealCookTasks: true,
   remindersImportEnabled: false,
   remindersImportDelete: true,
   groceryImportEnabled: false,
@@ -460,6 +494,8 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
+  mealsOnToday: 'strip',
+  mealCookTasks: true,
   remindersImportEnabled: false,
   remindersImportListId: null,
   remindersImportConfirmedListId: null,
@@ -518,6 +554,15 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
+    const storedMealsOnToday = dbGetSetting('mealsOnToday') as MealsOnToday | null;
+    const mealsOnToday: MealsOnToday =
+      storedMealsOnToday && MEALS_ON_TODAY.includes(storedMealsOnToday) ? storedMealsOnToday : 'strip';
+    // Defaults on, like hapticsEnabled — but unlike it, "on" here is a change
+    // for an existing install rather than a preservation of what it had. It's
+    // safe to default on anyway because nothing is backfilled: no cook task
+    // exists for any meal already on the calendar, only for ones planned after
+    // the update.
+    const mealCookTasks = dbGetSetting('mealCookTasks') !== 'false';
     const remindersImportEnabled = dbGetSetting('remindersImportEnabled') === 'true';
     // `!== 'false'`, not `=== 'true'`, because this one defaults ON — an
     // install that predates the setting has no row, and the usual comparison
@@ -582,7 +627,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       }
     }
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, mealsOnToday, mealCookTasks, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, newTaskDefaults, initialized: true });
   },
 
   /**
@@ -785,6 +830,21 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setHideCategories(on: boolean) {
     dbSetSetting('hideCategories', on ? 'true' : 'false');
     set({ hideCategories: on });
+  },
+
+  setMealsOnToday(mode: MealsOnToday) {
+    dbSetSetting('mealsOnToday', mode);
+    set({ mealsOnToday: mode });
+  },
+
+  // Turning this off deliberately leaves the cook tasks already spawned where
+  // they are. They're ordinary tasks by now — the user may have filed, dated or
+  // half-finished them — and a setting that reached back and deleted rows on
+  // being flipped would be doing something no other display or behaviour
+  // setting in this app does.
+  setMealCookTasks(on: boolean) {
+    dbSetSetting('mealCookTasks', on ? 'true' : 'false');
+    set({ mealCookTasks: on });
   },
 
   setRemindersImportEnabled(on: boolean) {
