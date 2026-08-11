@@ -48,7 +48,7 @@ export const AI_FEATURES: AiFeatureMeta[] = [
   {
     id: 'recipeExtraction',
     label: 'Recipe import',
-    hint: 'Pulls a name, servings, and shopping list out of pasted recipe text',
+    hint: 'Pulls a name, servings, and shopping list out of pasted recipe text or a photo',
   },
 ];
 

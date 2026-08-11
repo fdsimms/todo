@@ -7,6 +7,13 @@ import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const REQUEST_TIMEOUT_MS = 15_000;
+/**
+ * A photo has to be uploaded before the model can start, and then costs a vision
+ * prefill on top of the same 2,000-token completion. 15s is comfortable for a
+ * paste and routinely isn't for a photo on cellular — and a spurious "timed out"
+ * on a shot the user just framed is the worst failure this feature has.
+ */
+const IMAGE_REQUEST_TIMEOUT_MS = 40_000;
 
 interface AnthropicResponse {
   stop_reason?: string;
@@ -31,9 +38,10 @@ async function callAnthropic(
   body: Record<string, unknown>,
   apiKey: string,
   model: AiModelId,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<AnthropicResponse> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(API_URL, {
@@ -394,6 +402,27 @@ function parseExtractedItems(
   return result.slice(0, MAX_RECIPE_ITEMS);
 }
 
+/**
+ * The four the Messages API accepts. `recipePhoto.ts` always re-encodes to JPEG,
+ * so in practice only the first one is ever produced — the union exists so a
+ * caller that already holds a PNG doesn't have to launder it through one.
+ */
+export type RecipeImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
+
+export interface RecipeImage {
+  /** Bare base64 — no `data:` prefix. */
+  base64: string;
+  mediaType: RecipeImageMediaType;
+}
+
+/**
+ * Pasted text, or a photo of the page it's printed on. Everything past the
+ * message body — the tool, the schema, the validation — is identical for both,
+ * which is the whole reason this is one function taking a union rather than two
+ * functions sharing a helper.
+ */
+export type RecipeSource = string | RecipeImage;
+
 export interface ExtractedRecipe {
   /** Empty when the text didn't give one. */
   name: string;
@@ -405,8 +434,20 @@ export interface ExtractedRecipe {
 }
 
 /**
+ * The paragraphs that don't care where the recipe came from — shop-naming,
+ * quantities, which aisle. Shared verbatim by both sources so a photo and a
+ * paste can't drift into reading the ingredients differently.
+ */
+function sharedRecipeInstructions(availableAisles: string[]): string[] {
+  return [
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method for the shopping list, and skip water.',
+    `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
+  ];
+}
+
+/**
  * Pulls a whole recipe — name, servings, prep time, and the shopping list —
- * out of pasted text.
+ * out of pasted text or a photo of the page.
  *
  * The one genuinely hard thing here that a parser can't do: recipe
  * ingredients are written for cooking, not for buying ("3 cloves garlic,
@@ -414,22 +455,53 @@ export interface ExtractedRecipe {
  * `suggestRecipeGroceries` below is a thin wrapper over this — one prompt,
  * one schema, one validator — so GroceryAISheet's "From a recipe" mode keeps
  * working exactly as it did before this existed.
+ *
+ * A photo changes exactly two things: the message content becomes a block
+ * array with the image first (the ordering Anthropic recommends for a single
+ * image), and the instructions gain a paragraph about page furniture and one
+ * about refusing to guess at an illegible shot. The text path still sends a
+ * bare string, so its request body is byte-for-byte what it always was.
  */
 export async function extractRecipe(
-  text: string,
+  source: RecipeSource,
   availableAisles: string[],
 ): Promise<ExtractedRecipe> {
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = { name: '', servings: null, prepMinutes: null, ingredients: [] };
-  const source = text.trim().slice(0, MAX_RECIPE_CHARS);
-  if (!source) return empty;
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECIPE_CHARS) : '';
+  // Same "nothing in, no network call" guard for both sources.
+  if (image ? !image.base64 : !text) return empty;
+
+  const prompt = image
+    ? [
+        'This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page. If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.',
+        ...sharedRecipeInstructions(availableAisles),
+        'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient you cannot actually read.',
+      ].join('\n\n')
+    : [
+        'Extract this recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
+        ...sharedRecipeInstructions(availableAisles),
+        `Recipe:\n${text}`,
+      ].join('\n\n');
+
+  const content = image
+    ? [
+        {
+          type: 'image',
+          source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+        },
+        { type: 'text', text: prompt },
+      ]
+    : prompt;
 
   const data = await callAnthropic({
     max_tokens: 2000,
     tools: [{
       name: 'extract_recipe',
-      description: 'Extract a recipe\'s name, servings, prep time, and shopping list from pasted text',
+      description: 'Extract a recipe\'s name, servings, prep time, and shopping list',
       input_schema: {
         type: 'object',
         properties: {
@@ -472,16 +544,8 @@ export async function extractRecipe(
       },
     }],
     tool_choice: { type: 'tool', name: 'extract_recipe' },
-    messages: [{
-      role: 'user',
-      content: [
-        'Extract this recipe: its name, how many it serves, its total prep/cook time, and its shopping list.',
-        'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Give quantities in what you would buy. Ignore the method for the shopping list, and skip water.',
-        `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
-        `Recipe:\n${source}`,
-      ].join('\n\n'),
-    }],
-  }, apiKey, model);
+    messages: [{ role: 'user', content }],
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
@@ -501,13 +565,14 @@ export async function extractRecipe(
 }
 
 /**
- * Pulls just the shopping items out of a pasted recipe — GroceryAISheet's
- * "From a recipe" mode, which has no use for the name/servings/prep time.
+ * Pulls just the shopping items out of a pasted or photographed recipe —
+ * GroceryAISheet's "From a recipe" mode, which has no use for the
+ * name/servings/prep time.
  */
 export async function suggestRecipeGroceries(
-  text: string,
+  source: RecipeSource,
   availableAisles: string[],
 ): Promise<RecipeGroceryItem[]> {
-  const extracted = await extractRecipe(text, availableAisles);
+  const extracted = await extractRecipe(source, availableAisles);
   return extracted.ingredients;
 }

@@ -117,7 +117,7 @@ const toolUseResponse = (toolName: string, input: Record<string, unknown>) => ({
 
 /** Make fetch resolve once with the given body (default: 200 OK). */
 function mockFetchOnce(body: object, status = 200) {
-  jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+  return jest.spyOn(global, 'fetch').mockResolvedValueOnce({
     ok: status >= 200 && status < 300,
     status,
     json: () => Promise.resolve(body),
@@ -722,5 +722,118 @@ describe('extractRecipe', () => {
   it('throws when the model returns no tool use', async () => {
     mockFetchOnce({ content: [{ type: 'text' }] });
     await expect(extractRecipe('some recipe', AISLES)).rejects.toThrow('No suggestions returned');
+  });
+
+  it('sends pasted text as a bare string, not a content block array', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+    await extractRecipe('some recipe', AISLES);
+
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(typeof body.messages[0].content).toBe('string');
+    expect(body.messages[0].content).toContain('Recipe:\nsome recipe');
+  });
+
+  describe('from a photo', () => {
+    const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
+
+    it('sends the image block ahead of the text block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe(PHOTO, AISLES);
+
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      const content = body.messages[0].content;
+      expect(Array.isArray(content)).toBe(true);
+      expect(content[0]).toEqual({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+      });
+      expect(content[1].type).toBe('text');
+      // The photo prompt, not the paste one — no text was pasted to quote back.
+      expect(content[1].text).toContain('This is a photo of a recipe');
+      expect(content[1].text).not.toContain('Recipe:\n');
+    });
+
+    it('returns the same shape the text path does', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Weeknight Chili',
+          servings: 4,
+          prepMinutes: 45,
+          items: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+        })
+      );
+      await expect(extractRecipe(PHOTO, AISLES)).resolves.toEqual({
+        name: 'Weeknight Chili',
+        servings: 4,
+        prepMinutes: 45,
+        ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+      });
+    });
+
+    it('runs the shopping list through the same validator', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Chili',
+          items: [
+            { name: 'nduja', quantity: '', aisle: 'Charcuterie' },
+            { name: 'Garlic', quantity: '1 bulb', aisle: 'Produce' },
+            { name: 'garlic', quantity: '2 cloves', aisle: 'Produce' },
+          ],
+        })
+      );
+      const result = await extractRecipe(PHOTO, AISLES);
+      expect(result.ingredients).toHaveLength(2);
+      expect(result.ingredients[0].aisle).toBe('Other');
+    });
+
+    it('does not call the network for an empty image', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
+        name: '', servings: null, prepMinutes: null, ingredients: [],
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('throws when the model returns no tool use', async () => {
+      mockFetchOnce({ content: [{ type: 'text' }] });
+      await expect(extractRecipe(PHOTO, AISLES)).rejects.toThrow('No suggestions returned');
+    });
+
+    it('allows longer than the 15s text timeout before aborting', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+        return new Promise((_resolve, reject) => {
+          (init as RequestInit).signal?.addEventListener('abort', () => {
+            const err = new Error('Aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      const promise = extractRecipe(PHOTO, AISLES);
+      const assertion = expect(promise).rejects.toThrow('Request timed out');
+
+      // Still in flight where a pasted recipe would already have been abandoned.
+      let settled = false;
+      void promise.catch(() => { settled = true; });
+      await jest.advanceTimersByTimeAsync(15_000);
+      expect(settled).toBe(false);
+
+      await jest.advanceTimersByTimeAsync(25_000);
+      await assertion;
+    });
+
+    it('is accepted by suggestRecipeGroceries too', async () => {
+      mockFetchOnce(
+        toolUseResponse('extract_recipe', {
+          name: 'Chili',
+          items: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' }],
+        })
+      );
+      await expect(suggestRecipeGroceries(PHOTO, AISLES)).resolves.toEqual([
+        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry' },
+      ]);
+    });
   });
 });
