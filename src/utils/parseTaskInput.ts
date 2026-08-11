@@ -616,6 +616,60 @@ export function parsePhoneInput(input: string): ParsedPhone | null {
   return { number, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedEmail {
+  /** The address exactly as it was typed, since that's what gets stored. */
+  address: string;
+  /** Input minus the matched address, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// A local part, "@", and a dotted domain ending in a 2+ letter TLD — enough to
+// catch "jane@example.com" typed or dictated into a title without trying to be
+// a full RFC 5322 validator. mailtoUrl (src/utils/email.ts) is equally
+// permissive at the one point a machine has to read the stored address.
+const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+
+/**
+ * Finds an email address pasted or dictated into a quick-add title — "email
+ * jane@example.com about the invoice" — and splits it out, exactly as
+ * parsePhoneInput does for a number. Same "anywhere in the text, not
+ * suffix-anchored" rule, and the same refusal to fire when the address *is*
+ * the whole input.
+ */
+export function parseEmailInput(input: string): ParsedEmail | null {
+  const match = input.match(EMAIL_PATTERN);
+  if (!match || match.index === undefined) return null;
+  const address = match[0];
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + address.length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
+  if (!cleanTitle) return null;
+
+  return { address, cleanTitle, matchStart, matchEnd };
+}
+
+export type ContactIntent = 'phone' | 'email';
+
+// Only the leading word counts — "Call Kristen" is an instruction, "ask her
+// to call me back" merely mentions one mid-sentence.
+const CONTACT_INTENT_PATTERN = /^(call|text|email)\b/i;
+
+/**
+ * Whether a title opens with a contact verb the task has no data to back up
+ * — "Call Kristen", "Text the plumber", "Email the landlord" — so a nudge
+ * toward setting Task.phoneNumber/emailAddress (phone.ts/email.ts) is worth
+ * showing. This only reads the title; callers decide whether the relevant
+ * field is already set before acting on the result.
+ */
+export function detectContactIntent(title: string): ContactIntent | null {
+  const match = title.trim().match(CONTACT_INTENT_PATTERN);
+  if (!match) return null;
+  return match[1].toLowerCase() === 'email' ? 'email' : 'phone';
+}
+
 export interface ParsedDuration {
   /** The countdown target in whole minutes. */
   minutes: number;

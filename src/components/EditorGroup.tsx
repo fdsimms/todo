@@ -35,6 +35,13 @@ interface Props {
    * tap would be the change trading one kind of friction for another.
    */
   startOpen?: boolean;
+  /**
+   * Open for the moment, even with nothing set — for a caller steering the
+   * user at a specific row inside a group that would otherwise fold away
+   * (e.g. a nudge toward Phone in "More" on a still-empty task). Unlike
+   * `startOpen` this is expected to flip back off once its reason is gone.
+   */
+  forceOpen?: boolean;
 }
 
 /**
@@ -53,7 +60,7 @@ interface Props {
  * tap away and nothing has moved screens — see `editorFold.ts` for the split,
  * which is where the behaviour is actually tested.
  */
-export function EditorGroup({ label, rows, divider = 'icon', startOpen }: Props) {
+export function EditorGroup({ label, rows, divider = 'icon', startOpen, forceOpen }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -71,7 +78,7 @@ export function EditorGroup({ label, rows, divider = 'icon', startOpen }: Props)
   const [openedByHand, setOpenedByHand] = useState(false);
   const [showMore, setShowMore] = useState(false);
 
-  const open = startOpen || !fold.folded || openedByHand;
+  const open = startOpen || forceOpen || !fold.folded || openedByHand;
 
   const toggle = (fn: () => void) => {
     haptics.tap();

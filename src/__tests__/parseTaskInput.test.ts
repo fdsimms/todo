@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseDurationInput, parseCategoryAndTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseCategoryAndTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -510,6 +510,76 @@ describe('parsePhoneInput', () => {
   it('returns null when there is no number', () => {
     expect(parsePhoneInput('call the doctor')).toBeNull();
     expect(parsePhoneInput('')).toBeNull();
+  });
+});
+
+// ─── parseEmailInput ───
+
+describe('parseEmailInput', () => {
+  it('extracts an address trailing the title', () => {
+    const result = parseEmailInput('email the landlord jane@example.com');
+    expect(result?.address).toBe('jane@example.com');
+    expect(result?.cleanTitle).toBe('email the landlord');
+  });
+
+  it('extracts an address in the middle of the title', () => {
+    const result = parseEmailInput('email jane@example.com about the invoice');
+    expect(result?.address).toBe('jane@example.com');
+    expect(result?.cleanTitle).toBe('email about the invoice');
+  });
+
+  it('handles dotted local parts and subdomains', () => {
+    const result = parseEmailInput('email j.doe@mail.example.co.uk about it');
+    expect(result?.address).toBe('j.doe@mail.example.co.uk');
+  });
+
+  it('drops trailing sentence punctuation', () => {
+    const result = parseEmailInput('email jane@example.com.');
+    expect(result?.address).toBe('jane@example.com');
+  });
+
+  it('returns null when the entire input is the address', () => {
+    expect(parseEmailInput('jane@example.com')).toBeNull();
+  });
+
+  it('returns null when there is no address', () => {
+    expect(parseEmailInput('email the landlord')).toBeNull();
+    expect(parseEmailInput('')).toBeNull();
+  });
+});
+
+// ─── detectContactIntent ───
+
+describe('detectContactIntent', () => {
+  it('detects a leading "Call" as a phone intent', () => {
+    expect(detectContactIntent('Call Kristen')).toBe('phone');
+  });
+
+  it('detects a leading "Text" as a phone intent', () => {
+    expect(detectContactIntent('Text the plumber')).toBe('phone');
+  });
+
+  it('detects a leading "Email" as an email intent', () => {
+    expect(detectContactIntent('Email the landlord')).toBe('email');
+  });
+
+  it('is case-insensitive', () => {
+    expect(detectContactIntent('call mom')).toBe('phone');
+    expect(detectContactIntent('EMAIL accounting')).toBe('email');
+  });
+
+  it('only matches at the start of the title', () => {
+    expect(detectContactIntent('ask her to call me back')).toBeNull();
+    expect(detectContactIntent('remember to email the invoice')).toBeNull();
+  });
+
+  it('does not match a word that merely starts with the verb', () => {
+    expect(detectContactIntent('Calligraphy practice')).toBeNull();
+  });
+
+  it('returns null for an unrelated title', () => {
+    expect(detectContactIntent('buy milk')).toBeNull();
+    expect(detectContactIntent('')).toBeNull();
   });
 });
 
