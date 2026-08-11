@@ -62,6 +62,7 @@ import {
   isPrepTimerRunning,
 } from '../utils/recipeTimer';
 import {
+  alternativeCaptions,
   flattenRecipeIngredients,
   recipeMap,
   resolveComponents,
@@ -415,6 +416,25 @@ export function RecipeDetailScreen() {
   const componentGroups = useMemo(() => choiceHeadersOf(recipe.components), [recipe.components]);
   const ingredientGroups = useMemo(() => choiceHeadersOf(recipe.ingredients), [recipe.ingredients]);
 
+  // The header above only opens at a group's *first* option, so on its own every
+  // other option reads as an ordinary line — and a list you read as ordinary is
+  // a list you buy all of. Each option carries its own "or manchego" instead.
+  // Built off the *resolved* components, not the stored links: the row shows the
+  // referenced recipe's live name, and a caption naming the captured one would
+  // go stale the moment that recipe is renamed.
+  const componentAlternatives = useMemo(
+    () => alternativeCaptions(components.map(c => ({
+      id: c.component.id,
+      choiceGroup: c.component.choiceGroup,
+      name: c.name || 'Deleted recipe',
+    }))),
+    [components],
+  );
+  const ingredientAlternatives = useMemo(
+    () => alternativeCaptions(recipe.ingredients),
+    [recipe.ingredients],
+  );
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -434,6 +454,7 @@ export function RecipeDetailScreen() {
     const choiceHeader = ingredientGroups.headers.get(ingredient.id);
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
+    const alternativeNote = ingredientAlternatives.get(ingredient.id);
     return (
       <View>
         {!!sectionHeader && <Text style={styles.ingredientSectionHeader}>{sectionHeader}</Text>}
@@ -480,6 +501,9 @@ export function RecipeDetailScreen() {
                 {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`].filter(Boolean).join(' · ')}
               </Text>
             )}
+            {!!alternativeNote && (
+              <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>
+            )}
           </View>
           {!!scaledQuantity && (
             <View style={[styles.qtyPill, scaledHere && styles.qtyPillScaled]}>
@@ -521,6 +545,7 @@ export function RecipeDetailScreen() {
     const groupHeader = componentGroups.headers.get(resolved.component.id);
     const group = resolved.component.choiceGroup;
     const isDefault = componentGroups.defaults.has(resolved.component.id);
+    const alternativeNote = componentAlternatives.get(resolved.component.id);
     return (
       <View key={resolved.component.id}>
         {!!groupHeader && (
@@ -569,6 +594,9 @@ export function RecipeDetailScreen() {
             <Text style={styles.componentMeta} numberOfLines={1}>
               {target ? describeRecipe(target) : 'No longer in your recipes'}
             </Text>
+            {!!alternativeNote && (
+              <Text style={styles.alternativeNote} numberOfLines={1}>{alternativeNote}</Text>
+            )}
           </View>
           {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
           {!marker && (
@@ -1156,6 +1184,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontStyle: 'italic',
+  },
+  // Upright and a step brighter than the prep line above it, which is tertiary
+  // italic: prep is a note about this line, "or manchego" is a fact about what
+  // you're allowed to leave in the shop.
+  alternativeNote: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+    marginTop: 2,
   },
   componentBrokenName: {
     color: colors.textTertiary,
