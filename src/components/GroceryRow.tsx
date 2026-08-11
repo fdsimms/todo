@@ -181,6 +181,14 @@ export const GroceryRow = React.memo(function GroceryRow({
               {item.note}
             </Text>
           )}
+          {/* A note the user wrote themselves outranks this — it's their own
+              word on the row, and the two together would be one caption too
+              many. */}
+          {!item.note && !!item.sourceRecipeTitle && (
+            <Text style={styles.note} numberOfLines={1}>
+              From: {item.sourceRecipeTitle}
+            </Text>
+          )}
         </View>
 
         {item.favorite && !item.checked && (

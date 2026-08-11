@@ -81,6 +81,8 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     lastPurchasedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }
@@ -1362,6 +1364,34 @@ describe('addFromPlan', () => {
     expect(result.skippedInCart.map(i => i.name)).toEqual(['Garlic']);
     expect(result.alreadyOnList.map(i => i.name)).toEqual(['Onions']);
     expect(result.added.map(i => i.name)).toEqual(['Carrots', 'Thyme']);
+  });
+
+  it('attributes a newly created row to the recipe it came from', () => {
+    seed([]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Chili powder', quantity: '2 tbsp', aisle: 'Spices', sourceRecipeId: 'r1', sourceRecipeTitle: 'Chili' },
+    ]);
+
+    const item = useGroceryStore.getState().itemByNameKey('chili powder')!;
+    expect(item.sourceRecipeId).toBe('r1');
+    expect(item.sourceRecipeTitle).toBe('Chili');
+  });
+
+  it('never overwrites the source of a row that already existed', () => {
+    const parsley = makeItem({
+      name: 'Parsley', onList: false, aisle: 'Produce',
+      sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe',
+    });
+    seed([parsley]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce', sourceRecipeId: 'r-new', sourceRecipeTitle: 'New recipe' },
+    ]);
+
+    const item = useGroceryStore.getState().itemById(parsley.id)!;
+    expect(item.sourceRecipeId).toBe('r-original');
+    expect(item.sourceRecipeTitle).toBe('Original recipe');
   });
 });
 

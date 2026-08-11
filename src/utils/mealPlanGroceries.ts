@@ -25,6 +25,14 @@ export interface PlannedIngredient {
   aisle: string | null;
   /** "Tue ragù" — abbreviated weekday plus dish, the row's expandable source. */
   source: string;
+  /**
+   * The recipe this ingredient came from, carried through to attribute a
+   * resulting GroceryItem. Optional so a hand-built fixture in a test doesn't
+   * need one; both collectPlannedIngredients and plannedIngredientsForRecipe
+   * always set it in real use.
+   */
+  recipeId?: string;
+  recipeTitle?: string;
 }
 
 /**
@@ -59,6 +67,8 @@ export function collectPlannedIngredients(
         quantity: ingredient.quantity,
         aisle: ingredient.aisle,
         source,
+        recipeId: recipe.id,
+        recipeTitle: recipe.name,
       });
     }
   }
@@ -78,6 +88,8 @@ export function plannedIngredientsForRecipe(recipe: Recipe): PlannedIngredient[]
     quantity: [ingredient.quantity, ingredient.prep].filter(Boolean).join(', '),
     aisle: ingredient.aisle,
     source: recipe.name,
+    recipeId: recipe.id,
+    recipeTitle: recipe.name,
   }));
 }
 
@@ -164,6 +176,13 @@ export interface ClassifiedIngredient {
   category: PlanCategory;
   /** Set only for `probablyHave` — grocerySuggest.probablyHaveReason's "bought 6× · last on 12 Jul". */
   reason: string | null;
+  /**
+   * The single recipe behind this row, when there is one — null once a row
+   * has merged ingredients from more than one recipe, since crediting either
+   * one over the other would be a guess. See PlannedRow.sourceRecipeId.
+   */
+  sourceRecipeId: string | null;
+  sourceRecipeTitle: string | null;
 }
 
 /**
@@ -215,6 +234,9 @@ export function classifyPlanned(
     // deserves a chip saying so rather than rendering none at all.
     const quantity = describeQuantities(group.map(g => g.quantity));
     const sources = group.map(g => g.source);
+    const recipeIds = new Set(group.map(g => g.recipeId));
+    const sourceRecipeId = recipeIds.size === 1 ? (group[0]!.recipeId ?? null) : null;
+    const sourceRecipeTitle = sourceRecipeId ? (group[0]!.recipeTitle ?? null) : null;
 
     let category: PlanCategory;
     let reason: string | null = null;
@@ -226,7 +248,7 @@ export function classifyPlanned(
       category = 'needToBuy';
     }
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category, reason });
+    rows.push({ nameKey: key, name, aisle, quantity, sources, category, reason, sourceRecipeId, sourceRecipeTitle });
   }
   return rows;
 }

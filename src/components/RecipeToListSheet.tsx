@@ -128,7 +128,13 @@ export function RecipeToListSheet({ visible, recipe, onClose }: Props) {
     if (!recipe) { onClose(); return; }
     const rows: PlannedRow[] = classified
       .filter(r => r.category !== 'inTrolley' && ticked.has(r.nameKey))
-      .map(r => ({ name: r.name, quantity: r.quantity || null, aisle: r.aisle }));
+      .map(r => ({
+        name: r.name,
+        quantity: r.quantity || null,
+        aisle: r.aisle,
+        sourceRecipeId: recipe.id,
+        sourceRecipeTitle: recipe.name,
+      }));
 
     if (rows.length === 0) { onClose(); return; }
 

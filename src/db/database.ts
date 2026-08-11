@@ -416,6 +416,10 @@ export function initDatabase(): void {
     // Nullable like phone_number, and null is what every existing row wants:
     // no task written before this shipped has an address to email.
     'ALTER TABLE tasks ADD COLUMN email_address TEXT',
+    // See GroceryItem.sourceRecipeId/sourceRecipeTitle — both null on every
+    // existing row, same as an item typed by hand always will be.
+    'ALTER TABLE grocery_items ADD COLUMN source_recipe_id TEXT',
+    'ALTER TABLE grocery_items ADD COLUMN source_recipe_title TEXT',
     // 0 for every existing store — nothing predating this feature was ever
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
@@ -1191,6 +1195,8 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastPurchasedAt: (row.last_purchased_at as string) ?? null,
     createdAt: row.created_at as string,
     onHandUntil: (row.on_hand_until as string) ?? null,
+    sourceRecipeId: (row.source_recipe_id as string) ?? null,
+    sourceRecipeTitle: (row.source_recipe_title as string) ?? null,
   };
 }
 
@@ -1205,14 +1211,16 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
   db.runSync(
     `INSERT INTO grocery_items
       (id, name, name_key, aisle, quantity, note, on_list, checked, in_catalog, sort_order,
-       favorite, purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       favorite, purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
+       source_recipe_id, source_recipe_title)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
+      item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null,
     ]
   );
 }
@@ -1222,14 +1230,15 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
     `UPDATE grocery_items SET
        name=?, name_key=?, aisle=?, quantity=?, note=?, on_list=?, checked=?, in_catalog=?,
        sort_order=?, favorite=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
-       on_hand_until=?
+       on_hand_until=?, source_recipe_id=?, source_recipe_title=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
       item.favorite ? 1 : 0, item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
-      item.onHandUntil ?? null, item.id,
+      item.onHandUntil ?? null,
+      item.sourceRecipeId ?? null, item.sourceRecipeTitle ?? null, item.id,
     ]
   );
 }

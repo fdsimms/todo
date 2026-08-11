@@ -561,6 +561,15 @@ export interface GroceryItem {
   // Self-expiring: once a future date passes, this reads exactly as null
   // again, so "Got it" never needs a separate action to wear off.
   onHandUntil: string | null;
+  // The recipe this item was first added from, if any. Set only when
+  // addFromPlan creates a genuinely new catalog row — never on a row that
+  // already existed, so re-adding a known item (typed, imported, or from a
+  // different recipe) never overwrites where it originally came from. A
+  // snapshot pair rather than a live id lookup: sourceRecipeTitle is captured
+  // once at creation and never refreshed, resolve-or-shrug like every other
+  // cross-row pointer here — a later recipe rename or delete doesn't touch it.
+  sourceRecipeId: string | null;
+  sourceRecipeTitle: string | null;
 }
 
 // Shorter than TITLE_MAX_LENGTH on purpose — this is a shelf label, not a task
