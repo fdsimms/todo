@@ -686,6 +686,27 @@ export interface RecipeIngredient {
   // grouping — and adding to the grocery list still flattens straight
   // through (mealPlanGroceries' PlannedIngredient never carries it).
   section: string | null;
+  // Which either/or slot this line fills — "Pepper", "Cheese". Lines sharing a
+  // non-null group are alternatives ("Serrano *or* jalapeño"), of which exactly
+  // one is bought; null (the common case) means the line is always needed.
+  // Same label-on-a-flat-list convention `section` above uses, and the same one
+  // RecipeComponent.choiceGroup uses a layer up.
+  //
+  // **This is why an alternative is two rows and not one line reading "serrano
+  // or jalapeño".** `nameKey` is the bridge to the grocery catalog, so the
+  // one-line spelling mints a catalog item literally called "serrano or
+  // jalapeño" — a row that can never match a real purchase, never ranks in Buy
+  // again, and has to be hand-corrected on the list every single time. Two rows
+  // each carry a clean name, and choosing between them at add time is what puts
+  // exactly one of them in the trolley.
+  //
+  // **Deliberately not shared with RecipeComponent's groups**, even though the
+  // labels and the resolution work alike: an ingredient names something you can
+  // put in a trolley and a component names a dish (see RecipeComponent), so they
+  // stay two lists and one *convention*. Chosen ids from both do travel together
+  // in MealPlanEntry.recipeChoices, which is safe because an id says which list
+  // it came from by which list holds it.
+  choiceGroup: string | null;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak
@@ -722,6 +743,23 @@ export interface RecipeComponent {
   // live component shows the referenced recipe's current name, so a rename
   // propagates the way the whole feature promises.
   name: string;
+  // Which either/or slot this component fills — "Side", "Starch". Components
+  // sharing a non-null group are *alternatives*: exactly one of them is cooked,
+  // so exactly one contributes ingredients and prep steps to any given meal.
+  // null (the common case) means unconditional, and every reader that predates
+  // this field behaves exactly as it did.
+  //
+  // **A label on the flat array, not a nested group type** — the same call
+  // RecipeIngredient.section makes, and for the same reason: `components` stays
+  // one ordered list everywhere outside the pickers, so resolveComponents,
+  // recipesUsing and the cycle check need no reshaping.
+  //
+  // **The default is the group's first component in list order**, deliberately
+  // rather than a defaultComponentId on the recipe: an id is a second thing to
+  // keep in step with the list (and to repair when that component is removed),
+  // while order is already there. makeComponentDefault moves a link to the
+  // front of its group, which is the whole of "make this the usual one".
+  choiceGroup: string | null;
 }
 
 // Which meal of the day a recipe is *for* — a browsing/filtering tag, not a
@@ -883,6 +921,11 @@ export const RECIPE_NAME_MAX_LENGTH = 80;
 // A byline, not a title — "NYT Cooking" not a full citation.
 export const RECIPE_SOURCE_MAX_LENGTH = 60;
 
+// A choice group's label ("Side", "Starch") — the same kind of short component
+// name an ingredient section carries, and the same ceiling, for the same
+// reason: it renders as a section heading above the options it names.
+export const RECIPE_CHOICE_GROUP_MAX_LENGTH = RECIPE_SECTION_MAX_LENGTH;
+
 // Which meal of the day a plan entry sits in. A closed set rather than free
 // text: it orders the day, and a day whose sections are user-defined strings
 // can't be sorted without inventing a second ordering table.
@@ -964,6 +1007,34 @@ export interface MealPlanEntry {
    * Leftover.finishedAt for why the two states are separate.
    */
   leftoverId: string | null;
+  /**
+   * Which alternative was picked for each of the recipe's choice groups — a
+   * list of ids, each naming either a `RecipeComponent` link ("roast potatoes
+   * rather than mash") or a `RecipeIngredient` line ("jalapeño rather than
+   * serrano"). Empty means every group falls back to its default, which is what
+   * every entry planned before this shipped says.
+   *
+   * **The pick lives here rather than on the recipe** because it is a fact
+   * about a cooking, not about the dish: Tuesday's steak comes with mash and
+   * Friday's with roast potatoes, out of one recipe. Same split cookedAt
+   * already makes — the recipe is the document, the entry is one instance of
+   * having planned it.
+   *
+   * **One list for both kinds**, rather than two fields, because every reader
+   * asks the same question of it ("did this group's option win?") and an id
+   * already says which kind it is by which list holds it. A pick that names
+   * neither is simply a pick nothing matches.
+   *
+   * A flat list rather than a `{group: id}` map, because an id is unique across
+   * the whole library — and it has to be, since a choice group can sit on a
+   * *component* several levels down rather than on the recipe this entry points
+   * at, so a group name alone wouldn't say whose group it is.
+   *
+   * Resolve-or-shrug like every other cross-row pointer here: an id whose row
+   * has since been removed names no option, so its group quietly falls back to
+   * its default rather than the meal losing its side.
+   */
+  recipeChoices: string[];
 }
 
 /**

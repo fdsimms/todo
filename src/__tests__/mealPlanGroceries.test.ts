@@ -29,6 +29,7 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     prep: null,
     purpose: null,
     section: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
@@ -76,6 +77,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
     leftoverId: null,
+    recipeChoices: [],
     ...overrides,
   };
 }
@@ -153,10 +155,34 @@ describe('collectPlannedIngredients', () => {
     expect(collectPlannedIngredients(entries, recipesById, RANGE)[0].aisle).toBe('Produce');
   });
 
+  it('gives each night its own side when one recipe is planned twice', () => {
+    const mash = recipe('Mash', [ing('Butter')]);
+    const roast = recipe('Roast potatoes', [ing('Oil')]);
+    const steak = recipe('Steak dinner', [ing('Steak')]);
+    steak.components = [
+      { id: 'c-mash', recipeId: mash.id, name: 'Mash', choiceGroup: 'Side' },
+      { id: 'c-roast', recipeId: roast.id, name: 'Roast potatoes', choiceGroup: 'Side' },
+    ];
+    const recipesById = new Map([[steak.id, steak], [mash.id, mash], [roast.id, roast]]);
+    const entries = [
+      entry('2026-08-11', steak.id), // Tuesday, no pick — the default
+      entry('2026-08-14', steak.id, { recipeChoices: ['c-roast'] }), // Friday, roast
+    ];
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect(result.map(r => [r.name, r.source])).toEqual([
+      ['Steak', 'Tue Steak dinner'],
+      ['Butter', 'Tue Mash'],
+      ['Steak', 'Fri Steak dinner'],
+      ['Oil', 'Fri Roast potatoes'],
+    ]);
+  });
+
   it('brings a component\'s ingredients along, sourced to the part that wants them', () => {
     const mash = recipe('Mash', [ing('Potatoes', { quantity: '1 kg' })]);
     const steak = recipe('Steak with mash', [ing('Steak', { quantity: '2' })]);
-    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash', choiceGroup: null }];
     const recipesById = new Map([[steak.id, steak], [mash.id, mash]]);
     const entries = [entry('2026-08-11', steak.id)]; // Tuesday
 
@@ -218,7 +244,7 @@ describe('plannedIngredientsForRecipe', () => {
   it('includes a component\'s ingredients, each sourced to the recipe it\'s written on', () => {
     const mash = recipe('Mash', [ing('Potatoes'), ing('Butter', { quantity: '50 g' })]);
     const steak = recipe('Steak with mash', [ing('Steak')]);
-    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash' }];
+    steak.components = [{ id: 'c1', recipeId: mash.id, name: 'Mash', choiceGroup: null }];
 
     const result = plannedIngredientsForRecipe(steak, new Map([[steak.id, steak], [mash.id, mash]]));
 
@@ -230,9 +256,26 @@ describe('plannedIngredientsForRecipe', () => {
     expect(result[2].recipeId).toBe(mash.id);
   });
 
+  it('shops for the alternative this meal picked, not both', () => {
+    const mash = recipe('Mash', [ing('Potatoes'), ing('Butter')]);
+    const roast = recipe('Roast potatoes', [ing('Potatoes'), ing('Oil')]);
+    const steak = recipe('Steak dinner', [ing('Steak')]);
+    steak.components = [
+      { id: 'c-mash', recipeId: mash.id, name: 'Mash', choiceGroup: 'Side' },
+      { id: 'c-roast', recipeId: roast.id, name: 'Roast potatoes', choiceGroup: 'Side' },
+    ];
+    const recipesById = new Map([[steak.id, steak], [mash.id, mash], [roast.id, roast]]);
+
+    const onDefault = plannedIngredientsForRecipe(steak, recipesById);
+    expect(onDefault.map(r => r.name)).toEqual(['Steak', 'Potatoes', 'Butter']);
+
+    const onRoast = plannedIngredientsForRecipe(steak, recipesById, { chosen: ['c-roast'] });
+    expect(onRoast.map(r => r.name)).toEqual(['Steak', 'Potatoes', 'Oil']);
+  });
+
   it('stands for itself when the caller has no library to resolve against', () => {
     const steak = recipe('Steak with mash', [ing('Steak')]);
-    steak.components = [{ id: 'c1', recipeId: 'r-mash', name: 'Mash' }];
+    steak.components = [{ id: 'c1', recipeId: 'r-mash', name: 'Mash', choiceGroup: null }];
 
     expect(plannedIngredientsForRecipe(steak).map(r => r.name)).toEqual(['Steak']);
   });

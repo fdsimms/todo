@@ -45,12 +45,13 @@ function ing(name: string, overrides: Partial<RecipeIngredient> = {}): RecipeIng
     prep: null,
     purpose: null,
     section: null,
+    choiceGroup: null,
     ...overrides,
   };
 }
 
-function component(recipeId: string, name: string): RecipeComponent {
-  return { id: `c-${++seq}`, recipeId, name };
+function component(recipeId: string, name: string, choiceGroup: string | null = null): RecipeComponent {
+  return { id: `c-${++seq}`, recipeId, name, choiceGroup };
 }
 
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
@@ -92,14 +93,14 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null, section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: 'peeled', purpose: null, section: null, choiceGroup: null },
     ]);
   });
 
-  it('defaults prep, purpose and section to null for a blob written before the fields existed', () => {
+  it('defaults the later fields to null for a blob written before they existed', () => {
     const stored = JSON.stringify([{ id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce' }]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null, section: null },
+      { id: 'a', name: 'Garlic', nameKey: 'garlic', quantity: '1 bulb', aisle: 'Produce', prep: null, purpose: null, section: null, choiceGroup: null },
     ]);
   });
 
@@ -108,7 +109,7 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas', section: null },
+      { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas', section: null, choiceGroup: null },
     ]);
   });
 
@@ -117,7 +118,7 @@ describe('parseRecipeIngredients', () => {
       { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, section: 'For the cake' },
     ]);
     expect(parseRecipeIngredients(stored)).toEqual([
-      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, purpose: null, section: 'For the cake' },
+      { id: 'a', name: 'Flour', nameKey: 'flour', quantity: '2 cups', aisle: null, prep: null, purpose: null, section: 'For the cake', choiceGroup: null },
     ]);
   });
 
@@ -504,6 +505,23 @@ describe('prepTaskDraftsForMeal', () => {
     });
     const drafts = prepTaskDraftsForMeal(steak, new Map([[steak.id, steak]]), mealDate);
     expect(drafts.map(d => d.title)).toEqual(['Take the steak out']);
+  });
+
+  it('follows a meal’s own component pick, leaving out the unchosen side’s steps', () => {
+    const mash = recipe('Mash', { prepTasks: [prepTask('Boil the potatoes', { offsetDays: -1 })] });
+    const roast = recipe('Roast potatoes', { prepTasks: [prepTask('Heat the oven', { offsetDays: 0 })] });
+    const steak = recipe('Steak dinner', {
+      prepTasks: [prepTask('Take the steak out', { offsetDays: 0 })],
+      components: [component(mash.id, 'Mash', 'Side'), component(roast.id, 'Roast potatoes', 'Side')],
+    });
+    const byId = new Map([[steak.id, steak], [mash.id, mash], [roast.id, roast]]);
+
+    const onDefault = prepTaskDraftsForMeal(steak, byId, mealDate);
+    expect(onDefault.map(d => d.title)).toEqual(['Take the steak out', 'Boil the potatoes']);
+
+    const roastLinkId = steak.components[1].id;
+    const onRoast = prepTaskDraftsForMeal(steak, byId, mealDate, { chosen: [roastLinkId] });
+    expect(onRoast.map(d => d.title)).toEqual(['Take the steak out', 'Heat the oven']);
   });
 });
 

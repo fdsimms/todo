@@ -41,6 +41,7 @@ function entry(
     createdAt: '2026-01-01T00:00:00.000Z',
     cookedAt: null,
     leftoverId: null,
+    recipeChoices: [],
     ...overrides,
   };
 }
@@ -335,6 +336,38 @@ describe('renameEntry', () => {
   it('shrugs at an unknown id', () => {
     loadWeek([]);
     expect(() => useMealPlanStore.getState().renameEntry('gone', 'New title')).not.toThrow();
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('setRecipeChoices', () => {
+  it('records the pick and writes it back', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeChoices(dinner.id, ['c-roast']);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeChoices).toEqual(['c-roast']);
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, recipeChoices: ['c-roast'] })
+    );
+  });
+
+  it('replaces rather than merges, so going back to the default clears it', () => {
+    const dinner = entry('2026-08-05', 'dinner', { recipeChoices: ['c-roast'] });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setRecipeChoices(dinner.id, []);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.recipeChoices).toEqual([]);
+  });
+
+  it('shrugs at an unknown entry', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbUpdateMealPlanEntry as jest.Mock).mockClear();
+
+    useMealPlanStore.getState().setRecipeChoices('gone', ['c-roast']);
+
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });
