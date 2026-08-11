@@ -3,6 +3,7 @@ import {
   View,
   Text,
   FlatList,
+  SectionList,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -26,7 +27,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
+import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, groupRecipesByMealType, rankRecipeSuggestions, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
 import { groceryNameKey } from '../utils/groceryParse';
 
@@ -39,7 +40,14 @@ import { groceryNameKey } from '../utils/groceryParse';
  * ranks by name and by ingredient. Recipe.mealType (breakfast/lunch/dinner/
  * snack/dessert — see RecipeMealType in src/types) is the one closed-set tag
  * that earned a plain column instead: it's shown in each row's subtitle via
- * describeRecipe(), but grouping/sorting by it is #1086, not built here.
+ * describeRecipe(), and the header's "Group" toggle switches the list between
+ * that flat favorites-first order and RECIPE_MEAL_TYPE_LABELS sections
+ * (groupRecipesByMealType, src/utils/recipeUtils.ts) — no drag-reorder across
+ * sections, unlike Today's category groups, since a recipe's meal type is a
+ * single-select field on the editor, not something to drag a row into.
+ * Grouping only applies to the unfiltered box, same as the "Cook again" shelf
+ * below: a search is already a specific question, and section headers over a
+ * handful of matches would just be noise.
  */
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();
@@ -56,6 +64,7 @@ export function RecipesScreen() {
   const [query, setQuery] = useState('');
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
+  const [groupByMealType, setGroupByMealType] = useState(false);
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb.
@@ -117,10 +126,16 @@ export function RecipesScreen() {
     // needs the favourites-first pass, or a name match would lose its place to
     // a starred recipe that merely mentions the word.
     if (query.trim()) return matched;
-    return [...matched].sort((a, b) =>
-      Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
-    );
+    return sortRecipesForDisplay(matched);
   }, [query, recipes]);
+
+  // Grouping is only offered on the unfiltered box — see the doc comment
+  // above. Built from `visible` (already favourites-sorted) so the flat and
+  // grouped views agree on within-section order, not just on membership.
+  const grouped = useMemo(
+    () => (groupByMealType && !query.trim() ? groupRecipesByMealType(visible) : null),
+    [groupByMealType, query, visible]
+  );
 
   // Only offered on the unfiltered list — a search is already a specific
   // question ("what has fennel"), and a shelf of suggestions above the
@@ -222,6 +237,12 @@ export function RecipesScreen() {
         subtitle={recipes.length > 0
           ? `${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'}`
           : undefined}
+        actions={recipes.length > 0 ? [{
+          icon: 'grid-outline',
+          onPress: () => { haptics.tap(); setGroupByMealType(g => !g); },
+          active: groupByMealType,
+          accessibilityLabel: groupByMealType ? 'Ungroup recipes' : 'Group recipes by meal type',
+        }] : undefined}
       />
       <GroceriesHubPills active="Recipes" />
 
@@ -258,6 +279,23 @@ export function RecipesScreen() {
               title="Nothing matched"
               subtitle={`No recipe here is called “${query.trim()}” or uses it`}
               bottomOffset={tabBarHeight}
+            />
+          ) : grouped ? (
+            <SectionList
+              sections={grouped}
+              keyExtractor={r => r.id}
+              renderItem={renderRecipe}
+              renderSectionHeader={({ section }) => (
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionHeaderText}>{section.title}</Text>
+                  <Text style={styles.sectionHeaderCount}>{section.data.length}</Text>
+                </View>
+              )}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={styles.list}
+              ListHeaderComponent={cookAgainShelf}
+              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+              stickySectionHeadersEnabled={false}
             />
           ) : (
             <FlatList
@@ -336,6 +374,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.md,
     padding: 0,
+  },
+  // Same treatment as LogbookScreen's day headers — section headers app-wide
+  // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xs,
+  },
+  sectionHeaderText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  sectionHeaderCount: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
   },
   list: {
     paddingTop: spacing.xs,
