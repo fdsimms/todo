@@ -40,13 +40,8 @@ import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, type RecipePhotoSource } from '../utils/recipePhoto';
-import { describeCookTime, describeRecipe, formatServingsRange } from '../utils/recipeUtils';
-import {
-  describeUnscaled,
-  isUnscaled,
-  scaleQuantity,
-  scaleServings,
-} from '../utils/recipeScale';
+import { describeCookTime, describeRecipe } from '../utils/recipeUtils';
+import { describeUnscaled, scaleQuantity } from '../utils/recipeScale';
 import { RecipeScaleChips } from '../components/RecipeScaleChips';
 import { tagColor } from '../utils/tagColor';
 import { formatDuration, formatStopwatch } from '../utils/effort';
@@ -119,14 +114,6 @@ export function RecipeDetailScreen() {
   // was planned (MealPlanEntry.recipeScale). It does travel into the add-to-list
   // sheet, which is the one place the number turns into something bought.
   const [scale, setScale] = useState(1);
-  // "serves 8" for a doubled 4, and nothing at all for a recipe that never said
-  // how many it serves — a scaled count must not invent one.
-  const scaledServingsLabel = useMemo(() => {
-    if (!recipe || isUnscaled(scale)) return null;
-    const scaled = scaleServings(recipe.servings, recipe.servingsMax, scale);
-    const range = formatServingsRange(scaled.servings, scaled.servingsMax);
-    return range ? `serves ${range}` : null;
-  }, [recipe, scale]);
 
   // Only lines that *have* a quantity can fail to scale; a line with none was
   // never going to say a number either way.
@@ -751,7 +738,8 @@ export function RecipeDetailScreen() {
           <RecipeScaleChips
             value={scale}
             onChange={setScale}
-            servingsLabel={scaledServingsLabel}
+            baseServings={recipe.servings}
+            baseServingsMax={recipe.servingsMax}
             style={styles.scaleRow}
           />
         )}

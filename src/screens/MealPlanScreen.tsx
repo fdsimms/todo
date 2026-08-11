@@ -54,11 +54,9 @@ import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
   pantryCoverageForRecipe,
-  formatServingsRange,
   type PantryCoverage,
   type PrepTaskDraft,
 } from '../utils/recipeUtils';
-import { isUnscaled, scaleServings } from '../utils/recipeScale';
 import { recentlyCookedTitles } from '../utils/mealIdeas';
 import {
   applyChoice,
@@ -688,20 +686,6 @@ export function MealPlanScreen() {
     ? recipeChoiceGroups(selectedRecipe, recipesById, selectedResolution)
     : [];
 
-  // What a scaled meal now serves, when the recipe knows — nothing for a recipe
-  // with no serving count, and nothing at 1×, where the recipe's own summary
-  // already says it.
-  const selectedScaledServings = useMemo(() => {
-    if (!selectedRecipe || !selected || isUnscaled(selected.recipeScale)) return null;
-    const scaled = scaleServings(
-      selectedRecipe.servings,
-      selectedRecipe.servingsMax,
-      selected.recipeScale
-    );
-    const range = formatServingsRange(scaled.servings, scaled.servingsMax);
-    return range ? `serves ${range}` : null;
-  }, [selectedRecipe, selected]);
-
   // Offline "what can I make from what I've got" — only worth computing once
   // there's an empty week to fill, and re-ranked each time the sheet reopens
   // by staying a plain memo rather than sheet-local state.
@@ -963,7 +947,8 @@ export function MealPlanScreen() {
             ? factor => selected && setRecipeScale(selected.id, factor)
             : undefined
         }
-        scaledServingsLabel={selectedScaledServings}
+        baseServings={selectedRecipe?.servings}
+        baseServingsMax={selectedRecipe?.servingsMax}
         onMarkCooked={selected && !selected.cookedAt ? () => markCooked(selected) : undefined}
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)

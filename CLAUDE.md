@@ -425,9 +425,14 @@ The four rules that make it safe, all enforced in `scaleQuantity`:
   write nothing. **Never store it on `Recipe`.** `bulkReplaceItem` deliberately keeps the scale while
   resetting `recipeChoices` — a choice group belongs to the recipe that defined it, but "feeding
   eight on Sunday" survives a swap of what's being cooked.
-- **Factor chips, not a target-servings stepper.** `Recipe.servings` is nullable and plenty of
-  recipes never had one, so a "cook for 6" control would be unavailable exactly where a factor still
-  makes sense. Scaled servings are shown *beside* the chips when the recipe happens to know them.
+- **Factor chips are the floor, a servings stepper is layered on where it can be.** `Recipe.servings`
+  is nullable and plenty of recipes never had one, so the chips (`½× 1× 1½× 2× 3×`) are what's always
+  available. When a recipe does know its own count, `RecipeScaleChips` also renders a `CountStepper`
+  targeting servings directly — the open-ended-number case this app otherwise reaches for a stepper
+  over a chip row for (see `CountStepper`'s own doc comment). `recipeScale.factorForServings`/
+  `targetServingsFor` are the two-way conversion, capped at the same 99 `RecipeEditor` caps
+  `Recipe.servings` at. Both controls write the same `value` factor — picking a chip moves the
+  stepper, typing a target usually deselects every chip, since most targets aren't a preset.
 - **This reopened `parseQuantityAmount`'s refusal of fractions**, which used to be a documented
   decision. It had to: a halved recipe *produces* "1 1/2 cups", so every merged shopping row would
   have degraded to `mergeQuantities`' rule-5 list. `mergeQuantities` now also compares units by

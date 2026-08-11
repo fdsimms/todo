@@ -408,14 +408,23 @@ export function normalizeScale(factor: number | null | undefined): number {
   return factor;
 }
 
-/** "½×", "1½×", "2×" — the chip label and the badge on a scaled meal. */
+/**
+ * "½×", "1½×", "2×" — the chip label and the badge on a scaled meal.
+ *
+ * Built on `formatQuantityAmount` rather than its own rounding, because a
+ * factor typed as a target servings count ("makes 8, I need 3") is rarely one
+ * of the presets — 3/8 is a real factor this app now produces, not just
+ * 0.5/1.5/2/3 — and it deserves the same exact-fraction treatment a quantity
+ * gets rather than degrading to "0.38×". The ½ glyph is kept as a special case
+ * purely to match the chip glyphs the presets already render.
+ */
 export function formatScale(factor: number): string {
   const normalized = normalizeScale(factor);
-  const whole = Math.floor(normalized);
-  const remainder = normalized - whole;
-  if (Math.abs(remainder - 0.5) < 1e-9) return `${whole || ''}½×`;
   if (Number.isInteger(normalized)) return `${normalized}×`;
-  return `${Math.round(normalized * 100) / 100}×`;
+  const rendered = formatQuantityAmount(normalized);
+  const half = /^(\d*)\s*1\/2$/.exec(rendered);
+  if (half) return `${half[1]}½×`;
+  return `${rendered}×`;
 }
 
 /**
@@ -435,6 +444,30 @@ export function scaleServings(
     servings: scale(servings),
     servingsMax: servingsMax == null ? null : scale(servingsMax),
   };
+}
+
+/**
+ * The other direction: "this recipe makes `baseServings`, I need `target`" as
+ * a scale factor — what the servings stepper in RecipeScaleChips computes on
+ * every keystroke, so typing 3 against an 8-serving recipe drives the exact
+ * same `recipeScale`/`quantity` machinery a chip tap does. `baseServings` of
+ * zero or less has no ratio to compute; it returns 1 (as-written) rather than
+ * dividing by it, though the stepper never renders without a positive one.
+ */
+export function factorForServings(target: number, baseServings: number): number {
+  if (!Number.isFinite(target) || target <= 0) return 1;
+  if (!Number.isFinite(baseServings) || baseServings <= 0) return 1;
+  return target / baseServings;
+}
+
+/**
+ * The servings a live factor currently implies, for seeding the stepper —
+ * after a chip tap as much as after typing a number. Delegates to
+ * `scaleServings` rather than re-deriving the round-to-a-whole-person-and-
+ * floor-at-one rule a second time.
+ */
+export function targetServingsFor(baseServings: number, factor: number): number {
+  return scaleServings(baseServings, null, factor).servings ?? Math.max(1, Math.round(baseServings));
 }
 
 /**

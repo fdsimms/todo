@@ -1,6 +1,7 @@
 import {
   RECIPE_SCALE_FACTORS,
   describeUnscaled,
+  factorForServings,
   formatQuantityAmount,
   formatScale,
   isUnscaled,
@@ -8,6 +9,7 @@ import {
   quantityAmount,
   scaleQuantity,
   scaleServings,
+  targetServingsFor,
 } from '../utils/recipeScale';
 
 const text = (quantity: string, factor: number) => scaleQuantity(quantity, factor).text;
@@ -190,6 +192,51 @@ describe('formatScale', () => {
   it('renders a clamped factor rather than a nonsense one', () => {
     expect(formatScale(0)).toBe('1×');
     expect(formatScale(NaN)).toBe('1×');
+  });
+
+  it('renders a servings-derived factor as a clean fraction rather than a decimal', () => {
+    // 3 servings out of a recipe that makes 8 is exactly 3/8 — not "0.38×".
+    expect(formatScale(3 / 8)).toBe('3/8×');
+    expect(formatScale(5 / 4)).toBe('1 1/4×');
+  });
+
+  it('falls back to a decimal only when no cooking fraction lands exactly', () => {
+    expect(formatScale(1 / 7)).toBe('0.14×');
+  });
+});
+
+describe('factorForServings / targetServingsFor', () => {
+  it('computes the factor a target servings count implies', () => {
+    expect(factorForServings(3, 8)).toBe(3 / 8);
+    expect(factorForServings(16, 8)).toBe(2);
+    expect(factorForServings(8, 8)).toBe(1);
+  });
+
+  it('round-trips through scaleQuantity exactly, not approximately', () => {
+    // The whole point: "makes 8, I need 3" must scale ingredients exactly,
+    // the same way a 3/8 chip tap would.
+    const factor = factorForServings(3, 8);
+    expect(scaleQuantity('2 cups', factor).text).toBe('3/4 cup');
+    expect(scaleQuantity('1 lb', factor).text).toBe('3/8 lb');
+  });
+
+  it('is the inverse of scaleServings, for seeding the stepper from a factor', () => {
+    expect(targetServingsFor(8, factorForServings(3, 8))).toBe(3);
+    expect(targetServingsFor(4, 2)).toBe(8);
+    expect(targetServingsFor(4, 0.5)).toBe(2);
+  });
+
+  it('rounds to a whole person and never below one', () => {
+    expect(targetServingsFor(3, factorForServings(1, 3))).toBe(1);
+    expect(targetServingsFor(8, 0.05)).toBe(1);
+  });
+
+  it('treats a non-positive target or base as a no-op factor rather than dividing by it', () => {
+    expect(factorForServings(0, 8)).toBe(1);
+    expect(factorForServings(-2, 8)).toBe(1);
+    expect(factorForServings(3, 0)).toBe(1);
+    expect(factorForServings(3, -1)).toBe(1);
+    expect(factorForServings(NaN, 8)).toBe(1);
   });
 });
 

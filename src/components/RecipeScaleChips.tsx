@@ -3,19 +3,38 @@ import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-na
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
-import { RECIPE_SCALE_FACTORS, formatScale, normalizeScale } from '../utils/recipeScale';
+import { CountStepper } from './CountStepper';
+import {
+  RECIPE_SCALE_FACTORS,
+  factorForServings,
+  formatScale,
+  normalizeScale,
+  targetServingsFor,
+} from '../utils/recipeScale';
+import { formatServingsRange } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
+
+// Same ceiling RecipeEditor's own servings stepper caps `Recipe.servings` at —
+// the base a target is a ratio against can never exceed it, so the target
+// shouldn't claim to reach further either.
+const MAX_SERVINGS = 99;
 
 interface Props {
   /** The live factor. Anything absent or nonsense renders as 1× selected. */
   value: number;
   onChange: (factor: number) => void;
   /**
-   * "serves 8" — the scaled servings, when the recipe knows them. Rendered
-   * beside the chips rather than inside one, because it's a consequence of the
-   * pick, not another option.
+   * The recipe's own serving count, low end of a range — what a typed target
+   * is a ratio *against*. Absent for a recipe that never gave one, which is
+   * what hides the stepper below: there's nothing to compute a ratio without.
    */
-  servingsLabel?: string | null;
+  baseServings?: number | null;
+  /**
+   * The high end of a range ("serves 4-6"), shown as a static caption under
+   * the stepper — the stepper itself only ever targets the low end, since
+   * typing one number can't drive two.
+   */
+  baseServingsMax?: number | null;
   /**
    * Which surface the row is sitting on, which decides the *unselected* chip's
    * fill. It has to be told: `bgTertiary` is `#EFEFF4` against a light theme's
@@ -39,22 +58,34 @@ interface Props {
  * (where it decides what goes in the trolley), so the control can't drift into
  * two shapes for one idea.
  *
- * Chips rather than a CountStepper, which is what this app otherwise reaches
- * for when a number is open-ended: the useful factors are a short closed set,
- * and half is one of them — a stepper over ½, 1, 1½ … has no natural step. The
- * factors are also deliberately not derived from a target servings count; see
- * RECIPE_SCALE_FACTORS.
+ * Chips for the *common* factors — the useful ones are a short closed set,
+ * and half is one of them, so a stepper over ½, 1, 1½ … would have no natural
+ * step. But "makes 8, I need 3" is a genuinely open-ended number, which is
+ * exactly the case this app otherwise reaches for a `CountStepper` over a
+ * chip row for (see its own doc comment) — so when the recipe knows its own
+ * serving count, a stepper renders below the chips, targeting servings
+ * directly rather than making the cook do the division themselves. It's a
+ * second view of the one `value` factor, not a separate setting: picking a
+ * chip moves the stepper, typing a number moves the chip selection (usually
+ * to none, since most targets aren't a preset).
  */
 export function RecipeScaleChips({
   value,
   onChange,
-  servingsLabel,
+  baseServings,
+  baseServingsMax,
   surface = 'background',
   style,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const active = normalizeScale(value);
+  const servings = baseServings != null && baseServings > 0
+    ? targetServingsFor(baseServings, active)
+    : null;
+  const rangeLabel = baseServings != null && baseServingsMax != null
+    ? formatServingsRange(baseServings, baseServingsMax)
+    : null;
 
   return (
     <View style={[styles.wrap, style]}>
@@ -86,7 +117,33 @@ export function RecipeScaleChips({
           );
         })}
       </View>
-      {!!servingsLabel && <Text style={styles.servings}>{servingsLabel}</Text>}
+      {servings !== null && (
+        <View style={styles.servingsBlock}>
+          {/* A caption beside the stepper, not baked into its pill as
+              format={n => `${n} servings`} — RecipeEditor's own servings
+              stepper keeps the pill to a bare number and says what it's
+              counting outside it (there as a CollapsibleField header, here as
+              this label), and a pill wide enough for the word wrecks the
+              "44pt key either side of the digits" sizing CountStepper is
+              built around. */}
+          <View style={styles.servingsRow}>
+            <Text style={styles.servingsCaption}>Servings</Text>
+            <CountStepper
+              value={servings}
+              onChange={next => {
+                if (next === null) return; // no allowNull — a target below 1 isn't a thing
+                haptics.tap();
+                onChange(factorForServings(next, baseServings!));
+              }}
+              min={1}
+              max={MAX_SERVINGS}
+              label="Servings"
+              describeValue={n => `${n} servings`}
+            />
+          </View>
+          {!!rangeLabel && <Text style={styles.servingsHint}>Recipe says serves {rangeLabel}</Text>}
+        </View>
+      )}
     </View>
   );
 }
@@ -106,5 +163,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipSelected: { backgroundColor: colors.accent },
   chipText: { color: colors.textSecondary, fontSize: font.sm },
   chipTextSelected: { color: colors.onAccent, fontWeight: fontWeight.medium },
-  servings: { color: colors.textTertiary, fontSize: font.xs },
+  servingsBlock: { gap: 4 },
+  servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  servingsCaption: { color: colors.textSecondary, fontSize: font.sm },
+  servingsHint: { color: colors.textTertiary, fontSize: font.xs },
 });

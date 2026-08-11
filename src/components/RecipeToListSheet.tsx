@@ -245,7 +245,12 @@ export function RecipeToListSheet({
         {!nothingToShow && (
           <View style={styles.scaleRow}>
             <Text style={styles.sectionLabel}>Batch</Text>
-            <RecipeScaleChips value={scale} onChange={setScale} />
+            <RecipeScaleChips
+              value={scale}
+              onChange={setScale}
+              baseServings={recipe?.servings}
+              baseServingsMax={recipe?.servingsMax}
+            />
           </View>
         )}
 

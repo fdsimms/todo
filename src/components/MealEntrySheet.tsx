@@ -51,8 +51,11 @@ interface Props {
    * which is what hides the control entirely.
    */
   onScale?: (factor: number) => void;
-  /** "serves 8" under the batch chips, when the scaled recipe knows. */
-  scaledServingsLabel?: string | null;
+  /** The recipe's own serving count — enables the servings stepper under the
+      batch chips. See RecipeScaleChips.baseServings. */
+  baseServings?: number | null;
+  /** The high end of a range, for the "recipe says serves 4-6" caption. */
+  baseServingsMax?: number | null;
   /** Present only while the entry hasn't already been marked cooked. */
   onMarkCooked?: () => void;
   /** Present only while the entry's recipe still resolves. */
@@ -88,7 +91,7 @@ interface Props {
  */
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, scaledServingsLabel, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onScale, baseServings, baseServingsMax, onMarkCooked, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
   onFinishLeftover, onClose,
 }: Props) {
   const colors = useColors();
@@ -200,7 +203,8 @@ export function MealEntrySheet({
               <RecipeScaleChips
                 value={entry?.recipeScale ?? 1}
                 onChange={onScale}
-                servingsLabel={scaledServingsLabel}
+                baseServings={baseServings}
+                baseServingsMax={baseServingsMax}
                 surface="card"
               />
             </View>
