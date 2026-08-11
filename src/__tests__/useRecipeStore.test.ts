@@ -416,6 +416,127 @@ describe('deleteRecipe', () => {
   });
 });
 
+describe('bulkDeleteRecipes', () => {
+  it('drops every named row, in one db call each, and leaves the rest', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup');
+    const c = makeRecipe('Stew');
+    seed([a, b, c]);
+
+    useRecipeStore.getState().bulkDeleteRecipes([a.id, c.id]);
+
+    expect(dbDeleteRecipe).toHaveBeenCalledTimes(2);
+    expect(dbDeleteRecipe).toHaveBeenCalledWith(a.id);
+    expect(dbDeleteRecipe).toHaveBeenCalledWith(c.id);
+    expect(useRecipeStore.getState().recipes.map(r => r.id)).toEqual([b.id]);
+  });
+
+  it('writes nothing for an empty selection', () => {
+    seed([makeRecipe('Ragu')]);
+    useRecipeStore.getState().bulkDeleteRecipes([]);
+    expect(dbDeleteRecipe).not.toHaveBeenCalled();
+    expect(useRecipeStore.getState().recipes).toHaveLength(1);
+  });
+});
+
+describe('bulkSetFavorite', () => {
+  it('favorites every named recipe and leaves the rest alone', () => {
+    const a = makeRecipe('Ragu');
+    const b = makeRecipe('Soup', { favorite: true });
+    const c = makeRecipe('Stew');
+    seed([a, b, c]);
+
+    useRecipeStore.getState().bulkSetFavorite([a.id, c.id], true);
+
+    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(true);
+    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(true);
+    expect(useRecipeStore.getState().recipeById(c.id)!.favorite).toBe(true);
+    expect(dbUpdateRecipe).toHaveBeenCalledTimes(2);
+  });
+
+  it('unfavorites every named recipe', () => {
+    const a = makeRecipe('Ragu', { favorite: true });
+    const b = makeRecipe('Soup', { favorite: true });
+    seed([a, b]);
+
+    useRecipeStore.getState().bulkSetFavorite([a.id, b.id], false);
+
+    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(false);
+    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(false);
+  });
+
+  it('writes nothing when every named recipe already matches', () => {
+    const r = makeRecipe('Ragu', { favorite: true });
+    seed([r]);
+
+    useRecipeStore.getState().bulkSetFavorite([r.id], true);
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkRemoveIngredients', () => {
+  it('removes every named ingredient and keeps the rest, in original order', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Onions')!;
+    const c = useRecipeStore.getState().addIngredient(r.id, 'Parsley')!;
+
+    useRecipeStore.getState().bulkRemoveIngredients(r.id, [a.id, c.id]);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients.map(i => i.id)).toEqual([b.id]);
+  });
+
+  it('writes nothing when none of the named ingredients are on the recipe', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    useRecipeStore.getState().addIngredient(r.id, 'Garlic');
+    jest.clearAllMocks();
+
+    useRecipeStore.getState().bulkRemoveIngredients(r.id, ['gone']);
+
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().bulkRemoveIngredients('gone', ['x'])).not.toThrow();
+  });
+});
+
+describe('bulkSetIngredientAisle', () => {
+  it('files every named ingredient into the aisle and leaves the rest', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    const b = useRecipeStore.getState().addIngredient(r.id, 'Milk')!;
+    useRecipeStore.getState().updateIngredient(r.id, b.id, { aisle: 'Dairy' });
+
+    useRecipeStore.getState().bulkSetIngredientAisle(r.id, [a.id], 'Produce');
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === a.id)!.aisle).toBe('Produce');
+    expect(ingredients.find(i => i.id === b.id)!.aisle).toBe('Dairy');
+  });
+
+  it('can clear the aisle back to null', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const a = useRecipeStore.getState().addIngredient(r.id, 'Garlic')!;
+    useRecipeStore.getState().updateIngredient(r.id, a.id, { aisle: 'Produce' });
+
+    useRecipeStore.getState().bulkSetIngredientAisle(r.id, [a.id], null);
+
+    expect(useRecipeStore.getState().recipeById(r.id)!.ingredients[0].aisle).toBeNull();
+  });
+
+  it('shrugs at an unknown recipe id', () => {
+    seed([]);
+    expect(() => useRecipeStore.getState().bulkSetIngredientAisle('gone', ['x'], 'Produce')).not.toThrow();
+  });
+});
+
 describe('markCooked', () => {
   it('bumps cookCount and stamps lastCookedAt', () => {
     const r = makeRecipe('Ragu', { cookCount: 2, lastCookedAt: '2026-01-01T00:00:00.000Z' });
