@@ -6,12 +6,10 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  ScrollView,
   StyleSheet,
   Alert,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -31,6 +29,7 @@ import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groce
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { InlineAction } from './InlineAction';
+import { PillGroup } from './PillGroup';
 import { haptics } from '../utils/haptics';
 import type { GroceryItem } from '../types';
 
@@ -64,14 +63,6 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
   const [query, setQuery] = useState('');
   const [shopFilter, setShopFilter] = useState<string | null>(null);
 
-  // Drives the edge fades on the store filter row: a hard clip at the
-  // viewport edge with no cue reads as a cut-off pill, not a scrollable row.
-  const [filterRowWidth, setFilterRowWidth] = useState(0);
-  const [filterContentWidth, setFilterContentWidth] = useState(0);
-  const [filterScrollX, setFilterScrollX] = useState(0);
-  const canScrollFilterLeft = filterScrollX > 1;
-  const canScrollFilterRight = filterScrollX < filterContentWidth - filterRowWidth - 1;
-
   // Nothing carries over between openings — a stale selection from last week
   // is a way to add things you didn't mean to.
   useEffect(() => {
@@ -91,6 +82,40 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
     () => shops.filter(s => (shopCounts.get(s.id) ?? 0) > 0),
     [shops, shopCounts]
   );
+
+  // Wrapping pills, not a horizontal scroll row — the same call
+  // LogbookFilterSheet/RecipeTagFilterSheet made for the same reason: a
+  // scroll row hides options past what fits on screen behind a swipe nobody
+  // is prompted to make. "All" is pinned so the no-filter option is never
+  // buried behind PillGroup's "N more".
+  const shopFilterOptions = useMemo(() => [
+    {
+      key: '__all__',
+      label: 'All',
+      selected: shopFilter === null,
+      pinned: true,
+      accessibilityLabel: 'All stores',
+      onPress: () => {
+        haptics.tap();
+        setShopFilter(null);
+      },
+    },
+    ...filterShops.map(shop => {
+      const active = shop.id === shopFilter;
+      const count = shopCounts.get(shop.id) ?? 0;
+      return {
+        key: shop.id,
+        label: shop.name,
+        suffix: ` ${count}`,
+        selected: active,
+        accessibilityLabel: `${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`,
+        onPress: () => {
+          haptics.tap();
+          setShopFilter(active ? null : shop.id);
+        },
+      };
+    }),
+  ], [filterShops, shopFilter, shopCounts]);
 
   // Filter first, then rank. Ranking a filtered set is the same function on
   // fewer rows; filtering a ranked set would silently shrink the 50-row cap.
@@ -254,83 +279,8 @@ export function BuyAgainSheet({ visible, onClose }: Props) {
             here rather than on the shopping list: this is the catalog browser,
             and it's open exactly when you're deciding what to buy where. */}
         {filterShops.length > 0 && (
-          <View style={styles.filterWrap} onLayout={e => setFilterRowWidth(e.nativeEvent.layout.width)}>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filterRow}
-              keyboardShouldPersistTaps="handled"
-              scrollEventThrottle={16}
-              onContentSizeChange={w => setFilterContentWidth(w)}
-              onScroll={e => setFilterScrollX(e.nativeEvent.contentOffset.x)}
-            >
-              <TouchableOpacity
-                style={[styles.chip, shopFilter === null && styles.chipActive]}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => {
-                  haptics.tap();
-                  setShopFilter(null);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: shopFilter === null }}
-                accessibilityLabel="All stores"
-              >
-                <Text style={[styles.chipText, shopFilter === null && styles.chipTextActive]}>
-                  All
-                </Text>
-              </TouchableOpacity>
-              {filterShops.map(shop => {
-                const active = shop.id === shopFilter;
-                const count = shopCounts.get(shop.id) ?? 0;
-                return (
-                  <TouchableOpacity
-                    key={shop.id}
-                    style={[styles.chip, active && styles.chipActive]}
-                    activeOpacity={interaction.activeOpacity}
-                    onPress={() => {
-                      haptics.tap();
-                      setShopFilter(active ? null : shop.id);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: active }}
-                    accessibilityLabel={`${shop.name}, ${count} ${count === 1 ? 'item' : 'items'}`}
-                  >
-                    <Text
-                      style={[styles.chipText, active && styles.chipTextActive]}
-                      numberOfLines={1}
-                      ellipsizeMode="tail"
-                    >
-                      {shop.name} {count}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            {/* A pill hard-clipped at the viewport edge with no cue reads as
-                cut off, not as "scroll for more" — these fade it out instead
-                of chopping it, and only show on the side there's more to see. */}
-            {canScrollFilterLeft && (
-              <Svg style={[styles.filterFade, styles.filterFadeLeft]} pointerEvents="none">
-                <Defs>
-                  <SvgLinearGradient id="fadeLeft" x1="0" y1="0" x2="1" y2="0">
-                    <Stop offset="0" stopColor={colors.bg} stopOpacity={1} />
-                    <Stop offset="1" stopColor={colors.bg} stopOpacity={0} />
-                  </SvgLinearGradient>
-                </Defs>
-                <Rect x="0" y="0" width="100%" height="100%" fill="url(#fadeLeft)" />
-              </Svg>
-            )}
-            {canScrollFilterRight && (
-              <Svg style={[styles.filterFade, styles.filterFadeRight]} pointerEvents="none">
-                <Defs>
-                  <SvgLinearGradient id="fadeRight" x1="0" y1="0" x2="1" y2="0">
-                    <Stop offset="0" stopColor={colors.bg} stopOpacity={0} />
-                    <Stop offset="1" stopColor={colors.bg} stopOpacity={1} />
-                  </SvgLinearGradient>
-                </Defs>
-                <Rect x="0" y="0" width="100%" height="100%" fill="url(#fadeRight)" />
-              </Svg>
-            )}
+          <View style={styles.filterWrap}>
+            <PillGroup options={shopFilterOptions} noun="store" surface="page" />
           </View>
         )}
 
@@ -429,43 +379,7 @@ function makeStyles(colors: Colors) {
       height: 40,
       padding: 0,
     },
-    filterWrap: { position: 'relative' },
-    filterRow: {
-      gap: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingTop: spacing.md,
-      alignItems: 'center',
-    },
-    filterFade: {
-      position: 'absolute',
-      top: 0,
-      bottom: 0,
-      width: 24,
-    },
-    filterFadeLeft: { left: 0 },
-    filterFadeRight: { right: 0 },
-    chip: {
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.full,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      // Long store names need somewhere to stop growing before the Text's
-      // numberOfLines/ellipsizeMode can kick in — without a bound here the
-      // chip just grows to fit the string and nothing ever elides. With it,
-      // shortNames still hug their content (flexShrink only kicks in past
-      // maxWidth, it doesn't force every chip to that width).
-      maxWidth: 160,
-      flexShrink: 1,
-      // bgSecondary sits only a few % of luminance off the sheet's own bg in
-      // light mode, so a fill alone leaves an inactive chip with no visible
-      // edge — a hairline in the separator color is what actually reads as a
-      // pill rather than as floating text.
-      borderWidth: border.hairline,
-      borderColor: colors.separator,
-    },
-    chipActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-    chipText: { fontSize: font.sm, color: colors.textSecondary, flexShrink: 1 },
-    chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
+    filterWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
     selectionBar: {
       flexDirection: 'row',
       alignItems: 'center',
