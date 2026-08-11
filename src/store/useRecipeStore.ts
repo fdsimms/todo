@@ -17,6 +17,7 @@ import {
   mergeIngredients,
   remapIngredientKeyIn,
 } from '../utils/recipeUtils';
+import { makeComponent, recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 
 /**
  * The recipe library.
@@ -51,6 +52,14 @@ interface RecipeStore {
   setServings: (id: string, servings: number | null) => void;
   setMealType: (id: string, mealType: RecipeMealType | null) => void;
   toggleFavorite: (id: string) => void;
+  /**
+   * Deliberately doesn't rewrite the recipes that used this one as a component
+   * — see RecipeComponent.recipeId. Unfiling the links would silently edit
+   * recipes the user didn't ask to touch, and re-adding a restored backup
+   * couldn't put them back; a link that stops resolving renders as a row saying
+   * so, which they can remove or replace. The editor's confirm names those
+   * parents first (see RecipeEditor.handleDelete).
+   */
   deleteRecipe: (id: string) => void;
 
   /**
@@ -74,6 +83,21 @@ interface RecipeStore {
   updateIngredient: (recipeId: string, ingredientId: string, patch: Partial<RecipeIngredient>) => void;
   removeIngredient: (recipeId: string, ingredientId: string) => void;
   reorderIngredients: (recipeId: string, ids: string[]) => void;
+
+  /**
+   * References `componentRecipeId` as a part of `recipeId` — the shared
+   * "mashed potatoes" inside two different dinners.
+   *
+   * False, and no write, for anything that isn't a usable link: an unknown
+   * recipe on either end, a recipe referencing itself, one already linked, or
+   * one that would close a loop. The picker disables those rows for the same
+   * reasons (see RecipeComponentPicker), so this is the backstop rather than
+   * the user-facing explanation — the same division NestedTemplatePicker and
+   * wouldCreateCycle already have.
+   */
+  addComponent: (recipeId: string, componentRecipeId: string) => boolean;
+  /** Unlinks by the component's own id, so a broken link can be cleared too. */
+  removeComponent: (recipeId: string, componentId: string) => void;
 
   /** Null when the title is empty. Defaults to a day before the meal, no reminder. */
   addPrepTask: (recipeId: string, title: string) => RecipePrepTask | null;
@@ -116,6 +140,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       servings: null,
       mealType: null,
       ingredients: [],
+      components: [],
       prepTasks: [],
       favorite: false,
       sortOrder: maxOrder + 1,
@@ -272,6 +297,25 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const named = new Set(ordered.map(i => i.id));
     const rest = recipe.ingredients.filter(i => !named.has(i.id));
     save(set, { ...recipe, ingredients: [...ordered, ...rest] });
+  },
+
+  addComponent(recipeId, componentRecipeId) {
+    const recipes = get().recipes;
+    const recipe = recipes.find(r => r.id === recipeId);
+    const target = recipes.find(r => r.id === componentRecipeId);
+    if (!recipe || !target) return false;
+    if (recipe.components.some(c => c.recipeId === componentRecipeId)) return false;
+    if (wouldCreateRecipeCycle(recipeMap(recipes), recipeId, componentRecipeId)) return false;
+    save(set, { ...recipe, components: [...recipe.components, makeComponent(target)] });
+    return true;
+  },
+
+  removeComponent(recipeId, componentId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const components = recipe.components.filter(c => c.id !== componentId);
+    if (components.length === recipe.components.length) return;
+    save(set, { ...recipe, components });
   },
 
   addPrepTask(recipeId, title) {

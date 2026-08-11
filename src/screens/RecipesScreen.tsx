@@ -21,12 +21,13 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
-import { Fab, FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, rankRecipeSuggestions, rankRecipes } from '../utils/recipeUtils';
+import { recipeMap } from '../utils/recipeComponents';
 import { groceryNameKey } from '../utils/groceryParse';
 
 /**
@@ -68,6 +69,48 @@ export function RecipesScreen() {
     else setAddVisible(true);
   }, []);
 
+  // ——— Dragging the add button off its corner ————————————————————————————
+  //
+  // Same button-drag gesture as the other list-screen FABs (Projects,
+  // Templates, Today, Grocery), but with nothing underneath for it to target:
+  // the recipe box is deliberately flat and unordered (see the box comment
+  // above), so there's no row or category for a drop to name the way those
+  // screens' FabDropZoneProvider does. A drag here only ever answers one
+  // question — did it come back to the corner? — which is exactly the `home`
+  // state Fab's own PanResponder already tracks, so no drop-zone plumbing is
+  // needed to answer it. Landing anywhere else commits to the plain "New
+  // recipe" action, the same one closest to the button in the menu, skipping
+  // "From a photo" the way a task drag skips straight to a plain task rather
+  // than reopening the chain/stack/template menu.
+  const [fabDragActive, setFabDragActive] = useState(false);
+  const [dragCanceling, setDragCanceling] = useState(false);
+
+  const fabDrag: FabDragHandlers = {
+    onStart: () => {
+      setFabDragActive(true);
+      setDragCanceling(false);
+    },
+    onMove: (_pageY, home) => {
+      const canceling = home === 'returned';
+      setDragCanceling(prev => (prev === canceling ? prev : canceling));
+    },
+    onEnd: (_pageY, home) => {
+      setFabDragActive(false);
+      setDragCanceling(false);
+      if (home === 'returned') {
+        haptics.tap();
+        return;
+      }
+      setAddVisible(true);
+    },
+    onCancel: () => {
+      setFabDragActive(false);
+      setDragCanceling(false);
+    },
+  };
+
+  const fabDragLabel = fabDragActive ? (dragCanceling ? 'Cancel' : 'New recipe') : null;
+
   const visible = useMemo(() => {
     const matched = rankRecipes(query, recipes);
     // rankRecipes already orders a search by weight; only the unfiltered list
@@ -92,13 +135,14 @@ export function RecipesScreen() {
   // just reduced to a count per recipe.
   const pantryCounts = useMemo(() => {
     const now = new Date();
+    const byId = recipeMap(recipes);
     const map = new Map<string, number>();
     for (const recipe of visible) {
-      const count = countLikelyInPantry(recipe, groceryItems, now);
+      const count = countLikelyInPantry(recipe, groceryItems, now, byId);
       if (count !== null) map.set(recipe.id, count);
     }
     return map;
-  }, [visible, groceryItems]);
+  }, [visible, recipes, groceryItems]);
 
   const openRecipe = (recipe: Recipe) => {
     haptics.tap();
@@ -237,12 +281,18 @@ export function RecipesScreen() {
           onSelect={handleAddMenuSelect}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag off the button to add a recipe, or back to it to cancel"
+          dragLabel={fabDragLabel}
         />
       ) : (
         <Fab
           onPress={() => { haptics.tap(); setAddVisible(true); }}
           accessibilityLabel="Add recipe"
           bottom={insets.bottom + tabBarHeight + spacing.md}
+          drag={fabDrag}
+          dragHint="Drag off the button to add a recipe, or back to it to cancel"
+          dragLabel={fabDragLabel}
         />
       )}
 

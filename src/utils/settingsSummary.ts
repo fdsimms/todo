@@ -1,5 +1,6 @@
 import { formatHHMM } from './clockTime';
 import type { SettingsGroupId } from './settingsIndex';
+import { expiredTaskGraceLabel, type ExpiredTaskGraceDays } from './expiredTaskGrace';
 
 /**
  * Everything the index needs to describe a group in one line.
@@ -24,7 +25,7 @@ export interface SettingsSummaryInput {
   remindersImportEnabled: boolean;
   groceryImportEnabled: boolean;
   vacationMode: boolean;
-  autoRemoveExpiredTasks: boolean;
+  autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
   appLockEnabled: boolean;
   hasApiKey: boolean;
@@ -83,7 +84,11 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
 
     tasksProjects: line(
       s.vacationMode && 'Vacation on',
-      s.autoRemoveExpiredTasks && 'Expired tasks removed',
+      s.autoRemoveExpiredTasks !== null && (
+        s.autoRemoveExpiredTasks === 0
+          ? 'Expired tasks removed immediately'
+          : `Expired tasks removed after ${expiredTaskGraceLabel(s.autoRemoveExpiredTasks).toLowerCase()}`
+      ),
       s.autoArchiveProjectsOnComplete && 'Projects auto-archive',
     ) || 'Vacation, expiry, auto-archive',
 

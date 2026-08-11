@@ -1,5 +1,7 @@
+import { addDays } from 'date-fns';
 import type { Task, TimeOfDay, Category } from '../types';
 import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDueDate } from './dateUtils';
+import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { activeChainStep } from './chain';
@@ -256,6 +258,52 @@ export function isTaskExpired(task: Task): boolean {
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);
+}
+
+// The instant a task's window actually closed, anchored to the task's own day
+// rather than to "today" — unlike getWindowThreshold, which recomputes
+// against the current day every time it's called (that's what makes an
+// unfinished window task read as freshly expired again each day it's left
+// incomplete). A grace period has to measure from the day it *first* expired,
+// not from today's recurrence of the same clock time, or the cutoff would
+// slide forward with `now` and never arrive.
+//
+// Falls back to getWindowThreshold's today-anchored reading when the task
+// carries neither a dueDate nor a deferUntil — a window-only task with no day
+// of its own (see isPlacedOnADay: windowStart alone still counts as
+// "placed"). Such a task re-expires every day with no fixed day to measure a
+// grace period from, so it only sweeps under Immediately, matching how the
+// old boolean setting treated it.
+function windowClosedAt(task: Task, end: string): Date {
+  const anchor = task.dueDate ?? task.deferUntil;
+  if (!anchor) return getWindowThreshold(end);
+  const { dayResetTime } = useSettingsStore.getState();
+  return hhmmToDate(end, getTaskDayStart(new Date(anchor), dayResetTime));
+}
+
+// True once an expired task is old enough for sweepExpiredTasks to actually
+// delete it — isTaskExpired() plus a grace period on top, per the
+// `autoRemoveExpiredTasks` setting (see src/utils/expiredTaskGrace.ts).
+//
+// Deliberately layered on top of isTaskExpired rather than duplicating its
+// gates: this is the one call with no way back (sweepExpiredTasks deletes
+// what it flags), so it inherits every placement and clock check that
+// function already has — a task with no day to be late for still can't be
+// swept just because a grace period elapsed on nothing.
+//
+// graceDays === null means the setting is off (Never) and nothing is ever
+// swept; 0 means Immediately, matching the old boolean's "delete on close".
+export function isTaskSweepable(
+  task: Task,
+  graceDays: ExpiredTaskGraceDays,
+  now: Date = new Date()
+): boolean {
+  if (graceDays === null) return false;
+  if (!isTaskExpired(task)) return false;
+  if (graceDays === 0) return true;
+  const end = effectiveWindowEnd(task);
+  if (!end) return false;
+  return now >= addDays(windowClosedAt(task, end), graceDays);
 }
 
 // True when the task has a day for its window to close on — the same two

@@ -5,6 +5,8 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
+import { needsAttention } from '../utils/leftovers';
 
 type HubTab = 'Groceries' | 'Recipes' | 'MealPlan';
 
@@ -31,6 +33,13 @@ export function GroceriesHubPills({ active }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
   const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
+  // The leftovers nudge, and the whole reason it's here rather than only on the
+  // meal plan itself: a container going off tomorrow is worth knowing about
+  // while you're standing in the shop about to buy more food. Counted rather
+  // than derived through attentionLeftovers so this selector returns a number —
+  // an array would be a new reference on every store change and re-render all
+  // three pills for nothing.
+  const leftoverCount = useLeftoverStore(s => s.leftovers.filter(l => needsAttention(l)).length);
 
   return (
     <ScrollView
@@ -41,7 +50,14 @@ export function GroceriesHubPills({ active }: Props) {
     >
       {HUB_TABS.map(tab => {
         const isActive = tab.name === active;
-        const badge = tab.name === 'Groceries' ? groceryCount : 0;
+        const badge = tab.name === 'Groceries' ? groceryCount
+          : tab.name === 'MealPlan' ? leftoverCount
+          : 0;
+        // Two badges on one row counting different things, so each says what it
+        // counts rather than reading out as a bare number.
+        const badgeLabel = tab.name === 'Groceries'
+          ? `${badge} to buy`
+          : `${badge} to use up`;
         return (
           <TouchableOpacity
             key={tab.name}
@@ -54,7 +70,7 @@ export function GroceriesHubPills({ active }: Props) {
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="tab"
             accessibilityState={{ selected: isActive }}
-            accessibilityLabel={badge > 0 ? `${tab.label}, ${badge}` : tab.label}
+            accessibilityLabel={badge > 0 ? `${tab.label}, ${badgeLabel}` : tab.label}
           >
             <Text style={[styles.pillText, isActive && styles.pillTextActive]}>{tab.label}</Text>
             {badge > 0 && (
