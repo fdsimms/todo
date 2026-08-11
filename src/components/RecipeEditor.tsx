@@ -67,7 +67,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         new Set(
           recipes
             .filter(r => r.id !== recipe?.id)
-            .map(r => r.sourceName?.trim())
+            .map(r => r.source?.trim())
             .filter((s): s is string => !!s)
         )
       ).sort((a, b) => a.localeCompare(b)),
@@ -247,7 +247,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 key={value}
                 style={styles.sourceChip}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => setSource(value)}
+                onPress={() => setSourceDraft(value)}
                 accessibilityRole="button"
                 accessibilityLabel={`Use source ${value}`}
               >
