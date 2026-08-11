@@ -18,6 +18,11 @@ export interface ChainCarrier {
   chainItems?: ChainItem[];
 }
 
+/** Adds the one extra field `isChainFinish` needs beyond `ChainCarrier`. */
+export interface ChainCompletionCarrier extends ChainCarrier {
+  recurrenceType?: string;
+}
+
 /**
  * The step a task is currently on, or null when it isn't stepping through a
  * chain. A single-item chain reads no differently from a plain task anywhere
@@ -75,4 +80,20 @@ export function chainPreview(task: ChainCarrier): ChainPreview | null {
     currentTitle: items[currentIdx].title,
     nextTitle: nextItem ? nextItem.title : null,
   };
+}
+
+/**
+ * True when completing this task right now would finish a chain for good —
+ * the last step, with no Repeat to loop it back to the first. Mirrors
+ * completeTask's `atChainEnd && !recurs` (useTaskStore.ts): the one case
+ * `spawnsNext` comes out false and the task just ends like an ordinary
+ * one-off, with nothing else marking the moment as "a whole routine done"
+ * rather than "one task done". Never true mid-chain or on a repeating chain,
+ * both of which spawn straight into the next step/cycle.
+ */
+export function isChainFinish(task: ChainCompletionCarrier): boolean {
+  const items = task.chainItems;
+  if (!task.chainEnabled || !items || items.length === 0) return false;
+  if ((task.recurrenceType ?? 'none') !== 'none') return false;
+  return (task.chainIndex ?? 0) >= items.length - 1;
 }

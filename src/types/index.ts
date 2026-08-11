@@ -463,6 +463,12 @@ export interface TemplateItem {
 
   chainEnabled: boolean;
   chainItems: ChainItem[];
+  // Which step a task created from this template starts on. 0 by default —
+  // TaskEditor lets a real task's current step move freely (tap a dot), and
+  // this is the template-side parity for that: a chain that's meant to be
+  // picked up mid-way (e.g. a routine already underway) can say so once,
+  // instead of every application of the template starting over at step 0.
+  chainIndex: number;
 
   // Title-only stubs; created as real subtask Task rows once the parent task
   // exists at apply time. No completed/dates — a subtask always starts unchecked.

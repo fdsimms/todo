@@ -32,7 +32,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress } from '../utils/timer';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isTaskNew, isTaskVisible, isQuotaTask, quotaLeavesTodayAfterLog, quotaNextDueAt, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
-import { chainPreview } from '../utils/chain';
+import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
@@ -332,6 +332,9 @@ export const TaskItem = React.memo(function TaskItem({
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
+  // Whether the row's chain summary is showing every step instead of just the
+  // current/next truncated line — see chainStepPreview.
+  const [chainStepsExpanded, setChainStepsExpanded] = useState(false);
   // Natural height of the expansion panel content, measured off-screen so the
   // expansion can animate to the real height instead of an arbitrary cap.
   const [panelHeight, setPanelHeight] = useState(0);
@@ -764,8 +767,12 @@ export const TaskItem = React.memo(function TaskItem({
   // step-count badge beside it, instead of a second subtitle line, so the
   // row stays the same height as the others.
   const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
-  const chainPosition = chainStep ? `${(task.chainIndex % task.chainItems.length) + 1}/${task.chainItems.length}` : '';
+  const chainStepIndex = task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0;
+  const chainPosition = chainStep ? `${chainStepIndex + 1}/${task.chainItems.length}` : '';
   const displayTitle = activeChainStepTitle(task) ?? task.title;
+  // Computed once and reused by the expandable step list (#1237) and the row's
+  // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
+  const chainStepPreview = chainStep ? chainPreview(task) : null;
 
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
@@ -827,7 +834,7 @@ export const TaskItem = React.memo(function TaskItem({
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
     beginCompletionAnimation(task.id);
-    await haptics.success();
+    await (isChainFinish(task) ? haptics.chainFinish() : haptics.success());
     setCompleting(true);
     setQuotaCompleting(viaMeter);
     // Checkmark springs in while the circle pops, then the row fades to
@@ -1780,23 +1787,78 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
-            {activeChainItem && task.chainItems.length > 0 && (() => {
-              const preview = chainPreview(task);
-              if (!preview) return null;
-              return (
-                <View style={[
+            {chainStepPreview && (
+              <TouchableOpacity
+                style={[
                   styles.recurrenceRow,
                   (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
-                ]}>
-                  <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
-                  <Text style={styles.expandMeta} numberOfLines={1}>
-                    Chain {preview.currentIdx + 1}/{preview.total}:{' '}
-                    <Text style={styles.expandMetaActive}>On: {preview.currentTitle}</Text>
-                    {preview.nextTitle ? ` → Next: ${preview.nextTitle}` : ''}
+                ]}
+                onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: chainStepsExpanded }}
+                accessibilityLabel={
+                  chainStepsExpanded
+                    ? `Collapse the ${chainStepPreview.total}-step chain`
+                    : `Show all ${chainStepPreview.total} steps of the chain, currently on ${chainStepPreview.currentTitle}`
+                }
+              >
+                <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
+                {chainStepsExpanded ? (
+                  <Text style={styles.expandMeta}>
+                    Chain · {chainStepPreview.total} steps
                   </Text>
-                </View>
-              );
-            })()}
+                ) : (
+                  <Text style={styles.expandMeta} numberOfLines={1}>
+                    Chain {chainStepPreview.currentIdx + 1}/{chainStepPreview.total}:{' '}
+                    <Text style={styles.expandMetaActive}>On: {chainStepPreview.currentTitle}</Text>
+                    {chainStepPreview.nextTitle ? ` → Next: ${chainStepPreview.nextTitle}` : ''}
+                  </Text>
+                )}
+                <View style={styles.chainExpandSpacer} />
+                <Ionicons
+                  name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
+                  size={12}
+                  color={colors.textTertiary}
+                />
+              </TouchableOpacity>
+            )}
+
+            {chainStepsExpanded && chainStepPreview && (
+              <View style={styles.chainStepsList}>
+                {task.chainItems.map((item, i) => {
+                  const isDone = i < chainStepIndex;
+                  const isCurrent = i === chainStepIndex;
+                  return (
+                    <View key={item.id} style={styles.chainStepListRow}>
+                      <View style={[
+                        styles.chainStepListDot,
+                        isDone && styles.chainStepListDotDone,
+                        isCurrent && styles.chainStepListDotActive,
+                      ]}>
+                        {isDone ? (
+                          <Ionicons name="checkmark" size={9} color={colors.onAccent} />
+                        ) : (
+                          <Text style={[
+                            styles.chainStepListDotText,
+                            isCurrent && styles.chainStepListDotTextActive,
+                          ]}>
+                            {i + 1}
+                          </Text>
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.chainStepListTitle,
+                        isDone && styles.chainStepListTitleDone,
+                        isCurrent && styles.chainStepListTitleActive,
+                      ]} numberOfLines={2}>
+                        {item.title}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            )}
 
             {timed && (
               <View style={[
@@ -1931,6 +1993,43 @@ export const TaskItem = React.memo(function TaskItem({
                     >
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
+                  )}
+                  {chainStep && (
+                    <>
+                      {/* Chain-position-only moves — no schedule/date math and no
+                          completion/streak bookkeeping, unlike markMissed above.
+                          Deliberately not routed through skipNextRecurrence: that
+                          action is documented as no longer user-facing (see its
+                          doc comment in useTaskStore.ts), so this reaches
+                          updateTask directly, the same way TaskEditor's own
+                          tap-a-dot control does. */}
+                      {chainStepIndex > 0 && (
+                        <PressableScale
+                          style={styles.iconActionBtn}
+                          onPress={() => {
+                            haptics.tap();
+                            updateTask(task.id, { chainIndex: chainStepIndex - 1 });
+                          }}
+                          hitSlop={8}
+                          accessibilityLabel={`Back a step in ${task.title}'s chain`}
+                        >
+                          <Ionicons name="play-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+                        </PressableScale>
+                      )}
+                      {chainStepIndex < task.chainItems.length - 1 && (
+                        <PressableScale
+                          style={styles.iconActionBtn}
+                          onPress={() => {
+                            haptics.tap();
+                            updateTask(task.id, { chainIndex: chainStepIndex + 1 });
+                          }}
+                          hitSlop={8}
+                          accessibilityLabel={`Skip to the next step of ${task.title}'s chain, without completing ${chainStepPreview?.currentTitle ?? 'this step'}`}
+                        >
+                          <Ionicons name="play-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                        </PressableScale>
+                      )}
+                    </>
                   )}
                 </View>
                 <View style={styles.editSectionRight}>
@@ -2602,6 +2701,56 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   expandMetaActive: {
     color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  chainExpandSpacer: {
+    flex: 1,
+  },
+  chainStepsList: {
+    gap: 2,
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.sm,
+  },
+  chainStepListRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: 3,
+  },
+  chainStepListDot: {
+    width: 16,
+    height: 16,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  chainStepListDotDone: {
+    backgroundColor: colors.green,
+  },
+  chainStepListDotActive: {
+    backgroundColor: colors.accent,
+  },
+  chainStepListDotText: {
+    color: colors.textTertiary,
+    fontSize: 9,
+    fontWeight: fontWeight.semibold,
+  },
+  chainStepListDotTextActive: {
+    color: colors.onAccent,
+  },
+  chainStepListTitle: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.xs,
+  },
+  chainStepListTitleDone: {
+    color: colors.textTertiary,
+    textDecorationLine: 'line-through',
+  },
+  chainStepListTitleActive: {
+    color: colors.text,
     fontWeight: fontWeight.semibold,
   },
   chainBadge: {

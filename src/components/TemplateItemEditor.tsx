@@ -36,7 +36,7 @@ import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks';
+type FieldKey = 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps';
 
 interface Props {
   visible: boolean;
@@ -97,6 +97,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
   const chainInputRef = useRef<TextInput>(null);
@@ -142,6 +143,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setRecurrenceCount(item?.recurrenceCount ?? draft?.recurrenceCount ?? null);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
+    setChainIndex(item?.chainIndex ?? draft?.chainIndex ?? 0);
     setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
     setAddingTag(false);
     setNewTag('');
@@ -204,6 +206,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       recurrenceCount: recurrenceType !== 'none' ? recurrenceCount : null,
       chainEnabled: chainEnabled && chainItems.length > 0,
       chainItems,
+      chainIndex: chainItems.length > 0 ? Math.min(chainIndex, chainItems.length - 1) : 0,
       subtasks,
     };
     if (item) {
@@ -560,66 +563,117 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
 
       {/* Chain */}
       <View style={styles.sectionCard}>
-        <View style={styles.cardSection}>
-          <View style={styles.chainHeader}>
-            <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
-            <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
-            <TouchableOpacity
-              style={[styles.toggle, chainEnabled && styles.toggleOn]}
-              onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-              accessibilityRole="switch"
-              accessibilityLabel="Chain"
-              accessibilityState={{ checked: chainEnabled }}
-            >
-              <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
-            </TouchableOpacity>
-          </View>
-          {!chainEnabled && (
-            <Text style={styles.optionHint}>
-              Step through a list of items, one per completion — finishing one reveals the next.
-              {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
-            </Text>
-          )}
+          <CollapsibleField
+            label="Chain"
+            summary={
+              chainEnabled
+                ? (chainItems.length > 1
+                    ? `Step ${chainIndex + 1} of ${chainItems.length}`
+                    : chainItems.length === 1
+                      ? '1 step — add one more'
+                      : 'No steps yet')
+                : undefined
+            }
+            emptySummary="Off"
+            // Always shown while expanded, on or off — matching TaskEditor's
+            // identical fix (#791): this used to be gated on !chainEnabled, so
+            // it vanished the moment Chain was turned on, and the Repeat clause
+            // was gated on Chain being *off*, so a chain with Repeat off never
+            // saw it either.
+            hint={
+              'Step through a list of items, one per completion — finishing one reveals the next.'
+              + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
+            }
+            expanded={fieldOpen('chainSteps', chainEnabled)}
+            onToggle={() => toggleField('chainSteps', chainEnabled)}
+            right={
+              <TouchableOpacity
+                style={[styles.toggle, chainEnabled && styles.toggleOn]}
+                onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                accessibilityRole="switch"
+                accessibilityLabel="Chain"
+                accessibilityState={{ checked: chainEnabled }}
+              >
+                <View style={[styles.toggleKnob, chainEnabled && styles.toggleKnobOn]} />
+              </TouchableOpacity>
+            }
+          >
           {chainEnabled && (
             <>
               <SortableList
                 onDragStateChange={setDraggingRow}
                 data={chainItems}
-                onReorder={setChainItems}
-                renderItem={(chainItem, displayIndex, drag) => (
-                  <View style={styles.chainItemRow}>
-                    <View style={styles.chainItemDot}>
-                      <Text style={styles.chainItemDotText}>{displayIndex + 1}</Text>
+                onReorder={(newData) => {
+                  const activeItemId = chainItems[chainIndex]?.id;
+                  setChainItems(newData);
+                  const newIdx = newData.findIndex(c => c.id === activeItemId);
+                  if (newIdx !== -1) setChainIndex(newIdx);
+                }}
+                renderItem={(chainItem, displayIndex, drag) => {
+                  const actualIdx = chainItems.findIndex(c => c.id === chainItem.id);
+                  const isCurrentStep = actualIdx === chainIndex;
+                  return (
+                    <View style={styles.chainItemRow}>
+                      <TouchableOpacity
+                        onPress={() => setChainIndex(actualIdx)}
+                        hitSlop={6}
+                        style={styles.chainItemIndexBtn}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Set starting step to ${chainItem.title}`}
+                      >
+                        <View style={[styles.chainItemDot, isCurrentStep && styles.chainItemDotActive]}>
+                          <Text style={[styles.chainItemDotText, isCurrentStep && styles.chainItemDotTextActive]}>
+                            {displayIndex + 1}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
+                      <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
+                        {chainItem.title}
+                      </Text>
+                      <ChainStepMinutes
+                        value={chainItem.estimatedMinutes}
+                        label={chainItem.title}
+                        onChange={mins => setChainItems(prev => prev.map(
+                          c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
+                        ))}
+                      />
+                      <TouchableOpacity
+                        onLongPress={drag}
+                        delayLongPress={150}
+                        hitSlop={8}
+                        style={styles.dragHandle}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder chain step ${chainItem.title}`}
+                      >
+                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => {
+                          // Same by-id tracking as the SortableList's own
+                          // onReorder above — deleting an earlier step shifts
+                          // every later index down, so re-clamping the old
+                          // chainIndex by position would silently land on the
+                          // wrong step.
+                          const activeItemId = chainItems[chainIndex]?.id;
+                          const next = chainItems.filter((_, j) => j !== actualIdx);
+                          setChainItems(next);
+                          if (activeItemId === chainItem.id) {
+                            setChainIndex(Math.min(actualIdx, Math.max(0, next.length - 1)));
+                          } else {
+                            const newIdx = next.findIndex(c => c.id === activeItemId);
+                            setChainIndex(newIdx !== -1 ? newIdx : Math.max(0, next.length - 1));
+                          }
+                        }}
+                        hitSlop={8}
+                        style={styles.chainItemDelete}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove chain step ${chainItem.title}`}
+                      >
+                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                      </TouchableOpacity>
                     </View>
-                    <Text style={styles.chainItemTitle}>{chainItem.title}</Text>
-                    <ChainStepMinutes
-                      value={chainItem.estimatedMinutes}
-                      label={chainItem.title}
-                      onChange={mins => setChainItems(prev => prev.map(
-                        c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
-                      ))}
-                    />
-                    <TouchableOpacity
-                      onLongPress={drag}
-                      delayLongPress={150}
-                      hitSlop={8}
-                      style={styles.dragHandle}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Reorder chain step ${chainItem.title}`}
-                    >
-                      <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => setChainItems(prev => prev.filter(c => c.id !== chainItem.id))}
-                      hitSlop={8}
-                      style={styles.chainItemDelete}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove chain step ${chainItem.title}`}
-                    >
-                      <Ionicons name="close" size={14} color={colors.textTertiary} />
-                    </TouchableOpacity>
-                  </View>
-                )}
+                  );
+                }}
               />
               {addingChainItem ? (
                 <View style={styles.chainInputRow}>
@@ -668,9 +722,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                   Times are per step; a step left blank uses the item's own estimate.
                 </Text>
               )}
+              {chainItems.length > 1 && (
+                <Text style={styles.optionHint}>
+                  Tap a number to set which step a task made from this template starts on.
+                  {chainIndex > 0 ? ` Starts on step ${chainIndex + 1}: ${chainItems[chainIndex]?.title}.` : ''}
+                </Text>
+              )}
             </>
           )}
-        </View>
+          </CollapsibleField>
       </View>
 
       {/* Subtasks */}
@@ -1021,12 +1081,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
   },
-  cardSection: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   cardSep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator },
-  sectionLabel: {
-    color: colors.textTertiary, fontSize: font.xs, fontWeight: '700',
-    textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
-  },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -1113,21 +1168,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
-  chainHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm,
-  },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
+  chainItemIndexBtn: { padding: 2 },
   chainItemDot: {
     width: 22, height: 22, borderRadius: 11,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
+  chainItemDotActive: { backgroundColor: colors.accent },
   chainItemDotText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
+  chainItemDotTextActive: { color: colors.onAccent },
   chainItemTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
   dragHandle: { padding: 4 },
   chainItemDelete: { padding: 4 },
   chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
