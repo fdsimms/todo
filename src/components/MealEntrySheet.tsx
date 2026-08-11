@@ -197,7 +197,7 @@ export function MealEntrySheet({
           </View>
 
           <Text style={styles.label}>Meal</Text>
-          <View style={styles.chips}>
+          <View style={[styles.chips, styles.chipsLast]}>
             {MEAL_SLOTS.map(slot => {
               const on = entry?.slot === slot;
               return (
@@ -400,6 +400,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
   },
+  chipsLast: {
+    marginBottom: spacing.md,
+  },
   dayChip: {
     flex: 1,
     alignItems: 'center',
@@ -438,7 +441,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   sep: {
     height: border.hairline,
     backgroundColor: colors.separator,
-    marginTop: spacing.md,
   },
   action: {
     flexDirection: 'row',
