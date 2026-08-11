@@ -45,6 +45,11 @@ const MAX_ROWS = 30;
 /** Kept clear above the lifted sheet so its title never slides under the status bar. */
 const TOP_INSET = 72;
 
+/** Quick-pick shortcuts for the free-text plan — the non-recipe nights that come up
+ * often enough to skip typing. Tapping one commits it exactly like tapping a recipe
+ * row does; picking any of these is already a complete answer, not a draft to edit. */
+const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
+
 /**
  * Puts something on a night: a recipe from the box, or whatever the user types.
  *
@@ -194,6 +199,21 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
             })}
           </View>
 
+          <View style={styles.presetRow}>
+            {PRESET_PLANS.map(preset => (
+              <TouchableOpacity
+                key={preset}
+                style={styles.presetChip}
+                onPress={() => pick(null, preset)}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Plan ${preset}`}
+              >
+                <Text style={styles.presetChipText}>{preset}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={15} color={colors.textTertiary} />
             <TextInput
@@ -341,6 +361,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipTextOn: {
     color: colors.onAccent,
+  },
+  presetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  presetChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+  },
+  presetChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
   searchWrap: {
     flexDirection: 'row',
