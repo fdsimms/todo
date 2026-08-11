@@ -13,7 +13,7 @@ import type { Recipe } from '../types';
 import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CountStepper } from './CountStepper';
@@ -45,6 +45,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
+  const recipes = useRecipeStore(s => s.recipes);
 
   const [name, setName] = useState('');
   const [notes, setNotesDraft] = useState('');
@@ -55,6 +56,30 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [servingsOpen, setServingsOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+
+  // Distinct sources already in use elsewhere, so a repeat ("NYT Cooking" on a
+  // fifth recipe) is one tap instead of retyping it — same idea as
+  // LogbookScreen's availableCategories/availableTags, computed from the data
+  // that's actually there rather than a fixed list.
+  const existingSources = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          recipes
+            .filter(r => r.id !== recipe?.id)
+            .map(r => r.sourceName?.trim())
+            .filter((s): s is string => !!s)
+        )
+      ).sort((a, b) => a.localeCompare(b)),
+    [recipes, recipe?.id]
+  );
+  const sourceSuggestions = useMemo(() => {
+    const query = source.trim().toLowerCase();
+    const matches = query
+      ? existingSources.filter(s => s.toLowerCase().includes(query) && s.toLowerCase() !== query)
+      : existingSources;
+    return matches.slice(0, 8);
+  }, [existingSources, source]);
   const [linkOpen, setLinkOpen] = useState(false);
 
   useEffect(() => {
@@ -215,6 +240,22 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             accessibilityLabel="Recipe source"
           />
         )}
+        {sourceOpen && sourceSuggestions.length > 0 && (
+          <View style={styles.sourceChips}>
+            {sourceSuggestions.map(value => (
+              <TouchableOpacity
+                key={value}
+                style={styles.sourceChip}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => setSource(value)}
+                accessibilityRole="button"
+                accessibilityLabel={`Use source ${value}`}
+              >
+                <Text style={styles.sourceChipText} numberOfLines={1}>{value}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
         <EditorRow
           icon="link-outline"
           label="Link"
@@ -322,5 +363,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     paddingVertical: spacing.sm,
     minHeight: 96,
+  },
+  sourceChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    paddingBottom: spacing.sm,
+  },
+  sourceChip: {
+    backgroundColor: colors.bgSunken,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    maxWidth: 220,
+  },
+  sourceChipText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
   },
 });
