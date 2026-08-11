@@ -195,6 +195,34 @@ export function isKeyInRange(key: string, startKey: string, endKey: string): boo
 }
 
 /**
+ * Today's planned meals, for TodayScreen's inline section (#1133) —
+ * `useMealPlanStore.entries` is range-scoped (see the store's own doc
+ * comment), so a bare filter on `entries` would silently read "nothing
+ * planned" for a today that was simply never loaded, as happens on a cold
+ * app start before the user has ever opened Meal plan this session.
+ *
+ * Returns `null` when today isn't known to be covered by the loaded window —
+ * `rangeStart`/`rangeEnd` null (nothing loaded yet) or today outside them
+ * (the user paged Meal plan to a different week and left it there) — so the
+ * caller can tell "definitely nothing planned" (`[]`) apart from "no idea"
+ * (`null`) and render neither an empty state nor a false one for the latter.
+ * Deliberately never loads the range itself: `entries` is a single shared
+ * window and Today calling loadRange would clobber whatever week
+ * MealPlanScreen currently has on screen the next time it's visited without
+ * remounting (see AppNavigator's `enableScreens(false)` note in CLAUDE.md —
+ * hidden tabs stay mounted, they don't reload on refocus).
+ */
+export function selectTodayMealEntries(
+  entries: readonly MealPlanEntry[],
+  rangeStart: string | null,
+  rangeEnd: string | null,
+  todayKey: string
+): MealPlanEntry[] | null {
+  if (!rangeStart || !rangeEnd || !isKeyInRange(todayKey, rangeStart, rangeEnd)) return null;
+  return entriesForDay(entries, todayKey);
+}
+
+/**
  * The header's overline — "3 – 9 Aug", or "28 Jul – 3 Aug" across a month
  * boundary, or "29 Dec – 4 Jan 2027" across a year one.
  *

@@ -13,6 +13,7 @@ import {
   nextSortOrder,
   recipeIndex,
   resolveBulkMoveTargets,
+  selectTodayMealEntries,
   slotLabel,
   slotRank,
   sortMealEntries,
@@ -328,6 +329,43 @@ describe('isKeyInRange', () => {
   it('compares by date across a month boundary', () => {
     expect(isKeyInRange('2026-08-01', '2026-07-28', '2026-08-03')).toBe(true);
     expect(isKeyInRange('2026-09-01', '2026-07-28', '2026-08-03')).toBe(false);
+  });
+});
+
+describe('selectTodayMealEntries', () => {
+  const todayKey = '2026-08-11';
+
+  it('is null when nothing has been loaded yet', () => {
+    expect(selectTodayMealEntries([], null, null, todayKey)).toBeNull();
+  });
+
+  it('is null when the loaded window does not cover today', () => {
+    const entries = [entry('2026-08-18', 'dinner')];
+    expect(selectTodayMealEntries(entries, '2026-08-17', '2026-08-23', todayKey)).toBeNull();
+  });
+
+  it('is an empty array when today is loaded but nothing is planned', () => {
+    const entries = [entry('2026-08-10', 'dinner'), entry('2026-08-12', 'dinner')];
+    expect(selectTodayMealEntries(entries, '2026-08-10', '2026-08-16', todayKey)).toEqual([]);
+  });
+
+  it('returns only today\'s entries, ordered by slot', () => {
+    const dinner = entry(todayKey, 'dinner');
+    const breakfast = entry(todayKey, 'breakfast');
+    const lunch = entry(todayKey, 'lunch');
+    const otherDay = entry('2026-08-12', 'breakfast');
+    const entries = [dinner, breakfast, otherDay, lunch];
+    expect(selectTodayMealEntries(entries, '2026-08-10', '2026-08-16', todayKey)).toEqual([
+      breakfast,
+      lunch,
+      dinner,
+    ]);
+  });
+
+  it('includes today when it sits exactly on either edge of the range', () => {
+    const meal = entry(todayKey, 'lunch');
+    expect(selectTodayMealEntries([meal], todayKey, '2026-08-16', todayKey)).toEqual([meal]);
+    expect(selectTodayMealEntries([meal], '2026-08-10', todayKey, todayKey)).toEqual([meal]);
   });
 });
 
