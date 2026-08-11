@@ -139,6 +139,13 @@ interface SettingsStore {
   // nothing ever has to clear it (same idiom as TaskGroup.completedAt).
   projectNudgeDismissedAt: string | null;
   patchNotesQaStatus: Record<string, PatchNoteQaStatus>; // patch note id -> QA result
+  // What a *new* project's nudgeCadenceDays starts at (see DEFAULT_NUDGE_CADENCE_DAYS
+  // in src/types/index.ts for why that constant itself stays 0). This is the
+  // opt-in the other direction: someone who wants every new project chasing
+  // them sets it once here instead of by hand on every project they create.
+  // Changing it only affects projects created after the change — existing
+  // projects keep whatever cadence they were given.
+  defaultProjectNudgeCadenceDays: number;
   initialized: boolean;
   initialize: () => void;
   /** Loads the keychain-backed settings. Call after initialize(). */
@@ -182,6 +189,7 @@ interface SettingsStore {
   setGroceryImportDelete: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setProjectNudgeDismissedAt: (at: string | null) => void;
+  setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   resetToDefaults: () => void;
 }
@@ -211,6 +219,7 @@ const DEFAULT_SETTINGS = {
   groceryImportEnabled: false,
   groceryImportDelete: true,
   remindersImportReview: true,
+  defaultProjectNudgeCadenceDays: 0,
 };
 
 // Every value in DEFAULT_SETTINGS goes back to the settings table through
@@ -299,6 +308,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   remindersImportReview: true,
   projectNudgeDismissedAt: null,
   patchNotesQaStatus: {},
+  defaultProjectNudgeCadenceDays: 0,
   initialized: false,
 
   initialize() {
@@ -355,6 +365,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
     const projectNudgeDismissedAt = dbGetSetting('projectNudgeDismissedAt') || null;
+    // Same TEXT-column parse as every other numeric setting here: an
+    // unparseable or missing row (a fresh install, or one that predates this
+    // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
+    const storedDefaultCadence = Number(dbGetSetting('defaultProjectNudgeCadenceDays'));
+    const defaultProjectNudgeCadenceDays =
+      Number.isFinite(storedDefaultCadence) && storedDefaultCadence > 0 ? storedDefaultCadence : 0;
     const storedQaStatus = dbGetSetting('patchNotesQaStatus');
     let patchNotesQaStatus: Record<string, PatchNoteQaStatus> = {};
     if (storedQaStatus) {
@@ -386,7 +402,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
         // keep defaults
       }
     }
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, themeMode, appFont, dailyAgendaEnabled, dailyAgendaTime, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, sortOption, filterPriorities, filterEfforts, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, completedRetentionDays, hideCategories, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, projectNudgeDismissedAt, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, initialized: true });
   },
 
   /**
@@ -634,6 +650,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
       dbSetSetting('patchNotesQaStatus', JSON.stringify(next));
       return { patchNotesQaStatus: next };
     });
+  },
+
+  setDefaultProjectNudgeCadenceDays(days: number) {
+    dbSetSetting('defaultProjectNudgeCadenceDays', String(days));
+    set({ defaultProjectNudgeCadenceDays: days });
   },
 
   resetToDefaults() {

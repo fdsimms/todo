@@ -38,6 +38,14 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
 
   pillRow: { flexDirection: 'row', padding: spacing.sm, gap: spacing.sm },
   pillRowAttached: { paddingTop: 0 },
+  // A stepper paired with its own unit pills, sitting under a `tight` row —
+  // the unit pills stay one group and wrap together rather than splitting off
+  // on their own at a narrow width (same idiom as ProjectEditor's cadenceRow).
+  cadenceRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  cadenceUnitRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   pill: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6, paddingVertical: 10, borderRadius: radius.sm,
