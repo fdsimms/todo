@@ -25,6 +25,7 @@ import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
+import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -34,7 +35,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { cleanRecipeName, countLikelyInPantry, describeCookHistory, describeRecipe, groupRecipesByMealType, rankRecipeSuggestions, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap } from '../utils/recipeComponents';
-import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts, toggleRecipeTag } from '../utils/recipeTags';
+import { allRecipeTags, filterRecipesByTags, formatTagList, recipeTagCounts } from '../utils/recipeTags';
 import { tagColor } from '../utils/tagColor';
 import { groceryNameKey } from '../utils/groceryParse';
 
@@ -72,6 +73,7 @@ export function RecipesScreen() {
 
   const [query, setQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagFilterVisible, setTagFilterVisible] = useState(false);
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -400,54 +402,48 @@ export function RecipesScreen() {
               showsHorizontalScrollIndicator={false}
               // flexGrow: 0 in the style, or this row stretches to share the
               // column with the list below it — same reason the Logbook pins
-              // its own filter bar's height.
+              // its own filter bar's height. Unlike the vocabulary itself
+              // (unbounded — see RecipeTagFilterSheet), what's *selected* is
+              // small enough in practice to sit in a scrolling row: it's the
+              // handful the cook is actively narrowing by, not the whole box.
               style={styles.tagFilterScroll}
               contentContainerStyle={styles.tagFilterRow}
               keyboardShouldPersistTaps="handled"
             >
-              {/* Only once something is on: an always-present "All" chip would
-                  be a control that does nothing most of the time, and the row
-                  is already scrolled to the left where it sits. */}
-              {filtering && (
+              <TouchableOpacity
+                style={styles.filterButton}
+                onPress={() => { haptics.tap(); setTagFilterVisible(true); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Filter recipes by tag"
+              >
+                <Ionicons name="funnel-outline" size={13} color={colors.text} />
+                <Text style={styles.filterButtonText}>
+                  {filtering ? `Tags (${activeTags.length})` : 'Tags'}
+                </Text>
+                <Ionicons name="chevron-down" size={12} color={colors.textTertiary} />
+              </TouchableOpacity>
+              {activeTags.map(tag => (
                 <TouchableOpacity
-                  style={styles.clearChip}
-                  onPress={() => { haptics.tap(); animateLayout(); setSelectedTags([]); }}
+                  key={tag}
+                  // Tinted rather than filled, and colored text rather than
+                  // onAccent — the same treatment every other removable tag
+                  // chip in this app uses (TaskEditor, LogbookScreen). A
+                  // filled pill would put white text on a yellow tag.
+                  style={[styles.activePill, { backgroundColor: tagColor(tag) + '33' }]}
+                  onPress={() => {
+                    haptics.tap();
+                    animateLayout();
+                    setSelectedTags(prev => prev.filter(t => t !== tag));
+                  }}
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
-                  accessibilityLabel="Clear tag filter"
+                  accessibilityLabel={`Remove tag filter ${tag}`}
                 >
-                  <Ionicons name="close" size={12} color={colors.textSecondary} />
-                  <Text style={styles.clearChipText}>Clear</Text>
+                  <Text style={[styles.activePillText, { color: tagColor(tag) }]} numberOfLines={1}>{tag}</Text>
+                  <Ionicons name="close" size={13} color={tagColor(tag)} />
                 </TouchableOpacity>
-              )}
-              {tagVocabulary.map(tag => {
-                const active = activeTags.includes(tag);
-                return (
-                  <TouchableOpacity
-                    key={tag}
-                    style={[
-                      styles.tagChip,
-                      active && { backgroundColor: tagColor(tag) + '33', borderColor: tagColor(tag) },
-                    ]}
-                    onPress={() => {
-                      haptics.tap();
-                      animateLayout();
-                      setSelectedTags(prev => toggleRecipeTag(prev, tag));
-                    }}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="checkbox"
-                    accessibilityState={{ checked: active }}
-                    accessibilityLabel={`${tag}, ${tagCounts.get(tag) ?? 0} recipes`}
-                    accessibilityHint="Double tap to filter the recipe box by this tag"
-                  >
-                    <View style={[styles.tagDot, { backgroundColor: tagColor(tag) }]} />
-                    <Text style={[styles.tagChipText, active && { color: tagColor(tag) }]}>{tag}</Text>
-                    <Text style={[styles.tagChipCount, active && { color: tagColor(tag) }]}>
-                      {tagCounts.get(tag) ?? 0}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              ))}
             </ScrollView>
           )}
 
@@ -558,6 +554,15 @@ export function RecipesScreen() {
         onClose={() => setImportVisible(false)}
         onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
       />
+
+      <RecipeTagFilterSheet
+        visible={tagFilterVisible}
+        onClose={() => setTagFilterVisible(false)}
+        tags={tagVocabulary}
+        counts={tagCounts}
+        selected={activeTags}
+        onChange={next => { animateLayout(); setSelectedTags(next); }}
+      />
     </View>
   );
 }
@@ -587,55 +592,48 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     padding: 0,
   },
-  // The tag filter row. Same chip treatment as the bulk bar's tag picker —
-  // outlined, with the tag's own colour as a dot, filling in when it's on.
+  // The tag filter row — a button that opens RecipeTagFilterSheet (the
+  // vocabulary is unbounded, see that component's doc comment) plus the
+  // currently-active tags as removable pills. Same shape as LogbookScreen's
+  // own filterButton/activePill.
   tagFilterScroll: {
     flexGrow: 0,
   },
   tagFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
   },
-  tagChip: {
+  filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
     borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: colors.bgQuaternary,
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.bgQuaternary,
   },
-  tagDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  tagChipText: {
-    color: colors.textSecondary,
+  filterButtonText: {
+    color: colors.text,
     fontSize: font.sm,
-    fontWeight: fontWeight.medium,
+    fontWeight: fontWeight.semibold,
   },
-  tagChipCount: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
-  },
-  clearChip: {
+  activePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
+    gap: 5,
+    maxWidth: 220,
+    paddingLeft: spacing.md,
+    paddingRight: 10,
+    paddingVertical: 7,
     borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
   },
-  clearChipText: {
-    color: colors.textSecondary,
+  activePillText: {
     fontSize: font.sm,
-    fontWeight: fontWeight.medium,
+    fontWeight: fontWeight.semibold,
+    flexShrink: 1,
   },
   // Same treatment as LogbookScreen's day headers — section headers app-wide
   // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.
