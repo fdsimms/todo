@@ -6,6 +6,7 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  Image,
   StyleSheet,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -128,9 +129,13 @@ export function RecipesScreen() {
       accessibilityLabel={`${recipe.name}. ${describeRecipe(recipe, pantryCounts.get(recipe.id))}`}
       accessibilityHint="Double tap to open this recipe."
     >
-      <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
-        <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
-      </View>
+      {recipe.imagePath ? (
+        <Image source={{ uri: recipe.imagePath }} style={styles.thumb} />
+      ) : (
+        <View style={[styles.icon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+        </View>
+      )}
       <View style={styles.info}>
         <Text style={styles.name} numberOfLines={2}>{recipe.name}</Text>
         <Text style={styles.meta} numberOfLines={1}>
@@ -338,6 +343,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  thumb: {
+    width: 36,
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgSunken,
   },
   info: {
     flex: 1,

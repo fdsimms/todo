@@ -700,6 +700,12 @@ export interface Recipe {
   // Independent of `author` for the same reason.
   source: string | null;
   servings: number | null;
+  // The user-attached photo — a file:// URI under the document directory
+  // (src/utils/recipePhoto.ts `pickRecipeImage`), null until one's attached.
+  // Deliberately not base64-in-the-row: a recipe photo is a picture the card
+  // and detail screen render, not a payload the Messages API reads, so there
+  // is no reason to pay SQLite (or every future row read) for the bytes.
+  imagePath: string | null;
   ingredients: RecipeIngredient[];
   // "Defrost the chicken", "start the sauce at 5" — real Tasks once "Add prep
   // tasks" on a planned meal walks this list, not a meal-specific reminder

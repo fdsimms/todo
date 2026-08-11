@@ -431,6 +431,9 @@ export function initDatabase(): void {
     // edited. See Recipe.author/Recipe.source.
     'ALTER TABLE recipes ADD COLUMN author TEXT',
     'ALTER TABLE recipes ADD COLUMN source TEXT',
+    // Null for every existing recipe — no recipe written before this shipped
+    // had a photo attached. See Recipe.imagePath / src/utils/recipePhoto.ts.
+    'ALTER TABLE recipes ADD COLUMN image_path TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1492,6 +1495,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     author: (row.author as string) ?? null,
     source: (row.source as string) ?? null,
     servings: (row.servings as number) ?? null,
+    imagePath: (row.image_path as string) ?? null,
     ingredients: parseRecipeIngredients(row.ingredients),
     prepTasks: parsePrepTasks(row.prep_tasks),
     favorite: Boolean(row.favorite),
@@ -1512,12 +1516,12 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, servings, ingredients, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      (id, name, name_key, notes, source_url, source_name, author, source, servings, image_path, ingredients, prep_tasks, favorite, sort_order, created_at, cook_count, last_cooked_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.imagePath ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null,
     ]
@@ -1527,13 +1531,13 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, ingredients=?, prep_tasks=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, servings=?, image_path=?, ingredients=?, prep_tasks=?,
        favorite=?, sort_order=?, cook_count=?, last_cooked_at=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.servings ?? null, JSON.stringify(recipe.ingredients),
+      recipe.servings ?? null, recipe.imagePath ?? null, JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.prepTasks), recipe.favorite ? 1 : 0, recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.id,
     ]
