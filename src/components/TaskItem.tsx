@@ -1342,7 +1342,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0) && (
+        {(isQuota || timed || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* What this task is holding back — the only place the queue is
                 visible from a list, since the waiters themselves are hidden. */}
@@ -1491,6 +1491,17 @@ export const TaskItem = React.memo(function TaskItem({
               >
                 <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
+              </View>
+            )}
+            {/* Notes only render once a row is expanded, so the collapsed row
+                otherwise gives no hint they exist. Icon-only, no text: this is
+                the quiet option (vs. a truncated preview line), matching how
+                little it needs to say — "there's something here" — against
+                the row-height cost a preview would add to every task with a
+                note. */}
+            {task.notes.length > 0 && (
+              <View style={styles.metaChip} accessibilityLabel="Has notes">
+                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textTertiary} />
               </View>
             )}
           </View>
