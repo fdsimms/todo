@@ -76,6 +76,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   // continued typing without needing an effect to reconcile it.
   const [rejectedQuantity, setRejectedQuantity] = useState<string | null>(null);
   const [rejectedPrep, setRejectedPrep] = useState<string | null>(null);
+  const [rejectedPurpose, setRejectedPurpose] = useState<string | null>(null);
 
   const suggestions = useMemo(
     () => (focused ? rankGrocerySuggestions(text, items, new Date()) : []),
@@ -88,8 +89,12 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const tokens = useMemo(() => {
     const trimmed = text.trim();
     if (!trimmed) return null;
-    return resolveGroceryTokens(trimmed, { quantity: rejectedQuantity, prep: rejectedPrep });
-  }, [text, rejectedQuantity, rejectedPrep]);
+    return resolveGroceryTokens(trimmed, {
+      quantity: rejectedQuantity,
+      prep: rejectedPrep,
+      purpose: rejectedPurpose,
+    });
+  }, [text, rejectedQuantity, rejectedPrep, rejectedPurpose]);
 
   // "pepper or thyme" wants to be two rows on the list, not one catalog entry
   // nothing can ever match — see splitAlternativeNames. Unlike the recipe
@@ -106,15 +111,24 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     if (!alternatives) return;
     animateLayout();
     const addedItems = alternatives.map(part =>
-      addByName(part, { name: part, quantity: tokens?.quantityAccepted ? tokens.quantity : null }, undefined, {
-        registerUndo: false,
-      })
+      addByName(
+        part,
+        {
+          name: part,
+          quantity: tokens?.quantityAccepted ? tokens.quantity : null,
+          // "limes or lemons for margs" is one purpose over two rows.
+          note: tokens?.note ?? null,
+        },
+        undefined,
+        { registerUndo: false },
+      )
     );
     haptics.success();
     setText('');
     setStatus(null);
     setRejectedQuantity(null);
     setRejectedPrep(null);
+    setRejectedPurpose(null);
     // One combined undo, same reason addManyFromText combines its per-line
     // ones — otherwise only the last of the two rows would be undoable.
     const addedIds = addedItems.map(i => i.id);
@@ -126,7 +140,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded]);
 
   const commit = useCallback(
-    (raw: string, override?: { name: string; quantity: string | null }) => {
+    (raw: string, override?: { name: string; quantity: string | null; note?: string | null }) => {
       const trimmed = raw.trim();
       if (!trimmed) return;
       animateLayout();
@@ -136,6 +150,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
       setStatus(null);
       setRejectedQuantity(null);
       setRejectedPrep(null);
+      setRejectedPurpose(null);
       onAdded?.([item]);
     },
     [addByName, onAdded]
@@ -143,7 +158,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
 
   const submit = useCallback(() => {
     if (!tokens) return;
-    commit(text, { name: tokens.name, quantity: tokens.quantity });
+    commit(text, { name: tokens.name, quantity: tokens.quantity, note: tokens.note });
   }, [tokens, text, commit]);
 
   useImperativeHandle(ref, () => ({
@@ -221,6 +236,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
               setText('');
               setRejectedQuantity(null);
               setRejectedPrep(null);
+              setRejectedPurpose(null);
             }}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -236,7 +252,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           decision rather than something the parser did silently. Each token
           it pulled out of the text gets its own chip; tapping × keeps that
           exact piece in the name instead — see resolveGroceryTokens. */}
-      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted) && (
+      {!!tokens && (tokens.quantityAccepted || tokens.prepAccepted || tokens.purposeAccepted) && (
         <View style={styles.tokenRow}>
           <View style={styles.tokenChips}>
             {tokens.quantityAccepted && (
@@ -260,6 +276,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
                   hitSlop={8}
                   accessibilityRole="button"
                   accessibilityLabel={`Keep "${tokens.prep}" in the name instead of splitting it out`}
+                >
+                  <Ionicons name="close" size={11} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
+            )}
+            {tokens.purposeAccepted && (
+              <View style={styles.tokenChip}>
+                <Text style={styles.tokenChipText}>for {tokens.purpose}</Text>
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setRejectedPurpose(tokens.purpose); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Keep "for ${tokens.purpose}" in the name instead of making it a note`}
                 >
                   <Ionicons name="close" size={11} color={colors.textTertiary} />
                 </TouchableOpacity>

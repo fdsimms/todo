@@ -145,11 +145,13 @@ interface GroceryStore {
    * given name/quantity as-is — for GroceryAddField's per-token × button,
    * where the user has already decided which pieces of what they typed count
    * as quantity versus name and re-parsing `raw` would just reproduce the
-   * split they rejected.
+   * split they rejected. `note` carries the pieces that are neither ("chopped",
+   * "for margs") — they belong on the row, not in the name the catalog key and
+   * the aisle lexicon are matched against.
    */
   addByName: (
     raw: string,
-    override?: { name: string; quantity: string | null },
+    override?: { name: string; quantity: string | null; note?: string | null },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
      * callers (addManyFromText, addFromPlan) use this and register one
@@ -384,6 +386,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    */
   addByName(raw, override, source, opts) {
     const { name, quantity } = override ?? parseGroceryInput(raw);
+    const note = override?.note?.trim() || null;
     // A name with no letters or digits ("???") normalises to an empty key.
     // Falling back to the raw text keeps the key unique, which matters: two
     // such rows would collide on the UNIQUE index and the *second* insert
@@ -404,6 +407,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // Only overwrite the quantity when this add actually carried one;
         // typing "milk" to re-add shouldn't wipe the "2 gal" set last week.
         quantity: quantity ?? existing.quantity,
+        // Same rule the quantity above follows, and for the same reason:
+        // re-adding a known item without saying why must not wipe the note
+        // that's been on it since last time.
+        note: note ?? existing.note,
         lastAddedAt: now,
       };
       dbUpdateGroceryItem(updated);
@@ -433,7 +440,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // still exist: naming a deleted one here would bring its section back.
       aisle: placeAisle(get().aisleOverrides[key] ?? aisleForName(name), get().aisleOrder),
       quantity,
-      note: '',
+      note: note ?? '',
       onList: true,
       checked: false,
       // Provisional: a name nobody has bought, starred or finished a trip with

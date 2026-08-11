@@ -7,6 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -94,6 +95,7 @@ export function GroceryScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
@@ -123,6 +125,17 @@ export function GroceryScreen() {
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
+  // sourceRecipeId is a snapshot pointer and doesn't cascade, so a row can
+  // outlive the recipe that put it there. The set is what decides whether the
+  // row gets a button at all — see GroceryRow.onOpenRecipe.
+  const recipeIds = useMemo(() => new Set(recipes.map(r => r.id)), [recipes]);
+  const openRecipe = useCallback(
+    (recipeId: string) => {
+      haptics.tap();
+      navigation.navigate('RecipeDetail', { recipeId });
+    },
+    [navigation]
+  );
 
   const {
     selectionMode,
@@ -551,10 +564,15 @@ export function GroceryScreen() {
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
           onSelect={toggleSelection}
+          onOpenRecipe={
+            row.item.sourceRecipeId && recipeIds.has(row.item.sourceRecipeId)
+              ? openRecipe
+              : undefined
+          }
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection]
+    [styles, colors, cartOpen, handleToggle, handleEdit, zoneByKey, selectionMode, selectedIds, toggleSelection, recipeIds, openRecipe]
   );
 
   return (
@@ -708,6 +726,11 @@ export function GroceryScreen() {
         visible={editingId !== null}
         itemId={editingId}
         onClose={() => setEditingId(null)}
+        onOpenRecipe={recipeId => {
+          setEditingId(null);
+          openRecipe(recipeId);
+        }}
+        recipeExists={recipeId => recipeIds.has(recipeId)}
       />
       <GroceryAISheet
         visible={aiMode !== null}

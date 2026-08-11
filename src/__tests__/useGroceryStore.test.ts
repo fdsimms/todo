@@ -174,6 +174,24 @@ describe('initialize', () => {
 // ─── addByName ───────────────────────────────────────────────────────────────
 
 describe('addByName', () => {
+  it('keeps an override note on the row it creates', () => {
+    const item = useGroceryStore.getState().addByName('limes', {
+      name: 'limes', quantity: null, note: 'for margs',
+    });
+    expect(item.name).toBe('limes');
+    expect(item.note).toBe('for margs');
+  });
+
+  it('never wipes an existing note when the item is re-added without one', () => {
+    useGroceryStore.getState().addByName('limes', {
+      name: 'limes', quantity: null, note: 'for margs',
+    });
+    // Same rule the quantity follows: typing the bare name again is a re-add,
+    // not an instruction to blank what's already on the row.
+    const again = useGroceryStore.getState().addByName('limes');
+    expect(again.note).toBe('for margs');
+  });
+
   it('inserts a genuinely new item, filed by the lexicon', () => {
     const item = useGroceryStore.getState().addByName('Milk');
 

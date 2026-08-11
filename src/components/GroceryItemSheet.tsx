@@ -35,6 +35,14 @@ interface Props {
   visible: boolean;
   itemId: string | null;
   onClose: () => void;
+  /** Closes the sheet and opens the recipe this item came from. */
+  onOpenRecipe?: (recipeId: string) => void;
+  /**
+   * Whether that recipe is still there. The pointer is a snapshot and doesn't
+   * cascade, so a row can outlive it — in which case the line stays as the
+   * plain caption it always was rather than becoming a button to nowhere.
+   */
+  recipeExists?: (recipeId: string) => boolean;
 }
 
 /**
@@ -43,7 +51,7 @@ interface Props {
  * anywhere in groceries, so deleting a catalog row is behind a confirm rather
  * than on a swipe.
  */
-export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
+export function GroceryItemSheet({ visible, itemId, onClose, onOpenRecipe, recipeExists }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -252,7 +260,24 @@ export function GroceryItemSheet({ visible, itemId, onClose }: Props) {
               Renaming the item doesn't touch it, and there's nothing to
               reassign; it just says why this row exists. */}
           {!!item.sourceRecipeTitle && (
-            <Text style={styles.hint}>From: {item.sourceRecipeTitle}</Text>
+            item.sourceRecipeId && onOpenRecipe && recipeExists?.(item.sourceRecipeId) ? (
+              <TouchableOpacity
+                style={styles.recipeLink}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => onOpenRecipe(item.sourceRecipeId!)}
+                accessibilityRole="button"
+                accessibilityLabel={`Open the recipe ${item.sourceRecipeTitle}`}
+                accessibilityHint="Closes this and opens the recipe"
+              >
+                <Ionicons name="restaurant-outline" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.recipeLinkText} numberOfLines={1}>
+                  recipe: {item.sourceRecipeTitle}
+                </Text>
+                <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.hint}>recipe: {item.sourceRecipeTitle}</Text>
+            )
           )}
 
           <Text style={styles.label}>QUANTITY</Text>
@@ -569,6 +594,16 @@ function makeStyles(colors: Colors) {
     inputError: { borderColor: colors.red },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
+    // A row rather than bare accent text: this leaves the sheet for another
+    // screen, and the chevron is what says so (same shape EditorRow uses).
+    recipeLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+      marginBottom: spacing.xs,
+    },
+    recipeLinkText: { flex: 1, fontSize: font.sm, color: colors.accent },
     pills: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
     addWrap: {
       flexDirection: 'row',
