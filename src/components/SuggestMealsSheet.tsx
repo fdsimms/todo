@@ -29,6 +29,15 @@ interface Props {
   /** Already ranked by suggestRecipesForEmptyNight — this sheet doesn't re-sort. */
   recipes: Recipe[];
   /**
+   * Recipes made often and made recently (rankRecipeSuggestions) — the
+   * comfort-food counterpart to `recipes` above, rendered in its own "Cook
+   * again" group rather than merged into the pantry ranking, since the two
+   * rank by opposite signals (this one rewards a recent cook, `recipes`
+   * discounts one). The caller dedupes against `recipes` before handing it
+   * over, so a recipe qualifying for both isn't shown twice.
+   */
+  cookAgainRecipes?: Recipe[];
+  /**
    * The visible half of #1103's pantry signal — a recipe missing from this
    * map (rather than present with `total: 0`) just renders with no badge, so
    * a caller that hasn't computed it yet degrades to the pre-#1103 row.
@@ -115,7 +124,7 @@ interface Props {
  * saves, and the row is retried the next time Save is pressed.
  */
 export function SuggestMealsSheet({
-  visible, recipes, pantryByRecipeId, openDays,
+  visible, recipes, cookAgainRecipes = [], pantryByRecipeId, openDays,
   aiIdeasEnabled = false, plannedTitles, recentTitles, slotsToFill,
   onPlan, onClose,
 }: Props) {
@@ -161,13 +170,18 @@ export function SuggestMealsSheet({
   }, [visible]);
 
   const availableMealTypes = useMemo(
-    () => RECIPE_MEAL_TYPES.filter(type => recipes.some(r => r.mealType === type)),
-    [recipes],
+    () => RECIPE_MEAL_TYPES.filter(type =>
+      recipes.some(r => r.mealType === type) || cookAgainRecipes.some(r => r.mealType === type)),
+    [recipes, cookAgainRecipes],
   );
 
   const filteredRecipes = useMemo(
     () => (filter === 'all' ? recipes : recipes.filter(r => r.mealType === filter)),
     [recipes, filter],
+  );
+  const filteredCookAgain = useMemo(
+    () => (filter === 'all' ? cookAgainRecipes : cookAgainRecipes.filter(r => r.mealType === filter)),
+    [cookAgainRecipes, filter],
   );
   // Ideas carry no mealType of their own — narrowing to a category has
   // nothing to match them against, so they drop out rather than showing up
@@ -178,11 +192,16 @@ export function SuggestMealsSheet({
     () => mergeMealSuggestions(filteredRecipes, filteredIdeas),
     [filteredRecipes, filteredIdeas],
   );
-  // Unfiltered, so a pick made under one category keeps its place (and its
-  // day assignment) if the filter changes before Save is pressed.
+  // Unfiltered, and in the same top-to-bottom order the sheet renders
+  // (Cook again, then the pantry ranking, then ideas), so a pick made under
+  // one category keeps its place — and its day assignment — if the filter
+  // changes before Save is pressed.
   const allSuggestions = useMemo(
-    () => mergeMealSuggestions(recipes, ideas),
-    [recipes, ideas],
+    () => [
+      ...cookAgainRecipes.map(recipe => ({ kind: 'recipe' as const, key: `recipe:${recipe.id}`, recipe })),
+      ...mergeMealSuggestions(recipes, ideas),
+    ],
+    [cookAgainRecipes, recipes, ideas],
   );
 
   const noOpenNights = openDays.length === 0;
@@ -526,8 +545,10 @@ export function SuggestMealsSheet({
     );
   };
 
-  const nothingAtAll = filter === 'all' && recipes.length === 0 && ideas.length === 0 && !aiIdeasEnabled;
-  const nothingForFilter = filter !== 'all' && filteredRecipes.length === 0 && filteredIdeas.length === 0;
+  const nothingAtAll = filter === 'all' && recipes.length === 0 && cookAgainRecipes.length === 0
+    && ideas.length === 0 && !aiIdeasEnabled;
+  const nothingForFilter = filter !== 'all'
+    && filteredRecipes.length === 0 && filteredCookAgain.length === 0 && filteredIdeas.length === 0;
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -595,6 +616,17 @@ export function SuggestMealsSheet({
             keyboardShouldPersistTaps="handled"
             {...keyboardScroll.props}
           >
+            {/* Recipes made often and made recently — kept separate from the
+                pantry ranking below rather than merged into it, since the two
+                rank by opposite signals (see cookAgainRecipes' own doc). */}
+            {filteredCookAgain.length > 0 && (
+              <View style={styles.cookAgainSection}>
+                <Text style={[styles.sectionHeader, styles.cookAgainHeader]}>COOK AGAIN</Text>
+                {filteredCookAgain.map(recipe => (
+                  <React.Fragment key={`again:${recipe.id}`}>{renderRecipeRow(recipe)}</React.Fragment>
+                ))}
+              </View>
+            )}
             {noOpenNights ? (
               <Text style={styles.intro}>There's no open night left this week.</Text>
             ) : capacityFull ? (
@@ -714,6 +746,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   ideaError: { fontSize: font.xs, color: colors.red, marginTop: spacing.xs },
 
   ideaSection: { marginTop: spacing.lg, paddingHorizontal: spacing.md, gap: spacing.sm },
+  cookAgainSection: { paddingTop: spacing.md, gap: 2 },
+  cookAgainHeader: { paddingHorizontal: spacing.md, marginBottom: spacing.xs },
   sectionHeader: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,

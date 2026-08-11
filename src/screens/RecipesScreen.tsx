@@ -42,7 +42,6 @@ import {
   describeRecipe,
   flattenRecipeMealTypeSections,
   groupRecipesByMealType,
-  rankRecipeSuggestions,
   rankRecipes,
   recipeListItemKey,
   resolveRecipeMealTypeDrop,
@@ -66,9 +65,8 @@ import { groceryNameKey } from '../utils/groceryParse';
  * describeRecipe(), and the header's "Group" toggle switches the list between
  * that flat favorites-first order and RECIPE_MEAL_TYPE_LABELS sections
  * (groupRecipesByMealType, src/utils/recipeUtils.ts). Grouping only applies to
- * the unfiltered box, same as the "Cook again" shelf below: a search is
- * already a specific question, and section headers over a handful of matches
- * would just be noise.
+ * the unfiltered box: a search is already a specific question, and section
+ * headers over a handful of matches would just be noise.
  *
  * While grouped, a recipe row can be dragged into another section to
  * re-tag its meal type — same ReorderableList + nearest-header-above rule
@@ -227,16 +225,6 @@ export function RecipesScreen() {
     return map;
   }, [grouped]);
 
-  // Only offered on the unfiltered list — a search or a tag filter is already a
-  // specific question ("what has fennel", "what's vegetarian"), and a shelf of
-  // suggestions above the results would answer a question nobody asked. It
-  // ranks the whole box, so under a filter it would also be offering exactly
-  // the recipes just filtered out.
-  const cookAgain = useMemo(
-    () => query.trim() || filtering ? [] : rankRecipeSuggestions(recipes, new Date()),
-    [query, filtering, recipes]
-  );
-
   // Computed once for the visible list rather than per row render — same
   // classifyPlanned pass RecipeToListSheet/AddWeekToListSheet already run,
   // just reduced to a count per recipe.
@@ -314,9 +302,8 @@ export function RecipesScreen() {
     if (existing) openRecipe(existing);
   };
 
-  // One affordance, two homes (a list row and a shelf card), so "plan this"
-  // looks and reads the same wherever it's reached from. Icon-only because
-  // both hosts are already dense; the spoken label carries the meaning.
+  // Icon-only because the row is already dense; the spoken label carries the
+  // meaning.
   //
   // Deliberately a button rather than a swipe or a long-press: the row's
   // long-press is already the drag-to-reorder handle, and the list is a
@@ -381,37 +368,6 @@ export function RecipesScreen() {
       </TouchableOpacity>
     );
   };
-
-  const cookAgainShelf = cookAgain.length === 0 ? null : (
-    <View style={styles.shelf}>
-      <Text style={styles.shelfLabel}>Cook again</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.shelfRow}
-      >
-        {cookAgain.map(recipe => (
-          <TouchableOpacity
-            key={recipe.id}
-            style={styles.shelfCard}
-            onPress={() => openRecipe(recipe)}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="button"
-            accessibilityLabel={`${recipe.name}. ${describeCookHistory(recipe)}`}
-          >
-            <View style={styles.shelfTop}>
-              <Text style={styles.shelfName} numberOfLines={2}>{recipe.name}</Text>
-              {/* The whole point of this shelf is "have it again", and having
-                  it again means putting it on a night — so the action is on the
-                  card rather than two taps away through the recipe. */}
-              {planButton(recipe)}
-            </View>
-            <Text style={styles.shelfMeta} numberOfLines={1}>{describeCookHistory(recipe)}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  );
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -537,38 +493,35 @@ export function RecipesScreen() {
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
-            <>
-              {!selectionMode && cookAgainShelf}
-              <ReorderableList
-                data={draggableData}
-                keyExtractor={recipeListItemKey}
-                renderItem={({ item, drag, isActive }) => {
-                  if (item.type === 'header') {
-                    return (
-                      <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionHeaderText}>{item.title}</Text>
-                        <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
-                      </View>
-                    );
-                  }
-                  return renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
-                }}
-                onHoverChange={haptics.dragTick}
-                // Row 0 is always a header (groupRecipesByMealType never emits
-                // an empty section) — see the note on resolveRecipeMealTypeDrop.
-                // Keeping it off-limits means every recipe row always has a
-                // header above it to read a mealType from.
-                dragRange={(data, _activeIndex) => [1, data.length - 1]}
-                placeholderStyle={styles.dropSlot}
-                onReorder={reordered => {
-                  const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
-                  setDraggableData(settled);
-                  mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
-                }}
-                contentContainerStyle={styles.list}
-                ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
-              />
-            </>
+            <ReorderableList
+              data={draggableData}
+              keyExtractor={recipeListItemKey}
+              renderItem={({ item, drag, isActive }) => {
+                if (item.type === 'header') {
+                  return (
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionHeaderText}>{item.title}</Text>
+                      <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
+                    </View>
+                  );
+                }
+                return renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
+              }}
+              onHoverChange={haptics.dragTick}
+              // Row 0 is always a header (groupRecipesByMealType never emits
+              // an empty section) — see the note on resolveRecipeMealTypeDrop.
+              // Keeping it off-limits means every recipe row always has a
+              // header above it to read a mealType from.
+              dragRange={(data, _activeIndex) => [1, data.length - 1]}
+              placeholderStyle={styles.dropSlot}
+              onReorder={reordered => {
+                const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
+                setDraggableData(settled);
+                mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
+              }}
+              contentContainerStyle={styles.list}
+              ListFooterComponent={<View style={{ height: tabBarHeight + FAB_SIZE + spacing.xl }} />}
+            />
           ) : (
             <FlatList
               data={visible}
@@ -576,9 +529,6 @@ export function RecipesScreen() {
               renderItem={renderRecipe}
               keyboardShouldPersistTaps="handled"
               contentContainerStyle={styles.list}
-              // Hidden while selecting: it's a shortcut into a recipe, and
-              // opening one out from under an in-progress selection would lose it.
-              ListHeaderComponent={selectionMode ? null : cookAgainShelf}
               ListFooterComponent={
                 <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />
               }
@@ -759,22 +709,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   list: {
     paddingTop: spacing.xs,
   },
-  shelf: {
-    paddingTop: spacing.sm,
-    gap: spacing.xs,
-  },
-  shelfLabel: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    marginHorizontal: spacing.md,
-  },
-  shelfRow: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
-  },
   // A bare glyph, not a tinted tile. The row already opens with an
   // accentSubtle tile carrying the recipe's own icon, and a second one at the
   // other end reads as a matching pair of *icons* rather than as a control —
@@ -784,29 +718,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   planButton: {
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  shelfTop: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.xs,
-  },
-  shelfCard: {
-    width: 160,
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: 3,
-  },
-  shelfName: {
-    flexShrink: 1,
-    color: colors.text,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
-  },
-  shelfMeta: {
-    color: colors.textTertiary,
-    fontSize: font.xs,
   },
   // Same inset-grouped card footprint as TaskItem and the Stacks rows.
   row: {

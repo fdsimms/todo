@@ -58,6 +58,7 @@ import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
   resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
+  rankRecipeSuggestions,
   pantryCoverageForRecipe,
   type PantryCoverage,
 } from '../utils/recipeUtils';
@@ -217,6 +218,7 @@ export function MealPlanScreen() {
   const removeEntry = useMealPlanStore(s => s.removeEntry);
   const renameEntry = useMealPlanStore(s => s.renameEntry);
   const setEntryCooked = useMealPlanStore(s => s.setCooked);
+  const setCookTask = useMealPlanStore(s => s.setCookTask);
   const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
@@ -264,7 +266,7 @@ export function MealPlanScreen() {
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
-    useState<{ recipes: Recipe[]; days: Date[] } | null>(null);
+    useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
   // Per-day collapse, local-only — every day starts expanded, and folding one
   // away is just less to scroll past, not a decision worth persisting.
   const [collapsedDays, setCollapsedDays] = useState<Set<string>>(new Set());
@@ -842,6 +844,13 @@ export function MealPlanScreen() {
     ? flattenRecipePrepTasks(selectedRecipe, recipesById, selectedResolution).length
     : 0;
 
+  // Read from the task list rather than from `selected.cookTask`, because the
+  // flag's third state (null, "the setting decides") doesn't answer the
+  // question the row is asking — whether a task exists right now.
+  const selectedHasCookTask = useTaskStore(
+    s => !!selected && s.tasks.some(t => t.mealEntryId === selected.id && !t.completed && !t.archived)
+  );
+
   // The either/or slots this meal has to answer, read under its own current
   // answers — so a choice nested inside the chosen option appears and one
   // inside the option it replaced doesn't.
@@ -871,6 +880,18 @@ export function MealPlanScreen() {
     [recipes, groceryItems]
   );
 
+  // Recipes made often and made recently — the comfort-food half of the
+  // sheet, opposite in intent to the pantry ranking above (that one rewards
+  // catalog coverage nudged *down* for a recent cook, this one rewards the
+  // cook itself). Used to be its own "Cook again" shelf on the Recipes
+  // screen; folded in here instead of duplicated, since planning a night is
+  // exactly what this sheet is already for. Deduped against `mealSuggestions`
+  // so a recipe that qualifies for both doesn't show up as two rows.
+  const cookAgainSuggestions = useMemo(() => {
+    const alreadyRanked = new Set(mealSuggestions.map(r => r.id));
+    return rankRecipeSuggestions(recipes, new Date()).filter(r => !alreadyRanked.has(r.id));
+  }, [recipes, mealSuggestions]);
+
   // The visible half of #1103's pantry signal — computed only for the
   // recipes actually on the suggestions shelf, same "just the visible list"
   // scoping RecipesScreen's pantryCounts uses, not the whole library.
@@ -892,7 +913,7 @@ export function MealPlanScreen() {
   // with every dinner spoken for still offers nothing, since there is nowhere
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
-    && (mealSuggestions.length > 0 || !!anthropicApiKey);
+    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0 || !!anthropicApiKey);
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1064,9 +1085,13 @@ export function MealPlanScreen() {
                         variant="neutral"
                         onPress={() => {
                           haptics.tap();
-                          setSuggesting({ recipes: mealSuggestions, days: openDinnerDays });
+                          setSuggesting({
+                            recipes: mealSuggestions,
+                            cookAgainRecipes: cookAgainSuggestions,
+                            days: openDinnerDays,
+                          });
                         }}
-                        accessibilityLabel="Suggest meals made from what's in your grocery catalog"
+                        accessibilityLabel="Suggest meals from your recipe box and grocery catalog"
                       />
                     )}
                   </View>
@@ -1271,6 +1296,14 @@ export function MealPlanScreen() {
             ? () => finishLeftover(selected.leftoverId!, 'eaten')
             : undefined
         }
+        // Absent once the meal is cooked: its task has already been ticked (or
+        // deliberately left), and either way scheduling the past is nonsense.
+        onSetCookTask={
+          selected && !selected.cookedAt
+            ? want => setCookTask(selected.id, want)
+            : undefined
+        }
+        hasCookTask={!!selected && selectedHasCookTask}
         onClose={() => setSelectedId(null)}
       />
 
@@ -1287,6 +1320,7 @@ export function MealPlanScreen() {
       <SuggestMealsSheet
         visible={suggesting !== null}
         recipes={suggesting?.recipes ?? []}
+        cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
         aiIdeasEnabled={!!anthropicApiKey}

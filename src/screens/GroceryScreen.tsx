@@ -489,6 +489,7 @@ export function GroceryScreen() {
       onPress: () => setFinishOpen(true),
       disabled: selectionMode || checkedCount === 0,
       badge: checkedCount || undefined,
+      badgeColor: colors.accent,
       tint: 'accent',
       accessibilityLabel: 'Finish shopping',
     });
