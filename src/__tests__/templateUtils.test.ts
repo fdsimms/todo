@@ -54,6 +54,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   estimatedMinutes: null,
   chainEnabled: false,
   chainItems: [],
+  chainIndex: 0,
   subtasks: [],
   groupId: null,
   refTemplateId: null,
@@ -120,6 +121,14 @@ describe('normalizeTemplateItem', () => {
 
   it('keeps a zero offset (does not coerce to null)', () => {
     expect(normalizeTemplateItem({ dueOffsetDays: 0 }).dueOffsetDays).toBe(0);
+  });
+
+  it('defaults chainIndex to 0 for a template item saved before the field existed', () => {
+    expect(normalizeTemplateItem({}).chainIndex).toBe(0);
+  });
+
+  it('preserves a stored chainIndex', () => {
+    expect(normalizeTemplateItem({ chainIndex: 2 }).chainIndex).toBe(2);
   });
 });
 
@@ -223,6 +232,31 @@ describe('buildDraftsFromTemplate', () => {
       noAnchors
     );
     expect(drafts.map(d => d.title)).toEqual(['A', 'B']);
+  });
+
+  it('carries chainIndex onto the draft, so a task can start mid-chain (#788)', () => {
+    const item = makeItem({
+      chainEnabled: true,
+      chainItems: [{ id: 'c1', title: 'Warm up', estimatedMinutes: null }, { id: 'c2', title: 'Main set', estimatedMinutes: null }],
+      chainIndex: 1,
+    });
+    const [draft] = buildDraftsFromTemplate([item], noAnchors);
+    expect(draft.chainIndex).toBe(1);
+  });
+
+  it('clamps chainIndex against a chain that has since shrunk', () => {
+    const item = makeItem({
+      chainEnabled: true,
+      chainItems: [{ id: 'c1', title: 'Only step', estimatedMinutes: null }],
+      chainIndex: 4,
+    });
+    const [draft] = buildDraftsFromTemplate([item], noAnchors);
+    expect(draft.chainIndex).toBe(0);
+  });
+
+  it('defaults chainIndex to 0 for an item with no chain steps', () => {
+    const [draft] = buildDraftsFromTemplate([makeItem()], noAnchors);
+    expect(draft.chainIndex).toBe(0);
   });
 });
 

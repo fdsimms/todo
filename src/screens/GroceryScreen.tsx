@@ -34,6 +34,7 @@ import { BuyAgainSheet } from '../components/BuyAgainSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
+import { ShoppingTripSheet } from '../components/ShoppingTripSheet';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
@@ -114,6 +115,7 @@ export function GroceryScreen() {
   const [buyAgainOpen, setBuyAgainOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [tripOpen, setTripOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [aiMode, setAiMode] = useState<GroceryAIMode | null>(null);
   const [recipeSourceOpen, setRecipeSourceOpen] = useState(false);
@@ -394,39 +396,37 @@ export function GroceryScreen() {
 
   // "Get groceries at X" — a real Task, so it can carry its own reminder and
   // show up on Today, with linkUrl set to the same dundundun://groceries
-  // scheme a recurring "Grocery run" task already uses. No store configured
-  // yet (or exactly one) skips the picker; more than one asks which store
-  // this trip is for, same as Finish shopping does.
-  const createGroceryTask = useCallback(
-    (shop: Shop | null) => {
-      addTask({
-        title: shop ? `Get groceries at ${shop.name}` : 'Get groceries',
-        linkUrl: GROCERIES_LINK_URL,
-      });
+  // scheme a recurring "Grocery run" task already uses. One task per store:
+  // two stops are two errands, separately schedulable and separately
+  // completable, which one title can't be.
+  const createGroceryTasks = useCallback(
+    (chosen: Shop[]) => {
+      if (chosen.length === 0) {
+        addTask({ title: 'Get groceries', linkUrl: GROCERIES_LINK_URL });
+      } else {
+        for (const shop of chosen) {
+          addTask({ title: `Get groceries at ${shop.name}`, linkUrl: GROCERIES_LINK_URL });
+        }
+      }
       haptics.success();
+      setTripOpen(false);
     },
     [addTask]
   );
 
   const handleCreateGroceryTask = useCallback(() => {
     // A store flagged "don't suggest" (Amazon: "it has everything") stays out
-    // of this picker and out of the single-store default — it's still fully
+    // of the sheet and out of the single-store shortcut — it's still fully
     // linkable by hand elsewhere, just never the thing this button offers.
+    // With none configured, or exactly one, there's no trip to plan: the sheet
+    // would be a whole screen for a question with one answer.
     const suggestable = shops.filter(shop => !shop.excludeFromSuggestions);
     if (suggestable.length <= 1) {
-      createGroceryTask(suggestable[0] ?? null);
+      createGroceryTasks(suggestable.slice(0, 1));
       return;
     }
-    Alert.alert(
-      'Get groceries at…',
-      'Which store is this trip for?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'No store', onPress: () => createGroceryTask(null) },
-        ...suggestable.map(shop => ({ text: shop.name, onPress: () => createGroceryTask(shop) })),
-      ]
-    );
-  }, [shops, createGroceryTask]);
+    setTripOpen(true);
+  }, [shops, createGroceryTasks]);
 
   const actions = useMemo<ScreenHeaderAction[]>(() => {
     // Clear list is deliberately NOT here. It's destructive-looking, rarely
@@ -698,6 +698,11 @@ export function GroceryScreen() {
         checkedCount={checkedCount}
         onClose={() => setFinishOpen(false)}
         onFinished={handleFinished}
+      />
+      <ShoppingTripSheet
+        visible={tripOpen}
+        onClose={() => setTripOpen(false)}
+        onCreate={createGroceryTasks}
       />
       <GroceryItemSheet
         visible={editingId !== null}

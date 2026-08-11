@@ -17,6 +17,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { InlineAction } from './InlineAction';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -271,16 +272,12 @@ export function RecipePickerSheet({ visible, dayLabel, defaultSlot, onPick, onCl
 
           <View style={styles.presetRow}>
             {PRESET_PLANS.map(preset => (
-              <TouchableOpacity
+              <InlineAction
                 key={preset}
-                style={styles.presetChip}
+                label={preset}
                 onPress={() => pick(null, preset)}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
                 accessibilityLabel={`Plan ${preset}`}
-              >
-                <Text style={styles.presetChipText}>{preset}</Text>
-              </TouchableOpacity>
+              />
             ))}
           </View>
 
@@ -486,17 +483,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-  },
-  presetChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
-  },
-  presetChipText: {
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    fontWeight: fontWeight.medium,
   },
   searchWrap: {
     flexDirection: 'row',

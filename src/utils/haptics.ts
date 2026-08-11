@@ -28,12 +28,13 @@ let lastDragTick = 0;
  * instead of importing expo-haptics directly so each interaction type
  * always fires with the same intensity:
  *
- *   tap        — selections, toggles, chips, tab presses, picker changes
- *   dragTick   — a drag crossing into a new slot, rate-limited (see below)
- *   success    — completing a task, confirming an add
- *   warning    — destructive confirmation prompts
- *   error      — failed actions, validation errors
- *   impact     — physical-feeling moments (drag lift, drop, swipe actions)
+ *   tap          — selections, toggles, chips, tab presses, picker changes
+ *   dragTick     — a drag crossing into a new slot, rate-limited (see below)
+ *   success      — completing a task, confirming an add
+ *   chainFinish  — completing the last step of a non-repeating chain
+ *   warning      — destructive confirmation prompts
+ *   error        — failed actions, validation errors
+ *   impact       — physical-feeling moments (drag lift, drop, swipe actions)
  *
  * All return a promise that is safe to ignore — or nothing at all, when the
  * haptics setting is off or a drag tick lands inside the throttle. Failures
@@ -49,6 +50,19 @@ export const haptics = {
     return ExpoHaptics.selectionAsync().catch(() => {});
   },
   success: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Success).catch(() => {}) : undefined,
+  // A second, heavier pulse after the normal success notification — finishing
+  // a whole multi-step routine should read as more than checking off one more
+  // task, the same way a plain completion and a quota topping out already
+  // feel different from each other.
+  chainFinish: async () => {
+    if (!enabled()) return;
+    try {
+      await ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Success);
+      await ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Heavy);
+    } catch {
+      // no-op, matching every other entry here
+    }
+  },
   warning: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Warning).catch(() => {}) : undefined,
   error: () => enabled() ? ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error).catch(() => {}) : undefined,
   impactLight: () => enabled() ? ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Light).catch(() => {}) : undefined,

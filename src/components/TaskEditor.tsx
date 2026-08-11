@@ -116,7 +116,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'timeSpent' | 'subtasks' | 'chainSteps';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -1946,26 +1946,43 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             key: 'chain', label: 'Chain', set: chainEnabled,
             node: (
               <>
-            <View style={styles.cardSection}>
-              <View style={styles.chainHeader}>
-                <Ionicons name="git-commit" size={14} color={chainEnabled ? colors.accent : colors.textTertiary} />
-                <Text style={[styles.sectionLabel, { marginBottom: 0, flex: 1 }]}>Chain</Text>
-                <TouchableOpacity
-                  style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
-                  onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Chain"
-                  accessibilityState={{ checked: chainEnabled }}
-                >
-                  <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
-                </TouchableOpacity>
-              </View>
-              {!chainEnabled && (
-                <Text style={styles.chainHint}>
-                  Step through a list of items, one per completion — finishing one reveals the next.
-                  {recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : ''}
-                </Text>
-              )}
+              <CollapsibleField
+                label="Chain"
+                summary={
+                  chainEnabled
+                    ? (chainItems.length > 1
+                        ? `Step ${chainIndex + 1} of ${chainItems.length}`
+                        : chainItems.length === 1
+                          ? '1 step — add one more'
+                          : 'No steps yet')
+                    : undefined
+                }
+                emptySummary="Off"
+                // Shown whenever the field is open, on or off — the moment
+                // someone taps in to look, that's the "worth explaining"
+                // signal CollapsibleField's own doc comment describes. It used
+                // to be tied to chainEnabled instead, which hid the only
+                // explanation of what Chain does right as it was turned on
+                // (#791), and gated the Repeat-interplay sentence on Chain
+                // being *off*, so a chain with Repeat off never saw it either.
+                hint={
+                  'Step through a list of items, one per completion — finishing one reveals the next.'
+                  + (recurrenceType !== 'none' ? ' With Repeat on, the whole chain starts over once it finishes.' : '')
+                }
+                expanded={fieldOpen('chainSteps', chainEnabled)}
+                onToggle={() => toggleField('chainSteps', chainEnabled)}
+                right={
+                  <TouchableOpacity
+                    style={[styles.chainToggle, chainEnabled && styles.chainToggleOn]}
+                    onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                    accessibilityRole="switch"
+                    accessibilityLabel="Chain"
+                    accessibilityState={{ checked: chainEnabled }}
+                  >
+                    <View style={[styles.chainToggleKnob, chainEnabled && styles.chainToggleKnobOn]} />
+                  </TouchableOpacity>
+                }
+              >
               {chainEnabled && (
                 <>
                   <SortableList
@@ -2183,7 +2200,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   )}
                 </>
               )}
-            </View>
+              </CollapsibleField>
               </>
             ),
           },
@@ -3425,9 +3442,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   chainToggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
-  chainHint: {
-    color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
-  },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

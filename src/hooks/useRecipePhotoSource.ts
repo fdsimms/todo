@@ -15,20 +15,20 @@ import { haptics } from '../utils/haptics';
  * user-facing copy in all of them, and iOS only prompts once — without an alert
  * naming the permission, a second tap on "Take a photo" does nothing visible.
  */
-export function useRecipePhotoSource() {
-  const [mode, setMode] = useState<RecipeInputMode>('paste');
+export function useRecipePhotoSource(initialMode: RecipeInputMode = 'paste') {
+  const [mode, setMode] = useState<RecipeInputMode>(initialMode);
   const [text, setText] = useState('');
   const [photo, setPhoto] = useState<RecipePhoto | null>(null);
   const [picking, setPicking] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   const reset = useCallback(() => {
-    setMode('paste');
+    setMode(initialMode);
     setText('');
     setPhoto(null);
     setPicking(false);
     setPhotoError(null);
-  }, []);
+  }, [initialMode]);
 
   const pick = useCallback(async (source: RecipePhotoSource) => {
     setPicking(true);

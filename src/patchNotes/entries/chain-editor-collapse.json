@@ -1,0 +1,4 @@
+{
+  "message": "The Chain section in the task editor now collapses to a \"Step X of Y\" summary instead of always showing the full step list, and its explanation of what Chain does stays visible the whole time the section is open, rather than disappearing the moment you turn it on.",
+  "date": "2026-08-11"
+}

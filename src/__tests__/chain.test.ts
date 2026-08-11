@@ -1,4 +1,4 @@
-import { activeChainStep, parseChainItems, chainPreview } from '../utils/chain';
+import { activeChainStep, parseChainItems, chainPreview, isChainFinish } from '../utils/chain';
 import type { ChainItem } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -71,6 +71,33 @@ describe('chainPreview', () => {
 
   it('defaults a missing index to the first step', () => {
     expect(chainPreview({ chainItems: items })?.currentTitle).toBe('Put laundry in washers');
+  });
+});
+
+describe('isChainFinish', () => {
+  const items = [step('Warm up'), step('Main set'), step('Cool down')];
+
+  it('is true on the last step of a chain with no Repeat', () => {
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 2, chainItems: items, recurrenceType: 'none' })).toBe(true);
+  });
+
+  it('is false mid-chain — that step spawns the next one, it does not finish anything', () => {
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 0, chainItems: items, recurrenceType: 'none' })).toBe(false);
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 1, chainItems: items, recurrenceType: 'none' })).toBe(false);
+  });
+
+  it('is false on the last step when Repeat is set — the chain loops instead of ending', () => {
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 2, chainItems: items, recurrenceType: 'daily' })).toBe(false);
+  });
+
+  it('is false when the chain is off, or carries no items', () => {
+    expect(isChainFinish({ chainEnabled: false, chainIndex: 2, chainItems: items, recurrenceType: 'none' })).toBe(false);
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 0, chainItems: [], recurrenceType: 'none' })).toBe(false);
+    expect(isChainFinish({})).toBe(false);
+  });
+
+  it('defaults a missing recurrenceType to none, like a task carrying no chain fields at all would read', () => {
+    expect(isChainFinish({ chainEnabled: true, chainIndex: 2, chainItems: items })).toBe(true);
   });
 });
 
