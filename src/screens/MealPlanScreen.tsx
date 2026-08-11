@@ -51,6 +51,8 @@ import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
   prepTaskDraftsForMeal,
   suggestRecipesForEmptyNight,
+  pantryCoverageForRecipe,
+  type PantryCoverage,
   type PrepTaskDraft,
 } from '../utils/recipeUtils';
 import {
@@ -58,6 +60,7 @@ import {
   recipeChoiceGroups,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
+  recipeMap,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -677,6 +680,18 @@ export function MealPlanScreen() {
     [entries.length, recipes, groceryItems]
   );
 
+  // The visible half of #1103's pantry signal — computed only for the
+  // recipes actually on the suggestions shelf, same "just the visible list"
+  // scoping RecipesScreen's pantryCounts uses, not the whole library.
+  const suggestionPantryCoverage = useMemo(() => {
+    const byId = recipeMap(recipes);
+    const map = new Map<string, PantryCoverage>();
+    for (const recipe of emptyWeekSuggestions) {
+      map.set(recipe.id, pantryCoverageForRecipe(recipe, groceryItems, new Date(), byId));
+    }
+    return map;
+  }, [emptyWeekSuggestions, recipes, groceryItems]);
+
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
     const entry = planMeal({ date: dateKey, slot: 'dinner', recipeId: recipe.id, title: recipe.name });
@@ -933,6 +948,7 @@ export function MealPlanScreen() {
       <SuggestMealsSheet
         visible={suggestingMeals}
         recipes={emptyWeekSuggestions}
+        pantryByRecipeId={suggestionPantryCoverage}
         weekDays={days}
         onPlan={planSuggestion}
         onClose={() => setSuggestingMeals(false)}
