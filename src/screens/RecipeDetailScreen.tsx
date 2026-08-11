@@ -25,11 +25,18 @@ import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
 import { PrepTaskSheet } from '../components/PrepTaskSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { RecipeExtractSheet } from '../components/RecipeExtractSheet';
+import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { describeRecipe } from '../utils/recipeUtils';
+import {
+  flattenRecipeIngredients,
+  recipeMap,
+  resolveComponents,
+  type ResolvedComponent,
+} from '../utils/recipeComponents';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitGroceryLines } from '../utils/groceryParse';
 
@@ -45,7 +52,8 @@ export function RecipeDetailScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const recipe = useRecipeStore(useShallow(s => s.recipes.find(r => r.id === recipeId)));
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
+  const recipe = recipes.find(r => r.id === recipeId);
   const addIngredient = useRecipeStore(s => s.addIngredient);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
@@ -53,7 +61,21 @@ export function RecipeDetailScreen() {
   const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
+  const addComponent = useRecipeStore(s => s.addComponent);
+  const removeComponent = useRecipeStore(s => s.removeComponent);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+
+  const recipesById = useMemo(() => recipeMap(recipes), [recipes]);
+  const components = useMemo(
+    () => (recipe ? resolveComponents(recipe, recipesById) : []),
+    [recipe, recipesById]
+  );
+  // What the grocery add is actually going to offer — the recipe's own lines
+  // plus every component's, which is the number the footer button gates on.
+  const shoppableCount = useMemo(
+    () => (recipe ? flattenRecipeIngredients(recipe, recipesById).length : 0),
+    [recipe, recipesById]
+  );
 
   const [draft, setDraft] = useState('');
   const draftInputRef = useRef<TextInput>(null);
@@ -63,6 +85,7 @@ export function RecipeDetailScreen() {
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
   const [extractVisible, setExtractVisible] = useState(false);
+  const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -105,9 +128,15 @@ export function RecipeDetailScreen() {
   };
 
   const addToList = () => {
-    if (recipe.ingredients.length === 0) return;
+    if (shoppableCount === 0) return;
     haptics.tap();
     setAddToListVisible(true);
+  };
+
+  const confirmRemoveComponent = (resolved: ResolvedComponent) => {
+    animateLayout();
+    removeComponent(recipe.id, resolved.component.id);
+    haptics.tap();
   };
 
   const confirmRemove = (ingredient: RecipeIngredient) => {
@@ -168,6 +197,51 @@ export function RecipeDetailScreen() {
       </TouchableOpacity>
     </TouchableOpacity>
   );
+
+  // A component row opens the recipe it points at, so the shared part is one
+  // tap from the dish that uses it — editing it there is the whole feature.
+  // A link whose recipe is gone can't be opened, only removed.
+  const renderComponent = (resolved: ResolvedComponent) => {
+    const target = resolved.recipe;
+    const label = resolved.name || 'Deleted recipe';
+    return (
+      <TouchableOpacity
+        key={resolved.component.id}
+        style={styles.ingredient}
+        activeOpacity={target ? interaction.activeOpacity : 1}
+        disabled={!target}
+        onPress={() => {
+          if (!target) return;
+          haptics.tap();
+          // Same-route navigate, exactly as TemplateDetailScreen opens a nested
+          // template: it swaps this screen's params rather than stacking a
+          // second copy, so Back still means "back to the library".
+          (navigation as any).navigate('RecipeDetail', { recipeId: target.id });
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={target ? `${label}. ${describeRecipe(target)}` : `${label}, no longer in your recipes`}
+        accessibilityHint={target ? 'Double tap to open this recipe.' : undefined}
+      >
+        <View style={styles.ingredientText}>
+          <Text style={[styles.ingredientName, !target && styles.componentBrokenName]} numberOfLines={1}>
+            {label}
+          </Text>
+          <Text style={styles.componentMeta} numberOfLines={1}>
+            {target ? describeRecipe(target) : 'No longer in your recipes'}
+          </Text>
+        </View>
+        {!!target && <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />}
+        <TouchableOpacity
+          onPress={() => confirmRemoveComponent(resolved)}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${label} from this recipe`}
+        >
+          <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+        </TouchableOpacity>
+      </TouchableOpacity>
+    );
+  };
 
   // No drag-to-reorder here — unlike ingredients, prep tasks don't read as a
   // list with a meaningful order (each just names its own day).
@@ -294,6 +368,28 @@ export function RecipeDetailScreen() {
           “garlic, minced”
         </Text>
 
+        <Text style={styles.sectionLabel}>Components</Text>
+
+        {components.length === 0 ? (
+          <Text style={styles.hint}>
+            Use another recipe as part of this one — the mash that goes with both the steak
+            and the salmon. Its ingredients and prep tasks come along, and editing it once
+            updates every meal that uses it.
+          </Text>
+        ) : (
+          <View style={styles.card}>
+            {components.map(renderComponent)}
+          </View>
+        )}
+
+        <View style={styles.addRow}>
+          <InlineAction
+            label="Add a component"
+            icon="add"
+            onPress={() => { haptics.tap(); setComponentPickerVisible(true); }}
+          />
+        </View>
+
         <Text style={styles.sectionLabel}>Prep tasks</Text>
 
         {recipe.prepTasks.length === 0 ? (
@@ -332,10 +428,10 @@ export function RecipeDetailScreen() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
         <TouchableOpacity
-          style={[styles.primary, recipe.ingredients.length === 0 && styles.primaryOff]}
+          style={[styles.primary, shoppableCount === 0 && styles.primaryOff]}
           activeOpacity={interaction.activeOpacity}
           onPress={addToList}
-          disabled={recipe.ingredients.length === 0}
+          disabled={shoppableCount === 0}
           accessibilityRole="button"
           accessibilityLabel="Add ingredients to the grocery list"
         >
@@ -368,6 +464,7 @@ export function RecipeDetailScreen() {
       <RecipeToListSheet
         visible={addToListVisible}
         recipe={recipe}
+        recipesById={recipesById}
         onClose={() => setAddToListVisible(false)}
       />
 
@@ -375,6 +472,19 @@ export function RecipeDetailScreen() {
         visible={extractVisible}
         recipe={recipe}
         onClose={() => setExtractVisible(false)}
+      />
+
+      <RecipeComponentPicker
+        visible={componentPickerVisible}
+        recipe={recipe}
+        onClose={() => setComponentPickerVisible(false)}
+        onSelect={component => {
+          animateLayout();
+          // The picker already disabled everything addComponent would refuse,
+          // so a false here means the library moved under the sheet — nothing
+          // to explain, and nothing added.
+          addComponent(recipe.id, component.id);
+        }}
       />
     </View>
   );
@@ -446,6 +556,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontStyle: 'italic',
+  },
+  componentBrokenName: {
+    color: colors.textTertiary,
+  },
+  // ingredientPrep's twin without the italic: a component's subtitle is a
+  // summary of another recipe, not a prep clause on this one.
+  componentMeta: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   qtyPill: {
     backgroundColor: colors.bgTertiary,

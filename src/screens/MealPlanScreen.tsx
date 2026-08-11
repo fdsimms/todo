@@ -31,6 +31,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { resolvePrepTaskDraft, suggestRecipesForEmptyNight } from '../utils/recipeUtils';
+import { flattenRecipeIngredients, flattenRecipePrepTasks } from '../utils/recipeComponents';
 import {
   dayKeyRange,
   describeAddedToList,
@@ -140,17 +141,22 @@ export function MealPlanScreen() {
     });
   };
 
+  // Components' prep steps come along with their ingredients — "boil the
+  // potatoes the night before" is a fact about the mash, and the night before
+  // is the same night whichever dinner the mash is part of.
   const addPrepTasksForSelected = () => {
     if (!selected?.recipeId) return;
     const recipe = recipesById.get(selected.recipeId);
-    if (!recipe || recipe.prepTasks.length === 0) return;
+    if (!recipe) return;
+    const prepTasks = flattenRecipePrepTasks(recipe, recipesById);
+    if (prepTasks.length === 0) return;
     const mealDate = dayKeyToDate(selected.date);
-    recipe.prepTasks.forEach(prepTask => {
+    prepTasks.forEach(({ prepTask }) => {
       const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
       addTask({ title: prepTask.title, dueDate, reminderTime });
     });
     haptics.success();
-    Alert.alert('Prep tasks added', `Added ${recipe.prepTasks.length} to your tasks.`);
+    Alert.alert('Prep tasks added', `Added ${prepTasks.length} to your tasks.`);
   };
 
   // Shared by the sheet's "Mark cooked" action and the row's own badge tap —
@@ -163,8 +169,10 @@ export function MealPlanScreen() {
     haptics.success();
 
     // A recipe with nothing to re-shop offers nothing — same restraint
-    // RecipeDetailScreen's own "Add ingredients to list" already keeps.
-    if (!recipe || recipe.ingredients.length === 0) return;
+    // RecipeDetailScreen's own "Add ingredients to list" already keeps, and
+    // counted the same way: a dish whose ingredients all live on its
+    // components still has a shop.
+    if (!recipe || flattenRecipeIngredients(recipe, recipesById).length === 0) return;
     setCookedRecipeForList(recipe);
   };
 
@@ -242,6 +250,13 @@ export function MealPlanScreen() {
   // week to list" could possibly find, without running the full ingredient
   // collection just to light up a header icon.
   const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
+
+  // Counted over the whole component tree, so a dish whose only prep steps
+  // live on one of its parts still offers the action.
+  const selectedRecipe = selected?.recipeId ? recipesById.get(selected.recipeId) : undefined;
+  const selectedPrepTaskCount = selectedRecipe
+    ? flattenRecipePrepTasks(selectedRecipe, recipesById).length
+    : 0;
 
   // Offline "what can I make from what I've got" — only worth computing once
   // there's an empty week to fill, and re-ranked each time the sheet reopens
@@ -347,11 +362,7 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
             : undefined
         }
-        onAddPrepTasks={
-          selected?.recipeId && (recipesById.get(selected.recipeId)?.prepTasks.length ?? 0) > 0
-            ? addPrepTasksForSelected
-            : undefined
-        }
+        onAddPrepTasks={selectedPrepTaskCount > 0 ? addPrepTasksForSelected : undefined}
         onClose={() => setSelectedId(null)}
       />
 
@@ -376,6 +387,7 @@ export function MealPlanScreen() {
       <RecipeToListSheet
         visible={cookedRecipeForList !== null}
         recipe={cookedRecipeForList}
+        recipesById={recipesById}
         onClose={() => setCookedRecipeForList(null)}
       />
     </View>
