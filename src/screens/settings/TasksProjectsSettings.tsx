@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -58,6 +58,8 @@ export function TasksProjectsSettings() {
   const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
+  const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
+  const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -151,6 +153,24 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
         />
       </SettingsSection>
+
+      {Platform.OS === 'ios' && (
+        <SettingsSection
+          label="Timers"
+          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it — resuming starts a fresh one."
+        >
+          <SettingsRow
+            icon="phone-portrait-outline"
+            iconColor={timerLiveActivity ? colors.accent : undefined}
+            label="Live Activity while timing"
+            hint={timerLiveActivity
+              ? 'A running task timer or recipe cook/prep timer shows on the Lock Screen and Dynamic Island'
+              : 'Timers stay in the app only'}
+            toggle={timerLiveActivity}
+            onPress={() => setTimerLiveActivity(!timerLiveActivity)}
+          />
+        </SettingsSection>
+      )}
 
       <SettingsSection
         label="Today"

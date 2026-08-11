@@ -36,3 +36,8 @@ needs to share data with the app will hit the same sharp edges this one did.
   Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed.
   Reuse this path shape for anything new sharing the group rather than inventing another
   location.
+- **A Live Activity needs `NSSupportsLiveActivities: true` in the *main app's* Info.plist**
+  (`expo.ios.infoPlist` in `app.json`) — not the widget extension's. Without it,
+  `Activity.request` throws at runtime on the very device it's meant to work on; nothing at
+  build time catches the omission, because the extension itself doesn't request activities, it
+  only renders the ones the app process starts.

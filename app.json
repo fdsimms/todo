@@ -17,7 +17,8 @@
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode."
+        "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode.",
+        "NSSupportsLiveActivities": true
       }
     },
     "android": {
