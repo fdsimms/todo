@@ -7,9 +7,14 @@ import { useTaskStore } from '../../store/useTaskStore';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { CalendarPicker } from '../../components/CalendarPicker';
+import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsPills, type PillOption } from './SettingsPills';
 import { makeSettingsStyles } from './settingsStyles';
+
+const EXPIRED_TASK_GRACE_PILLS: PillOption<ExpiredTaskGraceDays>[] =
+  EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
 
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -85,13 +90,21 @@ export function TasksProjectsSettings() {
       >
         <SettingsRow
           icon="time-outline"
-          iconColor={autoRemoveExpiredTasks ? colors.accent : undefined}
+          iconColor={autoRemoveExpiredTasks === null ? undefined : colors.accent}
           label="Auto-remove expired tasks"
-          hint={autoRemoveExpiredTasks
-            ? 'Deleted once their time window closes'
-            : 'Kept in an Expired section until you delete them'}
-          toggle={autoRemoveExpiredTasks}
-          onPress={() => setAutoRemoveExpiredTasks(!autoRemoveExpiredTasks)}
+          hint={autoRemoveExpiredTasks === null
+            ? 'Kept in an Expired section until you delete them'
+            : autoRemoveExpiredTasks === 0
+              ? 'Deleted the moment their time window closes'
+              : `Deleted ${expiredTaskGraceLabel(autoRemoveExpiredTasks).toLowerCase()} after their time window closes`}
+          tight
+        />
+        <SettingsPills
+          attached
+          options={EXPIRED_TASK_GRACE_PILLS}
+          selected={autoRemoveExpiredTasks}
+          onSelect={setAutoRemoveExpiredTasks}
+          accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
         />
       </SettingsSection>
 

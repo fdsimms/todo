@@ -3,6 +3,7 @@ import {
   isTaskDeferred,
   isTaskWindowActive,
   isTaskExpired,
+  isTaskSweepable,
   getVisibleAt,
   isHiddenForVacation,
   isRecurrenceNotYetDue,
@@ -443,6 +444,83 @@ describe('isTaskExpired', () => {
   it('is true when the task was due on a past day and the window has closed', () => {
     const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString(); // 2 days ago
     expect(isTaskExpired({ ...baseTask, dueDate, windowEnd: '09:00' })).toBe(true);
+  });
+});
+
+// ─── isTaskSweepable ───────────────────────────────────────────────────────────
+// The one gate sweepExpiredTasks actually deletes on — isTaskExpired plus a
+// grace period (issue #898).
+
+describe('isTaskSweepable', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // 2025-06-10, 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false when the setting is Never (null), no matter how expired the task is', () => {
+    const dueDate = new Date(2025, 4, 1, 0, 0, 0).toISOString(); // over a month ago
+    const task = { ...baseTask, dueDate, windowStart: '07:00', windowEnd: '09:00' };
+    expect(isTaskSweepable(task, null)).toBe(false);
+  });
+
+  it('is false for a task that has not expired yet, at any grace setting', () => {
+    const task = { ...baseTask, windowStart: '08:00', windowEnd: '13:00' }; // not yet closed
+    expect(isTaskSweepable(task, 0)).toBe(false);
+    expect(isTaskSweepable(task, 1)).toBe(false);
+    expect(isTaskSweepable(task, 7)).toBe(false);
+    expect(isTaskSweepable(task, 30)).toBe(false);
+  });
+
+  it('is true immediately once expired when the grace is 0 (Immediately)', () => {
+    const dueDate = new Date(2025, 5, 8, 0, 0, 0).toISOString(); // 2 days ago
+    const task = { ...baseTask, dueDate, windowStart: '07:00', windowEnd: '09:00' };
+    expect(isTaskSweepable(task, 0)).toBe(true);
+  });
+
+  it('is false the moment a task expires when a grace period is set', () => {
+    const dueDate = new Date(2025, 5, 10, 0, 0, 0).toISOString(); // today
+    const task = { ...baseTask, dueDate, windowStart: '07:00', windowEnd: '09:00' };
+    expect(isTaskExpired(task)).toBe(true);
+    expect(isTaskSweepable(task, 1)).toBe(false);
+    expect(isTaskSweepable(task, 7)).toBe(false);
+  });
+
+  it('is false while inside the grace period, true once it elapses', () => {
+    // Window closed at 09:00 on 2025-06-03; the 7-day grace period's cutoff is
+    // 09:00 on 2025-06-10. Both checks sit at 10:00 so isTaskExpired's own
+    // today-anchored windowEnd check (see getWindowThreshold) is satisfied on
+    // both days, isolating what the grace period itself is gating.
+    const dueDate = new Date(2025, 5, 3, 0, 0, 0).toISOString();
+    const task = { ...baseTask, dueDate, windowStart: '07:00', windowEnd: '09:00' };
+
+    jest.setSystemTime(new Date(2025, 5, 9, 10, 0, 0)); // 6 days later — inside grace
+    expect(isTaskExpired(task)).toBe(true);
+    expect(isTaskSweepable(task, 7)).toBe(false);
+
+    jest.setSystemTime(new Date(2025, 5, 10, 10, 0, 0)); // 7 days later — grace elapsed
+    expect(isTaskSweepable(task, 7)).toBe(true);
+  });
+
+  // A task carrying only windowStart/windowEnd (no dueDate/deferUntil) re-expires
+  // every day rather than on one fixed day — see windowClosedAt's fallback.
+  // With no day to measure a grace period from, only Immediately ever sweeps it.
+  it('never elapses a grace period for a window-only task with no anchor day', () => {
+    const task = { ...baseTask, windowStart: '07:00', windowEnd: '09:00' };
+    expect(isTaskExpired(task)).toBe(true);
+    expect(isTaskSweepable(task, 1)).toBe(false);
+    jest.setSystemTime(new Date(2030, 5, 10, 18, 0, 0));
+    expect(isTaskSweepable(task, 1)).toBe(false);
+    expect(isTaskSweepable(task, 0)).toBe(true);
+  });
+
+  it('respects the same "no day to be late for" gate isTaskExpired does', () => {
+    const someday = { ...baseTask, priority: 3 as const, windowEnd: '09:00' }; // no windowStart
+    expect(isTaskExpired(someday)).toBe(false);
+    expect(isTaskSweepable(someday, 0)).toBe(false);
   });
 });
 

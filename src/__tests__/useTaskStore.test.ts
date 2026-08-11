@@ -3877,11 +3877,11 @@ describe('sweepExpiredTasks', () => {
     return useSettingsStore;
   };
 
-  it('leaves expired tasks in place when the setting is off', () => {
+  it('leaves expired tasks in place when the setting is Never', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
       autoArchiveProjectsOnComplete: false,
-      autoRemoveExpiredTasks: false,
+      autoRemoveExpiredTasks: null,
       vacationMode: false,
     });
     useTaskStore.setState({ tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })] });
@@ -3890,11 +3890,11 @@ describe('sweepExpiredTasks', () => {
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
   });
 
-  it('deletes expired tasks when the setting is on, leaving active ones', () => {
+  it('deletes expired tasks when the setting is Immediately, leaving active ones', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
       autoArchiveProjectsOnComplete: false,
-      autoRemoveExpiredTasks: true,
+      autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
     useTaskStore.setState({
@@ -3915,7 +3915,7 @@ describe('sweepExpiredTasks', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
       autoArchiveProjectsOnComplete: false,
-      autoRemoveExpiredTasks: true,
+      autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
     useTaskStore.setState({
@@ -3942,7 +3942,7 @@ describe('sweepExpiredTasks', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
       autoArchiveProjectsOnComplete: false,
-      autoRemoveExpiredTasks: true,
+      autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
     useTaskStore.setState({
@@ -3966,7 +3966,7 @@ describe('sweepExpiredTasks', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
       autoArchiveProjectsOnComplete: false,
-      autoRemoveExpiredTasks: true,
+      autoRemoveExpiredTasks: 0,
       vacationMode: true,
     });
     useTaskStore.setState({
@@ -3975,6 +3975,46 @@ describe('sweepExpiredTasks', () => {
     useTaskStore.getState().sweepExpiredTasks();
     expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['paused']);
     expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  // ─── grace period (issue #898) ────────────────────────────────────────────
+
+  it('leaves a just-expired task alone while its grace period has not elapsed', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: 7, // 7-day grace period
+      vacationMode: false,
+    });
+    // Window closed at 1pm today (2025-06-10); "now" is mocked to 2pm the same day.
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'expired', windowStart: '08:00', windowEnd: '13:00' })],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['expired']);
+    expect(dbBulkDeleteTasks).not.toHaveBeenCalled();
+  });
+
+  it('deletes a task once its grace period has elapsed past the window close', () => {
+    settingsStoreMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      autoArchiveProjectsOnComplete: false,
+      autoRemoveExpiredTasks: 7, // 7-day grace period
+      vacationMode: false,
+    });
+    // Window closed at 1pm on 2025-06-03; "now" is mocked to 2pm on 2025-06-10 —
+    // exactly 7 days later, so the grace period has fully elapsed.
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'stale',
+        dueDate: new Date(2025, 5, 3, 12).toISOString(),
+        windowStart: '08:00',
+        windowEnd: '13:00',
+      })],
+    });
+    useTaskStore.getState().sweepExpiredTasks();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual([]);
+    expect(dbBulkDeleteTasks).toHaveBeenCalledWith(['stale']);
   });
 });
 
