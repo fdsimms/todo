@@ -18,6 +18,7 @@ import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
+import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -36,6 +37,7 @@ import { buildWeekDays } from '../utils/calendarGrid';
 import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import {
   prepTaskDraftsForMeal,
+  resolvePrepTaskDraft,
   suggestRecipesForEmptyNight,
   type PrepTaskDraft,
 } from '../utils/recipeUtils';
@@ -44,6 +46,7 @@ import {
   recipeChoiceGroups,
   flattenRecipeIngredients,
   flattenRecipePrepTasks,
+  type FlatPrepTask,
 } from '../utils/recipeComponents';
 import {
   dayKeyRange,
@@ -186,19 +189,23 @@ export function MealPlanScreen() {
   // Components' prep steps come along with their ingredients — "boil the
   // potatoes the night before" is a fact about the mash, and the night before
   // is the same night whichever dinner the mash is part of.
-  const addPrepTasksForSelected = () => {
-    if (!selected?.recipeId) return;
-    const recipe = recipesById.get(selected.recipeId);
-    if (!recipe) return;
-    // Under this meal's own picks: "boil the potatoes the night before" is a
-    // step of the mash, and a night having the roast potatoes instead shouldn't
-    // land it on the task list.
-    const drafts = prepTaskDraftsForMeal(
-      recipe, recipesById, dayKeyToDate(selected.date), { chosen: selected.recipeChoices }
-    );
-    if (drafts.length === 0) return;
-    addPrepTaskDrafts(drafts);
-    Alert.alert('Prep tasks added', `Added ${drafts.length} to your tasks.`);
+  //
+  // Which entry the review sheet is open for — held by id like `selected`,
+  // so a prep task added or removed on the recipe mid-review is reflected
+  // rather than frozen at the moment the sheet opened.
+  const [reviewingPrepTasksFor, setReviewingPrepTasksFor] = useState<string | null>(null);
+  const reviewingEntry = entries.find(e => e.id === reviewingPrepTasksFor) ?? null;
+  const reviewingRecipe = reviewingEntry?.recipeId ? recipesById.get(reviewingEntry.recipeId) ?? null : null;
+
+  const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
+    if (!reviewingEntry) return;
+    const mealDate = dayKeyToDate(reviewingEntry.date);
+    chosen.forEach(({ prepTask }) => {
+      const { dueDate, reminderTime } = resolvePrepTaskDraft(prepTask, mealDate);
+      addTask({ title: prepTask.title, dueDate, reminderTime });
+    });
+    haptics.success();
+    Alert.alert('Prep tasks added', `Added ${chosen.length} to your tasks.`);
   };
 
   /**
@@ -519,7 +526,11 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
             : undefined
         }
-        onAddPrepTasks={selectedPrepTaskCount > 0 ? addPrepTasksForSelected : undefined}
+        onAddPrepTasks={
+          selectedPrepTaskCount > 0
+            ? () => selected && setReviewingPrepTasksFor(selected.id)
+            : undefined
+        }
         onLogLeftovers={
           selected && !selected.leftoverId && couldHaveLeftovers(selected)
             ? () => logLeftoversFor(selected)
@@ -557,6 +568,15 @@ export function MealPlanScreen() {
         recipesById={recipesById}
         initialChoices={cookedRecipeForList?.choices}
         onClose={() => setCookedRecipeForList(null)}
+      />
+
+      <PrepTasksReviewSheet
+        visible={reviewingPrepTasksFor !== null}
+        recipe={reviewingRecipe}
+        recipesById={recipesById}
+        resolution={{ chosen: reviewingEntry?.recipeChoices ?? [] }}
+        onAdd={addChosenPrepTasks}
+        onClose={() => setReviewingPrepTasksFor(null)}
       />
 
       <LeftoverSheet
