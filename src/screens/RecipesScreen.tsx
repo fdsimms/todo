@@ -32,11 +32,13 @@ import { groceryNameKey } from '../utils/groceryParse';
 /**
  * The recipe box.
  *
- * Deliberately flat — no recipe categories, which would be the fourth category
- * table in this app (task / project / template / recipe) for a list most people
+ * Deliberately flat — no recipe categories *table*, which would be the fourth
+ * one in this app (task / project / template / recipe) for a list most people
  * will keep in the dozens. Favorites float to the top and the search field
- * ranks by name and by ingredient; if that stops being enough, categories are
- * the thing to add, not sections invented now.
+ * ranks by name and by ingredient. Recipe.mealType (breakfast/lunch/dinner/
+ * snack/dessert — see RecipeMealType in src/types) is the one closed-set tag
+ * that earned a plain column instead: it's shown in each row's subtitle via
+ * describeRecipe(), but grouping/sorting by it is #1086, not built here.
  */
 export function RecipesScreen() {
   const insets = useSafeAreaInsets();

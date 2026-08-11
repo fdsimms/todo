@@ -26,6 +26,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
     prepTasks: [],
     favorite: false,
@@ -159,6 +160,17 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setServings(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.servings).toBeNull();
+  });
+
+  it('sets and clears the meal type', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setMealType(r.id, 'dinner');
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBe('dinner');
+
+    useRecipeStore.getState().setMealType(r.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.mealType).toBeNull();
   });
 
   it('toggles favourite', () => {

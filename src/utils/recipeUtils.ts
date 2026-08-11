@@ -1,5 +1,6 @@
 import type { GroceryItem, Recipe, RecipeIngredient, RecipePrepTask } from '../types';
 import {
+  RECIPE_MEAL_TYPE_LABELS,
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   PREP_MAX_LENGTH,
@@ -215,14 +216,18 @@ export function resolvePrepTaskDraft(
 }
 
 /**
- * "8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" — the recipe
- * row's subtitle. `likelyInPantry` is optional and omitted (both the param
- * and, given a falsy count, the phrase) rather than ever rendering "0 likely
- * in pantry" — see `countLikelyInPantry`.
+ * "Breakfast · 8 ingredients · 6 likely in pantry · serves 4 · NYT Cooking" —
+ * the recipe row's subtitle. `likelyInPantry` is optional and omitted (both
+ * the param and, given a falsy count, the phrase) rather than ever rendering
+ * "0 likely in pantry" — see `countLikelyInPantry`. The meal type leads,
+ * ahead of the ingredient count, since it's the fact someone scanning the
+ * list is most likely browsing by (see RecipeMealType).
  */
 export function describeRecipe(recipe: Recipe, likelyInPantry?: number | null): string {
   const count = recipe.ingredients.length;
-  const parts = [count === 1 ? '1 ingredient' : `${count} ingredients`];
+  const parts: string[] = [];
+  if (recipe.mealType) parts.push(RECIPE_MEAL_TYPE_LABELS[recipe.mealType]);
+  parts.push(count === 1 ? '1 ingredient' : `${count} ingredients`);
   if (likelyInPantry) {
     parts.push(likelyInPantry === 1 ? '1 likely in pantry' : `${likelyInPantry} likely in pantry`);
   }

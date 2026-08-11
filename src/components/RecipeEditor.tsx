@@ -9,13 +9,14 @@ import {
   Keyboard,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Recipe } from '../types';
-import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import type { Recipe, RecipeMealType } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS, RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
+import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -44,6 +45,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSource = useRecipeStore(s => s.setSource);
   const setServings = useRecipeStore(s => s.setServings);
+  const setMealType = useRecipeStore(s => s.setMealType);
   const deleteRecipe = useRecipeStore(s => s.deleteRecipe);
   const recipes = useRecipeStore(s => s.recipes);
 
@@ -53,7 +55,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const [author, setAuthorDraft] = useState('');
   const [source, setSourceDraft] = useState('');
   const [servings, setServingsDraft] = useState<number | null>(null);
+  const [mealType, setMealTypeDraft] = useState<RecipeMealType | null>(null);
   const [servingsOpen, setServingsOpen] = useState(false);
+  const [mealTypeOpen, setMealTypeOpen] = useState(false);
   const [authorOpen, setAuthorOpen] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
 
@@ -90,7 +94,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthorDraft(recipe.author ?? '');
     setSourceDraft(recipe.source ?? recipe.sourceName ?? '');
     setServingsDraft(recipe.servings);
+    setMealTypeDraft(recipe.mealType);
     setServingsOpen(false);
+    setMealTypeOpen(false);
     setAuthorOpen(false);
     setSourceOpen(false);
     setLinkOpen(false);
@@ -110,6 +116,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setAuthor(recipe.id, author);
     setSource(recipe.id, source);
     setServings(recipe.id, servings);
+    setMealType(recipe.id, mealType);
     onClose();
   };
 
@@ -196,6 +203,35 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             />
           </View>
         )}
+        <CollapsibleField
+          label="Meal type"
+          summary={mealType ? RECIPE_MEAL_TYPE_LABELS[mealType] : undefined}
+          hint="What kind of meal this is, so recipes can be browsed by it."
+          expanded={mealTypeOpen}
+          onToggle={() => setMealTypeOpen(v => !v)}
+        >
+          <View style={styles.pillRow}>
+            {RECIPE_MEAL_TYPES.map(type => (
+              <TouchableOpacity
+                key={type}
+                style={[styles.pill, mealType === type && styles.pillActiveNeutral]}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  setMealTypeDraft(mealType === type ? null : type);
+                  setMealTypeOpen(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={RECIPE_MEAL_TYPE_LABELS[type]}
+                accessibilityState={{ selected: mealType === type }}
+              >
+                <Text style={[styles.pillText, mealType === type && styles.pillTextActive]}>
+                  {RECIPE_MEAL_TYPE_LABELS[type]}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </CollapsibleField>
         <EditorRow
           icon="person-outline"
           label="Author"
@@ -352,6 +388,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'flex-end',
     paddingVertical: spacing.sm,
   },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
+  pill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: radius.full,
+    backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+  },
+  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillTextActive: { color: colors.text, fontWeight: '600' },
   urlInput: {
     color: colors.text,
     fontSize: font.md,

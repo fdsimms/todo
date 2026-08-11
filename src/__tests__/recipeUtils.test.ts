@@ -51,6 +51,7 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     author: null,
     source: null,
     servings: null,
+    mealType: null,
     ingredients: [],
     prepTasks: [],
     favorite: false,
@@ -395,6 +396,21 @@ describe('describeRecipe', () => {
     expect(describeRecipe(r)).toBe('1 ingredient');
     expect(describeRecipe(r, null)).toBe('1 ingredient');
     expect(describeRecipe(r, 0)).toBe('1 ingredient');
+  });
+
+  it('leads with the meal type when set, ahead of the ingredient count', () => {
+    expect(describeRecipe(recipe('I', { ingredients: [ing('Salt')], mealType: 'breakfast' })))
+      .toBe('Breakfast · 1 ingredient');
+    expect(describeRecipe(recipe('J', {
+      ingredients: [ing('Salt')],
+      mealType: 'dessert',
+      servings: 4,
+    }))).toBe('Dessert · 1 ingredient · serves 4');
+  });
+
+  it('omits the meal type phrase when unset', () => {
+    expect(describeRecipe(recipe('K', { ingredients: [ing('Salt')], mealType: null })))
+      .toBe('1 ingredient');
   });
 });
 
