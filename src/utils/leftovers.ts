@@ -1,7 +1,7 @@
 import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { subDays } from 'date-fns/subDays';
-import type { Leftover, LeftoverFreshness } from '../types';
+import type { Leftover, LeftoverFreshness, Recipe } from '../types';
 import {
   LEFTOVER_KEEP_DAYS_DEFAULT,
   LEFTOVER_KEEP_DAYS_MAX,
@@ -9,6 +9,7 @@ import {
   LEFTOVER_RETENTION_DAYS,
 } from '../types';
 import { cleanRecipeName } from './recipeUtils';
+import { cookedDishes, type ChoiceResolution } from './recipeComponents';
 import { dayKeyOf, dayKeyToDate } from './dateUtils';
 
 /**
@@ -32,6 +33,79 @@ import { dayKeyOf, dayKeyToDate } from './dateUtils';
 /** Trims a container label for storage. Empty means "not a name" — the caller refuses it. */
 export function cleanLeftoverTitle(raw: string): string {
   return cleanRecipeName(raw);
+}
+
+/**
+ * One thing a cooked meal could have left behind — the whole dish, or one of
+ * the components it was made of.
+ *
+ * A UI-facing shape rather than a stored one, like `ChoiceGroup` and
+ * `PrepTaskDraft`: nothing here is written, it's what the log sheet renders and
+ * what a tick turns into a `LeftoverDraft`.
+ */
+export interface LeftoverPart {
+  /** Stable selection key. The component's recipe id, or WHOLE_PART_KEY for the meal itself. */
+  key: string;
+  /** What the container gets called — the leftover's `title`, verbatim. */
+  title: string;
+  /**
+   * What it was made from.
+   *
+   * **A component's leftover points at the component's own recipe**, not at the
+   * dish it was a part of, because that's what it *is*: leftover mash is a
+   * container of mash, and pointing it at "steak with mashed potatoes" would
+   * make every downstream read (plan a meal from it, open its recipe) offer to
+   * re-cook a steak that was eaten. The parent isn't lost either — the
+   * cooking it came from is already recorded on `Leftover.sourceEntryId`, whose
+   * entry names the parent recipe, so a second `parentRecipeId` column would be
+   * one more pointer to keep in step and to resolve-or-shrug, saying nothing
+   * the entry doesn't already say.
+   */
+  recipeId: string | null;
+  /** True for the meal as a whole. Exactly one part is ever the whole. */
+  whole: boolean;
+}
+
+/** The key the whole-dish part carries — never a recipe id, which is what a component's key is. */
+export const WHOLE_PART_KEY = 'whole';
+
+/**
+ * What a cooking of `recipe` could have left in the fridge: the meal itself,
+ * then each component it actually cooked.
+ *
+ * `title` is the meal's own title (the entry's captured one, which may not be
+ * the recipe's name) and is what the whole-dish part is called; the parts are
+ * called after their own recipes, because that's the name on the container.
+ *
+ * **Pass the entry's choices as `resolution`.** A component that lost its
+ * either/or was never cooked and cannot be in the fridge — see cookedDishes.
+ *
+ * A recipe with no components (or a free-text meal with no recipe at all)
+ * yields exactly one part, which is what makes the sheet able to skip the
+ * whole question for the ordinary case rather than asking it of everyone.
+ */
+export function leftoverPartsFor(
+  title: string,
+  recipe: Recipe | null | undefined,
+  recipesById: ReadonlyMap<string, Recipe>,
+  resolution?: ChoiceResolution,
+): LeftoverPart[] {
+  const parts: LeftoverPart[] = [];
+  // The entry's title wins, falling back to the recipe's for an entry that
+  // somehow carries neither. A part with no name can't be logged (the store
+  // refuses a blank title), so it's dropped rather than rendered blank.
+  const wholeTitle = cleanLeftoverTitle(title) || cleanLeftoverTitle(recipe?.name ?? '');
+  if (wholeTitle) {
+    parts.push({ key: WHOLE_PART_KEY, title: wholeTitle, recipeId: recipe?.id ?? null, whole: true });
+  }
+  if (!recipe) return parts;
+  for (const dish of cookedDishes(recipe, recipesById, resolution)) {
+    if (dish.whole) continue;
+    const partTitle = cleanLeftoverTitle(dish.recipe.name);
+    if (!partTitle) continue;
+    parts.push({ key: dish.recipe.id, title: partTitle, recipeId: dish.recipe.id, whole: false });
+  }
+  return parts;
 }
 
 /**

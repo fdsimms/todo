@@ -320,6 +320,47 @@ export function flattenRecipePrepTasks(
   return out;
 }
 
+/** One dish a cooking of a composed recipe actually puts on the table. */
+export interface CookedDish {
+  /** The recipe it is — the root itself, or a component at any depth. */
+  recipe: Recipe;
+  /** True for the root only: the meal as a whole rather than one of its parts. */
+  whole: boolean;
+}
+
+/**
+ * Every distinct dish one cooking of `recipe` produces: the meal itself first,
+ * then each component it is actually cooking, depth-first, once each.
+ *
+ * The same walk the flatteners take, stopped one level up — they want the lines
+ * *inside* each node, this wants the nodes. It exists because a component is a
+ * dish in its own right the moment the cooking is over: the mash is what's left
+ * in the fridge on a night the steak went (#1322), so "what did this meal
+ * produce" is a real question with a different answer to "what does it cost to
+ * shop for".
+ *
+ * **Resolved, like every other read that turns into a row.** A component on the
+ * road not taken was never cooked, so it cannot be in the fridge — passing the
+ * entry's `recipeChoices` is what keeps a roast-potatoes night from offering to
+ * log leftover mash.
+ *
+ * A component whose recipe has been deleted contributes nothing, exactly as it
+ * contributes no ingredients: `walk` can't descend into a dish it can't read,
+ * and a part the library no longer knows about is one the user can still log by
+ * hand under any name they like.
+ */
+export function cookedDishes(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+  resolution?: ChoiceResolution,
+): CookedDish[] {
+  const out: CookedDish[] = [];
+  walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
+    out.push({ recipe: node.recipe, whole: node.depth === 0 });
+  });
+  return out;
+}
+
 /**
  * Depth-first over the component tree, root first, each recipe visited once,
  * descending only into the components `resolution` leaves standing.

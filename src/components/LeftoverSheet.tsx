@@ -31,6 +31,7 @@ import {
   describeOutcome,
   isLiveLeftover,
   keepDaysBetween,
+  type LeftoverPart,
 } from '../utils/leftovers';
 
 /** How far back "put away" can be nudged from the sheet. */
@@ -58,6 +59,18 @@ export interface LeftoverSeed {
   title?: string;
   recipeId?: string | null;
   sourceEntryId?: string | null;
+  /**
+   * The dish and its components, when the meal was a composed recipe — see
+   * leftoverPartsFor. Two or more turns the title field into a pick list; one
+   * or none leaves the sheet exactly as it was.
+   */
+  parts?: LeftoverPart[];
+}
+
+/** One container to log: what to call it, and what it was made from. */
+export interface LeftoverPick {
+  title: string;
+  recipeId: string | null;
 }
 
 interface Props {
@@ -70,7 +83,13 @@ interface Props {
   leftover: Leftover | null;
   /** Used only when `leftover` is null. */
   seed?: LeftoverSeed;
-  onLog: (title: string, storedAt: string, keepDays: number) => void;
+  /**
+   * Every container the user ticked, all sharing one put-away day and one
+   * keep-for window — they came out of the same oven at the same moment. Each
+   * still becomes its own row with its own clock, so the mash can be finished
+   * off on Thursday and the steak thrown out on Friday.
+   */
+  onLog: (picks: LeftoverPick[], storedAt: string, keepDays: number) => void;
   onRename: (title: string) => void;
   onSetStoredAt: (storedAt: string) => void;
   onSetKeepDays: (days: number) => void;
@@ -93,6 +112,16 @@ interface Props {
  * hours-to-days old by definition — nobody is logging one they made in March —
  * so a date picker would be four taps to say "yesterday", and the arithmetic
  * this feature does is in calendar days from that day anyway.
+ *
+ * **A composed meal is logged part by part** (#1322): when the seed carries
+ * more than one part, the name field is replaced by a tick list of the dish and
+ * the components it was actually cooked with, and each tick becomes its own
+ * container. The whole dish starts ticked and nothing else does, so a composed
+ * recipe still logs in exactly the one tap it did before this existed — the
+ * parts are an offer, not a question. The list only appears when there is
+ * genuinely something to choose, which is why an uncomposed recipe never sees
+ * it and keeps its free-text name (renaming a part afterwards is what reopening
+ * the row in the fridge is for).
  */
 export function LeftoverSheet({
   visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays,
@@ -113,6 +142,12 @@ export function LeftoverSheet({
   // through, so there is no draft to hold.
   const [draftDaysAgo, setDraftDaysAgo] = useState(0);
   const [draftKeepDays, setDraftKeepDays] = useState<number | null>(LEFTOVER_KEEP_DAYS_DEFAULT);
+  const [pickedKeys, setPickedKeys] = useState<string[]>([]);
+
+  const parts = seed?.parts ?? [];
+  // One part is not a choice — that's every uncomposed recipe, and every
+  // hand-logged container, which keep the plain name field.
+  const choosing = !editing && parts.length > 1;
 
   const storedDaysAgo = leftover ? daysAgoOf(leftover.storedAt) : draftDaysAgo;
   const keepDays = leftover
@@ -132,6 +167,10 @@ export function LeftoverSheet({
     setTitle(leftover?.title ?? seed?.title ?? '');
     setDraftDaysAgo(0);
     setDraftKeepDays(LEFTOVER_KEEP_DAYS_DEFAULT);
+    // The whole dish and nothing else, so the composed case costs the same one
+    // tap the simple one does. Falls back to the first part for a seed that
+    // somehow carries only components.
+    setPickedKeys(seed?.parts?.length ? [(seed.parts.find(p => p.whole) ?? seed.parts[0]).key] : []);
   }, [visible, leftover?.id]);
 
   const dismiss = (after?: () => void) => {
@@ -162,15 +201,28 @@ export function LeftoverSheet({
 
   const cleanTitle = cleanLeftoverTitle(title);
 
+  // What "Log it" is about to write: the ticked parts, or the one thing that's
+  // been typed. Empty means the button is inert rather than writing nothing.
+  const picks: LeftoverPick[] = choosing
+    ? parts.filter(p => pickedKeys.includes(p.key)).map(p => ({ title: p.title, recipeId: p.recipeId }))
+    : cleanTitle
+      ? [{ title: cleanTitle, recipeId: seed?.recipeId ?? null }]
+      : [];
+
+  const togglePart = (key: string) => {
+    haptics.tap();
+    setPickedKeys(keys => (keys.includes(key) ? keys.filter(k => k !== key) : [...keys, key]));
+  };
+
   // Writes first, then animates out — the opposite order to MealEntrySheet's
   // destructive actions, which dismiss first so the list doesn't reflow under a
   // sheet that's still on screen. Nothing reflows here (the row this adds is
   // behind the modal), and writing first keeps the caller's handler free of any
   // dependence on state `onClose` has already cleared.
   const commit = () => {
-    if (!cleanTitle) return;
+    if (picks.length === 0) return;
     haptics.success();
-    onLog(cleanTitle, instantDaysAgo(draftDaysAgo), draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT);
+    onLog(picks, instantDaysAgo(draftDaysAgo), draftKeepDays ?? LEFTOVER_KEEP_DAYS_DEFAULT);
     dismiss();
   };
 
@@ -214,34 +266,73 @@ export function LeftoverSheet({
 
         <View style={styles.card}>
           <View style={styles.headerRow}>
-            <Text style={styles.heading}>{editing ? 'In the fridge' : 'Log a leftover'}</Text>
+            <Text style={styles.heading}>
+              {editing ? 'In the fridge' : choosing ? 'Log leftovers' : 'Log a leftover'}
+            </Text>
             {!editing && (
               <SheetHeaderButton
-                label="Log it"
+                // The count is the only thing saying how many containers this
+                // is about to add, since the sheet dismisses before they render.
+                label={picks.length > 1 ? `Log ${picks.length}` : 'Log it'}
                 onPress={commit}
-                disabled={!cleanTitle}
+                disabled={picks.length === 0}
               />
             )}
           </View>
 
-          <TextInput
-            style={styles.titleInput}
-            value={title}
-            onChangeText={setTitle}
-            onBlur={editing ? commitRename : undefined}
-            onSubmitEditing={editing ? commitRename : commit}
-            placeholder="What's in the container?"
-            placeholderTextColor={colors.textTertiary}
-            // Only when logging fresh with nothing to start from — a seeded
-            // title (from "Log leftovers" on a planned meal) is already a
-            // complete answer, not a draft to type over, so the keyboard
-            // shouldn't summon itself on top of it.
-            autoFocus={!editing && !seed?.title}
-            autoCorrect={false}
-            returnKeyType={editing ? 'done' : 'go'}
-            maxLength={LEFTOVER_NAME_MAX_LENGTH}
-            accessibilityLabel="Leftover name"
-          />
+          {choosing ? (
+            <>
+              <Text style={styles.label}>What's left</Text>
+              <Text style={styles.hintBlock}>
+                Each one goes in the fridge as its own container.
+              </Text>
+              <View style={styles.parts}>
+                {parts.map((part, i) => {
+                  const on = pickedKeys.includes(part.key);
+                  return (
+                    <TouchableOpacity
+                      key={part.key}
+                      style={[styles.partRow, i > 0 && styles.partRowDivided]}
+                      onPress={() => togglePart(part.key)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: on }}
+                      accessibilityLabel={part.whole ? `${part.title}, the whole dish` : part.title}
+                    >
+                      <Ionicons
+                        name={on ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={iconSize.md}
+                        color={on ? colors.accent : colors.textTertiary}
+                      />
+                      <View style={styles.partText}>
+                        <Text style={styles.partTitle} numberOfLines={1}>{part.title}</Text>
+                        {part.whole && <Text style={styles.partCaption}>The whole dish</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </>
+          ) : (
+            <TextInput
+              style={styles.titleInput}
+              value={title}
+              onChangeText={setTitle}
+              onBlur={editing ? commitRename : undefined}
+              onSubmitEditing={editing ? commitRename : commit}
+              placeholder="What's in the container?"
+              placeholderTextColor={colors.textTertiary}
+              // Only when logging fresh with nothing to start from — a seeded
+              // title (from "Log leftovers" on a planned meal) is already a
+              // complete answer, not a draft to type over, so the keyboard
+              // shouldn't summon itself on top of it.
+              autoFocus={!editing && !seed?.title}
+              autoCorrect={false}
+              returnKeyType={editing ? 'done' : 'go'}
+              maxLength={LEFTOVER_NAME_MAX_LENGTH}
+              accessibilityLabel="Leftover name"
+            />
+          )}
 
           {editing && leftover && (
             <Text style={styles.caption}>
@@ -475,6 +566,42 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+  },
+  hintBlock: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  // A sunken region rather than a second card: these rows sit *inside* the
+  // sheet's card, and the enclosure is what ties them together — the same call
+  // TaskGroupTray makes about a stack's children.
+  parts: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgSunken,
+    borderRadius: radius.md,
+    overflow: 'hidden',
+  },
+  partRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 10,
+  },
+  partRowDivided: {
+    borderTopWidth: border.hairline,
+    borderTopColor: colors.separator,
+  },
+  partText: { flex: 1, gap: 1 },
+  partTitle: {
+    color: colors.text,
+    fontSize: font.md,
+    fontWeight: fontWeight.medium,
+  },
+  partCaption: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
   },
   keepRow: {
     flexDirection: 'row',

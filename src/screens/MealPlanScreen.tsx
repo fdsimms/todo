@@ -38,7 +38,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { LeftoversCard } from '../components/LeftoversCard';
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
-import { isLiveLeftover } from '../utils/leftovers';
+import { isLiveLeftover, leftoverPartsFor } from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -540,13 +540,21 @@ export function MealPlanScreen() {
    * Deliberately an action on the entry rather than something mark-cooked does
    * by itself: not every meal leaves any, and a sheet that opened uninvited
    * after every cooking would be a second modal chasing the ingredient one.
+   *
+   * The parts are read under the entry's *own* choices, so a night the roast
+   * potatoes won never offers to log leftover mash — the mash was never made.
+   * An uncomposed meal yields a single part, which the sheet renders exactly as
+   * it always did.
    */
   const logLeftoversFor = (entry: MealPlanEntry) => {
     setSelectedId(null);
+    const title = titleForEntry(entry, recipesById);
+    const recipe = entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
     setLoggingLeftover({
-      title: titleForEntry(entry, recipesById),
+      title,
       recipeId: entry.recipeId,
       sourceEntryId: entry.id,
+      parts: leftoverPartsFor(title, recipe, recipesById, { chosen: entry.recipeChoices }),
     });
   };
 
@@ -942,16 +950,19 @@ export function MealPlanScreen() {
         visible={editingLeftover !== null || loggingLeftover !== null}
         leftover={editingLeftover}
         seed={loggingLeftover ?? undefined}
-        // The seed's own `title` is deliberately not spread back in — it was
-        // only ever the sheet's starting text, and by the time this fires the
-        // user may have typed over it.
-        onLog={(title, storedAt, keepDays) => logLeftover({
-          title,
+        // The seed's own `title`/`recipeId` are deliberately not spread back in
+        // — they were only ever the sheet's starting point, and by the time
+        // this fires the user may have typed over the name or ticked the mash
+        // instead of the meal. `sourceEntryId` is the one thing the sheet
+        // can't have changed: every container here came out of that cooking,
+        // whichever part of it it is.
+        onLog={(picks, storedAt, keepDays) => picks.forEach(pick => logLeftover({
+          title: pick.title,
           storedAt,
           keepDays,
-          recipeId: loggingLeftover?.recipeId ?? null,
+          recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
-        })}
+        }))}
         onRename={title => editingLeftover && renameLeftover(editingLeftover.id, title)}
         onSetStoredAt={storedAt => editingLeftover && setLeftoverStoredAt(editingLeftover.id, storedAt)}
         onSetKeepDays={days => editingLeftover && setLeftoverKeepDays(editingLeftover.id, days)}
